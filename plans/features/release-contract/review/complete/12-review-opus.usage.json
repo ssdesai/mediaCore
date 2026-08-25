@@ -1,0 +1,67 @@
+{
+  "plan": "12-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "d5408c53-6382-4419-9f2a-a3465394c547",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 41,
+  "duration_ms": 339284,
+  "total_cost_usd": 2.5299919999999996,
+  "usage": {
+    "input_tokens": 52,
+    "cache_creation_input_tokens": 101297,
+    "cache_read_input_tokens": 1730726,
+    "output_tokens": 25924
+  },
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 3239,
+      "outputTokens": 12,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0032990000000000003,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty"
+    },
+    "claude-opus-5": {
+      "inputTokens": 52,
+      "outputTokens": 25924,
+      "cacheReadInputTokens": 1730726,
+      "cacheCreationInputTokens": 101297,
+      "webSearchRequests": 0,
+      "costUSD": 2.5266929999999994,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "canonicalModel": "claude-opus-5",
+      "provider": "firstParty"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 13,
+    "Edit": 8,
+    "Read": 18,
+    "Write": 1
+  },
+  "files_edited": [
+    "fixtures/README.md",
+    "plans/features/release-contract/README.md",
+    "plans/review-report.md",
+    "src/mediacore/README.md",
+    "tests/test_fixture.py"
+  ],
+  "edit_count": 9,
+  "attempts": [
+    {
+      "session_id": "d5408c53-6382-4419-9f2a-a3465394c547",
+      "outcome": "complete",
+      "total_cost_usd": 2.5299919999999996,
+      "num_turns": 41,
+      "duration_ms": 339284
+    }
+  ]
+}

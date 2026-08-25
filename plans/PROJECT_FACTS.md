@@ -21,6 +21,16 @@ executors share no context, so repeating a fact across plans in a batch is corre
   `src/mediacore/__init__.py`; consumers import `from mediacore import Release, ...`.
 - Models are `extra="forbid"` and round-trip through `model_dump(mode="json")` /
   `model_validate` without loss.
+- Every `refs` field is **evidence recorded by an external source**, never identity
+  (`INTEGRATION.md` §4). All are optional and default to `{}`; no plan may make one
+  required, privilege a source, or add uniqueness semantics anywhere.
+- `MediaFile.file` / `AudioFile.file` are validated to be exactly
+  `media/<sha256>.<ext>` for that entry's own digest, `<ext>` matching `[a-z0-9]{1,8}`,
+  and `sha256` is a lowercase 64-character hex digest. Bundles reach both consumers as
+  untrusted browser uploads, so this is a security boundary: never relax it, and never
+  hand-write a `file` value in a test — derive it from the digest.
+- `write_bundle` is atomic: it stages into a sibling temp directory and swaps it into
+  place. A failed write leaves the previous `dest` intact, or nothing at all.
 - `normalize_text` must equal `vinylcat.normalize.normalize_text`
   (`~/dev/vinylCatalogue/src/vinylcat/normalize.py`): NFKD, drop combining marks,
   uppercase, collapse whitespace, strip. `normalize_catno` likewise strips non-alnum.

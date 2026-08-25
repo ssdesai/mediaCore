@@ -1,9 +1,9 @@
 # mediaCore
 
 The shared contract between the owner's recorded-media repos: a neutral `Release`
-schema, authority-keyed identity refs, the shared name-normalisation fold, a bundle
-reader/writer, and one real-world test fixture. Python package `mediacore`, no app
-code, no database.
+schema, refs (evidence recorded by external sources, never identity), the shared
+name-normalisation fold, a bundle reader/writer, and one real-world test fixture.
+Python package `mediacore`, no app code, no database.
 
 `INTEGRATION.md` is the cross-repo design — who produces a release bundle
 (vinylCatalogue), who consumes it (humanNetworkMap, musicMap), what the contract is, and
@@ -17,10 +17,10 @@ every decision taken along the way. Start there.
 | `CLAUDE.md` | Imports the shared conventions from `agentTooling/`, plus this repo's Rule 1/2 examples and commands. |
 | `agentTooling/` | Vendored via `git subtree` — shared Claude Code conventions and the delegated-plan harness. Not edited here. |
 | `plans/` | This repo's plan corpus (`features/<slug>/`), `PROJECT_FACTS.md`, the mechanical gate and PR hook. |
-| `src/mediacore/` | The package — see its README. *(created by the first feature batch)* |
-| `tests/` | pytest suite mirroring `src/`. *(created by the first feature batch)* |
-| `fixtures/its-saxy/` | The contract fixture: a complete release bundle with real metadata and placeholder media. *(created by the first feature batch)* |
-| `scripts/` | `make_fixture_its_saxy.py` — regenerates the fixture deterministically. *(created by the first feature batch)* |
+| `src/mediacore/` | The package — see its README. |
+| `tests/` | pytest suite mirroring `src/`. |
+| `fixtures/its-saxy/` | The contract fixture: a complete release bundle with real metadata and placeholder media. |
+| `scripts/` | `make_fixture_its_saxy.py` — regenerates the fixture deterministically. |
 
 ## Consuming
 

@@ -23,10 +23,12 @@ Future sources (CD rips, digital purchases, cassettes) plug in by writing the sa
 1. **Nothing vinyl-specific crosses the boundary.** The contract is a `Release`. The
    vinyl-shaped things (photo roles, pressing/matrix data, review gates) stay in
    vinylCatalogue; its adapter is the only code that knows both shapes.
-2. **Identity is authority-keyed refs, never a pipeline's own ID.** Discogs IDs today,
-   MusicBrainz when a digital source arrives. Pipeline IDs (the vinylcat record ULID,
-   file hashes) travel as *provenance* and are stored by consumers for traceability, not
-   as join keys.
+2. **Identity never hinges on any one source.** An artist, label, release, or person
+   *is* the consumer's own entity (its row). Discogs IDs, MusicBrainz IDs, vinylcat
+   record IDs, file hashes, and names are all **supporting evidence** attached to that
+   entity — any of them may be absent (a record with only Discogs data, one with only
+   local photographs, a band that exists in no database). No ref is required, no ref is
+   a key, and no source is privileged: the human confirms every match.
 3. **Imports are human-supervised, always.** Every consumer has an import page that
    parses a bundle, proposes matches against existing entities, and commits only what
    the human confirmed. There is no unattended sync. Re-import is the same page again —
@@ -91,7 +93,15 @@ Refs = dict[str, str]             # see §4 for key format
   (`sleeve_front`, `sleeve_back`, `label_a`, `label_b`), a CD source would emit its own.
   Consumers treat it as a caption hint, nothing more.
 
-## 4. Refs, authorities, provenance (`mediacore.refs`)
+## 4. Refs as evidence, authorities, provenance (`mediacore.refs`)
+
+**A ref is a piece of evidence, not an identity.** `refs` on a release, artist, label,
+credit, or link records what some external source calls this thing. It is always
+optional and may be empty. A consumer uses refs to *propose* a match and to *retain
+evidence* on the entity it links or creates; it never treats a ref as the entity's key,
+never requires one, and never lets one source's absence block an import. Two rows may
+legitimately share a ref (Discogs has duplicates) and one real-world entity may carry
+refs from several sources or none — the human decides which rows are the same thing.
 
 **Ref keys** are `"<authority>:<entity>"` — lowercase, validated by
 `^[a-z][a-z0-9]*:[a-z][a-z0-9-]*$`. Values are non-empty strings (Discogs numeric IDs are
@@ -105,7 +115,8 @@ extension point) but a consumer only *matches* on keys it knows.
 | `discogs:artist` | artist or group |
 | `discogs:label` | label |
 | `musicbrainz:release`, `musicbrainz:release-group`, `musicbrainz:artist`, `musicbrainz:label`, `musicbrainz:recording` | reserved for a future digital source |
-| `isrc`, `barcode` | reserved |
+| `isrc:recording` | ISRC of a recording (reserved) |
+| `barcode:release` | UPC/EAN printed on a release (reserved) |
 
 **Ref URI** (for query strings and cross-app links, phase 2): `f"{key}:{value}"`, e.g.
 `discogs:artist:5682050`. `ref_uri(key, value)` / `parse_ref_uri(s)` live in
@@ -116,16 +127,17 @@ extension point) but a consumer only *matches* on keys it knows.
 `discogs:release` = same edition. humanNetworkMap cares about the former, musicMap may
 keep both.
 
-**Provenance** is separate from identity: `{kind, id, label, exported_at}`. Kinds so
-far: `vinylcat` (id = the record ULID, label = collection root's basename). Future:
-`cd-rip`, `digital`. Consumers copy provenance into their `refs` column under the
-`kind:record`-style keys listed in §7 so a re-import can find what an earlier import
-created — but they never *match entities* on it.
+**Provenance** is evidence of a different kind: where *this copy* came from —
+`{kind, id, label, exported_at}`. Kinds so far: `vinylcat` (id = the record ULID, label
+= collection root's basename). Future: `cd-rip`, `digital`. Consumers store it on the
+rows an import touches (under `kind:record`-style keys, §7) so a re-import can show what
+an earlier import created. It carries no more authority than any other ref.
 
-**Unmatched releases** (`not_on_discogs`, demo tapes) have no authority refs. Consumers
-fall back to `normalize_text` equality on names for artist/label candidates, and the
-human confirms. No central registry mints canonical IDs; if that is ever needed it goes
-behind the same `refs` interface.
+**Releases with no authority data at all** (`not_on_discogs`, demo tapes, a label that
+exists only on a sleeve) are first-class, not a fallback case. Their evidence is names,
+photographs, and provenance; candidates come from `normalize_text` equality on names,
+and the human confirms. No central registry mints canonical IDs; if that is ever
+needed it goes behind the same `refs` interface.
 
 **`normalize_text`** (`mediacore.normalize`) is the shared fold used for name
 matching in every consumer. It must be *byte-for-byte the same algorithm* as
@@ -201,14 +213,22 @@ A *bundle* is a directory:
 ## 7. Consumer rules (both consumers)
 
 - **Columns.** Add `refs JSONB NOT NULL DEFAULT '{}'` (+ GIN index) to every table that
-  can represent a release-derived entity (§8/§9 list them). Store, per entity, the
-  authority refs from the bundle *plus* provenance under `vinylcat:record` (the ULID)
-  and, for files, `sha256`. Never store another app's UUIDs.
-- **Matching order** for each incoming entity: (1) an existing row sharing any known
-  authority ref → *exact* candidate, default action *link*; (2) rows whose
-  `normalize_text(name)` equals the incoming fold → *name* candidates, default action
-  *create* but with the candidate offered; (3) nothing → *create*. The human can always
-  override to link/create/skip.
+  can represent a release-derived entity (§8/§9 list them). It is an *evidence bag*:
+  per entity, the authority refs from the bundle *plus* provenance under
+  `vinylcat:record` (the ULID) and, for files, `sha256`. Rows created by hand have an
+  empty bag and are matched by name like anything else. Never store another app's UUIDs.
+- **Candidates, not matches.** For each incoming entity the preview lists existing rows
+  with the evidence that connects them, strongest first: (1) a shared known authority
+  ref — strong signal, default action *link*, but still shown for confirmation; (2)
+  equal `normalize_text(name)` — default action *create* with the candidate offered;
+  (3) nothing — *create*. The human can always override to link/create/skip, including
+  linking to a row that shares no evidence at all (that is how a hand-made node and its
+  Discogs entry become one thing).
+- **Linking accumulates evidence.** When the human links an incoming entity to an
+  existing row, the row's `refs` is merged additively with the incoming refs (existing
+  keys are kept; conflicts are shown in the preview and the human picks). This is the
+  one edit an import makes to a pre-existing row, and it is what lets an entity known
+  first from local photographs later gain a Discogs ref, or vice versa.
 - **Re-import.** If a row already carries this release's `discogs:release` or
   `vinylcat:record`, the preview says so up front (what it is, when it was imported) and
   lets the human continue or cancel. Continuing runs the same matching; previously
@@ -292,7 +312,9 @@ embedding progress (reuse the existing progress UI).
 
 ## 10. Phase 2 (not in the first batches)
 
-- `GET /api/resolve?ref=<ref-uri>` in both consumers, returning the local entity.
+- `GET /api/resolve?ref=<ref-uri>` in both consumers, returning the local entities
+  carrying that evidence (possibly several, possibly none — a link resolves to a
+  disambiguation, never to an assumption).
 - humanNetworkMap URL-addressable state (`?project=&node=`) — it has no router today.
 - `PEER_HNM_URL` / `PEER_MUSICMAP_URL` env vars; "Open in …" links built from refs.
 - Optional overlay: musicMap side panel fetching the band's hNM neighbourhood.
@@ -369,6 +391,10 @@ by an agent briefed with this file.
 - 2026-08-25 — Export gate = fourth-gate sign-off; the owner signs SAXY off before the
   end-to-end run.
 - 2026-08-25 — Transport = bundle folder on disk, uploaded through the import page.
+- 2026-08-25 — **Identity never hinges on Discogs or any single source.** Refs are
+  supporting evidence on a consumer-owned entity; any may be absent; linking merges
+  evidence additively; the human confirms every match. Supersedes the earlier
+  "identity = authority refs" wording.
 
 ## 14. Open questions
 
