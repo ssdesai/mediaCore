@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+
+# OS
+.DS_Store
+
+# run-plans.sh / run-verify.sh / run-review.sh raw event streams — kept next to a failed
+# plan for debugging, and next to a completed one as the full record of what the model did.
+plans/**/*.stream.jsonl
+plans/**/*.logfifo
+plans/gate-report*.txt
+plans/review-report.md

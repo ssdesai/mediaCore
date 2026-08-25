@@ -1,1 +1,36 @@
 # mediaCore
+
+The shared contract between the owner's recorded-media repos: a neutral `Release`
+schema, authority-keyed identity refs, the shared name-normalisation fold, a bundle
+reader/writer, and one real-world test fixture. Python package `mediacore`, no app
+code, no database.
+
+`INTEGRATION.md` is the cross-repo design — who produces a release bundle
+(vinylCatalogue), who consumes it (humanNetworkMap, musicMap), what the contract is, and
+every decision taken along the way. Start there.
+
+## Contents
+
+| Path | What it is |
+|---|---|
+| `INTEGRATION.md` | Cross-repo design and decisions log. The brief every implementing agent works from. |
+| `CLAUDE.md` | Imports the shared conventions from `agentTooling/`, plus this repo's Rule 1/2 examples and commands. |
+| `agentTooling/` | Vendored via `git subtree` — shared Claude Code conventions and the delegated-plan harness. Not edited here. |
+| `plans/` | This repo's plan corpus (`features/<slug>/`), `PROJECT_FACTS.md`, the mechanical gate and PR hook. |
+| `src/mediacore/` | The package — see its README. *(created by the first feature batch)* |
+| `tests/` | pytest suite mirroring `src/`. *(created by the first feature batch)* |
+| `fixtures/its-saxy/` | The contract fixture: a complete release bundle with real metadata and placeholder media. *(created by the first feature batch)* |
+| `scripts/` | `make_fixture_its_saxy.py` — regenerates the fixture deterministically. *(created by the first feature batch)* |
+
+## Consuming
+
+```
+mediacore @ git+https://github.com/ssdesai/mediaCore.git@v0.1.0
+```
+
+Pin a tag, never a branch. Version policy is in `INTEGRATION.md` §12.
+
+## Working in this repo
+
+Read `CLAUDE.md` first. Before authoring delegated plans, read
+`agentTooling/AGENT_PLANS.md` and `plans/PROJECT_FACTS.md`.
