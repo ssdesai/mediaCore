@@ -78,20 +78,54 @@ the current design — `INTEGRATION.md` is.
 - **No adapter, no consumer code.** `Record → Release` is WP1 (vinylCatalogue); the
   import pages are WP2/WP3. Nothing vinyl-shaped may enter `src/` — `"vinyl"` is one
   value of `Medium`, and the code that chooses it lives in the other repo.
-- **No `isrc` / `barcode` ref constants.** §4's table lists them, but neither matches
-  the ref-key grammar the same section states (both lack an `<entity>` segment), and
-  both are marked *reserved*. The grammar is implemented verbatim and the two keys are
-  left undefined rather than invented as `isrc:recording` / `barcode:release`; the
-  contradiction is recorded in `src/mediacore/README.md` for the owner to settle.
-  Plan 01's assertions never touch them, and `tests/test_refs.py` pins them as
-  *invalid* keys under the grammar as written — narrowed at authoring time so the final
-  gate is not red by construction.
 - **No `GET /api/resolve`, no ref-URI consumers.** §10, phase 2. `ref_uri` /
   `parse_ref_uri` ship because §4 specifies them; nothing calls them yet.
 - **No real media in the fixture.** §11 settles this: placeholder PNG/WAV bytes so the
   hashes are reproducible. The fixture's `sha256`s deliberately differ from the live
   record's.
 - **No `LICENSE`, and no tag.** `v0.1.0` is cut by the owner after this PR merges (§12).
+- ~~**No `isrc` / `barcode` ref constants.**~~ **Settled after the batch** — see
+  *Landed after the review* below.
+
+## Landed after the review
+
+Three of the review's findings were fixed on this branch before the owner merged,
+by hand rather than as a new batch. Tests came with each.
+
+- **`isrc` / `barcode` decided.** The batch shipped without them because §4's table
+  listed bare `isrc` / `barcode`, which that same section's ref-key grammar cannot
+  express. The owner ruled: keep the grammar, give the keys entity segments.
+  `ISRC_RECORDING` (`isrc:recording`) and `BARCODE_RELEASE` (`barcode:release`) are now
+  constants in `KNOWN_REF_KEYS` (eleven keys); the bare forms stay pinned as *invalid*.
+- **`file` is validated against `sha256`** (review escalation 3). `MediaFile`/`AudioFile`
+  now require `file == media/<sha256>.<ext>` for their own digest, with `<ext>`
+  `[a-z0-9]{1,8}` and `sha256` a lowercase 64-character hex digest — closing path
+  traversal on input both consumers take from untrusted browser uploads. `read_bundle`
+  also resolves every entry under `<bundle>/media/` as defence in depth.
+- **`write_bundle` is atomic** (review escalation 1). It stages into a sibling temp
+  directory, hash-verifies the copies, then swaps; a failure leaves the previous bundle
+  intact or nothing. The old behaviour could destroy a bundle and leave a partial
+  directory that the "is this a bundle?" guard then refused to overwrite.
+
+## Still open from the review — for a later batch
+
+Not done here, in the review's own order of cost:
+
+1. `read_bundle` accepts a `release.json` whose `schema_version` is newer than
+   `SCHEMA_VERSION`. Needs a forward-compatibility policy decided, then enforced.
+2. Two entries sharing a `sha256` with different `file` values round-trip cleanly.
+   Decide whether that is rejected or tolerated, and assert it.
+3. An `AudioFile.track_position` matching no `Track` is an error nowhere. Either add a
+   `Release` validator or write the non-guarantee into §3 explicitly, so consumers know
+   to handle orphans.
+4. `size_bytes` is declared and never verified by `read_bundle`, and has no `ge=0`.
+5. No standing check that the fixture survives into a wheel. Verify plan 11 confirmed
+   it once by hand; `plans/gate.sh` should build a wheel and assert
+   `mediacore/_fixtures/its-saxy/release.json` is inside, since WP1–WP3 all install
+   non-editable and take the code path no test covers.
+
+The review's sixth item — "no test that `write_bundle` leaves an existing bundle
+untouched when it raises" — is covered by the atomicity tests above.
 
 ## Machine-readable
 

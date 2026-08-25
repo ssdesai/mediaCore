@@ -299,3 +299,99 @@ def test_release_without_title_required() -> None:
             artists=[{"name": "n"}],
             medium="vinyl",
         )
+
+
+# --- `file` is validated against `sha256` (INTEGRATION.md §5) -------------------
+#
+# Both consumers accept bundles as untrusted browser uploads and then join `file` onto
+# a directory path, so a traversal here is a filesystem write outside the bundle.
+
+VALID_DIGEST = "a" * 64
+OTHER_DIGEST = "b" * 64
+VALID_MEDIA_PATH = f"media/{VALID_DIGEST}.png"
+VALID_AUDIO_PATH = f"media/{VALID_DIGEST}.wav"
+
+
+def media_file(**overrides):
+    fields = {
+        "kind": "photo",
+        "sha256": VALID_DIGEST,
+        "file": VALID_MEDIA_PATH,
+        "mime": "image/png",
+    }
+    fields.update(overrides)
+    return MediaFile(**fields)
+
+
+def audio_file(**overrides):
+    fields = {
+        "track_position": "A1",
+        "sha256": VALID_DIGEST,
+        "file": VALID_AUDIO_PATH,
+        "format": "wav",
+        "size_bytes": 1,
+    }
+    fields.update(overrides)
+    return AudioFile(**fields)
+
+
+def test_bundle_file_path_accepted_when_it_names_its_own_digest():
+    assert media_file().file == VALID_MEDIA_PATH
+    assert audio_file().file == VALID_AUDIO_PATH
+    # A multi-character alphanumeric extension is fine; so is a digit-only one.
+    assert media_file(file=f"media/{VALID_DIGEST}.jpeg").file.endswith(".jpeg")
+    assert audio_file(file=f"media/{VALID_DIGEST}.mp3").file.endswith(".mp3")
+
+
+@pytest.mark.parametrize(
+    ("bad_file", "why"),
+    [
+        (f"media/{OTHER_DIGEST}.png", "digest belongs to another entry"),
+        (f"{VALID_DIGEST}.png", "no media/ prefix"),
+        (f"/media/{VALID_DIGEST}.png", "absolute path"),
+        (f"media/../{VALID_DIGEST}.png", "parent traversal inside the prefix"),
+        (f"../media/{VALID_DIGEST}.png", "parent traversal before the prefix"),
+        (f"media/sub/{VALID_DIGEST}.png", "extra path segment"),
+        (f"media/{VALID_DIGEST}.png/x", "trailing segment"),
+        (f"media/{VALID_DIGEST}", "no extension"),
+        (f"media/{VALID_DIGEST}.", "empty extension"),
+        (f"media/{VALID_DIGEST}.PNG", "uppercase extension"),
+        (f"media/{VALID_DIGEST}.extensionlong", "extension over eight characters"),
+        (f"media/{VALID_DIGEST}.p-g", "non-alphanumeric extension"),
+        (f"Media/{VALID_DIGEST}.png", "wrong-case directory"),
+        ("", "empty"),
+    ],
+)
+def test_bundle_file_path_rejected(bad_file, why):
+    with pytest.raises(ValidationError):
+        media_file(file=bad_file)
+    with pytest.raises(ValidationError):
+        audio_file(file=bad_file)
+
+
+@pytest.mark.parametrize(
+    "bad_digest",
+    [
+        "a" * 63,
+        "a" * 65,
+        "A" * 64,
+        "g" * 64,
+        "../../etc/passwd",
+        "",
+    ],
+)
+def test_sha256_must_be_a_lowercase_hex_digest(bad_digest):
+    with pytest.raises(ValidationError):
+        media_file(sha256=bad_digest, file=f"media/{bad_digest}.png")
+    with pytest.raises(ValidationError):
+        audio_file(sha256=bad_digest, file=f"media/{bad_digest}.wav")
+
+
+def test_bundle_file_validation_survives_a_round_trip():
+    entry = media_file()
+    assert MediaFile.model_validate(entry.model_dump(mode="json")) == entry
+
+    payload = entry.model_dump(mode="json")
+    payload["file"] = f"media/{OTHER_DIGEST}.png"
+    with pytest.raises(ValidationError):
+        MediaFile.model_validate(payload)

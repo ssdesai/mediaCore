@@ -115,7 +115,8 @@ extension point) but a consumer only *matches* on keys it knows.
 | `discogs:artist` | artist or group |
 | `discogs:label` | label |
 | `musicbrainz:release`, `musicbrainz:release-group`, `musicbrainz:artist`, `musicbrainz:label`, `musicbrainz:recording` | reserved for a future digital source |
-| `isrc`, `barcode` | reserved |
+| `isrc:recording` | ISRC of a recording (reserved) |
+| `barcode:release` | UPC/EAN printed on a release (reserved) |
 
 **Ref URI** (for query strings and cross-app links, phase 2): `f"{key}:{value}"`, e.g.
 `discogs:artist:5682050`. `ref_uri(key, value)` / `parse_ref_uri(s)` live in

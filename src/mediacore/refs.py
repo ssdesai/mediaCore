@@ -14,10 +14,10 @@ Known keys are constants below; an unknown but well-formed key is accepted on pu
 that is the contract's extension point — though a consumer only proposes candidates
 from keys it knows.
 
-§4's table also lists `isrc` and `barcode` as reserved. Neither is expressible under
-the key grammar that same section states (both lack an `<entity>` segment), so neither
-is defined here; the grammar is implemented as written rather than widened to fit two
-keys nothing uses yet.
+`isrc:recording` and `barcode:release` are reserved but not yet produced by anything.
+They carry entity segments because the key grammar requires one — an earlier draft of
+§4 listed them as bare `isrc` / `barcode`, which the grammar cannot express; the
+grammar was kept and the keys were given segments rather than the other way round.
 """
 
 from __future__ import annotations
@@ -47,6 +47,8 @@ MUSICBRAINZ_RELEASE_GROUP = "musicbrainz:release-group"
 MUSICBRAINZ_ARTIST = "musicbrainz:artist"
 MUSICBRAINZ_LABEL = "musicbrainz:label"
 MUSICBRAINZ_RECORDING = "musicbrainz:recording"
+ISRC_RECORDING = "isrc:recording"
+BARCODE_RELEASE = "barcode:release"
 
 KNOWN_REF_KEYS = frozenset(
     {
@@ -59,6 +61,8 @@ KNOWN_REF_KEYS = frozenset(
         MUSICBRAINZ_ARTIST,
         MUSICBRAINZ_LABEL,
         MUSICBRAINZ_RECORDING,
+        ISRC_RECORDING,
+        BARCODE_RELEASE,
     }
 )
 

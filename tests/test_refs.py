@@ -3,10 +3,12 @@
 import pytest
 
 from mediacore import (
+    BARCODE_RELEASE,
     DISCOGS_ARTIST,
     DISCOGS_LABEL,
     DISCOGS_MASTER,
     DISCOGS_RELEASE,
+    ISRC_RECORDING,
     KNOWN_REF_KEYS,
     MUSICBRAINZ_ARTIST,
     MUSICBRAINZ_LABEL,
@@ -18,6 +20,9 @@ from mediacore import (
     ref_uri,
     validate_refs,
 )
+
+# Four discogs keys, five musicbrainz, isrc:recording, barcode:release.
+EXPECTED_KNOWN_REF_KEY_COUNT = 11
 
 
 @pytest.mark.parametrize(
@@ -32,6 +37,8 @@ from mediacore import (
         "musicbrainz:artist",
         "musicbrainz:label",
         "musicbrainz:recording",
+        "isrc:recording",
+        "barcode:release",
     ],
 )
 def test_valid_ref_keys_accepted(key):
@@ -48,6 +55,9 @@ def test_unknown_but_well_formed_key_is_allowed():
     "key",
     [
         "discogs",
+        # Reserved in an earlier draft of §4 as bare authorities; the grammar
+        # cannot express them, so the keys grew entity segments instead
+        # (isrc:recording, barcode:release) and these stay invalid.
         "isrc",
         "barcode",
         "discogs:",
@@ -86,7 +96,7 @@ def test_empty_refs_are_valid():
 
 
 def test_known_ref_keys_all_match_the_grammar():
-    assert len(KNOWN_REF_KEYS) == 9
+    assert len(KNOWN_REF_KEYS) == EXPECTED_KNOWN_REF_KEY_COUNT
     for key in KNOWN_REF_KEYS:
         assert REF_KEY_RE.match(key)
 
@@ -102,6 +112,8 @@ def test_known_ref_key_constants():
         "musicbrainz:artist",
         "musicbrainz:label",
         "musicbrainz:recording",
+        "isrc:recording",
+        "barcode:release",
     }
     actual_keys = {
         DISCOGS_RELEASE,
@@ -113,6 +125,8 @@ def test_known_ref_key_constants():
         MUSICBRAINZ_ARTIST,
         MUSICBRAINZ_LABEL,
         MUSICBRAINZ_RECORDING,
+        ISRC_RECORDING,
+        BARCODE_RELEASE,
     }
     assert actual_keys == expected_keys
     assert actual_keys.issubset(KNOWN_REF_KEYS)

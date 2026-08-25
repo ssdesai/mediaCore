@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from mediacore import BundleError, Release, read_bundle, sha256_file, write_bundle
+from mediacore import BundleError, Release, bundle, read_bundle, sha256_file, write_bundle
 
 from conftest import (
     make_audio_file,
@@ -235,3 +235,104 @@ def test_release_with_no_files_round_trips(tmp_path):
     media_dir = dest / MEDIA_DIRNAME
     assert media_dir.exists()
     assert list(media_dir.iterdir()) == []
+
+
+# --- Atomicity: a failed write never damages what is already there (review finding) ---
+
+
+def test_write_bundle_leaves_an_existing_bundle_intact_when_a_hash_is_wrong(tmp_path):
+    """A bad hash on the *second* entry must not cost the caller the bundle already
+    at `dest`. The pre-flight loop catches it before anything is staged."""
+    release, sources = built(tmp_path)
+    dest = tmp_path / BUNDLE_DIRNAME
+    write_bundle(release, dest, sources)
+
+    decoy = tmp_path / "decoy.wav"
+    decoy.write_bytes(b"different-bytes-entirely")
+    broken = dict(sources)
+    broken[sha256_bytes(AUDIO_BYTES)] = decoy
+
+    with pytest.raises(BundleError):
+        write_bundle(release, dest, broken)
+
+    assert read_bundle(dest) == release
+
+
+def test_write_bundle_leaves_an_existing_bundle_intact_when_a_copy_fails(
+    tmp_path, monkeypatch
+):
+    """The mid-write case the staging directory exists for: the pre-flight loop has
+    passed and files are being written when the filesystem gives out."""
+    release, sources = built(tmp_path)
+    dest = tmp_path / BUNDLE_DIRNAME
+    write_bundle(release, dest, sources)
+
+    real_copyfile = bundle.shutil.copyfile
+    calls = {"n": 0}
+
+    def failing_copyfile(source, target, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise OSError("no space left on device")
+        return real_copyfile(source, target, **kwargs)
+
+    monkeypatch.setattr(bundle.shutil, "copyfile", failing_copyfile)
+
+    with pytest.raises(OSError, match="no space left on device"):
+        write_bundle(release, dest, sources)
+
+    monkeypatch.undo()
+    assert read_bundle(dest) == release
+    assert len(list((dest / MEDIA_DIRNAME).iterdir())) == 2
+
+
+def test_write_bundle_leaves_no_staging_directory_behind(tmp_path):
+    """Staging and backup directories are siblings of `dest`; neither may survive a
+    successful write or a refused one."""
+    release, sources = built(tmp_path)
+    dest = tmp_path / BUNDLE_DIRNAME
+
+    write_bundle(release, dest, sources)
+    write_bundle(release, dest, sources)
+
+    assert [entry.name for entry in sorted(tmp_path.iterdir())] == [
+        BUNDLE_DIRNAME,
+        "sources",
+    ]
+
+
+def test_write_bundle_creates_nothing_when_the_destination_is_refused(tmp_path):
+    """A refused destination is untouched, and no staging sibling is left over."""
+    release, sources = built(tmp_path)
+    dest = tmp_path / BUNDLE_DIRNAME
+    dest.mkdir()
+    stranger = dest / "not-a-bundle.txt"
+    stranger.write_text("keep me")
+
+    with pytest.raises(BundleError, match="not a bundle"):
+        write_bundle(release, dest, sources)
+
+    assert stranger.read_text() == "keep me"
+    assert [entry.name for entry in sorted(dest.iterdir())] == ["not-a-bundle.txt"]
+    assert [entry.name for entry in sorted(tmp_path.iterdir())] == [
+        BUNDLE_DIRNAME,
+        "sources",
+    ]
+
+
+def test_read_bundle_refuses_a_file_outside_the_media_directory(tmp_path):
+    """Defence in depth: the models forbid such a `file`, so this is reached only by
+    editing release.json on disk — exactly what an untrusted upload can do."""
+    release, sources = built(tmp_path)
+    dest = tmp_path / BUNDLE_DIRNAME
+    write_bundle(release, dest, sources)
+
+    outsider = tmp_path / "outside.png"
+    outsider.write_bytes(PHOTO_BYTES)
+
+    payload = json.loads((dest / RELEASE_FILENAME).read_text())
+    payload["media"][0]["file"] = f"{MEDIA_DIRNAME}/../../outside.png"
+    (dest / RELEASE_FILENAME).write_text(json.dumps(payload))
+
+    with pytest.raises(BundleError):
+        read_bundle(dest)

@@ -25,10 +25,12 @@ from mediacore.normalize import (
     normalize_text,
 )
 from mediacore.refs import (
+    BARCODE_RELEASE,
     DISCOGS_ARTIST,
     DISCOGS_LABEL,
     DISCOGS_MASTER,
     DISCOGS_RELEASE,
+    ISRC_RECORDING,
     KNOWN_REF_KEYS,
     MUSICBRAINZ_ARTIST,
     MUSICBRAINZ_LABEL,
@@ -45,7 +47,10 @@ from mediacore.refs import (
     validate_refs,
 )
 from mediacore.release import (
+    BUNDLE_FILE_PATTERN,
+    BUNDLE_FILE_RE,
     SCHEMA_VERSION,
+    SHA256_HEX_PATTERN,
     ArtistRef,
     AudioFile,
     ContractModel,
@@ -57,10 +62,15 @@ from mediacore.release import (
     Medium,
     Provenance,
     Release,
+    Sha256Hex,
     Track,
+    validate_bundle_file,
 )
 
 __all__ = [
+    "BARCODE_RELEASE",
+    "BUNDLE_FILE_PATTERN",
+    "BUNDLE_FILE_RE",
     "BUNDLE_MEDIA_DIRNAME",
     "BUNDLE_RELEASE_FILENAME",
     "BundleError",
@@ -68,6 +78,7 @@ __all__ = [
     "DISCOGS_LABEL",
     "DISCOGS_MASTER",
     "DISCOGS_RELEASE",
+    "ISRC_RECORDING",
     "ITS_SAXY_SLUG",
     "KNOWN_REF_KEYS",
     "MUSICBRAINZ_ARTIST",
@@ -78,6 +89,7 @@ __all__ = [
     "REF_KEY_PATTERN",
     "REF_KEY_RE",
     "SCHEMA_VERSION",
+    "SHA256_HEX_PATTERN",
     "ArtistRef",
     "AudioFile",
     "ContractModel",
@@ -90,6 +102,7 @@ __all__ = [
     "Provenance",
     "Refs",
     "Release",
+    "Sha256Hex",
     "Track",
     "__version__",
     "bundle_entries",
@@ -100,6 +113,7 @@ __all__ = [
     "read_bundle",
     "ref_uri",
     "sha256_file",
+    "validate_bundle_file",
     "validate_ref_key",
     "validate_ref_value",
     "validate_refs",

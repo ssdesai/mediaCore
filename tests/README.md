@@ -19,9 +19,18 @@ pins.
   including the accent and whitespace cases they must fold identically to
   `vinylcat.normalize` in the vinylCatalogue repo.
 - `test_refs.py` — the ref-key grammar, ref values, `ref_uri` / `parse_ref_uri`, and
-  `KNOWN_REF_KEYS`.
+  `KNOWN_REF_KEYS` (eleven keys; bare `isrc` / `barcode` are pinned as *invalid*, the
+  reserved keys being `isrc:recording` and `barcode:release`).
 - `test_release.py` — the §3 models: JSON round-trip, `extra="forbid"`, closed
-  vocabularies, defaults, and ref validation on nested models.
+  vocabularies, defaults, ref validation on nested models, and the `file`/`sha256`
+  agreement on `MediaFile`/`AudioFile` — one accept case and every reject case
+  (foreign digest, missing or wrong prefix, absolute path, `..` traversal, extra path
+  segment, absent/empty/uppercase/over-long/non-alphanumeric extension, and a `sha256`
+  that is not a lowercase 64-character hex digest).
 - `test_bundle.py` — `read_bundle` / `write_bundle` including every failure case
   (missing `release.json`, missing media file, hash mismatch, an unmapped sha256, a
-  source file whose bytes do not hash to its key).
+  source file whose bytes do not hash to its key), the atomicity guarantees (a bad
+  hash or a mid-copy `OSError` leaves an existing bundle readable and unchanged; no
+  staging sibling survives), and the `media/` containment check on a hand-edited
+  `release.json`. The mid-copy test monkeypatches `mediacore.bundle.shutil.copyfile`,
+  which is why the module itself is imported alongside the public names.
