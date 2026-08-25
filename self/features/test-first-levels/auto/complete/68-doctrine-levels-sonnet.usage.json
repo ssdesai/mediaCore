@@ -1,0 +1,64 @@
+{
+  "plan": "68-doctrine-levels-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "41faf82d-d46d-4e7c-8846-8c19c8cb059b",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 12,
+  "duration_ms": 71941,
+  "total_cost_usd": 0.5075479999999999,
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 43686,
+    "cache_read_input_tokens": 432120,
+    "output_tokens": 7477
+  },
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 3492,
+      "outputTokens": 19,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.003587,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 18,
+      "outputTokens": 7477,
+      "cacheReadInputTokens": 432120,
+      "cacheCreationInputTokens": 43686,
+      "webSearchRequests": 0,
+      "costUSD": 0.5039609999999999,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Edit": 7,
+    "Read": 4
+  },
+  "files_edited": [
+    "AGENT_PLANS.md",
+    "self/PROJECT_FACTS.md",
+    "self/features/README.md",
+    "templates/plans/features/TEMPLATE.md"
+  ],
+  "edit_count": 7,
+  "attempts": [
+    {
+      "session_id": "41faf82d-d46d-4e7c-8846-8c19c8cb059b",
+      "outcome": "complete",
+      "total_cost_usd": 0.5075479999999999,
+      "num_turns": 12,
+      "duration_ms": 71941
+    }
+  ]
+}

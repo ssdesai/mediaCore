@@ -1,0 +1,65 @@
+{
+  "plan": "65-runner-sentinels-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "0a1c9791-f948-417a-ac0f-4844d9f1c441",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 20,
+  "duration_ms": 112576,
+  "total_cost_usd": 0.6521091,
+  "usage": {
+    "input_tokens": 28,
+    "cache_creation_input_tokens": 37207,
+    "cache_read_input_tokens": 805837,
+    "output_tokens": 12194
+  },
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 4017,
+      "outputTokens": 21,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.004122,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 28,
+      "outputTokens": 12194,
+      "cacheReadInputTokens": 805837,
+      "cacheCreationInputTokens": 37207,
+      "webSearchRequests": 0,
+      "costUSD": 0.6479870999999999,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Edit": 11,
+    "Glob": 4,
+    "Read": 4
+  },
+  "files_edited": [
+    "RUNNER.md",
+    "plan-runner-lib.sh",
+    "run-plans.sh",
+    "run-verify.sh"
+  ],
+  "edit_count": 11,
+  "attempts": [
+    {
+      "session_id": "0a1c9791-f948-417a-ac0f-4844d9f1c441",
+      "outcome": "complete",
+      "total_cost_usd": 0.6521091,
+      "num_turns": 20,
+      "duration_ms": 112576
+    }
+  ]
+}

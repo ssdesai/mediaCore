@@ -1,0 +1,67 @@
+{
+  "plan": "03-transcript-helper-and-recovery-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "436cc33e-c409-41ef-8d5b-d0c8d1282768",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 36,
+  "duration_ms": 351479,
+  "total_cost_usd": 1.2905276000000003,
+  "usage": {
+    "input_tokens": 56,
+    "cache_creation_input_tokens": 111179,
+    "cache_read_input_tokens": 2399063,
+    "output_tokens": 36270
+  },
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 3117,
+      "outputTokens": 14,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.003187,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 56,
+      "outputTokens": 36270,
+      "cacheReadInputTokens": 2399063,
+      "cacheCreationInputTokens": 111179,
+      "webSearchRequests": 0,
+      "costUSD": 1.2873406000000003,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Edit": 8,
+    "Glob": 2,
+    "Grep": 2,
+    "Read": 21,
+    "Write": 2
+  },
+  "files_edited": [
+    "analysis/README.md",
+    "analysis/capture_planning.py",
+    "analysis/recover_attempts.py",
+    "analysis/transcript.py"
+  ],
+  "edit_count": 10,
+  "attempts": [
+    {
+      "session_id": "436cc33e-c409-41ef-8d5b-d0c8d1282768",
+      "outcome": "complete",
+      "total_cost_usd": 1.2905276000000003,
+      "num_turns": 36,
+      "duration_ms": 351479
+    }
+  ]
+}
