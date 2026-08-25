@@ -193,18 +193,14 @@ record "lint" "${PY[@]}" -m ruff check src tests
 # Runs before "tests" so tests/test_fixture.py reads a freshly generated bundle.
 record "fixture idempotent" fixture_idempotent
 
-# Expected-red globs from the level sentinel become --ignore-glob flags, so a level
-# is judged only on what it owns. pytest fnmatches the glob against the *absolute*
-# collected path, so a repo-relative glob ("tests/test_fixture.py") never matches on
-# its own — prefix it with */ unless the sentinel already wrote an absolute or
-# wildcard-leading pattern.
+# Expected-red globs from the level sentinel become --ignore-glob flags, so a level is
+# judged only on what it owns. Pass them through verbatim: pytest matches a glob
+# containing a separator against the path *relative to the rootdir*, so
+# "tests/test_fixture.py" is the form that works and "*/tests/test_fixture.py" — the
+# shape an absolute-path match would need — silently matches nothing (measured on
+# pytest 9.1). Sentinels in this repo therefore write repo-relative globs.
 IGNORES=()
-for glob in $GATE_EXPECTED_RED; do
-  case "$glob" in
-    /*|\**) IGNORES+=("--ignore-glob=$glob") ;;
-    *)      IGNORES+=("--ignore-glob=*/$glob") ;;
-  esac
-done
+for glob in $GATE_EXPECTED_RED; do IGNORES+=("--ignore-glob=$glob"); done
 record "tests" "${PY[@]}" -m pytest -q ${IGNORES[@]+"${IGNORES[@]}"}
 # ──────────────────────────────────────────────────────────────────────────────
 

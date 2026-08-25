@@ -17,10 +17,10 @@ every decision taken along the way. Start there.
 | `CLAUDE.md` | Imports the shared conventions from `agentTooling/`, plus this repo's Rule 1/2 examples and commands. |
 | `agentTooling/` | Vendored via `git subtree` — shared Claude Code conventions and the delegated-plan harness. Not edited here. |
 | `plans/` | This repo's plan corpus (`features/<slug>/`), `PROJECT_FACTS.md`, the mechanical gate and PR hook. |
-| `src/mediacore/` | The package — see its README. *(created by the first feature batch)* |
-| `tests/` | pytest suite mirroring `src/`. *(created by the first feature batch)* |
-| `fixtures/its-saxy/` | The contract fixture: a complete release bundle with real metadata and placeholder media. *(created by the first feature batch)* |
-| `scripts/` | `make_fixture_its_saxy.py` — regenerates the fixture deterministically. *(created by the first feature batch)* |
+| `src/mediacore/` | The package — see its README. |
+| `tests/` | pytest suite mirroring `src/`. |
+| `fixtures/its-saxy/` | The contract fixture: a complete release bundle with real metadata and placeholder media. |
+| `scripts/` | `make_fixture_its_saxy.py` — regenerates the fixture deterministically. |
 
 ## Consuming
 

@@ -1,0 +1,305 @@
+{
+  "schema_version": 1,
+  "refs": {
+    "discogs:release": "16853262"
+  },
+  "provenance": [
+    {
+      "kind": "vinylcat",
+      "id": "01M08WYYQGY1S66KY425FYCBS7",
+      "label": "Test",
+      "exported_at": "2026-08-25T00:00:00Z"
+    }
+  ],
+  "title": "IT'S SAXY",
+  "artists": [
+    {
+      "name": "The Duke's Combo",
+      "sort_name": "Duke's Combo, The",
+      "refs": {
+        "discogs:artist": "5682050"
+      }
+    }
+  ],
+  "labels": [
+    {
+      "name": "A. A. E.",
+      "catalogue_number": "SAAE 1012",
+      "refs": {
+        "discogs:label": "1504762"
+      }
+    }
+  ],
+  "year": null,
+  "released": null,
+  "country": "South Africa",
+  "medium": "vinyl",
+  "format": "Vinyl, LP, Album",
+  "genres": [
+    "Jazz",
+    "Rock",
+    "Funk / Soul",
+    "Blues",
+    "Folk, World, & Country",
+    "Stage & Screen"
+  ],
+  "styles": [],
+  "tracks": [
+    {
+      "position": "A1",
+      "title": "LOVE GROWS",
+      "duration": null,
+      "credits": []
+    },
+    {
+      "position": "A2",
+      "title": "ALL I HAVE TO DO IS DREAM",
+      "duration": null,
+      "credits": []
+    },
+    {
+      "position": "A3",
+      "title": "JY IS MY LIEFLING",
+      "duration": null,
+      "credits": []
+    },
+    {
+      "position": "A4",
+      "title": "I'LL NEVER FALL IN LOVE AGAIN",
+      "duration": null,
+      "credits": []
+    },
+    {
+      "position": "A5",
+      "title": "DOMINIQUE",
+      "duration": null,
+      "credits": []
+    },
+    {
+      "position": "A6",
+      "title": "THERESA",
+      "duration": null,
+      "credits": []
+    },
+    {
+      "position": "B1",
+      "title": "SUGAR SUGAR",
+      "duration": null,
+      "credits": []
+    },
+    {
+      "position": "B2",
+      "title": "Love Theme From Romeo And Juliet",
+      "duration": null,
+      "credits": []
+    },
+    {
+      "position": "B3",
+      "title": "SEEMAN",
+      "duration": null,
+      "credits": []
+    },
+    {
+      "position": "B4",
+      "title": "MAKE ME AN ISLAND",
+      "duration": null,
+      "credits": []
+    },
+    {
+      "position": "B5",
+      "title": "MA BELLE AMIE",
+      "duration": null,
+      "credits": [
+        {
+          "role": "Written-By",
+          "name": "peter tetteroo",
+          "refs": {
+            "discogs:artist": "282874"
+          }
+        }
+      ]
+    },
+    {
+      "position": "B6",
+      "title": "LOVE IS A BEAUTIFUL SONG",
+      "duration": null,
+      "credits": [
+        {
+          "role": "Written-By",
+          "name": "Terry Dempsey",
+          "refs": {
+            "discogs:artist": "1033325"
+          }
+        }
+      ]
+    }
+  ],
+  "credits": [],
+  "notes": null,
+  "tags": [],
+  "media": [
+    {
+      "kind": "photo",
+      "role": "label_a",
+      "sha256": "c5f51939756791642799f0bd9d5f127fbcf7c584f49c36b314cc96cd579e7c5a",
+      "file": "media/c5f51939756791642799f0bd9d5f127fbcf7c584f49c36b314cc96cd579e7c5a.png",
+      "mime": "image/png",
+      "source_url": null,
+      "refs": {}
+    },
+    {
+      "kind": "photo",
+      "role": "label_b",
+      "sha256": "c905062078f1e56d6fe09e5adb5a58a3e46eff693e382151ba0bdbcc0a9c611c",
+      "file": "media/c905062078f1e56d6fe09e5adb5a58a3e46eff693e382151ba0bdbcc0a9c611c.png",
+      "mime": "image/png",
+      "source_url": null,
+      "refs": {}
+    },
+    {
+      "kind": "external_photo",
+      "role": null,
+      "sha256": "1aaec148b88f116df62351586c5b0c6ecb073121ebb186e8c5fa291735200ebd",
+      "file": "media/1aaec148b88f116df62351586c5b0c6ecb073121ebb186e8c5fa291735200ebd.png",
+      "mime": "image/png",
+      "source_url": "https://i.discogs.com/R-16853262-0001.jpeg",
+      "refs": {
+        "discogs:release": "16853262"
+      }
+    },
+    {
+      "kind": "external_photo",
+      "role": null,
+      "sha256": "974dc51aa1ab1ff650f0061bb2e5ca6e4851e2113ed0c15592e1e9bccb100908",
+      "file": "media/974dc51aa1ab1ff650f0061bb2e5ca6e4851e2113ed0c15592e1e9bccb100908.png",
+      "mime": "image/png",
+      "source_url": "https://i.discogs.com/R-16853262-0002.jpeg",
+      "refs": {
+        "discogs:release": "16853262"
+      }
+    }
+  ],
+  "audio": [
+    {
+      "track_position": "A1",
+      "sha256": "2eeb55e08e1a51af2003fabdfc8572539de6c3f0fa1c182a5b3d3a4806b84db5",
+      "file": "media/2eeb55e08e1a51af2003fabdfc8572539de6c3f0fa1c182a5b3d3a4806b84db5.wav",
+      "format": "wav",
+      "size_bytes": 844
+    },
+    {
+      "track_position": "A2",
+      "sha256": "03b633992de333c55d93dfd5a90c739fed6a8daae91ea2888674db34b756cbee",
+      "file": "media/03b633992de333c55d93dfd5a90c739fed6a8daae91ea2888674db34b756cbee.wav",
+      "format": "wav",
+      "size_bytes": 852
+    },
+    {
+      "track_position": "A3",
+      "sha256": "fc12fe013f8da95c1026d7a34048377e21532a8b8470c944f5ef7bd1ec1cee12",
+      "file": "media/fc12fe013f8da95c1026d7a34048377e21532a8b8470c944f5ef7bd1ec1cee12.wav",
+      "format": "wav",
+      "size_bytes": 860
+    },
+    {
+      "track_position": "A4",
+      "sha256": "6ca8721674cc7f2f77399845de06743dbd1bda833a09dc36576eef824ccad479",
+      "file": "media/6ca8721674cc7f2f77399845de06743dbd1bda833a09dc36576eef824ccad479.wav",
+      "format": "wav",
+      "size_bytes": 868
+    },
+    {
+      "track_position": "A5",
+      "sha256": "fcebc290496b3ebf2b78c313bd21353bf63964d27703a3fa3c1e04239efb2f08",
+      "file": "media/fcebc290496b3ebf2b78c313bd21353bf63964d27703a3fa3c1e04239efb2f08.wav",
+      "format": "wav",
+      "size_bytes": 876
+    },
+    {
+      "track_position": "A6",
+      "sha256": "24efce7fef5d4ab9b6cfbe8ea1702b71755a5876257b036ff637f7c20a51b16a",
+      "file": "media/24efce7fef5d4ab9b6cfbe8ea1702b71755a5876257b036ff637f7c20a51b16a.wav",
+      "format": "wav",
+      "size_bytes": 884
+    },
+    {
+      "track_position": "B1",
+      "sha256": "0d7fe742ddc61e9f9e197c005eacb5629e0e9cfd13bf5cac26b83ed108b8c067",
+      "file": "media/0d7fe742ddc61e9f9e197c005eacb5629e0e9cfd13bf5cac26b83ed108b8c067.wav",
+      "format": "wav",
+      "size_bytes": 892
+    },
+    {
+      "track_position": "B2",
+      "sha256": "9f23282e6a90b1cc84b6f2800bfbf8c3a2f33931cbb9b9b6f5ba2336fadbb19f",
+      "file": "media/9f23282e6a90b1cc84b6f2800bfbf8c3a2f33931cbb9b9b6f5ba2336fadbb19f.wav",
+      "format": "wav",
+      "size_bytes": 900
+    },
+    {
+      "track_position": "B3",
+      "sha256": "aa3988ab40f7699cfeb1800c3775d1543f877240cc1d645e39b4319c67e6ee59",
+      "file": "media/aa3988ab40f7699cfeb1800c3775d1543f877240cc1d645e39b4319c67e6ee59.wav",
+      "format": "wav",
+      "size_bytes": 908
+    },
+    {
+      "track_position": "B4",
+      "sha256": "ac3fbd7a48b4b45f14c1a38d81332614c4a1f36e96846bd5e1d8dbcc5ca83391",
+      "file": "media/ac3fbd7a48b4b45f14c1a38d81332614c4a1f36e96846bd5e1d8dbcc5ca83391.wav",
+      "format": "wav",
+      "size_bytes": 916
+    },
+    {
+      "track_position": "B5",
+      "sha256": "8b8ad17b54795d54abb9d319daa1fe50b4413c31dd270055242d387058845824",
+      "file": "media/8b8ad17b54795d54abb9d319daa1fe50b4413c31dd270055242d387058845824.wav",
+      "format": "wav",
+      "size_bytes": 924
+    },
+    {
+      "track_position": "B6",
+      "sha256": "b110acf6983f2987dbeb9f86511b29a5f93eafed3d47fa56e17ddfba2b46978a",
+      "file": "media/b110acf6983f2987dbeb9f86511b29a5f93eafed3d47fa56e17ddfba2b46978a.wav",
+      "format": "wav",
+      "size_bytes": 932
+    }
+  ],
+  "links": [
+    {
+      "label": "Discogs: IT'S SAXY",
+      "url": "https://www.discogs.com/release/16853262-The-Dukes-Combo-Its-Saxy",
+      "refs": {
+        "discogs:release": "16853262"
+      }
+    },
+    {
+      "label": "Discogs: The Duke's Combo",
+      "url": "https://www.discogs.com/artist/5682050",
+      "refs": {
+        "discogs:artist": "5682050"
+      }
+    },
+    {
+      "label": "Discogs: A. A. E.",
+      "url": "https://www.discogs.com/label/1504762",
+      "refs": {
+        "discogs:label": "1504762"
+      }
+    },
+    {
+      "label": "Discogs: peter tetteroo",
+      "url": "https://www.discogs.com/artist/282874",
+      "refs": {
+        "discogs:artist": "282874"
+      }
+    },
+    {
+      "label": "Discogs: Terry Dempsey",
+      "url": "https://www.discogs.com/artist/1033325",
+      "refs": {
+        "discogs:artist": "1033325"
+      }
+    }
+  ]
+}

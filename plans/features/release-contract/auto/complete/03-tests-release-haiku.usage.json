@@ -1,0 +1,49 @@
+{
+  "plan": "03-tests-release-haiku",
+  "model": "haiku",
+  "outcome": "complete",
+  "session_id": "7d0fc5c6-7ca3-4bd5-be94-b205436a0a52",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 6,
+  "duration_ms": 56184,
+  "total_cost_usd": 0.0847965,
+  "usage": {
+    "input_tokens": 50,
+    "cache_creation_input_tokens": 19866,
+    "cache_read_input_tokens": 134565,
+    "output_tokens": 5606
+  },
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 3518,
+      "outputTokens": 5618,
+      "cacheReadInputTokens": 134565,
+      "cacheCreationInputTokens": 19866,
+      "webSearchRequests": 0,
+      "costUSD": 0.0847965,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Read": 4,
+    "Write": 1
+  },
+  "files_edited": [
+    "tests/test_release.py"
+  ],
+  "edit_count": 1,
+  "attempts": [
+    {
+      "session_id": "7d0fc5c6-7ca3-4bd5-be94-b205436a0a52",
+      "outcome": "complete",
+      "total_cost_usd": 0.0847965,
+      "num_turns": 6,
+      "duration_ms": 56184
+    }
+  ]
+}
