@@ -100,7 +100,7 @@ the current design — `INTEGRATION.md` is.
   "slug": "release-contract",
   "plans": ["01-acceptance-tests-sonnet", "02-tests-core-haiku", "03-tests-release-haiku", "04-tests-bundle-sonnet", "05-package-core-haiku", "06-package-release-haiku", "07-package-bundle-sonnet", "08-level-core-sonnet", "09-fixture-script-sonnet", "10-level-fixture-sonnet", "11-verify-sonnet", "12-review-opus"],
   "branches": ["releaseContract"],
-  "session_window": {"from": "2026-08-25T00:00:00Z", "to": null},
+  "session_window": {"from": "2026-08-25T00:00:00Z", "to": "2026-08-25T19:06:58Z"},
   "exclude_sessions": []
 }
 ```
