@@ -1,0 +1,62 @@
+{
+  "plan": "61-self-gate-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "f756090c-cd0c-43c1-8ede-dfeb54a19c0c",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 4,
+  "duration_ms": 75624,
+  "total_cost_usd": 0.33405450000000003,
+  "usage": {
+    "input_tokens": 6,
+    "cache_creation_input_tokens": 30923,
+    "cache_read_input_tokens": 82055,
+    "output_tokens": 8049
+  },
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 3057,
+      "outputTokens": 18,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0031469999999999996,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 6,
+      "outputTokens": 8049,
+      "cacheReadInputTokens": 82055,
+      "cacheCreationInputTokens": 30923,
+      "webSearchRequests": 0,
+      "costUSD": 0.3309075,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Glob": 1,
+    "Read": 1,
+    "Write": 1
+  },
+  "files_edited": [
+    "agentTooling/self/gate.sh"
+  ],
+  "edit_count": 1,
+  "attempts": [
+    {
+      "session_id": "f756090c-cd0c-43c1-8ede-dfeb54a19c0c",
+      "outcome": "complete",
+      "total_cost_usd": 0.33405450000000003,
+      "num_turns": 4,
+      "duration_ms": 75624
+    }
+  ]
+}

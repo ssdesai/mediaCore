@@ -1,0 +1,31 @@
+{
+  "slug": "test-first-levels",
+  "captured_at": "2026-08-25T17:12:42.708399+00:00",
+  "manifest_branches": [
+    "test-first-levels"
+  ],
+  "sessions": [
+    {
+      "session_id": "c5cff270-52d0-40ce-b17f-4558547611a2",
+      "git_branch": "test-first-levels",
+      "date": "2026-08-20"
+    }
+  ],
+  "excluded_session_ids": [
+    "0a1c9791-f948-417a-ac0f-4844d9f1c441",
+    "2a485894-7422-4e51-b22a-76fe525ceb4a",
+    "371a6916-fdc4-428b-b68a-5bb73102629f",
+    "41faf82d-d46d-4e7c-8846-8c19c8cb059b",
+    "63e4b311-5584-4004-91ce-5d9a964bb1d4",
+    "ab17a74a-0268-424a-bf25-420a62959b45"
+  ],
+  "priced": [],
+  "cost_usd": {
+    "main": 0.0,
+    "sidechain": 0.0,
+    "total": 0.0,
+    "total_is_partial": false
+  },
+  "rates_source": "agentTooling/analysis/pricing.py RATES_VERIFIED=2026-08-22",
+  "warnings": []
+}
