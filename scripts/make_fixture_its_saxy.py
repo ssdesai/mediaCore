@@ -148,7 +148,8 @@ def wav_bytes(frames: int) -> bytes:
 FIXTURE_SLUG = "its-saxy"
 FIXTURES_DIRNAME = "fixtures"
 
-# Identity (INTEGRATION.md §11). No discogs:master — the release has none.
+# What Discogs records about this release (INTEGRATION.md §11) — evidence, not identity.
+# No discogs:master: the release has none, which is an ordinary state, not a gap.
 DISCOGS_RELEASE_ID = "16853262"
 DISCOGS_ARTIST_ID = "5682050"
 DISCOGS_LABEL_ID = "1504762"

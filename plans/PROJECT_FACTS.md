@@ -21,6 +21,9 @@ executors share no context, so repeating a fact across plans in a batch is corre
   `src/mediacore/__init__.py`; consumers import `from mediacore import Release, ...`.
 - Models are `extra="forbid"` and round-trip through `model_dump(mode="json")` /
   `model_validate` without loss.
+- Every `refs` field is **evidence recorded by an external source**, never identity
+  (`INTEGRATION.md` §4). All are optional and default to `{}`; no plan may make one
+  required, privilege a source, or add uniqueness semantics anywhere.
 - `normalize_text` must equal `vinylcat.normalize.normalize_text`
   (`~/dev/vinylCatalogue/src/vinylcat/normalize.py`): NFKD, drop combining marks,
   uppercase, collapse whitespace, strip. `normalize_catno` likewise strips non-alnum.

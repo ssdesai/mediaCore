@@ -1,9 +1,9 @@
 # mediaCore
 
 The shared contract between the owner's recorded-media repos: a neutral `Release`
-schema, authority-keyed identity refs, the shared name-normalisation fold, a bundle
-reader/writer, and one real-world test fixture. Python package `mediacore`, no app
-code, no database.
+schema, refs (evidence recorded by external sources, never identity), the shared
+name-normalisation fold, a bundle reader/writer, and one real-world test fixture.
+Python package `mediacore`, no app code, no database.
 
 `INTEGRATION.md` is the cross-repo design — who produces a release bundle
 (vinylCatalogue), who consumes it (humanNetworkMap, musicMap), what the contract is, and

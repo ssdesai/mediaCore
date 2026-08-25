@@ -1,9 +1,18 @@
-"""Authority-keyed identity refs (INTEGRATION.md §4).
+"""Refs: evidence recorded by an external source about an entity (INTEGRATION.md §4).
 
-A ref key is `"<authority>:<entity>"` and a ref value is that authority's own id as a
-string. Known keys are constants below; an unknown but well-formed key is accepted on
-purpose — that is the contract's extension point — though a consumer only *matches* on
-keys it knows.
+A ref key is `"<authority>:<entity>"` and a ref value is what that source calls this
+thing. **A ref is evidence, never identity.** Every `refs` field in the contract is
+optional and may be empty: a release, artist, label or credit may carry refs from
+Discogs, from MusicBrainz, from a local pipeline, from several at once, or from none —
+a band that exists only on a sleeve is as valid as one with a Discogs id. Nothing here
+requires a ref, privileges a source, or treats a ref as a key: refs uniqueness is not
+enforced and two entities may legitimately carry the same one. A consumer uses refs
+only to *propose* candidates and to *retain evidence* on the entity it links or
+creates; the human confirms every match.
+
+Known keys are constants below; an unknown but well-formed key is accepted on purpose —
+that is the contract's extension point — though a consumer only proposes candidates
+from keys it knows.
 
 §4's table also lists `isrc` and `barcode` as reserved. Neither is expressible under
 the key grammar that same section states (both lack an `<entity>` segment), so neither

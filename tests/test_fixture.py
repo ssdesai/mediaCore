@@ -140,6 +140,9 @@ def test_release_json_round_trips(bundle_dir: Path, release: Release) -> None:
 
 
 def test_identity_matches_integration_md(release: Release) -> None:
+    """The metadata that says *which* release this is. `refs` here is the evidence
+    Discogs records about it, not the release's identity (INTEGRATION.md §4) — the
+    absence of `discogs:master` is an ordinary state, not a missing key."""
     assert release.refs == {"discogs:release": DISCOGS_RELEASE_ID}
     assert "discogs:master" not in release.refs
 

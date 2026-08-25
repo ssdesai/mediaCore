@@ -1,7 +1,8 @@
 # mediacore
 
-The contract package: the neutral `Release` schema, authority-keyed identity refs, the
-shared name-matching fold, bundle I/O, and the path to the committed test fixture.
+The contract package: the neutral `Release` schema, refs (evidence recorded by external
+sources), the shared name-matching fold, bundle I/O, and the path to the committed test
+fixture.
 `INTEGRATION.md` §3–5 is the specification; this folder is its implementation, and
 nothing medium-specific belongs here.
 
@@ -28,13 +29,19 @@ Release, read_bundle, normalize_text` — never from a submodule.
     hash from the path) without checking both.
   - `AudioFile { track_position, sha256, file, format, size_bytes }` — joined to its
     `Track` by `track_position`.
-  - `Link { label, url, refs }` — `refs` says which entity the link is *about*.
-  - `Provenance { kind, id, label, exported_at }` — where this copy came from; never
-    an identity key.
+  - `Link { label, url, refs }` — `refs` is the evidence saying which entity the link
+    is *about*.
+  - `Provenance { kind, id, label, exported_at }` — where this copy came from:
+    evidence of a different kind, carrying no more authority than any other ref.
   - `Medium` = `"vinyl" | "cd" | "cassette" | "digital" | "other"`; `MediaKind` =
     `"photo" | "external_photo"`; `SCHEMA_VERSION` = 1; `ContractModel` is the shared
     `extra="forbid"` base; `MIN_ARTISTS` = 1.
-- `refs.py` — the identity grammar (§4). `Refs` is
+- `refs.py` — the evidence grammar (§4). A ref records what some external source calls
+  an entity; **it is never that entity's identity.** Every `refs` field is optional and
+  defaults to `{}`, no ref is required, no source is privileged, and nothing here
+  enforces uniqueness — two entities may legitimately carry the same ref, and a consumer
+  uses refs only to *propose* candidates and to *retain evidence* on the row it links or
+  creates. `Refs` is
   `Annotated[dict[str, str], AfterValidator(validate_refs)]`: keys match
   `REF_KEY_PATTERN` (`^[a-z][a-z0-9]*:[a-z][a-z0-9-]*$`), values are non-empty strings.
   Exports `validate_ref_key`, `validate_ref_value`, `validate_refs`, `ref_uri(key,

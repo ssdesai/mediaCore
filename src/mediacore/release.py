@@ -9,6 +9,11 @@ silently dropped somewhere downstream.
 Nothing here is specific to any medium: `medium` is the one closed vocabulary and
 `"vinyl"` is merely one of its values — the code that chooses a value lives in the
 producing repo's adapter, never here.
+
+Every `refs` field below is *evidence recorded by an external source* about that
+entity, never the entity's identity (INTEGRATION.md §4). All of them are optional and
+default to `{}`; nothing in the contract requires one, privileges one source over
+another, or enforces uniqueness.
 """
 
 from __future__ import annotations
@@ -40,7 +45,8 @@ class ContractModel(BaseModel):
 
 
 class Provenance(ContractModel):
-    """Where this copy came from — never an identity key (INTEGRATION.md §4)."""
+    """Where this copy came from: evidence of a different kind, carrying no more
+    authority than any other ref (INTEGRATION.md §4)."""
 
     kind: str
     id: str

@@ -1,7 +1,7 @@
 # Release contract: the `mediacore` package and the IT'S SAXY fixture
 
 WP0 of the cross-repo integration (`INTEGRATION.md` §12). Delivers the whole contract
-package: the neutral `Release` schema (§3), authority-keyed refs and provenance (§4),
+package: the neutral `Release` schema (§3), refs and provenance (§4),
 the shared `normalize_text` / `normalize_catno` fold, the bundle reader/writer (§5),
 and the *IT'S SAXY* contract fixture (§11) with the deterministic script that generates
 it. Nothing else in the repo — no app code, no database, no TypeScript. vinylCatalogue
@@ -59,6 +59,19 @@ say so, and none of them may create a file under `fixtures/its-saxy/`.
 | `its_saxy_bundle() -> Path` | 07, `src/mediacore/fixtures.py` | 01, `tests/test_fixture.py` | `fixtures/its-saxy/` | `test_fixture.py::test_bundle_path_exists` — consumer side only; the producer is a path lookup with nothing to serialize |
 | The §11 metadata constants (ids, titles, positions, credits, link labels, `EXPORTED_AT` = `2026-08-25T00:00:00Z`) | 09, `scripts/make_fixture_its_saxy.py` | 01, `tests/test_fixture.py` | `fixtures/its-saxy/release.json` | `test_fixture.py::test_identity_matches_integration_md`, `::test_tracks_match_integration_md`, `::test_links_match_integration_md` — the generator's side is asserted only through the bundle it writes, which is the point of a contract fixture |
 | Generator CLI `make_fixture_its_saxy.py [dest]` | 09, `scripts/make_fixture_its_saxy.py` | `plans/gate.sh` → `fixture_idempotent()` | — the gate diffs two generated trees against each other | `plans/gate.sh`, section "fixture idempotent" |
+
+## Amended mid-batch
+
+After the build plans ran, the owner clarified that **refs are supporting evidence,
+never identity**: no ref is required, none is a key, no source is privileged, and a
+consumer uses refs only to *propose* candidates and to *retain evidence* on the row it
+links or creates (`INTEGRATION.md` §2 item 2, §4, §7, decisions log). No field or
+schema changed — the `refs: dict[str, str]` fields were already optional, defaulting to
+`{}`, with no uniqueness anywhere. What changed is the prose: the docstrings in
+`refs.py` / `release.py`, `src/mediacore/README.md`, the root `README.md`,
+`plans/PROJECT_FACTS.md`, and one comment in the fixture generator. The plan files below
+still carry the older "identity" framing; they are the record of what was executed, not
+the current design — `INTEGRATION.md` is.
 
 ## Deliberately excluded
 
