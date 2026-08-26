@@ -180,6 +180,38 @@ fixture_idempotent() {
   return 0
 }
 
+# The fixture ships to consumers only via the built wheel (WP1-WP3 all install
+# mediacore non-editable, from a git tag). `[tool.hatch.build.targets.wheel.force-include]`
+# maps fixtures/ to mediacore/_fixtures/ in pyproject.toml, but nothing exercises that
+# path in the test suite — an editable install never goes through it. This builds a
+# real wheel with `pip wheel` (no extra dependency: hatchling is already pulled into an
+# isolated build env by pip, same as the "install" step above) and asserts the fixture's
+# release.json landed where `its_saxy_bundle()`'s installed-wheel fallback expects it.
+wheel_contains_fixture() {
+  local tmp whl target
+  tmp="$(mktemp -d)" || return 1
+  if ! "${PY[@]}" -m pip wheel . -w "$tmp" --no-deps -q --disable-pip-version-check; then
+    rm -rf "$tmp"; return 1
+  fi
+  whl="$(ls "$tmp"/*.whl 2>/dev/null | head -n1)"
+  if [[ -z "$whl" ]]; then
+    echo "pip wheel produced no .whl file"
+    rm -rf "$tmp"; return 1
+  fi
+  target="mediacore/_fixtures/its-saxy/release.json"
+  if ! "${PY[@]}" -c "
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as zf:
+    names = set(zf.namelist())
+sys.exit(0 if sys.argv[2] in names else 1)
+" "$whl" "$target"; then
+    echo "wheel $whl is missing $target"
+    rm -rf "$tmp"; return 1
+  fi
+  rm -rf "$tmp"
+  return 0
+}
+
 echo "=== gate: installing ==="
 record "install" "${INSTALL[@]}" || {
   { echo "# VERDICT"
@@ -192,6 +224,10 @@ record "lint" "${PY[@]}" -m ruff check src tests
 
 # Runs before "tests" so tests/test_fixture.py reads a freshly generated bundle.
 record "fixture idempotent" fixture_idempotent
+
+# Runs after "fixture idempotent" so the wheel is built from the freshly regenerated
+# fixtures/ tree.
+record "wheel contains fixture" wheel_contains_fixture
 
 # Expected-red globs from the level sentinel become --ignore-glob flags, so a level is
 # judged only on what it owns. Pass them through verbatim: pytest matches a glob

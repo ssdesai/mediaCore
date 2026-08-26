@@ -146,7 +146,7 @@ class AudioFile(ContractModel):
     sha256: Sha256Hex
     file: str
     format: str
-    size_bytes: int
+    size_bytes: int = Field(ge=0)
 
     @model_validator(mode="after")
     def _file_matches_sha256(self) -> Self:
@@ -184,3 +184,38 @@ class Release(ContractModel):
     media: list[MediaFile] = Field(default_factory=list)
     audio: list[AudioFile] = Field(default_factory=list)
     links: list[Link] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _bundle_files_are_consistent_per_digest(self) -> Self:
+        """Content addressing: one sha256, one file. `MediaFile`/`AudioFile` each
+        validate `file` against their own `sha256` (§5), but nothing stops two
+        different entries from sharing a digest while naming different files — that
+        would ask the bundle to hold identical content under two names. Checked here,
+        not in `read_bundle`, because it is a property of the `Release` value itself
+        (visible on `Release(...)` and on `model_validate`, before any bundle exists on
+        disk), the same way the single-entry `file`/`sha256` agreement is."""
+        seen_files: dict[str, str] = {}
+        for entry in (*self.media, *self.audio):
+            existing = seen_files.get(entry.sha256)
+            if existing is not None and existing != entry.file:
+                raise ValueError(
+                    f"sha256 {entry.sha256!r} is used with two different file values: "
+                    f"{existing!r} and {entry.file!r}; one digest must name one file"
+                )
+            seen_files[entry.sha256] = entry.file
+        return self
+
+    @model_validator(mode="after")
+    def _audio_track_positions_match_a_track(self) -> Self:
+        """Every `AudioFile.track_position` must name an existing `Track.position`
+        (§3): an audio file joined to no track is an orphan, and a consumer joining
+        `audio` to `tracks` by position needs that to be an error here rather than a
+        silent drop downstream."""
+        positions = {track.position for track in self.tracks}
+        for audio_file in self.audio:
+            if audio_file.track_position not in positions:
+                raise ValueError(
+                    f"AudioFile.track_position {audio_file.track_position!r} matches "
+                    f"no Track.position in tracks"
+                )
+        return self

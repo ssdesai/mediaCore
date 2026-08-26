@@ -395,3 +395,156 @@ def test_bundle_file_validation_survives_a_round_trip():
     payload["file"] = f"media/{OTHER_DIGEST}.png"
     with pytest.raises(ValidationError):
         MediaFile.model_validate(payload)
+
+
+def test_audio_file_size_bytes_must_be_non_negative():
+    with pytest.raises(ValidationError):
+        audio_file(size_bytes=-1)
+
+
+def test_audio_file_size_bytes_zero_is_allowed():
+    assert audio_file(size_bytes=0).size_bytes == 0
+
+
+# --- Content addressing: one sha256 must name one file across a Release (§5) --------
+#
+# `MediaFile`/`AudioFile` each validate `file` against their own `sha256` above; this
+# is the cross-entry counterpart, which needs the whole `media`/`audio` lists to check
+# and so can only live on `Release`, the same way the orphan-audio check below does.
+
+
+def test_release_accepts_two_entries_that_share_a_sha256_and_the_same_file():
+    digest = "c" * 64
+    file = f"media/{digest}.wav"
+    release = make_release(
+        tracks=[Track(position="A1", title="t1"), Track(position="A2", title="t2")],
+        audio=[
+            AudioFile(
+                track_position="A1", sha256=digest, file=file, format="wav", size_bytes=1
+            ),
+            AudioFile(
+                track_position="A2", sha256=digest, file=file, format="wav", size_bytes=1
+            ),
+        ],
+    )
+    assert len(release.audio) == 2
+
+
+def test_release_rejects_two_media_entries_sharing_a_sha256_with_different_file():
+    digest = "d" * 64
+    with pytest.raises(ValidationError):
+        make_release(
+            media=[
+                MediaFile(
+                    kind="photo", sha256=digest, file=f"media/{digest}.png", mime="image/png"
+                ),
+                MediaFile(
+                    kind="photo", sha256=digest, file=f"media/{digest}.jpg", mime="image/jpeg"
+                ),
+            ]
+        )
+
+
+def test_release_rejects_two_audio_entries_sharing_a_sha256_with_different_file():
+    digest = "d" * 64
+    with pytest.raises(ValidationError):
+        make_release(
+            tracks=[Track(position="A1", title="t1"), Track(position="A2", title="t2")],
+            audio=[
+                AudioFile(
+                    track_position="A1",
+                    sha256=digest,
+                    file=f"media/{digest}.wav",
+                    format="wav",
+                    size_bytes=1,
+                ),
+                AudioFile(
+                    track_position="A2",
+                    sha256=digest,
+                    file=f"media/{digest}.mp3",
+                    format="mp3",
+                    size_bytes=1,
+                ),
+            ],
+        )
+
+
+def test_release_rejects_a_media_and_an_audio_entry_sharing_a_sha256_with_different_file():
+    digest = "d" * 64
+    with pytest.raises(ValidationError):
+        make_release(
+            tracks=[Track(position="A1", title="t1")],
+            media=[
+                MediaFile(
+                    kind="photo", sha256=digest, file=f"media/{digest}.png", mime="image/png"
+                )
+            ],
+            audio=[
+                AudioFile(
+                    track_position="A1",
+                    sha256=digest,
+                    file=f"media/{digest}.wav",
+                    format="wav",
+                    size_bytes=1,
+                )
+            ],
+        )
+
+
+def test_release_duplicate_sha256_different_file_rejected_via_model_validate():
+    """The review's escalation: two entries sharing a sha256 with different `file`
+    values used to round-trip cleanly through `model_validate`. That is exactly the
+    path a hand-edited `release.json` takes as an untrusted upload, so the rejection
+    must hold there too, not only when both entries are built through `Release(...)`
+    in the same call."""
+    digest = "e" * 64
+    release = make_release(
+        tracks=[Track(position="A1", title="t1")],
+        audio=[
+            AudioFile(
+                track_position="A1",
+                sha256=digest,
+                file=f"media/{digest}.wav",
+                format="wav",
+                size_bytes=1,
+            )
+        ],
+    )
+    payload = release.model_dump(mode="json")
+    payload["media"] = [
+        {
+            "kind": "photo",
+            "sha256": digest,
+            "file": f"media/{digest}.png",
+            "mime": "image/png",
+            "refs": {},
+        }
+    ]
+    with pytest.raises(ValidationError):
+        Release.model_validate(payload)
+
+
+# --- Every AudioFile.track_position must match a Track.position (§3) ----------------
+#
+# An audio file joined to no track is an orphan; the review found nothing rejected it.
+
+
+def test_release_accepts_audio_whose_track_position_matches_a_track():
+    release = make_release(
+        tracks=[Track(position="A1", title="t1")],
+        audio=[make_audio_file(b"a1 audio", position="A1")],
+    )
+    assert release.audio[0].track_position == "A1"
+
+
+def test_release_rejects_audio_whose_track_position_matches_no_track():
+    with pytest.raises(ValidationError, match="A1"):
+        make_release(
+            tracks=[Track(position="A2", title="t2")],
+            audio=[make_audio_file(b"orphan audio", position="A1")],
+        )
+
+
+def test_release_rejects_audio_when_there_are_no_tracks_at_all():
+    with pytest.raises(ValidationError):
+        make_release(audio=[make_audio_file(b"orphan audio", position="A1")])

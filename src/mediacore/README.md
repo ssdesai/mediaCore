@@ -31,7 +31,7 @@ Release, read_bundle, normalize_text` — never from a submodule.
     merely documented.
   - `AudioFile { track_position, sha256, file, format, size_bytes }` — joined to its
     `Track` by `track_position`; `sha256` and `file` are validated exactly as
-    `MediaFile`'s are.
+    `MediaFile`'s are; `size_bytes` requires `>= 0`.
   - `Link { label, url, refs }` — `refs` is the evidence saying which entity the link
     is *about*.
   - `Provenance { kind, id, label, exported_at }` — where this copy came from:
@@ -43,6 +43,14 @@ Release, read_bundle, normalize_text` — never from a submodule.
     definition), `SHA256_HEX_PATTERN`, `BUNDLE_FILE_EXTENSION_PATTERN`,
     `BUNDLE_FILE_PATTERN`, `BUNDLE_FILE_RE`, `Sha256Hex`, and
     `validate_bundle_file(sha256, file)`.
+  - `Release` also carries two cross-entry `model_validator`s the single-entry checks
+    above can't express, since each needs the whole `media`/`audio`/`tracks` lists:
+    (1) every `sha256` shared by two or more `media`/`audio` entries must name the
+    *same* `file` — content addressing means one digest, one file, checked across
+    both lists together; (2) every `AudioFile.track_position` must equal some
+    `Track.position` — an audio file matching no track is rejected as an orphan
+    rather than silently passed through. Both raise `ValidationError` on
+    `Release(...)` and on `Release.model_validate(...)` alike.
 - `refs.py` — the evidence grammar (§4). A ref records what some external source calls
   an entity; **it is never that entity's identity.** Every `refs` field is optional and
   defaults to `{}`, no ref is required, no source is privileged, and nothing here
@@ -68,9 +76,13 @@ Release, read_bundle, normalize_text` — never from a submodule.
   no-refs fallback matches on it, so a divergence silently stops matching entities the
   source repo considers identical. `tests/test_normalize.py` pins the shared samples.
 - `bundle.py` — the on-disk format (§5). `read_bundle(path, *, verify=True) -> Release`
-  parses `release.json` and, when `verify`, checks every referenced file exists and
-  hashes to its `sha256`; every path is resolved under `<bundle>/media/` and one that
-  escapes raises `BundleError`. That containment check is unreachable through the
+  parses `release.json`, rejects a `schema_version` newer than this install's
+  `SCHEMA_VERSION` (naming both versions and telling the caller to upgrade
+  `mediacore` — a forward-compatibility guard, not a `verify` check, so it runs even
+  with `verify=False`) and, when `verify`, checks every referenced file exists,
+  hashes to its `sha256`, and — for each `AudioFile` — that its actual byte size on
+  disk equals `size_bytes`; every path is resolved under `<bundle>/media/` and one
+  that escapes raises `BundleError`. That containment check is unreachable through the
   models — `MediaFile`/`AudioFile` already forbid such a `file` — and exists for the
   one case the contract cannot cover: a hand-edited `release.json` arriving as an
   untrusted upload.

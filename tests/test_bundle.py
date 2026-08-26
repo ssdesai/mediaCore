@@ -8,7 +8,16 @@ from pathlib import Path
 
 import pytest
 
-from mediacore import BundleError, Release, bundle, read_bundle, sha256_file, write_bundle
+from mediacore import (
+    SCHEMA_VERSION,
+    BundleError,
+    Release,
+    Track,
+    bundle,
+    read_bundle,
+    sha256_file,
+    write_bundle,
+)
 
 from conftest import (
     make_audio_file,
@@ -37,7 +46,11 @@ def built(tmp_path: Path) -> tuple[Release, dict[str, Path]]:
     )
     media_file = make_media_file(PHOTO_BYTES, ext=PHOTO_EXT)
     audio_file = make_audio_file(AUDIO_BYTES, fmt=AUDIO_EXT)
-    release = make_release(media=[media_file], audio=[audio_file])
+    release = make_release(
+        media=[media_file],
+        audio=[audio_file],
+        tracks=[Track(position=audio_file.track_position, title="Track One")],
+    )
     return release, sources
 
 
@@ -153,6 +166,79 @@ def test_read_bundle_rejects_invalid_release_json(tmp_path, content):
 
     with pytest.raises(BundleError):
         read_bundle(dest)
+
+
+# --- Forward compatibility: a newer schema_version than this install understands ---
+
+
+def test_read_bundle_accepts_release_json_at_the_current_schema_version(tmp_path):
+    release, sources = built(tmp_path)
+    dest = tmp_path / BUNDLE_DIRNAME
+    write_bundle(release, dest, sources)
+
+    payload = json.loads((dest / RELEASE_FILENAME).read_text())
+    assert payload["schema_version"] == SCHEMA_VERSION
+
+    assert read_bundle(dest) == release
+
+
+def test_read_bundle_rejects_release_json_with_a_newer_schema_version(tmp_path):
+    release, sources = built(tmp_path)
+    dest = tmp_path / BUNDLE_DIRNAME
+    write_bundle(release, dest, sources)
+
+    payload = json.loads((dest / RELEASE_FILENAME).read_text())
+    payload["schema_version"] = SCHEMA_VERSION + 1
+    (dest / RELEASE_FILENAME).write_text(json.dumps(payload))
+
+    with pytest.raises(BundleError, match="upgrade mediacore"):
+        read_bundle(dest)
+
+
+# --- size_bytes is verified against the actual audio file on disk -------------------
+
+
+def test_read_bundle_verify_accepts_a_correct_size_bytes(tmp_path):
+    release, sources = built(tmp_path)
+    dest = tmp_path / BUNDLE_DIRNAME
+    write_bundle(release, dest, sources)
+
+    assert release.audio[0].size_bytes == len(AUDIO_BYTES)
+    assert read_bundle(dest, verify=True) == release
+
+
+def test_read_bundle_verify_rejects_a_wrong_size_bytes(tmp_path):
+    release, sources = built(tmp_path)
+    dest = tmp_path / BUNDLE_DIRNAME
+    write_bundle(release, dest, sources)
+
+    audio_sha = sha256_bytes(AUDIO_BYTES)
+    audio_name = f"{audio_sha}.{AUDIO_EXT}"
+    payload = json.loads((dest / RELEASE_FILENAME).read_text())
+    for entry in payload["audio"]:
+        if entry["sha256"] == audio_sha:
+            entry["size_bytes"] = len(AUDIO_BYTES) + 1
+    (dest / RELEASE_FILENAME).write_text(json.dumps(payload))
+
+    with pytest.raises(BundleError, match=re.escape(audio_name)):
+        read_bundle(dest, verify=True)
+
+
+def test_read_bundle_verify_false_skips_the_size_check(tmp_path):
+    release, sources = built(tmp_path)
+    dest = tmp_path / BUNDLE_DIRNAME
+    write_bundle(release, dest, sources)
+
+    audio_sha = sha256_bytes(AUDIO_BYTES)
+    payload = json.loads((dest / RELEASE_FILENAME).read_text())
+    for entry in payload["audio"]:
+        if entry["sha256"] == audio_sha:
+            entry["size_bytes"] = len(AUDIO_BYTES) + 1
+    (dest / RELEASE_FILENAME).write_text(json.dumps(payload))
+
+    result = read_bundle(dest, verify=False)
+
+    assert result.audio[0].size_bytes == len(AUDIO_BYTES) + 1
 
 
 def test_write_bundle_requires_every_sha256_in_files(tmp_path):
