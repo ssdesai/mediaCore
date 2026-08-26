@@ -107,22 +107,26 @@ by hand rather than as a new batch. Tests came with each.
   intact or nothing. The old behaviour could destroy a bundle and leave a partial
   directory that the "is this a bundle?" guard then refused to overwrite.
 
-## Still open from the review — for a later batch
+## Landed in the hardening batch (`contractHardening`)
 
-Not done here, in the review's own order of cost:
+All five items the review left open are now done, with owner rulings where a decision
+was needed:
 
-1. `read_bundle` accepts a `release.json` whose `schema_version` is newer than
-   `SCHEMA_VERSION`. Needs a forward-compatibility policy decided, then enforced.
-2. Two entries sharing a `sha256` with different `file` values round-trip cleanly.
-   Decide whether that is rejected or tolerated, and assert it.
-3. An `AudioFile.track_position` matching no `Track` is an error nowhere. Either add a
-   `Release` validator or write the non-guarantee into §3 explicitly, so consumers know
-   to handle orphans.
-4. `size_bytes` is declared and never verified by `read_bundle`, and has no `ge=0`.
-5. No standing check that the fixture survives into a wheel. Verify plan 11 confirmed
-   it once by hand; `plans/gate.sh` should build a wheel and assert
-   `mediacore/_fixtures/its-saxy/release.json` is inside, since WP1–WP3 all install
-   non-editable and take the code path no test covers.
+1. **`read_bundle` rejects a newer `schema_version`.** Forward-compatibility policy:
+   equal to `SCHEMA_VERSION` passes, greater raises `BundleError` telling the caller to
+   upgrade `mediacore`. Independent of `verify`.
+2. **Duplicate `sha256` with different `file` is rejected.** Ruled: one digest, one
+   file. Enforced as a `Release`-level `model_validator` (mode="after") checking
+   `media`/`audio` together, matching the model-validator style the existing
+   single-entry `file == media/<sha256>.<ext>` rule already uses, since the check needs
+   the whole lists and no single entry's own validator can see them.
+3. **Orphan `AudioFile.track_position` is rejected.** A second `Release`-level
+   `model_validator`: every `track_position` must equal some `Track.position`.
+4. **`size_bytes` gets `ge=0`**, and `read_bundle(verify=True)` checks each
+   `AudioFile`'s actual byte size on disk against it.
+5. **`plans/gate.sh` builds a wheel** and asserts
+   `mediacore/_fixtures/its-saxy/release.json` is inside it, right after the fixture
+   regenerates and before the test suite runs.
 
 The review's sixth item — "no test that `write_bundle` leaves an existing bundle
 untouched when it raises" — is covered by the atomicity tests above.

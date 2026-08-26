@@ -156,8 +156,11 @@ A *bundle* is a directory:
 
 - Written wholesale, never edited: exporting again replaces the directory.
 - `read_bundle(path, *, verify=True) -> Release` parses and, when `verify`, checks every
-  referenced file exists and hashes to its `sha256`. Missing or mismatched files raise
-  `BundleError` naming the file.
+  referenced file exists, hashes to its `sha256`, and — for each `AudioFile` — that its
+  byte size on disk matches `size_bytes`. Missing, mismatched, or wrong-size files raise
+  `BundleError` naming the file. Independently of `verify`, it rejects a `release.json`
+  whose `schema_version` is newer than the running `mediacore`'s `SCHEMA_VERSION`,
+  telling the caller to upgrade.
 - `write_bundle(release, dest, files: Mapping[str, Path]) -> Path` writes `release.json`
   and copies each file keyed by sha256 to `media/`, verifying the hash on the way.
 - Browser transport: the import pages accept the folder through a file picker

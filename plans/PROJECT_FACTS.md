@@ -29,6 +29,16 @@ executors share no context, so repeating a fact across plans in a batch is corre
   and `sha256` is a lowercase 64-character hex digest. Bundles reach both consumers as
   untrusted browser uploads, so this is a security boundary: never relax it, and never
   hand-write a `file` value in a test — derive it from the digest.
+- `Release` has two cross-entry `model_validator`s beyond the single-entry checks
+  above: every `sha256` shared by two or more `media`/`audio` entries must name the
+  same `file` (one digest, one file — content addressing), and every
+  `AudioFile.track_position` must equal some `Track.position` (an orphan audio file is
+  rejected, not silently allowed). `AudioFile.size_bytes` requires `>= 0`.
+  `read_bundle(verify=True)` additionally checks each `AudioFile`'s actual byte size on
+  disk against `size_bytes`, and `read_bundle` unconditionally rejects a
+  `release.json` whose `schema_version` is newer than this install's `SCHEMA_VERSION`
+  (equal passes) — a forward-compatibility guard for a consumer running an older
+  `mediacore` than the bundle was written with.
 - `write_bundle` is atomic: it stages into a sibling temp directory and swaps it into
   place. A failed write leaves the previous `dest` intact, or nothing at all.
 - `normalize_text` must equal `vinylcat.normalize.normalize_text`
@@ -51,8 +61,9 @@ Build plans have no bash — these belong in verify plans and interactive plans.
 
 - Toolchain: `.venv/` created by `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
 - Tests: `.venv/bin/python -m pytest -q`. Lint: `.venv/bin/python -m ruff check src tests`.
-- The gate (`plans/gate.sh`) runs install, ruff, pytest, and re-runs the fixture script
-  and fails if it changes any tracked file.
+- The gate (`plans/gate.sh`) runs install, ruff, the fixture script (fails if it
+  changes any tracked file), a wheel build asserting
+  `mediacore/_fixtures/its-saxy/release.json` is packaged into it, then pytest.
 
 ## Tests
 

@@ -26,11 +26,20 @@ pins.
   agreement on `MediaFile`/`AudioFile` — one accept case and every reject case
   (foreign digest, missing or wrong prefix, absolute path, `..` traversal, extra path
   segment, absent/empty/uppercase/over-long/non-alphanumeric extension, and a `sha256`
-  that is not a lowercase 64-character hex digest).
+  that is not a lowercase 64-character hex digest). Also `AudioFile.size_bytes >= 0`,
+  and `Release`'s two cross-entry `model_validator`s: two `media`/`audio` entries (any
+  combination) sharing a `sha256` with different `file` values are rejected — accepted
+  case (same `sha256` *and* file) plus every combination of which lists disagree, and
+  the same rejection through `Release.model_validate` on a hand-edited payload, not
+  just through `Release(...)` — and an `AudioFile.track_position` matching no
+  `Track.position` is rejected as an orphan, including when `tracks` is empty.
 - `test_bundle.py` — `read_bundle` / `write_bundle` including every failure case
   (missing `release.json`, missing media file, hash mismatch, an unmapped sha256, a
   source file whose bytes do not hash to its key), the atomicity guarantees (a bad
   hash or a mid-copy `OSError` leaves an existing bundle readable and unchanged; no
-  staging sibling survives), and the `media/` containment check on a hand-edited
-  `release.json`. The mid-copy test monkeypatches `mediacore.bundle.shutil.copyfile`,
+  staging sibling survives), the `media/` containment check on a hand-edited
+  `release.json`, `read_bundle` rejecting a `release.json` whose `schema_version` is
+  newer than `SCHEMA_VERSION` (equal passes, newer raises), and `verify=True` checking
+  each `AudioFile`'s actual byte size against `size_bytes` (`verify=False` skips it).
+  The mid-copy test monkeypatches `mediacore.bundle.shutil.copyfile`,
   which is why the module itself is imported alongside the public names.

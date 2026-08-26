@@ -19,7 +19,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from mediacore.release import BUNDLE_MEDIA_DIRNAME, Release
+from mediacore.release import BUNDLE_MEDIA_DIRNAME, SCHEMA_VERSION, Release
 
 BUNDLE_RELEASE_FILENAME = "release.json"
 # release.json is committed in the fixture and read by humans; indent it and end with
@@ -91,6 +91,13 @@ def read_bundle(path: Path | str, *, verify: bool = True) -> Release:
     except ValidationError as exc:
         raise BundleError(f"invalid release payload in {release_path}") from exc
 
+    if release.schema_version > SCHEMA_VERSION:
+        raise BundleError(
+            f"{release_path} has schema_version {release.schema_version}, but this "
+            f"install of mediacore only understands up to {SCHEMA_VERSION}; upgrade "
+            f"mediacore to read it"
+        )
+
     if verify:
         for sha256, relative in bundle_entries(release):
             entry_path = _entry_path(root, relative)
@@ -100,6 +107,14 @@ def read_bundle(path: Path | str, *, verify: bool = True) -> Release:
             if found != sha256:
                 raise BundleError(
                     f"hash mismatch for {relative}: expected {sha256}, found {found}"
+                )
+        for audio_file in release.audio:
+            entry_path = _entry_path(root, audio_file.file)
+            actual_size = entry_path.stat().st_size
+            if actual_size != audio_file.size_bytes:
+                raise BundleError(
+                    f"size mismatch for {audio_file.file}: expected "
+                    f"{audio_file.size_bytes} bytes, found {actual_size}"
                 )
 
     return release
