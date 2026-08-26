@@ -396,6 +396,20 @@ by an agent briefed with this file.
   evidence additively; the human confirms every match. Supersedes the earlier
   "identity = authority refs" wording.
 
-## 14. Open questions
+## 14. Open questions and follow-ups
 
-None blocking. Raised by an implementing agent → recorded here with the answer.
+Raised by an implementing agent → recorded here with the answer.
+
+- 2026-08-26 (WP1) — **Fixture lacks track durations.** The live IT'S SAXY record has
+  `duration` on every track (`A1 1:57`, `A2 2:37`, …); §11 above omitted them, so
+  `fixtures/its-saxy/release.json` has `null` for all twelve. Ruling: adapter emits
+  durations; WP1's equality test excludes `tracks[].duration` until mediaCore **0.1.1**
+  adds the twelve real values to §11 and the fixture generator. Tracked as the first
+  mediaCore follow-up batch.
+- 2026-08-26 (WP1) — vinylCatalogue's spec says the fourth gate does not block
+  `export`; that sentence is about the collection-wide CSV exports (§7.10). The
+  per-record *bundle* export is gated on sign-off (this document §6); the CSV sentences
+  are left as they are.
+- 2026-08-26 (WP1) — hatchling refuses a git-URL dependency unless
+  `[tool.hatch.metadata] allow-direct-references = true` is set. Consumers using
+  hatchling need that line; pip-based consumers do not.
