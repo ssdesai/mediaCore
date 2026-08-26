@@ -227,10 +227,14 @@ A *bundle* is a directory:
   linking to a row that shares no evidence at all (that is how a hand-made node and its
   Discogs entry become one thing).
 - **Linking accumulates evidence.** When the human links an incoming entity to an
-  existing row, the row's `refs` is merged additively with the incoming refs (existing
-  keys are kept; conflicts are shown in the preview and the human picks). This is the
-  one edit an import makes to a pre-existing row, and it is what lets an entity known
-  first from local photographs later gain a Discogs ref, or vice versa.
+  existing row, the row's `refs` is merged additively with the incoming refs: existing
+  keys are kept, missing keys are added, and on a per-key conflict the existing value
+  wins — the import never replaces what a human already curated. Conflicts are shown
+  in the preview so the human sees them, but the correction surface is the consumer's
+  ordinary edit endpoints (PATCH on the row), not the import; a per-key picker in the
+  preview is deferred until real imports show conflicts are common (decision 2026-08-26,
+  §13). This is the one edit an import makes to a pre-existing row, and it is what lets
+  an entity known first from local photographs later gain a Discogs ref, or vice versa.
 - **Re-import.** If a row already carries this release's `discogs:release` or
   `vinylcat:record`, the preview says so up front (what it is, when it was imported) and
   lets the human continue or cancel. Continuing runs the same matching; previously
@@ -375,6 +379,15 @@ Each WP is executed in its own repo with that repo's plan workflow
 by an agent briefed with this file.
 
 ## 13. Decisions log
+
+- **2026-08-26 — conflict resolution on link/re-import is existing-wins, PATCH is the
+  correction surface.** Both consumers merge refs additively with existing values
+  winning; the preview displays conflicts but offers no per-key picker (deferred).
+  Consequence: node/source update schemas MUST keep `refs` editable — with re-import
+  never replacing, PATCH is the only way to fix a wrong ref. An explicit `refs: null`
+  on PATCH is rejected (422), never "clear the bag". Media rows stay importer-owned
+  (no `refs` on media update). Ratified by the owner on hNM PR #60 finding 4 and the
+  musicMap WP3 open question.
 
 - 2026-08-24 — Polyrepo + shared contract package, not a monorepo or shared DB.
 - 2026-08-25 — Contract is a neutral `Release`, not vinylcat's `Record`; identity by
