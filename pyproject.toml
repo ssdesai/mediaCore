@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mediacore"
-version = "0.1.0"
+version = "0.1.1"
 description = "The shared recorded-media Release contract: schema, identity refs, name normalisation, bundle I/O, and one real-world test fixture."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -184,19 +184,20 @@ GENRES = [
     "Stage & Screen",
 ]
 
+# (position, title, duration) — durations are the record's verified values (v0.1.1).
 TRACKS = [
-    ("A1", "LOVE GROWS"),
-    ("A2", "ALL I HAVE TO DO IS DREAM"),
-    ("A3", "JY IS MY LIEFLING"),
-    ("A4", "I'LL NEVER FALL IN LOVE AGAIN"),
-    ("A5", "DOMINIQUE"),
-    ("A6", "THERESA"),
-    ("B1", "SUGAR SUGAR"),
-    ("B2", "Love Theme From Romeo And Juliet"),
-    ("B3", "SEEMAN"),
-    ("B4", "MAKE ME AN ISLAND"),
-    ("B5", "MA BELLE AMIE"),
-    ("B6", "LOVE IS A BEAUTIFUL SONG"),
+    ("A1", "LOVE GROWS", "1:57"),
+    ("A2", "ALL I HAVE TO DO IS DREAM", "2:37"),
+    ("A3", "JY IS MY LIEFLING", "2:10"),
+    ("A4", "I'LL NEVER FALL IN LOVE AGAIN", "1:50"),
+    ("A5", "DOMINIQUE", "2:07"),
+    ("A6", "THERESA", "2:31"),
+    ("B1", "SUGAR SUGAR", "2:17"),
+    ("B2", "Love Theme From Romeo And Juliet", "2:05"),
+    ("B3", "SEEMAN", "2:07"),
+    ("B4", "MAKE ME AN ISLAND", "2:03"),
+    ("B5", "MA BELLE AMIE", "2:58"),
+    ("B6", "LOVE IS A BEAUTIFUL SONG", "2:32"),
 ]
 # position -> (role, credited name, discogs artist id)
 TRACK_CREDITS = {
@@ -253,7 +254,7 @@ def build_release() -> tuple[Release, dict[str, bytes]]:
         )
 
     audio = []
-    for index, (position, _title) in enumerate(TRACKS):
+    for index, (position, _title, _duration) in enumerate(TRACKS):
         data = wav_bytes(AUDIO_BASE_FRAMES + index * AUDIO_FRAME_STEP)
         digest = _record(data)
         audio.append(
@@ -267,12 +268,12 @@ def build_release() -> tuple[Release, dict[str, bytes]]:
         )
 
     tracks = []
-    for position, title in TRACKS:
+    for position, title, duration in TRACKS:
         credits = []
         if position in TRACK_CREDITS:
             role, name, artist_id = TRACK_CREDITS[position]
             credits.append(Credit(role=role, name=name, refs={DISCOGS_ARTIST: artist_id}))
-        tracks.append(Track(position=position, title=title, duration=None, credits=credits))
+        tracks.append(Track(position=position, title=title, duration=duration, credits=credits))
 
     links = [
         Link(
@@ -291,7 +292,7 @@ def build_release() -> tuple[Release, dict[str, bytes]]:
             refs={DISCOGS_LABEL: DISCOGS_LABEL_ID},
         ),
     ]
-    for position, _title in TRACKS:
+    for position, _title, _duration in TRACKS:
         if position in TRACK_CREDITS:
             _role, name, artist_id = TRACK_CREDITS[position]
             links.append(
