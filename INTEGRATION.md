@@ -196,7 +196,9 @@ A *bundle* is a directory:
   - `tracks`: from `record.tracklist` (values only, where the envelope state is
     present). Track credits: `role` and `name` from the record; `refs["discogs:artist"]`
     resolved by matching `data["tracklist"][same position]["extraartists"]` on
-    `(role, normalize_text(name))`. Release-level `credits` the same way against
+    `(normalize_text(role), normalize_text(name))` — the role is normalized too, since
+    it is hand-transcribed on one side and Discogs free text on the other (WP1 review,
+    2026-08-26). Release-level `credits` the same way against
     `data["extraartists"]`.
   - `genres`, `styles`, `notes`, `tags` straight across.
   - `media`: `photos[]` → `kind="photo"`, `role`, `sha256`, `mime` from extension,
