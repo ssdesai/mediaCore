@@ -1,6 +1,6 @@
 # release-contract — cost and waste report
 
-Generated 2026-08-27T20:24:19.906563+00:00.
+Generated 2026-08-27T21:09:50.359570+00:00.
 
 ## Cost
 
