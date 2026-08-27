@@ -524,3 +524,8 @@ Raised by an implementing agent → recorded here with the answer.
   plan author caught the mismatch against consumers' `@v0.1.1` pins). Fixed on `main`;
   not re-tagged — nothing reads the attribute programmatically, so the fix rides the
   next tag instead of forcing three re-pins.
+- 2026-08-27 (WP6 review) — **No `truncated` flag on resolve responses.** Both
+  consumers cap matches (musicMap at 100, documented and tested); a flag would be a
+  wire-shape change on both sides for a disambiguation UI nobody scrolls. Deferred
+  until a real catalogue makes a 100-match disambiguation plausible; the caps stay
+  documented in each repo.
