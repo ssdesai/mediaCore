@@ -241,5 +241,101 @@ check "9e. the excluded parent is recorded as excluded, not as a session" \
   "[ \"\$(field \"'$SESSION_P' in d['excluded_session_ids'] and '$SESSION_P' not in [s['session_id'] for s in d['sessions']]\")\" = True ]"
 write_manifest "[\"$AGENT_3\"]"
 
+# ── 10. a pin whose parent lives under another repo's project directory ───────
+# A coordinator in otherRepo spawned an architect to work on this repo; the transcript
+# is filed under otherRepo's directory. This repo's manifest pins it by id.
+OTHER_PROJECTS="$FAKE_HOME/.claude/projects/-Users-someone-dev-otherRepo"
+OTHER_CWD="/Users/someone/dev/otherRepo"
+SESSION_F="ffffffff-0000-0000-0000-000000000004"
+AGENT_5="a5555555555555555"
+mkdir -p "$OTHER_PROJECTS/$SESSION_F/subagents"
+session_line "$SESSION_F" "$OTHER_CWD" "main" "msg-$SESSION_F" "$MODEL" "2026-07-04T09:00:00.000Z" 100 5000 0 0 0 \
+  > "$OTHER_PROJECTS/$SESSION_F.jsonl"
+{
+  subagent_prompt_line "$SESSION_F" "$AGENT_5" "$OTHER_CWD" "main" "2026-07-04T09:30:00.000Z" "Architect for this repo, spawned from otherRepo"
+  subagent_line "$SESSION_F" "$AGENT_5" "$OTHER_CWD" "main" "msg-$AGENT_5" "$MODEL" "2026-07-04T09:30:00.000Z" 100 8000 0 0 0
+} > "$OTHER_PROJECTS/$SESSION_F/subagents/agent-$AGENT_5.jsonl"
+capture > /dev/null
+check "10. unpinned, a subagent filed under another repo is not priced" "! grep -q '$AGENT_5' '$PLANNING'"
+write_manifest "[\"$AGENT_3\", \"$AGENT_5\"]"
+capture > "$TMP/out10.txt"
+check "10b. pinned, it is priced from wherever its transcript is filed" "gt '$(total_of)' '$pinned_total'"
+check "10c. as pinned, cross_repo, under its own parent" \
+  "[ \"\$(field \"[(s['selected_by'], s['cross_repo'], s['parent_session_id']) for s in d['subagents'] if s['agent_id']=='$AGENT_5']\")\" = \"[('pinned', True, '$SESSION_F')]\" ]"
+check "10d. and no unmatched-pin warning is raised" "! grep -q 'pinned subagent' '$TMP/out10.txt'"
+check "10e. a same-repo subagent is not cross_repo" \
+  "[ \"\$(field \"[s['cross_repo'] for s in d['subagents'] if s['agent_id']=='$AGENT_3']\")\" = '[False]' ]"
+list_subs > "$TMP/out10l.txt"
+list_subs --everywhere > "$TMP/out10e.txt"
+check "10f. --list-subagents omits it; --everywhere shows it with the parent's cwd" \
+  "! grep -q '$AGENT_5' '$TMP/out10l.txt' && grep '$AGENT_5' '$TMP/out10e.txt' | grep -q 'otherRepo'"
+write_manifest "[\"$AGENT_3\"]"
+
+# ── 11. the claims ledger records every priced subagent ───────────────────────
+LEDGER="$FAKE_HOME/.claude/subagent-claims.json"
+REPO_NAME="$(basename "$AT")"   # the fixture copy has no .git, so identity falls back to the directory name
+claim() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); c=d.get(sys.argv[2]); print(c and (c['repo_name'], c['slug'], c['selected_by']))" "$LEDGER" "$1"; }
+capture > /dev/null   # manifest pins AGENT_3 only; AGENT_5 was pinned in phase 10
+check "11. the ledger names the feature for a parent-selected subagent" \
+  "[ \"$(claim $AGENT_1)\" = \"('$REPO_NAME', '$SLUG', 'parent')\" ]"
+check "11b. and for a pinned one" "[ \"$(claim $AGENT_3)\" = \"('$REPO_NAME', '$SLUG', 'pinned')\" ]"
+check "11c. an id no longer pinned drops out of the ledger" "[ \"$(claim $AGENT_5)\" = None ]"
+check "11d. a never-priced subagent is not in it" "[ \"$(claim $AGENT_2)\" = None ]"
+
+# ── 12. a subagent already claimed by another feature refuses the capture ─────
+python3 - "$LEDGER" "$AGENT_3" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d[sys.argv[2]] = {"repo": "git@elsewhere:other.git", "repo_name": "otherRepo", "slug": "other-feature",
+                  "selected_by": "pinned", "cost_usd": 1.0, "claimed_at": "2026-07-01T00:00:00+00:00"}
+json.dump(d, open(sys.argv[1], "w"))
+PY
+rm -f "$PLANNING"
+capture > "$TMP/out12.txt"; rc=$?
+check "12. a cross-feature claim refuses the capture, naming the claimant" \
+  "grep -q \"$AGENT_3  claimed by otherRepo/other-feature\" '$TMP/out12.txt'"
+check "12b. nothing is written and the exit code says so" "[ ! -e '$PLANNING' ] && [ $rc -ne 0 ]"
+python3 - "$LEDGER" "$AGENT_3" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1])); del d[sys.argv[2]]; json.dump(d, open(sys.argv[1], "w"))
+PY
+capture > /dev/null
+check "12c. once the other claim is gone the capture goes through and re-claims" \
+  "[ -e '$PLANNING' ] && [ \"$(claim $AGENT_3)\" = \"('$REPO_NAME', '$SLUG', 'pinned')\" ]"
+
+# ── 13. --unclaimed and the brief header ──────────────────────────────────────
+AGENT_6="a6666666666666666"
+AGENT_7="a7777777777777777"
+write_subagent "$SESSION_M" "$AGENT_6" "main" "2026-07-03T10:00:00.000Z" 8000 "feature: $REPO_NAME/$SLUG\\nArchitect brief with the header"
+write_subagent "$SESSION_M" "$AGENT_7" "main" "2026-07-03T10:30:00.000Z" 8000 "feature: otherRepo/other-slug\\nArchitect brief for somewhere else"
+list_subs --unclaimed > "$TMP/out13.txt"
+check "13. --unclaimed lists the never-claimed and omits the claimed" \
+  "grep -q '$AGENT_2' '$TMP/out13.txt' && grep -q '$AGENT_6' '$TMP/out13.txt' && ! grep -q '$AGENT_1' '$TMP/out13.txt' && ! grep -q '$AGENT_3' '$TMP/out13.txt'"
+check "13b. with the feature each brief names as the proposed pin" \
+  "grep '$AGENT_6' '$TMP/out13.txt' | grep -q '$REPO_NAME/$SLUG' && grep '$AGENT_7' '$TMP/out13.txt' | grep -q 'otherRepo/other-slug'"
+check "13c. and a dash for a brief without the header" "grep '$AGENT_2' '$TMP/out13.txt' | grep -q ' -  '"
+write_manifest "[\"$AGENT_3\", \"$AGENT_6\", \"$AGENT_7\"]"
+capture > "$TMP/out13b.txt"
+check "13d. a pin whose brief names another feature is warned about" \
+  "grep -q \"pinned subagent '$AGENT_7' was briefed for feature 'otherRepo/other-slug'\" '$TMP/out13b.txt'"
+check "13e. a pin whose brief names this feature is not" "! grep -q \"'$AGENT_6' was briefed\" '$TMP/out13b.txt'"
+list_subs --unclaimed > "$TMP/out13c.txt"
+check "13f. once pinned they leave --unclaimed" "! grep -q '$AGENT_6' '$TMP/out13c.txt' && ! grep -q '$AGENT_7' '$TMP/out13c.txt'"
+write_manifest "[\"$AGENT_3\"]"
+
+# ── 14. one transcript filed under two parents is priced once ─────────────────
+# A resumed session re-files its subagents under the new session id.
+capture > /dev/null
+before="$(total_of)"
+mkdir -p "$PROJECTS/$SESSION_P/subagents"
+cp "$PROJECTS/$SESSION_M/subagents/agent-$AGENT_3.jsonl" "$PROJECTS/$SESSION_P/subagents/agent-$AGENT_3.jsonl"
+capture > /dev/null
+check "14. a pinned id filed under two parents is priced once" "near '$(total_of)' '$before'"
+check "14b. and listed once in subagents[]" \
+  "[ \"\$(field \"[s['agent_id'] for s in d['subagents']].count('$AGENT_3')\")\" = 1 ]"
+list_subs > "$TMP/out14.txt"
+check "14c. --list-subagents shows it once" "[ \"$(grep -c "$AGENT_3" "$TMP/out14.txt")\" = 1 ]"
+rm "$PROJECTS/$SESSION_P/subagents/agent-$AGENT_3.jsonl"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "subagent-capture: all ok"; else echo "subagent-capture: $fails FAIL"; exit 1; fi

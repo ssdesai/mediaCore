@@ -178,11 +178,31 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   bypassing branch and window — the coordinator-on-`main` case, where the pin is the
   human's word. A pin also outranks an `exclude_sessions` entry on its parent, so a
   feature can drop the coordinator's context cost and keep its architect; only
-  runner-spawned sessions (already priced by a usage.json) refuse pins.
+  runner-spawned sessions (already priced by a usage.json) refuse pins. A pin is also
+  honoured across repos: the transcript is filed under the *parent's* cwd, so an
+  architect a coordinator in repo A spawned to work on repo B sits under A's project
+  directory — B's manifest pins it by id and it is priced from there (`cross_repo:
+  true`); `--list-subagents --everywhere` is how B finds it.
+  **The claims ledger enforces the pins.** Every subagent this tool prices is recorded
+  in `~/.claude/subagent-claims.json` — `{ <agent-id>: { repo, repo_name, slug,
+  selected_by, cost_usd, claimed_at } }`, `repo` being the origin URL so worktrees and
+  clones agree and `repo_name` its last segment (what a brief's `feature:` line says) — beside the transcripts and scoped like them. A capture whose subagent
+  is already claimed by a *different* feature (in any repo) is refused outright, since
+  neither manifest can see the other and two features cannot own one transcript's
+  cost; re-capturing a feature replaces its own entries, so a dropped pin becomes
+  unclaimed again. `--list-subagents --unclaimed` lists every transcript on this
+  machine no feature has claimed, with the feature its brief names (the
+  `feature: <repo>/<slug>` first line `ORCHESTRATION.md` requires) as the pin to
+  write; `--all` ends by counting the unclaimed under this repo's directories. A pin
+  whose brief names another feature is warned about — the pin is the human's word,
+  the brief the coordinator's, and one is wrong. Dropping a cross-repo pin does not
+  trip `check_frozen_cost`: the transcript is proved still on disk before the guard
+  looks, so "unpinned" is not read as "expired".
   `--list-subagents` is the discovery step: every reachable subagent with
   its date, id, parent, branch, model, priced cost and opening prompt, so the plan
   author can be told from the reconnaissance one-shot. Pinned cost lands in
-  `subagents[]` (`agent_id`, `parent_session_id`, `date`, `selected_by: parent|pinned`),
+  `subagents[]` (`agent_id`, `parent_session_id`, `date`, `selected_by: parent|pinned`,
+  `cross_repo`),
   in `priced[]` under its `agent_id`, and in `cost_usd.subagents` — a subset of
   `cost_usd.sidechain`, reported apart because it is the figure the delegation-tier
   comparison needs. A subagent of a runner session is never priced here (its parent is

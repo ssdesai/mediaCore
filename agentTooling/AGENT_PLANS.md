@@ -226,8 +226,13 @@ The manifest ends with a machine-readable fence:
   `main` inherits `main` as its `gitBranch` and can never be branch-matched. A delegate
   whose parent is selected is claimed with it, by window, without a pin. A pin outranks
   an `exclude_sessions` entry on its parent (runner sessions excepted), so a coordinator
-  can be excluded from a feature while its architect is kept.
-  `capture_planning.py --list-subagents` prints the ids with each one's cost and brief.
+  can be excluded from a feature while its architect is kept. A pin is resolved across
+  every project directory, since a delegate's transcript is filed under its parent's
+  cwd — a coordinator in another repo — not under the repo it worked on.
+  `capture_planning.py --list-subagents [--everywhere|--unclaimed]` prints the ids
+  with each one's cost and brief; `--unclaimed` is the ones no feature has claimed
+  yet. Claims are ledgered per machine, and one transcript claimed by two features
+  refuses the second capture.
 
 **The windows are a patch over a workflow problem, not the fix for it.** Both fields exist
 because one session, or one branch, held work for more than one feature. If you keep to one

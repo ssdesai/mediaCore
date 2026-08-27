@@ -22,6 +22,8 @@ Two things, in this order, and the first one decides:
    a delegate rather than the human's own session, its transcript is a subagent file
    under the coordinator's session and inherits the coordinator's branch — pin its id
    in the arm's manifest (`subagents`, `AGENT_PLANS.md` → manifest) or it prices as $0.
+   Brief every delegate with `feature: <repo>/<slug>` on its first line, and before
+   scoring E run `capture_planning.py --list-subagents --unclaimed` — it must be empty.
    Charge the coordinator too: run each arm's coordination from its own session, from
    the repo root, and claim it with `main` + a `session_window`; a four-day coordinator
    measured at $206 was the largest single line of the program it ran, and no

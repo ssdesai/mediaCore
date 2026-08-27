@@ -78,7 +78,13 @@ Every field but `subagents` is required. These are the ones that go wrong quietl
   branch needs no pin — it is claimed with its parent when its own start is in the window.
   A pin wins over an `exclude_sessions` entry naming its parent: excluding the coordinator
   drops the coordinator's own context cost and keeps the pinned architect. Runner sessions
-  are the exception — their usage.json already holds the cost, pins included.
+  are the exception — their usage.json already holds the cost, pins included. A
+  delegate's transcript is filed under its *parent's* cwd, so one spawned by a
+  coordinator sitting in another repo is found by `--list-subagents --everywhere`
+  and pinned here all the same. `--list-subagents --unclaimed` is the standing
+  question — every delegate on this machine no feature has claimed, with the
+  feature its brief names; a pin already claimed by another feature refuses the
+  capture rather than counting twice.
 - **`session_window.to`** — `null` means "still open", and open is the right value only
   while the feature is still being planned. Set a real bound as soon as it is done. Two
   open-ended windows on a shared branch claim each other's sessions and price the same

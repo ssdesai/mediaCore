@@ -44,6 +44,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -264,6 +265,43 @@ def subagent_transcript_paths(transcript_dir, session_id):
     return sorted(subagents_dir.glob("agent-*.jsonl"))
 
 
+def find_pinned_elsewhere(agent_id, skip_dirs):
+    """The transcript of a pinned subagent under *any* project directory but the ones
+    already scanned. A delegate's transcript lives beside its parent's, under the
+    parent's cwd — so an architect a coordinator in repo A spawned to work on repo B
+    is filed under A. B's manifest pins it by id, and an id is unambiguous, so the pin
+    is honoured wherever the file is."""
+    projects_root = Path.home() / ".claude" / "projects"
+    if not projects_root.exists():
+        return None
+    for project_dir in sorted(projects_root.iterdir()):
+        if not project_dir.is_dir() or project_dir in skip_dirs:
+            continue
+        hits = sorted(project_dir.glob(f"*/subagents/agent-{agent_id}.jsonl"))
+        if hits:
+            return hits[0]
+    return None
+
+
+def price_subagent(totals, session_id, agent_id, agent_lines):
+    """Add every billable message of one subagent transcript to `totals` under
+    (session_id, agent_id, model, True). Every line of a subagent transcript says
+    `isSidechain: true`, so the flag is pinned here rather than read — a subagent is
+    sidechain cost by definition, whatever an individual line says."""
+    for model, usage, _ in iter_billable_messages(agent_lines):
+        add_usage(totals, (session_id, agent_id, model, True), usage)
+
+
+def agent_start_of(agent_lines):
+    """Earliest timestamp in a transcript, or None when it carries none."""
+    moments = [
+        moment
+        for moment in (to_utc(line.get("timestamp")) for line in agent_lines)
+        if moment is not None
+    ]
+    return min(moments) if moments else None
+
+
 def agent_id_of(path, lines):
     """A subagent's id: the `agentId` its lines carry, else the filename minus `agent-`.
     The two agree on every transcript seen so far; the fallback is for a file whose
@@ -275,9 +313,132 @@ def agent_id_of(path, lines):
     return path.stem[len("agent-"):] if path.stem.startswith("agent-") else path.stem
 
 
+# The claims ledger: every subagent transcript this tool has ever priced, keyed by agent
+# id, with the feature that claimed it. It lives beside the transcripts (under ~/.claude)
+# and is scoped like them — local to this machine, meaningless once they expire — so it
+# needs no knowledge of where the other repos are checked out.
+CLAIMS_LEDGER_NAME = "subagent-claims.json"
+# The first line of a delegate's brief names the feature it is for (ORCHESTRATION.md):
+#   feature: <repo>/<slug>
+BRIEF_FEATURE_RE = re.compile(r"^\s*feature:\s*([\w.-]+)/([\w.-]+)\s*$", re.MULTILINE)
+
+
+def claims_ledger_path():
+    return Path.home() / ".claude" / CLAIMS_LEDGER_NAME
+
+
+def load_claims():
+    path = claims_ledger_path()
+    if not path.exists():
+        return {}
+    try:
+        claims = json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return {}
+    return claims if isinstance(claims, dict) else {}
+
+
+def save_claims(claims):
+    path = claims_ledger_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(dict(sorted(claims.items())), indent=2) + "\n")
+
+
+def repo_identity(sessions_dir):
+    """What makes two captures 'the same repo' in the ledger: the origin URL, which
+    survives worktrees and scratch clones; the directory name when there is none."""
+    try:
+        url = subprocess.run(
+            ["git", "-C", str(sessions_dir), "remote", "get-url", "origin"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if url.returncode == 0 and url.stdout.strip():
+            return url.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return Path(sessions_dir).name
+
+
+def repo_display_name(identity):
+    """The name a brief's `feature: <repo>/<slug>` line uses — the last path segment of
+    the origin URL without `.git`, so a scratch worktree named `wt-musicMap` is still
+    `musicMap`; the identity itself when it is already a bare directory name."""
+    tail = identity.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
+    return tail[:-len(".git")] if tail.endswith(".git") else tail
+
+
+def brief_feature_of(lines):
+    """`(repo, slug)` from the `feature: <repo>/<slug>` line of a delegate's brief, or
+    None when the brief carries none."""
+    match = BRIEF_FEATURE_RE.search(first_user_text(lines, limit=None))
+    return (match.group(1), match.group(2)) if match else None
+
+
+def check_brief_headers(agent_briefs, repo_name, slug):
+    """Warn for each pinned subagent whose brief names a different feature than the
+    manifest pinning it — the pin is the human's word, the brief is the coordinator's,
+    and when they disagree one of them is wrong."""
+    warnings = []
+    for agent_id in sorted(agent_briefs):
+        named = agent_briefs[agent_id]
+        if named and named != (repo_name, slug):
+            warnings.append(
+                f"pinned subagent {agent_id!r} was briefed for feature "
+                f"'{named[0]}/{named[1]}', not '{repo_name}/{slug}' — one of the pin "
+                "and the brief is wrong"
+            )
+    return warnings
+
+
+def check_claims(agent_ids, repo, slug, claims):
+    """Every priced subagent already claimed by a *different* (repo, slug). A capture
+    that would double-count is refused outright: two features cannot both own one
+    transcript's cost, and neither manifest can see the other repo to warn."""
+    conflicts = []
+    for agent_id in sorted(agent_ids):
+        claim = claims.get(agent_id)
+        if claim and (claim.get("repo"), claim.get("slug")) != (repo, slug):
+            conflicts.append((agent_id, claim.get("repo_name", claim.get("repo")), claim.get("slug")))
+    return conflicts
+
+
+def record_claims(claims, agent_costs, agent_selected_by, repo, repo_name, slug):
+    """Replace this (repo, slug)'s ledger entries with the subagents priced now — an
+    id no longer pinned or selected drops out and shows up as unclaimed again."""
+    for agent_id in [
+        aid for aid, claim in claims.items()
+        if (claim.get("repo"), claim.get("slug")) == (repo, slug)
+    ]:
+        del claims[agent_id]
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    for agent_id, cost in agent_costs.items():
+        claims[agent_id] = {
+            "repo": repo,
+            "repo_name": repo_name,
+            "slug": slug,
+            "selected_by": agent_selected_by[agent_id],
+            "cost_usd": cost,
+            "claimed_at": now,
+        }
+
+
+def unclaimed_under(transcript_dirs, claims):
+    """Agent ids of every subagent transcript under `transcript_dirs` with no ledger
+    entry — delegates whose cost no feature has claimed."""
+    unclaimed = []
+    for transcript_dir in transcript_dirs:
+        for session_dir in sorted(p for p in transcript_dir.iterdir() if p.is_dir()):
+            for agent_path in subagent_transcript_paths(transcript_dir, session_dir.name):
+                agent_id = agent_path.name[len("agent-"):-len(".jsonl")]
+                if agent_id not in claims:
+                    unclaimed.append(agent_id)
+    return unclaimed
+
+
 def first_user_text(lines, limit=80):
     """The opening prompt of a transcript, truncated — what `--list-subagents` shows so
-    a human can tell a plan author from a reviewer from a reconnaissance one-shot."""
+    a human can tell a plan author from a reviewer from a reconnaissance one-shot.
+    `limit=None` returns it whole."""
     for line in lines:
         if line.get("type") != "user":
             continue
@@ -287,6 +448,8 @@ def first_user_text(lines, limit=80):
                 block.get("text", "") for block in content if isinstance(block, dict)
             )
         if isinstance(content, str) and content.strip():
+            if limit is None:
+                return content
             return " ".join(content.split())[:limit]
     return ""
 
@@ -300,9 +463,9 @@ def check_unmatched_subagents(pinned, reachable_agent_ids):
     for agent_id in sorted(pinned):
         if agent_id not in reachable_agent_ids:
             warnings.append(
-                f"pinned subagent {agent_id!r} matches no transcript under this repo's "
-                "project directories — a mistyped id, or its parent session has aged "
-                "out (run --list-subagents to see what is still on disk)"
+                f"pinned subagent {agent_id!r} matches no transcript under any project "
+                "directory — a mistyped id, or its parent session has aged out (run "
+                "--list-subagents --everywhere to see what is still on disk)"
             )
     return warnings
 
@@ -335,21 +498,38 @@ def check_subagent_overlap(features_dirs, slug, manifest):
     return warnings
 
 
-def list_subagents(sessions_dir, since):
+def list_subagents(sessions_dir, since, everywhere=False, unclaimed=False):
     """Print every subagent transcript reachable from this repo's project directories:
     start date, agent id, parent session, the parent's branch, the model, its priced
     cost and its opening prompt. `since` (a UTC date string) drops older ones. This is
     the discovery step for a manifest's `subagents` pin — the ids are not written
-    anywhere a human would otherwise read."""
+    anywhere a human would otherwise read. `everywhere` widens the scan to every
+    project directory and adds the parent's cwd, for the delegate a coordinator in
+    another repo spawned to work on this one. `unclaimed` (implies `everywhere`)
+    keeps only the ones no feature has claimed in the ledger, and shows the feature
+    each one's brief names — the pin to write."""
+    everywhere = everywhere or unclaimed
+    claims = load_claims() if unclaimed else {}
     session_dir_str = str(sessions_dir)
+    projects_root = Path.home() / ".claude" / "projects"
+    transcript_dirs = (
+        sorted(d for d in projects_root.iterdir() if d.is_dir())
+        if everywhere and projects_root.exists()
+        else find_transcript_dirs(sessions_dir)
+    )
     rows = []
-    for transcript_dir in find_transcript_dirs(sessions_dir):
+    listed = set()
+    for transcript_dir in transcript_dirs:
         for session_dir in sorted(p for p in transcript_dir.iterdir() if p.is_dir()):
             for agent_path in subagent_transcript_paths(transcript_dir, session_dir.name):
                 lines = load_transcript_lines(agent_path)
                 if not lines:
                     continue
-                if not any(
+                agent_id = agent_id_of(agent_path, lines)
+                if agent_id in listed or (unclaimed and agent_id in claims):
+                    continue
+                listed.add(agent_id)
+                if not everywhere and not any(
                     line.get("cwd") == session_dir_str
                     or (
                         isinstance(line.get("cwd"), str)
@@ -380,6 +560,8 @@ def list_subagents(sessions_dir, since):
                     priced, _ = compute_cost(model, totals[model], as_of=start)
                     cost += priced or 0.0
                     models.append(model)
+                cwd = next((line.get("cwd") for line in lines if line.get("cwd")), "")
+                named = brief_feature_of(lines)
                 rows.append(
                     (
                         start,
@@ -388,19 +570,35 @@ def list_subagents(sessions_dir, since):
                         branch,
                         "/".join(models),
                         cost,
+                        Path(cwd).name if cwd else "",
+                        f"{named[0]}/{named[1]}" if named else "-",
                         first_user_text(lines),
                     )
                 )
     rows.sort()
     if not rows:
-        print("no subagent transcripts found")
+        print("no unclaimed subagent transcripts" if unclaimed else "no subagent transcripts found")
         return
-    print("date        agent-id           parent    branch            model             cost  opening prompt")
-    for start, agent_id, parent, branch, model, cost, prompt in rows:
+    cwd_header = "parent cwd        " if everywhere else ""
+    pin_header = "brief names (pin here)      " if unclaimed else ""
+    print(
+        "date        agent-id           parent    branch            model             "
+        f"cost  {cwd_header}{pin_header}opening prompt"
+    )
+    for start, agent_id, parent, branch, model, cost, cwd, named, prompt in rows:
+        cwd_col = f"{cwd[:16]:<16}  " if everywhere else ""
+        pin_col = f"{named[:26]:<26}  " if unclaimed else ""
         print(
             f"{start}  {agent_id:<18} {parent[:8]}  {branch[:16]:<16}  "
-            f"{model[:16]:<16} ${cost:8.2f}  {prompt}"
+            f"{model[:16]:<16} ${cost:8.2f}  {cwd_col}{pin_col}{prompt}"
         )
+    if unclaimed:
+        print(
+            f"{len(rows)} unclaimed subagent(s), ${sum(r[5] for r in rows):.2f} no feature "
+            "counts. Pin each in the manifest its brief names; a '-' brief predates the "
+            "`feature:` header — read the prompt."
+        )
+        return
     print(
         f"{len(rows)} subagent(s). Pin one to a feature with \"subagents\": [\"<agent-id>\"] "
         "in its manifest; it is then priced regardless of its parent's branch or the "
@@ -612,6 +810,21 @@ def check_frozen_cost(output_path, reachable_session_ids, excluded_ids, reachabl
     return lost, prior_total
 
 
+def prior_cross_repo_ids(output_path):
+    """Agent ids the last capture priced from another repo's project directory."""
+    if not output_path.exists():
+        return set()
+    try:
+        prior = json.loads(output_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return set()
+    return {
+        entry["agent_id"]
+        for entry in prior.get("subagents", []) or []
+        if entry.get("cross_repo") and entry.get("agent_id")
+    }
+
+
 def prior_capture(output_path):
     """`(captured_at, total)` of an existing planning.json, or `(None, 0.0)` if there is
     no usable prior capture — no file, unreadable, or no timestamp in it.
@@ -781,6 +994,10 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     agent_start = {}
     agent_parent = {}
     agent_selected_by = {}
+    # Pinned ids whose transcript sits under another repo's project directory.
+    agent_cross_repo = set()
+    # What each pinned subagent's brief says it is for, for the header check.
+    agent_briefs = {}
     # Every branch name seen anywhere in this repo's transcript dirs, for the
     # does-this-name-even-exist check. Deliberately wider than `reachable`: a name is
     # not a typo just because its sessions were filtered out.
@@ -842,16 +1059,16 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                     continue
                 agent_id = agent_id_of(agent_path, agent_lines)
                 reachable_agent_ids.add(agent_id)
-                agent_timestamps = [
-                    moment
-                    for moment in (to_utc(line.get("timestamp")) for line in agent_lines)
-                    if moment is not None
-                ]
-                if not agent_timestamps:
+                # A resumed session re-files its subagents under the new session id, so
+                # one transcript can sit under two parents. Price an id once.
+                if agent_id in agent_start:
                     continue
-                agent_start_ts = min(agent_timestamps)
+                agent_start_ts = agent_start_of(agent_lines)
+                if agent_start_ts is None:
+                    continue
                 if agent_id in pinned_agent_ids:
                     selected_by = "pinned"
+                    agent_briefs[agent_id] = brief_feature_of(agent_lines)
                 elif parent_selected and in_window(agent_start_ts, window):
                     selected_by = "parent"
                 else:
@@ -859,14 +1076,44 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                 agent_start[agent_id] = agent_start_ts
                 agent_parent[agent_id] = session_id
                 agent_selected_by[agent_id] = selected_by
-                # Every line of a subagent transcript says `isSidechain: true`, so the
-                # flag is pinned here rather than read — a subagent is sidechain cost by
-                # definition, whatever an individual line says.
-                for model, usage, _ in iter_billable_messages(agent_lines):
-                    add_usage(totals, (session_id, agent_id, model, True), usage)
+                price_subagent(totals, session_id, agent_id, agent_lines)
 
+    # A pin this repo's directories do not carry is looked for everywhere else: the
+    # transcript is filed under the *parent's* cwd, and the parent was a coordinator
+    # in another repo. Pins only — nothing is parent-selected across repos.
+    this_repo_dirs = set(find_transcript_dirs(sessions_dir))
+    for agent_id in sorted(pinned_agent_ids - reachable_agent_ids):
+        agent_path = find_pinned_elsewhere(agent_id, this_repo_dirs)
+        if agent_path is None:
+            continue
+        agent_lines = load_transcript_lines(agent_path)
+        agent_start_ts = agent_start_of(agent_lines)
+        if agent_start_ts is None:
+            continue
+        parent_id = next(
+            (line.get("sessionId") for line in agent_lines if line.get("sessionId")),
+            agent_path.parent.parent.name,
+        )
+        reachable_agent_ids.add(agent_id)
+        agent_cross_repo.add(agent_id)
+        agent_start[agent_id] = agent_start_ts
+        agent_parent[agent_id] = parent_id
+        agent_selected_by[agent_id] = "pinned"
+        agent_briefs[agent_id] = brief_feature_of(agent_lines)
+        price_subagent(totals, parent_id, agent_id, agent_lines)
+
+    # A cross-repo id priced last time and unpinned since is not *gone*: the guard
+    # below reads "unreachable" as "expired", so prove the transcript is still on disk
+    # before it looks. Nothing is priced here — an unpinned id earns nothing.
+    for agent_id in prior_cross_repo_ids(output_path) - reachable_agent_ids:
+        if find_pinned_elsewhere(agent_id, this_repo_dirs) is not None:
+            reachable_agent_ids.add(agent_id)
+
+    repo = repo_identity(sessions_dir)
+    repo_name = repo_display_name(repo)
     warnings += check_unmatched_branches(branches, branches_seen_anywhere)
     warnings += check_unmatched_subagents(pinned_agent_ids, reachable_agent_ids)
+    warnings += check_brief_headers(agent_briefs, repo_name, slug)
 
     sessions = [
         {
@@ -883,6 +1130,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             "parent_session_id": agent_parent[agent_id],
             "date": agent_start[agent_id].date().isoformat(),
             "selected_by": agent_selected_by[agent_id],
+            "cross_repo": agent_id in agent_cross_repo,
         }
         for agent_id in sorted(agent_start)
     ]
@@ -975,8 +1223,35 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             print(f"WARN: {warning}")
         return "refused"
 
+    claims = load_claims()
+    conflicts = check_claims(agent_start, repo, slug, claims)
+    if conflicts:
+        print(
+            f"{slug}: REFUSING to write planning.json — {len(conflicts)} subagent(s) are "
+            "already claimed by another feature, and one transcript's cost cannot belong "
+            "to two:"
+        )
+        for agent_id, other_repo, other_slug in conflicts:
+            print(f"  {agent_id}  claimed by {other_repo}/{other_slug}")
+        print(
+            "  Drop the pin from one manifest (or re-capture the other feature without "
+            f"it) and run again. Ledger: {claims_ledger_path()}"
+        )
+        for warning in warnings:
+            print(f"WARN: {warning}")
+        return "conflict"
+
     with open(output_path, "w") as f:
         json.dump(data, f, indent=2)
+
+    agent_costs = {}
+    for entry in priced:
+        if entry["agent_id"]:
+            agent_costs[entry["agent_id"]] = (
+                agent_costs.get(entry["agent_id"], 0.0) + (entry["cost_usd"] or 0.0)
+            )
+    record_claims(claims, agent_costs, agent_selected_by, repo, repo_name, slug)
+    save_claims(claims)
 
     cost_str = "cost unavailable — see warnings" if total_is_partial else f"${total_cost:.4f}"
     print(
@@ -1023,6 +1298,20 @@ def main():
         "of capturing anything. How to find an id for a manifest's `subagents` pin",
     )
     parser.add_argument(
+        "--unclaimed",
+        action="store_true",
+        help="with --list-subagents: only subagents no feature has claimed in the "
+        f"ledger (~/.claude/{CLAIMS_LEDGER_NAME}), scanning every project directory, "
+        "with the feature each brief names — the pins still to write",
+    )
+    parser.add_argument(
+        "--everywhere",
+        action="store_true",
+        help="with --list-subagents: scan every project directory, not just this "
+        "repo's, and show each parent's cwd — for a delegate spawned from a "
+        "coordinator in another repo",
+    )
+    parser.add_argument(
         "--since",
         metavar="YYYY-MM-DD",
         help="with --list-subagents: only subagents that started on or after this UTC date",
@@ -1033,7 +1322,7 @@ def main():
     if args.list_subagents:
         if args.slug or args.all_features:
             parser.error("--list-subagents takes no slug and no --all")
-        list_subagents(session_root(args.self_mode), args.since)
+        list_subagents(session_root(args.self_mode), args.since, args.everywhere, args.unclaimed)
         return
 
     if args.all_features == bool(args.slug):
@@ -1050,7 +1339,7 @@ def main():
 
     slugs = feature_slugs(features_dir) if args.all_features else [args.slug]
 
-    counts = {"captured": 0, "skipped": 0, "refused": 0, "unreadable": 0}
+    counts = {"captured": 0, "skipped": 0, "refused": 0, "conflict": 0, "unreadable": 0}
     for slug in slugs:
         try:
             outcome = capture_feature(
@@ -1071,10 +1360,18 @@ def main():
         print(
             f"{len(slugs)} features: {counts['captured']} captured, "
             f"{counts['skipped']} already captured, {counts['refused']} refused"
+            + (f", {counts['conflict']} in conflict" if counts["conflict"] else "")
             + (f", {counts['unreadable']} unreadable" if counts["unreadable"] else "")
         )
+        unclaimed = unclaimed_under(find_transcript_dirs(sessions_dir), load_claims())
+        if unclaimed:
+            print(
+                f"{len(unclaimed)} subagent transcript(s) under this repo's project "
+                "directories are claimed by no feature anywhere — run "
+                "--list-subagents --unclaimed and pin them while they still exist"
+            )
 
-    if counts["refused"] or counts["unreadable"]:
+    if counts["refused"] or counts["conflict"] or counts["unreadable"]:
         raise SystemExit(1)
 
 
