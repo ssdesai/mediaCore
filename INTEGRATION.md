@@ -520,3 +520,7 @@ Raised by an implementing agent → recorded here with the answer.
   in musicMap is deferred — needs a cross-origin story nothing else needs, and the
   "Open in hNM" button covers the workflow. WP5 and WP6 are independent and run in
   parallel; no mediaCore change needed (`ref_uri` / `parse_ref_uri` shipped in v0.1.0).
+- 2026-08-27 — **`mediacore.__version__` said `0.1.0` in the v0.1.1 package** (the WP5
+  plan author caught the mismatch against consumers' `@v0.1.1` pins). Fixed on `main`;
+  not re-tagged — nothing reads the attribute programmatically, so the fix rides the
+  next tag instead of forcing three re-pins.
