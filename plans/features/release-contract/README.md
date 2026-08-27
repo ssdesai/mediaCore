@@ -139,6 +139,7 @@ untouched when it raises" — is covered by the atomicity tests above.
   "plans": ["01-acceptance-tests-sonnet", "02-tests-core-haiku", "03-tests-release-haiku", "04-tests-bundle-sonnet", "05-package-core-haiku", "06-package-release-haiku", "07-package-bundle-sonnet", "08-level-core-sonnet", "09-fixture-script-sonnet", "10-level-fixture-sonnet", "11-verify-sonnet", "12-review-opus"],
   "branches": ["releaseContract"],
   "session_window": {"from": "2026-08-25T00:00:00Z", "to": "2026-08-25T19:06:58Z"},
-  "exclude_sessions": []
+  "exclude_sessions": [],
+  "subagents": ["af2c767e3e68ede9e", "a99b5ae9d128c7499"]
 }
 ```
