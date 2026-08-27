@@ -165,8 +165,29 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   is_sidechain)`, prices each with `pricing.compute_cost` using that session's own
   date, and freezes the result as dollars into `<features root>/<slug>/planning.json`.
   Cost is computed once here; nothing downstream recomputes it. Usage:
-  `python3 agentTooling/analysis/capture_planning.py <slug>` or
-  `… --all [--recapture]`.
+  `python3 agentTooling/analysis/capture_planning.py <slug>`,
+  `… --all [--recapture]`, or `… --list-subagents [--since YYYY-MM-DD]`.
+  **Subagent transcripts are priced too.** A session that spawned delegates keeps their
+  transcripts beside its own, at `<session-id>/subagents/agent-<id>.jsonl`; before this
+  scan read them, an opus architect's whole cost was invisible — $184 across one
+  four-repo program, next to a $206 coordinator that was on `main` and therefore also
+  unmatched. A subagent inherits its parent's `gitBranch` and `cwd` at spawn and never
+  records its own, so it cannot be selected by branch. Two routes in: a subagent whose
+  **parent is selected** is priced when its own start is inside the `session_window`;
+  and a manifest's `"subagents": ["<agent-id>"]` **pins** one on its id alone,
+  bypassing branch and window — the coordinator-on-`main` case, where the pin is the
+  human's word. `--list-subagents` is the discovery step: every reachable subagent with
+  its date, id, parent, branch, model, priced cost and opening prompt, so the plan
+  author can be told from the reconnaissance one-shot. Pinned cost lands in
+  `subagents[]` (`agent_id`, `parent_session_id`, `date`, `selected_by: parent|pinned`),
+  in `priced[]` under its `agent_id`, and in `cost_usd.subagents` — a subset of
+  `cost_usd.sidechain`, reported apart because it is the figure the delegation-tier
+  comparison needs. A subagent of a runner session is never priced here (its parent is
+  excluded, and the sidecar's `total_cost_usd` already includes it) — a pin on one is
+  reported unmatched. `check_unmatched_subagents` and `check_subagent_overlap` are the
+  pin's versions of the branch checks: a pinned id no transcript carries, and an id two
+  manifests both pin. `check_frozen_cost` covers subagents the same way it covers
+  sessions, reporting a lost one as `agent-<id>`.
   **Populates only what is not yet populated.** `prior_capture` reads the existing
   `planning.json`'s own `captured_at` — not its mtime, which a checkout or a rebase
   resets on every committed file at once — and a feature that has one is skipped:
