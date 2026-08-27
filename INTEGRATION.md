@@ -277,8 +277,11 @@ carries `sha256`). Alembic migration. `NodeOut`/`InformationSourceOut`/`MediaOut
 - Media: every `MediaFile` uploaded to the store and attached to the source
   (`source_ids`), with `refs.sha256`; a re-import skips files whose sha256 already
   exists in the project.
-- Links: the release link on the source; each artist/label link on its node *and* on
-  the source. Duplicate URLs within a project are not re-added.
+- Links: a link that resolved to nodes lives on those nodes only; the source carries
+  just the entity-less links — the release's own, or one whose entities were all skipped
+  (so the evidence is retained somewhere). Duplicate URLs within a project are not
+  re-added. (Amended 2026-08-27 — see decisions log; originally every link also landed
+  on the source.)
 
 **Endpoints:** `POST /api/projects/{pid}/imports/release/preview` (multipart) →
 `ReleaseImportPreviewOut`; `POST /api/projects/{pid}/imports/release/commit` →
@@ -435,3 +438,10 @@ Raised by an implementing agent → recorded here with the answer.
 - 2026-08-26 (WP1) — hatchling refuses a git-URL dependency unless
   `[tool.hatch.metadata] allow-direct-references = true` is set. Consumers using
   hatchling need that line; pip-based consumers do not.
+- 2026-08-27 (WP4) — **A link lives where its subject lives.** First real hNM import
+  surfaced §8's original rule ("each artist/label link on its node *and* on the source")
+  putting all five Discogs links on the IT'S SAXY source page. Owner ruled: an artist's
+  Discogs page is about the artist, not about this record as a source — entity-matched
+  links attach to their nodes only, and the source carries just the entity-less links
+  (the release's own, plus any whose entities were all skipped, as a fallback so the
+  evidence is retained). §8 amended; hNM commit path changed the same day.
