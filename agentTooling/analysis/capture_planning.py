@@ -264,6 +264,43 @@ def subagent_transcript_paths(transcript_dir, session_id):
     return sorted(subagents_dir.glob("agent-*.jsonl"))
 
 
+def find_pinned_elsewhere(agent_id, skip_dirs):
+    """The transcript of a pinned subagent under *any* project directory but the ones
+    already scanned. A delegate's transcript lives beside its parent's, under the
+    parent's cwd — so an architect a coordinator in repo A spawned to work on repo B
+    is filed under A. B's manifest pins it by id, and an id is unambiguous, so the pin
+    is honoured wherever the file is."""
+    projects_root = Path.home() / ".claude" / "projects"
+    if not projects_root.exists():
+        return None
+    for project_dir in sorted(projects_root.iterdir()):
+        if not project_dir.is_dir() or project_dir in skip_dirs:
+            continue
+        hits = sorted(project_dir.glob(f"*/subagents/agent-{agent_id}.jsonl"))
+        if hits:
+            return hits[0]
+    return None
+
+
+def price_subagent(totals, session_id, agent_id, agent_lines):
+    """Add every billable message of one subagent transcript to `totals` under
+    (session_id, agent_id, model, True). Every line of a subagent transcript says
+    `isSidechain: true`, so the flag is pinned here rather than read — a subagent is
+    sidechain cost by definition, whatever an individual line says."""
+    for model, usage, _ in iter_billable_messages(agent_lines):
+        add_usage(totals, (session_id, agent_id, model, True), usage)
+
+
+def agent_start_of(agent_lines):
+    """Earliest timestamp in a transcript, or None when it carries none."""
+    moments = [
+        moment
+        for moment in (to_utc(line.get("timestamp")) for line in agent_lines)
+        if moment is not None
+    ]
+    return min(moments) if moments else None
+
+
 def agent_id_of(path, lines):
     """A subagent's id: the `agentId` its lines carry, else the filename minus `agent-`.
     The two agree on every transcript seen so far; the fallback is for a file whose
@@ -300,9 +337,9 @@ def check_unmatched_subagents(pinned, reachable_agent_ids):
     for agent_id in sorted(pinned):
         if agent_id not in reachable_agent_ids:
             warnings.append(
-                f"pinned subagent {agent_id!r} matches no transcript under this repo's "
-                "project directories — a mistyped id, or its parent session has aged "
-                "out (run --list-subagents to see what is still on disk)"
+                f"pinned subagent {agent_id!r} matches no transcript under any project "
+                "directory — a mistyped id, or its parent session has aged out (run "
+                "--list-subagents --everywhere to see what is still on disk)"
             )
     return warnings
 
@@ -335,21 +372,29 @@ def check_subagent_overlap(features_dirs, slug, manifest):
     return warnings
 
 
-def list_subagents(sessions_dir, since):
+def list_subagents(sessions_dir, since, everywhere=False):
     """Print every subagent transcript reachable from this repo's project directories:
     start date, agent id, parent session, the parent's branch, the model, its priced
     cost and its opening prompt. `since` (a UTC date string) drops older ones. This is
     the discovery step for a manifest's `subagents` pin — the ids are not written
-    anywhere a human would otherwise read."""
+    anywhere a human would otherwise read. `everywhere` widens the scan to every
+    project directory and adds the parent's cwd, for the delegate a coordinator in
+    another repo spawned to work on this one."""
     session_dir_str = str(sessions_dir)
+    projects_root = Path.home() / ".claude" / "projects"
+    transcript_dirs = (
+        sorted(d for d in projects_root.iterdir() if d.is_dir())
+        if everywhere and projects_root.exists()
+        else find_transcript_dirs(sessions_dir)
+    )
     rows = []
-    for transcript_dir in find_transcript_dirs(sessions_dir):
+    for transcript_dir in transcript_dirs:
         for session_dir in sorted(p for p in transcript_dir.iterdir() if p.is_dir()):
             for agent_path in subagent_transcript_paths(transcript_dir, session_dir.name):
                 lines = load_transcript_lines(agent_path)
                 if not lines:
                     continue
-                if not any(
+                if not everywhere and not any(
                     line.get("cwd") == session_dir_str
                     or (
                         isinstance(line.get("cwd"), str)
@@ -380,6 +425,7 @@ def list_subagents(sessions_dir, since):
                     priced, _ = compute_cost(model, totals[model], as_of=start)
                     cost += priced or 0.0
                     models.append(model)
+                cwd = next((line.get("cwd") for line in lines if line.get("cwd")), "")
                 rows.append(
                     (
                         start,
@@ -388,6 +434,7 @@ def list_subagents(sessions_dir, since):
                         branch,
                         "/".join(models),
                         cost,
+                        Path(cwd).name if cwd else "",
                         first_user_text(lines),
                     )
                 )
@@ -395,11 +442,16 @@ def list_subagents(sessions_dir, since):
     if not rows:
         print("no subagent transcripts found")
         return
-    print("date        agent-id           parent    branch            model             cost  opening prompt")
-    for start, agent_id, parent, branch, model, cost, prompt in rows:
+    cwd_header = "parent cwd        " if everywhere else ""
+    print(
+        "date        agent-id           parent    branch            model             "
+        f"cost  {cwd_header}opening prompt"
+    )
+    for start, agent_id, parent, branch, model, cost, cwd, prompt in rows:
+        cwd_col = f"{cwd[:16]:<16}  " if everywhere else ""
         print(
             f"{start}  {agent_id:<18} {parent[:8]}  {branch[:16]:<16}  "
-            f"{model[:16]:<16} ${cost:8.2f}  {prompt}"
+            f"{model[:16]:<16} ${cost:8.2f}  {cwd_col}{prompt}"
         )
     print(
         f"{len(rows)} subagent(s). Pin one to a feature with \"subagents\": [\"<agent-id>\"] "
@@ -781,6 +833,8 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     agent_start = {}
     agent_parent = {}
     agent_selected_by = {}
+    # Pinned ids whose transcript sits under another repo's project directory.
+    agent_cross_repo = set()
     # Every branch name seen anywhere in this repo's transcript dirs, for the
     # does-this-name-even-exist check. Deliberately wider than `reachable`: a name is
     # not a typo just because its sessions were filtered out.
@@ -842,14 +896,9 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                     continue
                 agent_id = agent_id_of(agent_path, agent_lines)
                 reachable_agent_ids.add(agent_id)
-                agent_timestamps = [
-                    moment
-                    for moment in (to_utc(line.get("timestamp")) for line in agent_lines)
-                    if moment is not None
-                ]
-                if not agent_timestamps:
+                agent_start_ts = agent_start_of(agent_lines)
+                if agent_start_ts is None:
                     continue
-                agent_start_ts = min(agent_timestamps)
                 if agent_id in pinned_agent_ids:
                     selected_by = "pinned"
                 elif parent_selected and in_window(agent_start_ts, window):
@@ -859,11 +908,30 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                 agent_start[agent_id] = agent_start_ts
                 agent_parent[agent_id] = session_id
                 agent_selected_by[agent_id] = selected_by
-                # Every line of a subagent transcript says `isSidechain: true`, so the
-                # flag is pinned here rather than read — a subagent is sidechain cost by
-                # definition, whatever an individual line says.
-                for model, usage, _ in iter_billable_messages(agent_lines):
-                    add_usage(totals, (session_id, agent_id, model, True), usage)
+                price_subagent(totals, session_id, agent_id, agent_lines)
+
+    # A pin this repo's directories do not carry is looked for everywhere else: the
+    # transcript is filed under the *parent's* cwd, and the parent was a coordinator
+    # in another repo. Pins only — nothing is parent-selected across repos.
+    this_repo_dirs = set(find_transcript_dirs(sessions_dir))
+    for agent_id in sorted(pinned_agent_ids - reachable_agent_ids):
+        agent_path = find_pinned_elsewhere(agent_id, this_repo_dirs)
+        if agent_path is None:
+            continue
+        agent_lines = load_transcript_lines(agent_path)
+        agent_start_ts = agent_start_of(agent_lines)
+        if agent_start_ts is None:
+            continue
+        parent_id = next(
+            (line.get("sessionId") for line in agent_lines if line.get("sessionId")),
+            agent_path.parent.parent.name,
+        )
+        reachable_agent_ids.add(agent_id)
+        agent_cross_repo.add(agent_id)
+        agent_start[agent_id] = agent_start_ts
+        agent_parent[agent_id] = parent_id
+        agent_selected_by[agent_id] = "pinned"
+        price_subagent(totals, parent_id, agent_id, agent_lines)
 
     warnings += check_unmatched_branches(branches, branches_seen_anywhere)
     warnings += check_unmatched_subagents(pinned_agent_ids, reachable_agent_ids)
@@ -883,6 +951,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             "parent_session_id": agent_parent[agent_id],
             "date": agent_start[agent_id].date().isoformat(),
             "selected_by": agent_selected_by[agent_id],
+            "cross_repo": agent_id in agent_cross_repo,
         }
         for agent_id in sorted(agent_start)
     ]
@@ -1023,6 +1092,13 @@ def main():
         "of capturing anything. How to find an id for a manifest's `subagents` pin",
     )
     parser.add_argument(
+        "--everywhere",
+        action="store_true",
+        help="with --list-subagents: scan every project directory, not just this "
+        "repo's, and show each parent's cwd — for a delegate spawned from a "
+        "coordinator in another repo",
+    )
+    parser.add_argument(
         "--since",
         metavar="YYYY-MM-DD",
         help="with --list-subagents: only subagents that started on or after this UTC date",
@@ -1033,7 +1109,7 @@ def main():
     if args.list_subagents:
         if args.slug or args.all_features:
             parser.error("--list-subagents takes no slug and no --all")
-        list_subagents(session_root(args.self_mode), args.since)
+        list_subagents(session_root(args.self_mode), args.since, args.everywhere)
         return
 
     if args.all_features == bool(args.slug):

@@ -241,5 +241,35 @@ check "9e. the excluded parent is recorded as excluded, not as a session" \
   "[ \"\$(field \"'$SESSION_P' in d['excluded_session_ids'] and '$SESSION_P' not in [s['session_id'] for s in d['sessions']]\")\" = True ]"
 write_manifest "[\"$AGENT_3\"]"
 
+# ── 10. a pin whose parent lives under another repo's project directory ───────
+# A coordinator in otherRepo spawned an architect to work on this repo; the transcript
+# is filed under otherRepo's directory. This repo's manifest pins it by id.
+OTHER_PROJECTS="$FAKE_HOME/.claude/projects/-Users-someone-dev-otherRepo"
+OTHER_CWD="/Users/someone/dev/otherRepo"
+SESSION_F="ffffffff-0000-0000-0000-000000000004"
+AGENT_5="a5555555555555555"
+mkdir -p "$OTHER_PROJECTS/$SESSION_F/subagents"
+session_line "$SESSION_F" "$OTHER_CWD" "main" "msg-$SESSION_F" "$MODEL" "2026-07-04T09:00:00.000Z" 100 5000 0 0 0 \
+  > "$OTHER_PROJECTS/$SESSION_F.jsonl"
+{
+  subagent_prompt_line "$SESSION_F" "$AGENT_5" "$OTHER_CWD" "main" "2026-07-04T09:30:00.000Z" "Architect for this repo, spawned from otherRepo"
+  subagent_line "$SESSION_F" "$AGENT_5" "$OTHER_CWD" "main" "msg-$AGENT_5" "$MODEL" "2026-07-04T09:30:00.000Z" 100 8000 0 0 0
+} > "$OTHER_PROJECTS/$SESSION_F/subagents/agent-$AGENT_5.jsonl"
+capture > /dev/null
+check "10. unpinned, a subagent filed under another repo is not priced" "! grep -q '$AGENT_5' '$PLANNING'"
+write_manifest "[\"$AGENT_3\", \"$AGENT_5\"]"
+capture > "$TMP/out10.txt"
+check "10b. pinned, it is priced from wherever its transcript is filed" "gt '$(total_of)' '$pinned_total'"
+check "10c. as pinned, cross_repo, under its own parent" \
+  "[ \"\$(field \"[(s['selected_by'], s['cross_repo'], s['parent_session_id']) for s in d['subagents'] if s['agent_id']=='$AGENT_5']\")\" = \"[('pinned', True, '$SESSION_F')]\" ]"
+check "10d. and no unmatched-pin warning is raised" "! grep -q 'pinned subagent' '$TMP/out10.txt'"
+check "10e. a same-repo subagent is not cross_repo" \
+  "[ \"\$(field \"[s['cross_repo'] for s in d['subagents'] if s['agent_id']=='$AGENT_3']\")\" = '[False]' ]"
+list_subs > "$TMP/out10l.txt"
+list_subs --everywhere > "$TMP/out10e.txt"
+check "10f. --list-subagents omits it; --everywhere shows it with the parent's cwd" \
+  "! grep -q '$AGENT_5' '$TMP/out10l.txt' && grep '$AGENT_5' '$TMP/out10e.txt' | grep -q 'otherRepo'"
+write_manifest "[\"$AGENT_3\"]"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "subagent-capture: all ok"; else echo "subagent-capture: $fails FAIL"; exit 1; fi
