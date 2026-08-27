@@ -14,8 +14,9 @@ live in each repo's own `README.md`/`plans/PROJECT_FACTS.md`, not here.
 | `humanNetworkMap` (`~/dev/humanNetworkMap`) | **Consumer.** A release becomes an *information source*; the people/bands/labels on it become nodes; credits become edges; every fact cites the source. Human-supervised import page. | FastAPI + SQLAlchemy async/asyncpg + Alembic, React/TS (types generated from OpenAPI) |
 | `musicMap` (`~/dev/musicMap`) | **Consumer.** A release becomes album + artist + one song per audio file, then embeddings. Human-supervised import page. | FastAPI + SQLAlchemy sync/psycopg + pgvector + Alembic, React/TS (hand-mirrored types), Docker |
 
-Data flows one way: vinylCatalogue → bundle on disk → consumer import page. No repo
-depends on another repo's *runtime*; consumers depend only on the `mediacore` package.
+Data flows one way: vinylCatalogue → bundle store (§5.1: a folder locally, a bucket when
+hosted) → consumer import page. No repo depends on another repo's *runtime*; consumers
+depend only on the `mediacore` package.
 Future sources (CD rips, digital purchases, cassettes) plug in by writing the same bundle.
 
 ## 2. Principles (settled)
@@ -168,7 +169,67 @@ A *bundle* is a directory:
   files as multipart; the server re-verifies hashes. Nothing needs another app running.
 - musicMap alternative for large corpora: drop the bundle under `data/incoming/` and pick
   it from the import page — same server code path, files read instead of uploaded.
-  Optional; browser upload is the baseline.
+  Optional; browser upload is the baseline. Generalised by §5.1: `data/incoming/` is a
+  `file://` bundle store.
+
+### 5.1 Bundle store (`mediacore.store`) — designed 2026-08-27, WP7
+
+The problem §5's transport leaves open: one signed-off record is imported into *two*
+consumers, each by hand-picking the same folder. And "folder" stops working the day
+musicMap and hNM are hosted while vinylCatalogue stays on a laptop. A *bundle store* is
+where bundles sit between source and consumers, addressed by a URI so the local→hosted
+move is configuration, not code:
+
+```
+file:///Users/…/bundles              local: a directory of bundle directories
+s3://<bucket>/<prefix>               hosted: the same layout under a key prefix
+```
+
+- **Interface.** `open_store(uri) -> BundleStore` picks the backend from the scheme
+  (`file`, `s3`; anything else raises `StoreError`). A `BundleStore` has three methods
+  and nothing else: `list(*, all_versions=False) -> list[BundleEntry]`,
+  `open(entry, *, verify=True) -> Release`, `put(release, files) -> BundleEntry`.
+  Consumers and the source call these; none of them touches paths or boto directly.
+- **`BundleEntry { record_id, exported_at, slug, uri, schema_version }`** — `record_id`
+  is the `vinylcat:record` ULID, `exported_at` the export timestamp, `uri` the entry's
+  own address (what a consumer posts back to pick it). All read from the entry's
+  `release.json`, never parsed out of its key.
+- **Layout and versions.** `<root>/<record ULID>/<exported_at, ISO basic>/<bundle>`. A
+  re-export is a new version beside the old one; `list()` returns the latest per record
+  (`all_versions=True` for the rest). Nothing in `mediacore` overwrites or deletes an
+  entry. Consumers never delete either.
+- **`open` verifies like `read_bundle`** — hashes, audio sizes, and a `schema_version`
+  newer than the running `mediacore` is refused with the upgrade message. `list` does
+  not refuse: such an entry is listed with its `schema_version` so a page can say
+  "upgrade to import this" instead of hiding it.
+- **`s3://`** uses the ambient boto3 credential chain; `mediacore` takes no keys and the
+  browser never sees the store. `boto3` is the optional extra `mediacore[s3]`.
+- **Consumer inbox rule.** The inbox is the store's entries whose `record_id` appears in
+  no `refs` bag (`vinylcat:record`) in this database. Already-imported entries are still
+  listed, with the date they were imported — the §7 re-import rule reads the same
+  evidence — not hidden. Endpoints: hNM `GET /api/projects/{pid}/imports/release/inbox`,
+  musicMap `GET /api/v1/imports/release/inbox`, both returning
+  `InboxEntryOut { record_id, exported_at, slug, uri, schema_version, title, imported_at }`
+  (`imported_at` null when not in this DB).
+- **One import path.** Picking an entry calls
+  `POST …/imports/release/preview-from-store { entry_uri }`, which returns the same
+  preview payload as the multipart preview and stashes the bytes it reads from the store
+  under an import id; commit is unchanged. Media is read from the store, never
+  re-uploaded through the browser, and lands with the same `sha256` as an upload would.
+- **Unset means absent.** Each consumer reads `BUNDLE_STORE_URI` server-side; unset
+  hides the inbox section and the endpoints answer 404, exactly the `VITE_PEER_*`
+  convention of §10. Browser upload stays as the baseline and is unchanged.
+- **Source side.** `vinylcat export-release <id>` writes to the store named by
+  `bundle_store_uri` in its config (`--store <uri>` overrides); with neither it writes
+  the folder as before. The §6 sign-off gate applies identically.
+- **Fixture.** Each dev stack seeds *IT'S SAXY* into a local `file://` store, so the
+  store path is exercised by tests and not only by upload.
+- **Optional, later:** vinylCatalogue's record page asks each peer's resolve endpoint
+  (§10) for `vinylcat:record:<ulid>` and shows *imported where*; "unknown" when a peer is
+  unreachable.
+
+Principle 6 stands: a shared bucket is shared *transport* — the bundle on disk with the
+disk generalised — not a shared database. Logged in §13.
 
 ## 6. vinylCatalogue: the export gate and the adapter
 
@@ -247,6 +308,9 @@ A *bundle* is a directory:
 - **Commit is atomic.** Preview and commit are two endpoints; commit takes the human's
   decisions and creates everything in one transaction. Preview stashes uploaded files
   under an import id so commit does not re-upload.
+- **Inbox.** When `BUNDLE_STORE_URI` is set, the import page also lists the bundle
+  store (§5.1) and the human picks from it; the pick runs the same preview/commit as an
+  upload. The consumer reads the store and never writes to or deletes from it.
 - **Type mirrors.** hNM regenerates TS from OpenAPI; musicMap hand-mirrors `*Out` schemas
   in `frontend/src/api/types.ts` with its conformance test. Both follow their repo's
   existing rule — mediaCore ships no TypeScript.
@@ -443,17 +507,37 @@ copy of the record's `record.json` (metadata only, no photos) in its own tests.
 | 4 | human, interactive | sign off SAXY → export → import into an hNM **sandbox** (never the `humannetworkmap` DB) and the musicMap dev stack | WP1–3 |
 | 5 | humanNetworkMap | §10: `GET /api/resolve`, URL state `?project=&node=&source=`, `?ref=` landing, "Open in musicMap" links, `VITE_PEER_MUSICMAP_URL` | WP2 |
 | 6 | musicMap | §10: `GET /api/v1/resolve`, `?ref=` landing, "Open in hNM" links, `VITE_PEER_HNM_URL` | WP3 |
+| 7a | mediaCore | §5.1: `mediacore.store` — `open_store`, `BundleStore` over `file://` and `s3://`, `BundleEntry`, fixture seeding, tag `v0.2.0` | WP0 |
+| 7b | vinylCatalogue | §5.1 source side: `bundle_store_uri` config, `--store`, export writes an entry | 7a |
+| 7c | humanNetworkMap | §5.1 inbox: `BUNDLE_STORE_URI`, inbox + preview-from-store endpoints, inbox section on the Import view | 7a, WP2 |
+| 7d | musicMap | §5.1 inbox: same, replacing the `data/incoming/` pickup | 7a, WP3 |
+| 7e | vinylCatalogue, optional | *imported where* on the record page via the peers' resolve endpoints | 7b, WP5, WP6 |
 
 WP1–3 run in parallel once `v0.1.0` is tagged. Consumers pin
 `mediacore @ git+https://github.com/ssdesai/mediaCore.git@v0.1.0`. Before 1.0 a
 breaking change to §3 bumps the minor version and every consumer re-pins deliberately;
-`schema_version` changes only when the on-disk `release.json` shape changes.
+`schema_version` changes only when the on-disk `release.json` shape changes. WP7a adds a
+module, not a field: `mediacore` **0.2.0**, `schema_version` unchanged.
+
+WP7 is also an experiment on the delegation tier itself — each of 7a–7d is built twice,
+once through the plan workflow and once by a single Opus delegate, from this section as
+the shared brief. The checklist and scorecard live in humanNetworkMap
+`plans/experiments/wp7-bundle-store/`.
 
 Each WP is executed in its own repo with that repo's plan workflow
 (`agentTooling/AGENT_PLANS.md`, `plans/PROJECT_FACTS.md`), on a bare camelCase branch,
 by an agent briefed with this file.
 
 ## 13. Decisions log
+
+- **2026-08-27 — Transport generalised to a URI-addressed bundle store (§5.1).**
+  Supersedes "bundle folder on disk" (2026-08-25) as the *shared* transport; the folder
+  is now the `file://` backend and browser upload stays as the baseline. A record is
+  exported once and both consumers pick it from the same store; hosting moves the store
+  to `s3://` by configuration. Entries are versioned by `exported_at` and never
+  overwritten or deleted; a consumer's inbox is derived from its own `refs`, so no
+  consumer state lives in the store. Principle 6 (no shared DB) stands — a bucket of
+  bundles is transport, not a database. Also the first plans-vs-direct A/B (§12).
 
 - **2026-08-26 — conflict resolution on link/re-import is existing-wins, PATCH is the
   correction surface.** Both consumers merge refs additively with existing values
