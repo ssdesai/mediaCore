@@ -48,7 +48,7 @@ coordinator ran from humanNetworkMap's root on `main`, so the delegate is filed 
 ```json
 {
   "slug": "bundle-store-direct",
-  "plans": [],
+  "plans": ["12-review-opus"],
   "branches": ["bundleStoreDirect"],
   "session_window": {"from": "2026-08-27T21:48:00Z", "to": "2026-08-27T22:07:00Z"},
   "exclude_sessions": [],

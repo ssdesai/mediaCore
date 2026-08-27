@@ -81,6 +81,15 @@ CATALOGUE_NUMBER_FIELD = "catalogue_number"
 PROVENANCE_INDEX = 0
 FIRST_ARTIST_INDEX = 0
 
+# A record id becomes one segment of the entry key — a directory name under `file://`.
+# The other two segments are safe by construction (the timestamp is `strftime` output,
+# the slug is folded to `[a-z0-9-]`); the id is the only part of the key that reaches
+# here straight out of `release.json`, and `Provenance.id` is an unconstrained `str`.
+# `Path.joinpath` silently leaves the store root on an absolute or `..` segment, so a
+# bundle taken from an upload could otherwise be `put` outside the store it addresses.
+RECORD_ID_SEPARATORS = ("/", "\\")
+RECORD_ID_RELATIVE_SEGMENTS = (".", "..")
+
 # Slug: `<artist>--<title>--<catalogue number>`, each segment folded to [a-z0-9-] over
 # `normalize_text`, so accents fold to their base letters instead of vanishing.
 SLUG_SEGMENT_SEPARATOR = "--"
@@ -519,6 +528,19 @@ def _slug_segment(value: Any) -> str:
 
 
 def _entry_key_parts(record_id: str, exported_at: datetime, slug: str) -> tuple[str, str, str]:
+    """The three key segments of an entry. Refuses a `record_id` that is not one segment.
+
+    Only `put` builds a key; `list` reads an entry's address off its own location, so an
+    id like this is a fault in the bundle being written, not in one already stored.
+    """
+    if (
+        any(separator in record_id for separator in RECORD_ID_SEPARATORS)
+        or record_id in RECORD_ID_RELATIVE_SEGMENTS
+    ):
+        raise StoreError(
+            f"{PROVENANCE_FIELD}[{PROVENANCE_INDEX}].{PROVENANCE_ID_FIELD} {record_id!r} is "
+            f"not a single key segment, so it cannot address an entry in a bundle store"
+        )
     return (
         record_id,
         exported_at.astimezone(UTC).strftime(EXPORTED_AT_KEY_FORMAT),

@@ -125,7 +125,10 @@ Release, read_bundle, normalize_text` — never from a submodule.
   - The key layout is `<root>/<record ULID>/<exported_at, ISO basic>/<slug>/` — a
     re-export is a new version *beside* the old one, and `put` refuses a version key that
     already exists (`StoreError`) rather than replacing it. `release_slug(release)`
-    derives `<artist>--<title>--<catalogue number>` over `normalize_text`.
+    derives `<artist>--<title>--<catalogue number>` over `normalize_text`. The record id
+    is the one key segment that comes out of `release.json` unfiltered (`Provenance.id`
+    is an unconstrained `str`), so `put` refuses one that is not a single segment — a
+    `/`, `\`, `.` or `..` would otherwise walk `write_bundle` out of the store root.
   - `S3BundleStore` depends on two things no import shows: `boto3` is **not** a runtime
     dependency but the optional extra `mediacore[s3]` (a missing one raises `StoreError`
     naming the extra), and its client comes from the **ambient boto3 credential chain** —
@@ -134,9 +137,10 @@ Release, read_bundle, normalize_text` — never from a submodule.
     an interrupted `put` leaves an entry `list` does not see.
   - Faults *inside* a bundle stay `BundleError` (hash, size, schema upgrade);
     `StoreError` covers store-level faults — an unusable URI, a malformed entry, an
-    attempted overwrite, and an `entry.uri` that is not an entry key of this store. That
-    last check is a boundary, not a nicety: §5.1's `preview-from-store` posts the URI back
-    from a browser.
+    attempted overwrite, a record id that is not one key segment, and an `entry.uri` that
+    is not an entry key of this store. Those last two are boundaries, not niceties: §5.1's
+    `preview-from-store` posts the URI back from a browser, and a bundle reaching `put`
+    may have arrived as an upload.
 - `fixtures.py` — `its_saxy_bundle() -> Path`, the directory of the committed IT'S SAXY
   bundle, so consumer suites never hard-code a path. Depends on two things no import
   reveals: the repo-root `fixtures/its-saxy/` directory produced by
