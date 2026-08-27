@@ -322,14 +322,73 @@ same two-step shape as §8.
 album match → track table (skip/import per row, model selection, dataset) → commit →
 embedding progress (reuse the existing progress UI).
 
-## 10. Phase 2 (not in the first batches)
+## 10. Phase 2: resolvers and deep links (designed 2026-08-27; WP5/WP6)
 
-- `GET /api/resolve?ref=<ref-uri>` in both consumers, returning the local entities
-  carrying that evidence (possibly several, possibly none — a link resolves to a
-  disambiguation, never to an assumption).
-- humanNetworkMap URL-addressable state (`?project=&node=`) — it has no router today.
-- `PEER_HNM_URL` / `PEER_MUSICMAP_URL` env vars; "Open in …" links built from refs.
-- Optional overlay: musicMap side panel fetching the band's hNM neighbourhood.
+The cross-app currency is the **ref URI** (§4): `discogs:artist:5682050`. Nothing else
+crosses the boundary — no ids, no URLs to specific pages, no shared database. A ref URI
+resolves to a *disambiguation, never an assumption*: possibly several matches, possibly
+none.
+
+### 10.1 Resolve endpoints (the cross-repo API contract)
+
+Both consumers expose a resolver over their own data. Match rule: an entity matches when
+its `refs` bag contains exactly `{key: value}` from the parsed URI. Only grammar-valid
+keys (§4) are resolvable — musicMap's bare `sha256` song key, for example, is not
+expressible as a ref URI and stays internal.
+
+- **humanNetworkMap** — `GET /api/resolve?ref=<uri>` (project-independent; the point is
+  cross-project disambiguation):
+  `ResolveOut { ref: str, nodes: list[ResolvedNodeOut], sources: list[ResolvedSourceOut] }`
+  where `ResolvedNodeOut { id, project_id, name, asset_type }` and
+  `ResolvedSourceOut { id, project_id, name }`. 400 on a malformed URI
+  (`mediacore.refs.parse_ref_uri` is the arbiter). Sources are included because
+  `vinylcat:record` / `discogs:release` live on information sources in hNM (§8) — a
+  record deep-link lands on the source, not on a node.
+- **musicMap** — `GET /api/v1/resolve?ref=<uri>`:
+  `ResolveOut { ref: str, artists: list[ArtistOut], albums: list[AlbumOut], songs: list[SongOut] }`.
+  Same 400 rule.
+
+### 10.2 Deep-link landing (`?ref=`)
+
+Both frontends accept `?ref=<ref-uri>` on their root URL, resolve it at boot via their
+own `/resolve`, and then: exactly one match → navigate straight to it (navigation is not
+an import; §2's human-supervision rule does not apply); several → show the
+disambiguation; none → a "nothing here carries that reference" notice. The `?ref=` param
+is consumed — replaced by the app's own state URL once handled. In-app landing UX beyond
+this rule is each repo's own design.
+
+### 10.3 humanNetworkMap URL-addressable state
+
+hNM has no router and gains none. `NetworkPage` reads `?project=&node=&source=` at boot
+(project switch → node selection or source drill-in) and mirrors selection changes back
+with `history.replaceState`. Invalid or stale ids degrade silently to the default view.
+This is what a resolved `?ref=` navigates into, and what a person copies out of the
+address bar.
+
+### 10.4 Peer URLs and "Open in …" links
+
+§10's `PEER_*` env vars are realised as build-time Vite vars, matching how both clients
+already read config: **hNM client** reads `VITE_PEER_MUSICMAP_URL`, **musicMap
+frontend** reads `VITE_PEER_HNM_URL`. Each names the *peer frontend's origin*; unset →
+the buttons don't render (the apps stay fully usable standalone). Dev note: both repos'
+dev stacks default to :5173, so running the pair concurrently means hNM via
+`scripts/sandbox.sh` (:5175) beside musicMap compose (:5173) — the suggested dev values
+are `VITE_PEER_MUSICMAP_URL=http://localhost:5173` and
+`VITE_PEER_HNM_URL=http://localhost:5175`.
+
+A button is built as `<peer-origin>/?ref=<uri>` from the entity's own refs, first key to
+match a pinned priority list:
+
+- hNM → musicMap: node detail (`discogs:artist`, `discogs:master`, `discogs:release`),
+  source detail (`vinylcat:record`, `discogs:release`).
+- musicMap → hNM: artist (`discogs:artist`), album and song (`vinylcat:record`,
+  `discogs:release`) — album/song links land on the hNM *source* for that record.
+
+### 10.5 Deferred
+
+The optional musicMap side panel fetching the band's hNM neighbourhood stays deferred —
+it needs a server-to-server call or CORS story that nothing else in phase 2 needs, and
+the "Open in hNM" button covers the workflow. Recorded in the decisions log.
 
 ## 11. The fixture: *IT'S SAXY*
 
@@ -377,6 +436,8 @@ copy of the record's `record.json` (metadata only, no photos) in its own tests.
 | 2 | humanNetworkMap | §8: migration, refs on schemas, preview/commit endpoints, Import view, tests per `TEST_SPEC.md` | WP0 |
 | 3 | musicMap | §9: migration, refs, preview/commit, Import release dialog, tests | WP0 |
 | 4 | human, interactive | sign off SAXY → export → import into an hNM **sandbox** (never the `humannetworkmap` DB) and the musicMap dev stack | WP1–3 |
+| 5 | humanNetworkMap | §10: `GET /api/resolve`, URL state `?project=&node=&source=`, `?ref=` landing, "Open in musicMap" links, `VITE_PEER_MUSICMAP_URL` | WP2 |
+| 6 | musicMap | §10: `GET /api/v1/resolve`, `?ref=` landing, "Open in hNM" links, `VITE_PEER_HNM_URL` | WP3 |
 
 WP1–3 run in parallel once `v0.1.0` is tagged. Consumers pin
 `mediacore @ git+https://github.com/ssdesai/mediaCore.git@v0.1.0`. Before 1.0 a
@@ -445,3 +506,13 @@ Raised by an implementing agent → recorded here with the answer.
   links attach to their nodes only, and the source carries just the entity-less links
   (the release's own, plus any whose entities were all skipped, as a fallback so the
   evidence is retained). §8 amended; hNM commit path changed the same day.
+- 2026-08-27 (Phase 2) — **Phase 2 designed as WP5/WP6** (§10 rewritten from four
+  bullets to the full contract). Settled: resolve endpoints are project-independent and
+  return disambiguation lists; hNM's resolver includes information sources (that is
+  where `vinylcat:record` lives); `?ref=` on either frontend's root URL is the deep-link
+  convention, consumed after handling; a single match may auto-navigate (navigation is
+  not an import); `PEER_*` env vars realised as `VITE_PEER_MUSICMAP_URL` /
+  `VITE_PEER_HNM_URL`, unset hides the buttons. The optional hNM-neighbourhood overlay
+  in musicMap is deferred — needs a cross-origin story nothing else needs, and the
+  "Open in hNM" button covers the workflow. WP5 and WP6 are independent and run in
+  parallel; no mediaCore change needed (`ref_uri` / `parse_ref_uri` shipped in v0.1.0).
