@@ -753,6 +753,14 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         return "skipped"
 
     excluded_ids = collect_excluded_session_ids(both_corpora, manifest)
+    # Runner-spawned exclusions (a usage.json already holds that session's cost, its
+    # subagents included) are never overridable. A manual `exclude_sessions` entry drops
+    # only the session's own context cost: a pin on one of its subagents is an explicit
+    # claim and still wins — the coordinator case, where the parent's cost belongs to
+    # the coordinator's manifest and the architect's to the feature's.
+    runner_excluded_ids = collect_excluded_session_ids(
+        both_corpora, {**manifest, "exclude_sessions": []}
+    )
     excluded_ids_encountered = set()
 
     session_dir_str = str(sessions_dir)
@@ -794,9 +802,12 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             if session_id is None:
                 continue
 
+            pins_only = False
             if session_id in excluded_ids:
                 excluded_ids_encountered.add(session_id)
-                continue
+                if session_id in runner_excluded_ids or not pinned_agent_ids:
+                    continue
+                pins_only = True
 
             repo_match = any(
                 line.get("cwd") == session_dir_str
@@ -809,14 +820,16 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             if not repo_match:
                 continue
 
-            reachable_session_ids.add(session_id)
-
-            # A parent that is not selected — wrong branch, outside the window — still
-            # has its subagents walked below, because a pinned subagent is claimed on
-            # its own id and its parent's branch is usually `main`. So the parent path
-            # sets a flag rather than `continue`-ing past the subagent walk.
+            # A parent that is not selected — wrong branch, outside the window, manually
+            # excluded — still has its subagents walked below, because a pinned subagent
+            # is claimed on its own id and its parent's branch is usually `main`. So the
+            # parent path sets a flag rather than `continue`-ing past the subagent walk.
             parent_selected = False
             matching_branches = branches_seen & set(branches)
+            if pins_only:
+                matching_branches = set()
+            else:
+                reachable_session_ids.add(session_id)
             if matching_branches:
                 parent_selected = select_parent(
                     lines, session_id, window, warnings, matched_session_ids,
