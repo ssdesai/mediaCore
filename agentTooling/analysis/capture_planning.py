@@ -518,14 +518,17 @@ def list_subagents(sessions_dir, since, everywhere=False, unclaimed=False):
         else find_transcript_dirs(sessions_dir)
     )
     rows = []
+    listed = set()
     for transcript_dir in transcript_dirs:
         for session_dir in sorted(p for p in transcript_dir.iterdir() if p.is_dir()):
             for agent_path in subagent_transcript_paths(transcript_dir, session_dir.name):
                 lines = load_transcript_lines(agent_path)
                 if not lines:
                     continue
-                if unclaimed and agent_id_of(agent_path, lines) in claims:
+                agent_id = agent_id_of(agent_path, lines)
+                if agent_id in listed or (unclaimed and agent_id in claims):
                     continue
+                listed.add(agent_id)
                 if not everywhere and not any(
                     line.get("cwd") == session_dir_str
                     or (
@@ -1056,6 +1059,10 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                     continue
                 agent_id = agent_id_of(agent_path, agent_lines)
                 reachable_agent_ids.add(agent_id)
+                # A resumed session re-files its subagents under the new session id, so
+                # one transcript can sit under two parents. Price an id once.
+                if agent_id in agent_start:
+                    continue
                 agent_start_ts = agent_start_of(agent_lines)
                 if agent_start_ts is None:
                     continue

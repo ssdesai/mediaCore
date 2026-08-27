@@ -323,5 +323,19 @@ list_subs --unclaimed > "$TMP/out13c.txt"
 check "13f. once pinned they leave --unclaimed" "! grep -q '$AGENT_6' '$TMP/out13c.txt' && ! grep -q '$AGENT_7' '$TMP/out13c.txt'"
 write_manifest "[\"$AGENT_3\"]"
 
+# ── 14. one transcript filed under two parents is priced once ─────────────────
+# A resumed session re-files its subagents under the new session id.
+capture > /dev/null
+before="$(total_of)"
+mkdir -p "$PROJECTS/$SESSION_P/subagents"
+cp "$PROJECTS/$SESSION_M/subagents/agent-$AGENT_3.jsonl" "$PROJECTS/$SESSION_P/subagents/agent-$AGENT_3.jsonl"
+capture > /dev/null
+check "14. a pinned id filed under two parents is priced once" "near '$(total_of)' '$before'"
+check "14b. and listed once in subagents[]" \
+  "[ \"\$(field \"[s['agent_id'] for s in d['subagents']].count('$AGENT_3')\")\" = 1 ]"
+list_subs > "$TMP/out14.txt"
+check "14c. --list-subagents shows it once" "[ \"$(grep -c "$AGENT_3" "$TMP/out14.txt")\" = 1 ]"
+rm "$PROJECTS/$SESSION_P/subagents/agent-$AGENT_3.jsonl"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "subagent-capture: all ok"; else echo "subagent-capture: $fails FAIL"; exit 1; fi
