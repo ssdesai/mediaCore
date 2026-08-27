@@ -348,11 +348,14 @@ Metadata (read from the live `record.json` on 2026-08-25; read-only):
   catalogue number `SAAE 1012`; country `South Africa`; year unknown (Discogs says 0);
   format `Vinyl, LP, Album`; medium `vinyl`
 - genres `Jazz, Rock, Funk / Soul, Blues, Folk, World, & Country, Stage & Screen`; no styles
-- tracks: A1 LOVE GROWS · A2 ALL I HAVE TO DO IS DREAM · A3 JY IS MY LIEFLING ·
-  A4 I'LL NEVER FALL IN LOVE AGAIN · A5 DOMINIQUE · A6 THERESA · B1 SUGAR SUGAR ·
-  B2 Love Theme From Romeo And Juliet · B3 SEEMAN · B4 MAKE ME AN ISLAND ·
-  B5 MA BELLE AMIE (Written-By: peter tetteroo, `discogs:artist` `282874`) ·
-  B6 LOVE IS A BEAUTIFUL SONG (Written-By: Terry Dempsey, `discogs:artist` `1033325`)
+- tracks (position, title, duration — the record's verified values, v0.1.1):
+  A1 LOVE GROWS 1:57 · A2 ALL I HAVE TO DO IS DREAM 2:37 · A3 JY IS MY LIEFLING 2:10 ·
+  A4 I'LL NEVER FALL IN LOVE AGAIN 1:50 · A5 DOMINIQUE 2:07 · A6 THERESA 2:31 ·
+  B1 SUGAR SUGAR 2:17 · B2 Love Theme From Romeo And Juliet 2:05 · B3 SEEMAN 2:07 ·
+  B4 MAKE ME AN ISLAND 2:03 ·
+  B5 MA BELLE AMIE 2:58 (Written-By: peter tetteroo, `discogs:artist` `282874`) ·
+  B6 LOVE IS A BEAUTIFUL SONG 2:32 (Written-By: Terry Dempsey, `discogs:artist` `1033325`
+  — B6's photo reads 2.35; the verified value is Discogs's 2:32)
 - no release-level credits; no notes; no tags
 - photos: `label_a`, `label_b` (two); external photos: two from the Discogs release
 - audio: one file per track, A1–B6, twelve in all (live files are mp3; fixture uses wav)
@@ -422,8 +425,9 @@ Raised by an implementing agent → recorded here with the answer.
   `duration` on every track (`A1 1:57`, `A2 2:37`, …); §11 above omitted them, so
   `fixtures/its-saxy/release.json` has `null` for all twelve. Ruling: adapter emits
   durations; WP1's equality test excludes `tracks[].duration` until mediaCore **0.1.1**
-  adds the twelve real values to §11 and the fixture generator. Tracked as the first
-  mediaCore follow-up batch.
+  adds the twelve real values to §11 and the fixture generator. **Done in v0.1.1**
+  (2026-08-26): §11 carries the twelve verified durations, the fixture generator emits
+  them, and vinylCatalogue drops the exclusion when it bumps its pin.
 - 2026-08-26 (WP1) — vinylCatalogue's spec says the fourth gate does not block
   `export`; that sentence is about the collection-wide CSV exports (§7.10). The
   per-record *bundle* export is gated on sign-off (this document §6); the CSV sentences

@@ -43,18 +43,18 @@ EXPECTED_GENRES = [
     "Stage & Screen",
 ]
 EXPECTED_TRACKS = [
-    ("A1", "LOVE GROWS"),
-    ("A2", "ALL I HAVE TO DO IS DREAM"),
-    ("A3", "JY IS MY LIEFLING"),
-    ("A4", "I'LL NEVER FALL IN LOVE AGAIN"),
-    ("A5", "DOMINIQUE"),
-    ("A6", "THERESA"),
-    ("B1", "SUGAR SUGAR"),
-    ("B2", "Love Theme From Romeo And Juliet"),
-    ("B3", "SEEMAN"),
-    ("B4", "MAKE ME AN ISLAND"),
-    ("B5", "MA BELLE AMIE"),
-    ("B6", "LOVE IS A BEAUTIFUL SONG"),
+    ("A1", "LOVE GROWS", "1:57"),
+    ("A2", "ALL I HAVE TO DO IS DREAM", "2:37"),
+    ("A3", "JY IS MY LIEFLING", "2:10"),
+    ("A4", "I'LL NEVER FALL IN LOVE AGAIN", "1:50"),
+    ("A5", "DOMINIQUE", "2:07"),
+    ("A6", "THERESA", "2:31"),
+    ("B1", "SUGAR SUGAR", "2:17"),
+    ("B2", "Love Theme From Romeo And Juliet", "2:05"),
+    ("B3", "SEEMAN", "2:07"),
+    ("B4", "MAKE ME AN ISLAND", "2:03"),
+    ("B5", "MA BELLE AMIE", "2:58"),
+    ("B6", "LOVE IS A BEAUTIFUL SONG", "2:32"),
 ]
 EXPECTED_TRACK_CREDITS = {
     "B5": ("Written-By", "peter tetteroo", "282874"),
@@ -179,9 +179,9 @@ def test_genres_and_styles(release: Release) -> None:
 
 
 def test_tracks_match_integration_md(release: Release) -> None:
-    assert [(t.position, t.title) for t in release.tracks] == EXPECTED_TRACKS
-    for track in release.tracks:
-        assert track.duration is None
+    assert [
+        (t.position, t.title, t.duration) for t in release.tracks
+    ] == EXPECTED_TRACKS
 
     credited = {t.position: t for t in release.tracks if t.credits}
     assert set(credited) == set(EXPECTED_TRACK_CREDITS)
