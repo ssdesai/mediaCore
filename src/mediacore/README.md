@@ -1,9 +1,9 @@
 # mediacore
 
 The contract package: the neutral `Release` schema, refs (evidence recorded by external
-sources), the shared name-matching fold, bundle I/O, and the path to the committed test
-fixture.
-`INTEGRATION.md` §3–5 is the specification; this folder is its implementation, and
+sources), the shared name-matching fold, bundle I/O, the URI-addressed bundle store, and
+the path to the committed test fixture.
+`INTEGRATION.md` §3–5.1 is the specification; this folder is its implementation, and
 nothing medium-specific belongs here.
 
 Consumers import the public surface from the package root — `from mediacore import
@@ -95,6 +95,48 @@ Release, read_bundle, normalize_text` — never from a submodule.
   Also `sha256_file(path)`, `bundle_entries(release)` (the single walk both directions
   share), `BUNDLE_RELEASE_FILENAME`, `BUNDLE_MEDIA_DIRNAME` (re-exported from
   `release.py`), and `BundleError`.
+- `store.py` — the bundle store (§5.1): where bundles sit between the source and its
+  consumers, addressed by a URI so the local→hosted move is configuration, not code.
+  - `open_store(uri, *, s3_client=None) -> BundleStore` dispatches on the URI *scheme* —
+    `file` → `FileBundleStore`, `s3` → `S3BundleStore`, anything else (including a bare
+    path, which has no scheme) raises `StoreError`. That dispatch is the contract every
+    consumer's `BUNDLE_STORE_URI` is read through; no caller names a backend class.
+    `s3_client` injects a boto3-compatible client and exists so the `s3` backend can be
+    tested offline; the `file` backend ignores it.
+  - `BundleEntry { record_id, exported_at, slug, uri, schema_version }` — one bundle in a
+    store, returned by `list` and `put` and accepted by `open`, and the shape both
+    consumers' `InboxEntryOut` is built from. A `ContractModel`, so it round-trips through
+    `model_dump(mode="json")`. **Every field is read from the entry's own `release.json`,
+    never parsed out of its key**: `record_id` and `exported_at` are the *first*
+    `provenance` entry's `id` and `exported_at` (not a `kind`-matched one — nothing
+    vinyl-specific lives here), `slug` is derived by `release_slug`, `schema_version` is
+    the bundle's own and may be *newer* than this install understands, and `uri` is the
+    entry's own address — what a consumer posts back to pick it.
+  - `BundleStore` — the three public methods of §5.1 and nothing else. `list(*,
+    all_versions=False)` returns the latest version per record, newest export first
+    (`all_versions=True` for every version); it reads the four entry fields out of the
+    raw JSON *without* model validation, so an entry written by a newer `mediacore` is
+    listed with its `schema_version` rather than hidden. `open(entry, *, verify=True,
+    dest=None)` goes through `read_bundle` instead — hashes, audio sizes, and a refusal
+    naming the upgrade when `schema_version` is newer — and with `dest` materialises the
+    whole bundle into that (absent or empty) directory. `put(release, files)` writes a
+    new entry through `write_bundle` and returns it. There is no delete: nothing here
+    overwrites or removes an entry.
+  - The key layout is `<root>/<record ULID>/<exported_at, ISO basic>/<slug>/` — a
+    re-export is a new version *beside* the old one, and `put` refuses a version key that
+    already exists (`StoreError`) rather than replacing it. `release_slug(release)`
+    derives `<artist>--<title>--<catalogue number>` over `normalize_text`.
+  - `S3BundleStore` depends on two things no import shows: `boto3` is **not** a runtime
+    dependency but the optional extra `mediacore[s3]` (a missing one raises `StoreError`
+    naming the extra), and its client comes from the **ambient boto3 credential chain** —
+    environment, shared config, or instance role. `mediacore` accepts no keys, holds
+    none, and the browser never talks to the bucket. `release.json` is uploaded last, so
+    an interrupted `put` leaves an entry `list` does not see.
+  - Faults *inside* a bundle stay `BundleError` (hash, size, schema upgrade);
+    `StoreError` covers store-level faults — an unusable URI, a malformed entry, an
+    attempted overwrite, and an `entry.uri` that is not an entry key of this store. That
+    last check is a boundary, not a nicety: §5.1's `preview-from-store` posts the URI back
+    from a browser.
 - `fixtures.py` — `its_saxy_bundle() -> Path`, the directory of the committed IT'S SAXY
   bundle, so consumer suites never hard-code a path. Depends on two things no import
   reveals: the repo-root `fixtures/its-saxy/` directory produced by
@@ -102,3 +144,9 @@ Release, read_bundle, normalize_text` — never from a submodule.
   `[tool.hatch.build.targets.wheel.force-include]` mapping `fixtures` to
   `mediacore/_fixtures` — the checkout copy wins, the packaged copy is the fallback for
   an installed wheel. Raises `FileNotFoundError` when neither is present.
+  `seed_its_saxy_store(store_uri) -> BundleEntry` puts that bundle into the store at
+  `store_uri` (§5.1, "Fixture") and is idempotent — a stack re-running its seed gets the
+  entry that is already there, which is what keeps seeding compatible with the
+  no-overwrite rule. It lives in the package, not in `scripts/`, because the dev stacks
+  that call it (vinylCatalogue, humanNetworkMap, musicMap) install `mediacore` as a wheel
+  and have no access to this repo's scripts.

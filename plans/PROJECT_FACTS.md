@@ -7,18 +7,21 @@ executors share no context, so repeating a fact across plans in a batch is corre
 
 ## What this repo is
 
-- A contract package, nothing else. `INTEGRATION.md` §3–5 and §11 are the spec the
+- A contract package, nothing else. `INTEGRATION.md` §3–5.1 and §11 are the spec the
   code implements; a plan quotes the section it implements rather than restating it.
 - Package name `mediacore`, layout `src/mediacore/` (src layout), `hatchling` build,
-  Python ≥ 3.11, Pydantic v2 only — no other runtime dependencies. Dev extras: `pytest`,
-  `ruff`.
+  Python ≥ 3.11, Pydantic v2 only — no other **runtime** dependencies. Optional extra
+  `s3` = `boto3`, needed only by an `s3://` bundle store and imported lazily, so the
+  package still installs and imports with nothing but Pydantic. Dev extras: `pytest`,
+  `ruff`, `boto3`, `moto[s3]`.
 
 ## Types
 
 - All wire shapes live in `src/mediacore/release.py`; refs helpers in
   `src/mediacore/refs.py`; the fold in `src/mediacore/normalize.py`; bundle I/O in
-  `src/mediacore/bundle.py`. Public surface is re-exported from
-  `src/mediacore/__init__.py`; consumers import `from mediacore import Release, ...`.
+  `src/mediacore/bundle.py`; the bundle store in `src/mediacore/store.py`. Public surface
+  is re-exported from `src/mediacore/__init__.py`; consumers import
+  `from mediacore import Release, ...`.
 - Models are `extra="forbid"` and round-trip through `model_dump(mode="json")` /
   `model_validate` without loss.
 - Every `refs` field is **evidence recorded by an external source**, never identity
@@ -41,6 +44,14 @@ executors share no context, so repeating a fact across plans in a batch is corre
   `mediacore` than the bundle was written with.
 - `write_bundle` is atomic: it stages into a sibling temp directory and swaps it into
   place. A failed write leaves the previous `dest` intact, or nothing at all.
+- `mediacore.store` (§5.1) adds `open_store(uri)` → `BundleStore` with exactly
+  `list` / `open` / `put` and no delete, over `file://` and `s3://`. Key layout
+  `<root>/<record ULID>/<exported_at, ISO basic>/<slug>/<bundle>`; `BundleEntry
+  { record_id, exported_at, slug, uri, schema_version }` is always read from the entry's
+  `release.json` (first `provenance` entry, plus a derived slug), never from the key. A
+  re-export is a new version beside the old and `put` refuses an existing one; `open`
+  verifies through `read_bundle` and refuses a newer `schema_version`, while `list`
+  reports it without validating. No plan may add a delete, an overwrite, or key parsing.
 - `normalize_text` must equal `vinylcat.normalize.normalize_text`
   (`~/dev/vinylCatalogue/src/vinylcat/normalize.py`): NFKD, drop combining marks,
   uppercase, collapse whitespace, strip. `normalize_catno` likewise strips non-alnum.
@@ -54,6 +65,10 @@ executors share no context, so repeating a fact across plans in a batch is corre
   script is idempotent. `exported_at` in the fixture is a fixed constant.
 - `mediacore.fixtures.its_saxy_bundle() -> Path` returns that directory so consumer
   test suites can load it without knowing the install path.
+- `mediacore.seed_its_saxy_store(store_uri) -> BundleEntry` puts that bundle into a
+  bundle store and is idempotent; it ships in the package because the consuming dev
+  stacks install the wheel and cannot run this repo's `scripts/`.
+  `scripts/seed_its_saxy_store.py <uri>` is the local wrapper.
 
 ## Commands
 
@@ -68,8 +83,12 @@ Build plans have no bash — these belong in verify plans and interactive plans.
 ## Tests
 
 - Tests mirror `src/`: `tests/test_release.py`, `tests/test_refs.py`,
-  `tests/test_normalize.py`, `tests/test_bundle.py`, `tests/test_fixture.py`.
+  `tests/test_normalize.py`, `tests/test_bundle.py`, `tests/test_store.py`,
+  `tests/test_fixture.py`.
 - No behavioural spec file; `INTEGRATION.md` is quoted instead.
+- The `s3://` store is tested for real, offline, with `moto`'s `mock_aws`; every store
+  behaviour runs against both backends through one parametrized fixture. A skipped s3
+  test would read as a pass, so there are none.
 
 ## Conventions and gotchas
 

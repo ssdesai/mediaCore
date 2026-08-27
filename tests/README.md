@@ -2,7 +2,7 @@
 
 pytest suite for `mediacore`, mirroring `src/mediacore/`. Run from the repo root with
 `.venv/bin/python -m pytest -q`. There is no behavioural spec file in this repo:
-`INTEGRATION.md` §3–5 and §11 are the contract, and each test quotes the section it
+`INTEGRATION.md` §3–5.1 and §11 are the contract, and each test quotes the section it
 pins.
 
 - `conftest.py` — shared builders: `sha256_bytes`, `make_release(**overrides)` (a
@@ -43,3 +43,24 @@ pins.
   each `AudioFile`'s actual byte size against `size_bytes` (`verify=False` skips it).
   The mid-copy test monkeypatches `mediacore.bundle.shutil.copyfile`,
   which is why the module itself is imported alongside the public names.
+- `test_store.py` — the §5.1 bundle store. Every behavioural test runs **twice**, against
+  the `file://` backend and against a real `s3://` one served in-process by `moto`
+  (`mock_aws`), so the s3 path is covered offline in the gate instead of skipped; the
+  `harness` fixture yields the store plus the raw write and URI builder a test needs to
+  fake what the API refuses to create. Pins: scheme dispatch and every rejected URI shape
+  (bare path, `http://`, a `file://` naming another host, an `s3://` with no bucket or
+  with credentials in it); `put`/`list`/`open` round trip and the documented key layout;
+  a re-export as a new version beside the old, with `put` refusing the existing one; the
+  `list`/`open` asymmetry on a newer `schema_version` (listed with its version — even
+  carrying a field this install's models forbid — but refused by `open` with the upgrade
+  message); `open` catching a bad hash and a wrong audio size, and `verify=False`
+  skipping both; `open(dest=…)` materialising the whole bundle and refusing a non-empty
+  destination; entry fields coming from `release.json` under a deliberately misleading
+  key; malformed entries raising `StoreError`; a directory with no `release.json` not
+  being an entry; `open` refusing a foreign or wrong-depth `entry.uri`; the slug fold;
+  and `seed_its_saxy_store` seeding the committed fixture into a `file://` store, twice,
+  idempotently. `test_s3_store_names_the_extra_when_boto3_is_missing` sets
+  `sys.modules["boto3"] = None` to make the import fail, and
+  `test_s3_store_uses_the_ambient_credential_chain` builds the client with no injection
+  so the ambient path itself is exercised — under fake credentials from `monkeypatch`,
+  never a developer profile.

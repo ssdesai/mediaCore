@@ -193,15 +193,25 @@ s3://<bucket>/<prefix>               hosted: the same layout under a key prefix
 - **`BundleEntry { record_id, exported_at, slug, uri, schema_version }`** — `record_id`
   is the `vinylcat:record` ULID, `exported_at` the export timestamp, `uri` the entry's
   own address (what a consumer posts back to pick it). All read from the entry's
-  `release.json`, never parsed out of its key.
+  `release.json`, never parsed out of its key. Concretely (WP7a): `record_id` and
+  `exported_at` are the **first `provenance` entry's** `id` and `exported_at` — for a
+  vinylCatalogue export that is the record ULID, without the value `vinylcat` entering
+  the package — and `slug` is *derived* by `release_slug(release)` as
+  `<artist>--<title>--<catalogue number>` folded over `normalize_text`, because
+  `release.json` carries no slug field to read.
 - **Layout and versions.** `<root>/<record ULID>/<exported_at, ISO basic>/<bundle>`. A
   re-export is a new version beside the old one; `list()` returns the latest per record
-  (`all_versions=True` for the rest). Nothing in `mediacore` overwrites or deletes an
-  entry. Consumers never delete either.
+  (`all_versions=True` for every version, latest included). Nothing in `mediacore`
+  overwrites or deletes an entry — `put` *refuses* a version key that already exists
+  (whole-second granularity), so the rule is enforced, not merely intended. Consumers
+  never delete either.
 - **`open` verifies like `read_bundle`** — hashes, audio sizes, and a `schema_version`
   newer than the running `mediacore` is refused with the upgrade message. `list` does
   not refuse: such an entry is listed with its `schema_version` so a page can say
-  "upgrade to import this" instead of hiding it.
+  "upgrade to import this" instead of hiding it. `open(entry, dest=…)` also materialises
+  the whole bundle — `release.json` and every media file — into an empty `dest`, which is
+  how a consumer gets the bytes out of a remote store for the import path below without
+  a fourth method.
 - **`s3://`** uses the ambient boto3 credential chain; `mediacore` takes no keys and the
   browser never sees the store. `boto3` is the optional extra `mediacore[s3]`.
 - **Consumer inbox rule.** The inbox is the store's entries whose `record_id` appears in
@@ -530,6 +540,42 @@ by an agent briefed with this file.
 
 ## 13. Decisions log
 
+- **2026-08-27 (WP7a) — `mediacore.store` implementation calls.** Taken while building
+  §5.1; each one is either something §5.1 left open or a place the code is more specific
+  than the design. `mediacore` **0.2.0** (§12: a module, not a field).
+  - **The entry keys on the first `provenance` entry**, not on a `vinylcat`-kinded one
+    and not on `refs["vinylcat:record"]` (which a bundle does not carry — the ULID is
+    provenance, §4). `record_id`/`exported_at` are that entry's `id`/`exported_at`, so
+    nothing vinyl-specific enters `src/` and `cd-rip`/`digital` exports key identically.
+  - **`slug` is derived, not carried:** `release_slug` = `<artist>--<title>--<catalogue
+    number>`, each segment folded over `normalize_text` and reduced to `[a-z0-9-]`,
+    which reproduces §11's recorded slug from the release alone. Nothing survives the
+    fold → `release`.
+  - **`open(entry, dest=…)`** materialises the bundle into an empty directory. §5.1
+    fixes the interface at three methods but the import path (§5.1 "One import path")
+    needs the media bytes; a keyword on `open` serves that without a fourth method.
+  - **`put` refuses an existing version** with `StoreError` rather than overwriting, and
+    versions are keyed to whole seconds. **`all_versions=True` returns every version**,
+    latest included.
+  - **A malformed entry is reported, not skipped:** `list` raises `StoreError` naming the
+    entry when its `release.json` is unreadable or has no provenance. A directory with no
+    `release.json` at all is simply not an entry — which is also why the `s3` backend
+    uploads `release.json` last, so an interrupted `put` is invisible rather than half
+    there.
+  - **`entry.uri` is untrusted input** (a browser posts it back): `open` refuses a URI
+    that is not exactly one entry key under this store's own root.
+  - **Faults inside a bundle stay `BundleError`** (hash, size, schema upgrade);
+    `StoreError` is for store-level faults. A consumer catches the same exception whether
+    the bundle arrived by upload or from a store.
+  - **The `s3` backend is tested, not stubbed:** `moto` is a dev extra and the suite runs
+    both backends through the same tests offline; `open_store(uri, s3_client=…)` injects
+    a client, and with none it builds one from the ambient chain. `mediacore[s3]` is
+    boto3 alone.
+  - **Fixture seeding ships in the package** as `seed_its_saxy_store(uri)` (dev stacks
+    install the wheel and cannot reach this repo's `scripts/`), and is idempotent: a
+    second run returns the entry already there instead of colliding with the no-overwrite
+    rule.
+
 - **2026-08-27 — Transport generalised to a URI-addressed bundle store (§5.1).**
   Supersedes "bundle folder on disk" (2026-08-25) as the *shared* transport; the folder
   is now the `file://` backend and browser upload stays as the baseline. A record is
@@ -573,6 +619,21 @@ by an agent briefed with this file.
 ## 14. Open questions and follow-ups
 
 Raised by an implementing agent → recorded here with the answer.
+
+- 2026-08-27 (WP7a) — **`BundleEntry` reports `record_id` without the provenance
+  `kind`.** The inbox rule (§5.1) tells a consumer to look for `vinylcat:record` in its
+  own `refs` bags, but the entry does not say the id *is* a `vinylcat` one — the store
+  deliberately keys on the first provenance entry whatever its kind. Today every export
+  is `vinylcat`, so 7c/7d hard-code that key. If a second kind ever writes to a store,
+  either `BundleEntry` gains `kind` (a §5.1 change and a consumer re-pin) or consumers
+  match on any `<kind>:record`. Not resolved now: adding a sixth field for a producer
+  that does not exist yet is speculative.
+- 2026-08-27 (WP7a) — **`list()` reads every entry's `release.json`.** On `s3://` that
+  is one `GET` per version, so a store holding thousands of versions makes an inbox page
+  slow. Deliberate for now — it is what "never parsed out of its key" costs, and the
+  real store holds one record per signed-off release. If it bites, the fix is an index
+  object written beside the root by `put` and refreshed from a full listing, not parsing
+  the keys.
 
 - 2026-08-26 (WP1) — **Fixture lacks track durations.** The live IT'S SAXY record has
   `duration` on every track (`A1 1:57`, `A2 2:37`, …); §11 above omitted them, so

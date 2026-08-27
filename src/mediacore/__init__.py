@@ -5,7 +5,7 @@ what `INTEGRATION.md` §3–5 pins."""
 
 from __future__ import annotations
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 from mediacore.bundle import (
     BUNDLE_MEDIA_DIRNAME,
@@ -19,6 +19,7 @@ from mediacore.bundle import (
 from mediacore.fixtures import (
     ITS_SAXY_SLUG,
     its_saxy_bundle,
+    seed_its_saxy_store,
 )
 from mediacore.normalize import (
     normalize_catno,
@@ -66,6 +67,13 @@ from mediacore.release import (
     Track,
     validate_bundle_file,
 )
+from mediacore.store import (
+    BundleEntry,
+    BundleStore,
+    StoreError,
+    open_store,
+    release_slug,
+)
 
 __all__ = [
     "BARCODE_RELEASE",
@@ -73,7 +81,9 @@ __all__ = [
     "BUNDLE_FILE_RE",
     "BUNDLE_MEDIA_DIRNAME",
     "BUNDLE_RELEASE_FILENAME",
+    "BundleEntry",
     "BundleError",
+    "BundleStore",
     "DISCOGS_ARTIST",
     "DISCOGS_LABEL",
     "DISCOGS_MASTER",
@@ -103,15 +113,19 @@ __all__ = [
     "Refs",
     "Release",
     "Sha256Hex",
+    "StoreError",
     "Track",
     "__version__",
     "bundle_entries",
     "its_saxy_bundle",
     "normalize_catno",
     "normalize_text",
+    "open_store",
     "parse_ref_uri",
     "read_bundle",
     "ref_uri",
+    "release_slug",
+    "seed_its_saxy_store",
     "sha256_file",
     "validate_bundle_file",
     "validate_ref_key",

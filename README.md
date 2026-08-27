@@ -2,7 +2,8 @@
 
 The shared contract between the owner's recorded-media repos: a neutral `Release`
 schema, refs (evidence recorded by external sources, never identity), the shared
-name-normalisation fold, a bundle reader/writer, and one real-world test fixture.
+name-normalisation fold, a bundle reader/writer, a URI-addressed bundle store
+(`file://` and `s3://`), and one real-world test fixture.
 Python package `mediacore`, no app code, no database.
 
 `INTEGRATION.md` is the cross-repo design — who produces a release bundle
@@ -20,15 +21,18 @@ every decision taken along the way. Start there.
 | `src/mediacore/` | The package — see its README. |
 | `tests/` | pytest suite mirroring `src/`. |
 | `fixtures/its-saxy/` | The contract fixture: a complete release bundle with real metadata and placeholder media. |
-| `scripts/` | `make_fixture_its_saxy.py` — regenerates the fixture deterministically. |
+| `scripts/` | `make_fixture_its_saxy.py` — regenerates the fixture deterministically; `seed_its_saxy_store.py` — seeds it into a bundle store. |
 
 ## Consuming
 
 ```
-mediacore @ git+https://github.com/ssdesai/mediaCore.git@v0.1.0
+mediacore @ git+https://github.com/ssdesai/mediaCore.git@v0.2.0
+mediacore[s3] @ git+https://github.com/ssdesai/mediaCore.git@v0.2.0   # for an s3:// store
 ```
 
-Pin a tag, never a branch. Version policy is in `INTEGRATION.md` §12.
+Pin a tag, never a branch. Version policy is in `INTEGRATION.md` §12. The `s3` extra
+pulls `boto3`; a consumer on a `file://` store (or on none) needs nothing beyond
+`pydantic`.
 
 ## Working in this repo
 
