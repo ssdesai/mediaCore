@@ -81,6 +81,7 @@ mkdir -p "$PROJECTS" "$FEATURE_DIR"
 # write_manifest [PINS_JSON] — PINS_JSON is the `subagents` array, default empty.
 write_manifest() {
   local pins="${1:-[]}"
+  local excludes="${2:-[]}"
   cat > "$FEATURE_DIR/README.md" <<MANIFEST
 # $SLUG
 
@@ -91,7 +92,7 @@ Fixture feature for self/tests/subagent-capture.sh.
   "slug": "$SLUG",
   "branches": ["$BRANCH"],
   "session_window": {"from": "$WINDOW_FROM", "to": "$WINDOW_TO"},
-  "exclude_sessions": [],
+  "exclude_sessions": $excludes,
   "subagents": $pins
 }
 \`\`\`
@@ -223,6 +224,22 @@ check "8. a subagent pinned by two features is warned about, naming the other" \
 rm -r "$AT/self/features/twin"
 capture > "$TMP/out8b.txt"
 check "8b. and not once the twin is gone" "! grep -q 'also pinned' '$TMP/out8b.txt'"
+
+# ── 9. a pin survives a manual exclusion of its parent ────────────────────────
+# Exclude the on-branch parent P and pin one of its two subagents (plus the main-branch
+# architect). P's own context cost must go; the pinned children must stay.
+write_manifest "[\"$AGENT_3\", \"$AGENT_1\"]" "[\"$SESSION_P\"]"
+capture > "$TMP/out9.txt"
+check "9. a manually excluded parent contributes no main-context cost" \
+  "near '$(field "d['cost_usd']['main']")' 0"
+check "9b. but its pinned subagent is still priced, as pinned" \
+  "[ \"\$(field \"sorted((s['agent_id'], s['selected_by']) for s in d['subagents'])\")\" = \"[('$AGENT_1', 'pinned'), ('$AGENT_3', 'pinned')]\" ]"
+check "9c. its unpinned sibling is not (exclusion closes the parent route)" \
+  "! grep -q \"$AGENT_2\" '$PLANNING'"
+check "9d. and no unmatched-pin warning is raised" "! grep -q 'pinned subagent' '$TMP/out9.txt'"
+check "9e. the excluded parent is recorded as excluded, not as a session" \
+  "[ \"\$(field \"'$SESSION_P' in d['excluded_session_ids'] and '$SESSION_P' not in [s['session_id'] for s in d['sessions']]\")\" = True ]"
+write_manifest "[\"$AGENT_3\"]"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "subagent-capture: all ok"; else echo "subagent-capture: $fails FAIL"; exit 1; fi
