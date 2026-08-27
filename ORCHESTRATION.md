@@ -61,6 +61,12 @@ warm context, persisted, at a fraction of the cost.
   manifest's `subagents` (find it with `capture_planning.py --list-subagents`), and do
   it while the transcript still exists — the coordinator's own cost is claimed the
   same way, with `main` in `branches` and a window around the run.
+- **Every delegate brief opens with `feature: <repo>/<slug>`** — the repo's directory
+  name and the feature directory it is for, on the first line, before anything else.
+  That line is what `capture_planning.py --list-subagents --unclaimed` reads to
+  propose the pin, and what a pin is checked against; a delegate without it can be
+  attributed only by a human reading its prompt. After a run, `--unclaimed` must
+  come back empty before the cost is quoted.
 
 ## NOTES.md
 
