@@ -1,20 +1,25 @@
-# Python
+# This file ships with the subtree, so it must hold for both a standalone agentTooling
+# checkout and a vendored copy inside a consuming repo. Patterns are relative to this
+# directory in both cases, and the consuming repo's own plans/**/ patterns do not reach
+# in here.
+
+# run-plans.sh / run-verify.sh / run-review.sh raw event streams from --self runs — 0.2-1.5 MB each,
+# kept on disk as the full record of what an executor did, never committed.
+self/**/*.stream.jsonl
+self/**/*.logfifo
+
+# Output of self/gate.sh — regenerated on every --self batch, read by the verify and
+# review plans. The glob also covers gate-report.<NN>.txt, written per level sentinel.
+self/gate-report*.txt
+
+# The review pass's verdict for a --self batch, used verbatim as the body of the PR
+# self/pr.sh opens. See the consuming-repo note in the root .gitignore.
+self/review-report.md
+
+# analysis/ scripts are stdlib-only and run directly, but python still writes these.
 __pycache__/
-*.pyc
-*.egg-info/
-.venv/
-venv/
-.pytest_cache/
-.ruff_cache/
-dist/
-build/
+*.py[cod]
 
-# OS
+# macOS. A tracked .DS_Store aborts `git subtree add/pull/push`, which require a clean
+# working tree even for changes unrelated to the prefix.
 .DS_Store
-
-# run-plans.sh / run-verify.sh / run-review.sh raw event streams — kept next to a failed
-# plan for debugging, and next to a completed one as the full record of what the model did.
-plans/**/*.stream.jsonl
-plans/**/*.logfifo
-plans/gate-report*.txt
-plans/review-report.md
