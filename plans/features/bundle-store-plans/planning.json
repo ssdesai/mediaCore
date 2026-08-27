@@ -1,0 +1,70 @@
+{
+  "slug": "bundle-store-plans",
+  "captured_at": "2026-08-27T23:02:00.801972+00:00",
+  "manifest_branches": [
+    "bundleStorePlans"
+  ],
+  "manifest_subagents": [
+    "a6c2bbe4b2c558baa"
+  ],
+  "sessions": [],
+  "subagents": [
+    {
+      "agent_id": "a6c2bbe4b2c558baa",
+      "parent_session_id": "3c138fa0-681e-4522-80a7-27fe4941ed6f",
+      "date": "2026-08-27",
+      "selected_by": "pinned",
+      "cross_repo": true
+    }
+  ],
+  "excluded_session_ids": [
+    "40c68115-c948-4fde-a746-b0fcbe74b96d",
+    "5db7b076-23b6-44c1-aea7-372ab01bdd3b",
+    "8b07ce17-770a-4c81-adf1-71bce1495f85",
+    "99310995-0e2a-4d04-8735-fa75886bce74",
+    "9ed78135-9937-4dd3-9fb8-6ffb1b961c1f",
+    "a2ec6f62-045a-4456-9ced-9875e0147794",
+    "a9409350-0e24-4c2e-989e-05f7ce2d02d0",
+    "aceb7e9d-36ef-4179-8117-4ce02b0e511a",
+    "ad66553c-7f54-4d23-96aa-80589b3ca381",
+    "b229960d-1552-4e97-8219-49333cdbd80e",
+    "ca6b1255-7e63-4416-8b7d-a7abde26683b",
+    "e2e7c346-f19e-44de-a59f-85a70e0c9692",
+    "f200632a-aaeb-4695-b3b0-0618cf6c107f"
+  ],
+  "priced": [
+    {
+      "session_id": "3c138fa0-681e-4522-80a7-27fe4941ed6f",
+      "agent_id": "a6c2bbe4b2c558baa",
+      "model": "claude-opus-5",
+      "is_sidechain": true,
+      "date": "2026-08-27",
+      "tokens": {
+        "input": 70,
+        "output": 2594,
+        "cache_read": 4132672,
+        "cache_creation_5m": 170814,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 3.1991235,
+      "rates_applied": {
+        "model": "claude-opus-5",
+        "input": 5,
+        "output": 25,
+        "cache_read": 0.5,
+        "cache_creation_5m": 6.25,
+        "cache_creation_1h": 10.0,
+        "tier": "standard"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 0.0,
+    "sidechain": 3.1991235,
+    "subagents": 3.1991235,
+    "total": 3.1991235,
+    "total_is_partial": false
+  },
+  "rates_source": "agentTooling/analysis/pricing.py RATES_VERIFIED=2026-08-22",
+  "warnings": []
+}
