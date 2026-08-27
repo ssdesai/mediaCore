@@ -137,6 +137,7 @@ shell_scripts=(
   self/tests/cost-recovery.sh
   self/tests/capture-guard.sh
   self/tests/timestamps-are-utc.sh
+  self/tests/subagent-capture.sh
   run-escalation-plan.sh
   templates/plans/gate.sh
   templates/plans/pr.sh
@@ -163,6 +164,7 @@ record "tiered gates self-test" bash self/tests/tiered-gates.sh
 record "cost recovery self-test" bash self/tests/cost-recovery.sh
 record "capture guard self-test" bash self/tests/capture-guard.sh
 record "timestamps are utc self-test" bash self/tests/timestamps-are-utc.sh
+record "subagent capture self-test" bash self/tests/subagent-capture.sh
 
 echo "=== gate: python syntax ==="
 # Compiles each file independently — it does NOT exercise the bare cross-imports

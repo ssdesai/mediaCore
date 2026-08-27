@@ -1,7 +1,7 @@
 # self/tests/fixtures
 
-Shell helpers `self/tests/cost-recovery.sh`, `self/tests/capture-guard.sh` and
-`self/tests/timestamps-are-utc.sh` source to build their throwaway corpora. These are function libraries, not data: the actual
+Shell helpers `self/tests/cost-recovery.sh`, `self/tests/capture-guard.sh`,
+`self/tests/timestamps-are-utc.sh` and `self/tests/subagent-capture.sh` source to build their throwaway corpora. These are function libraries, not data: the actual
 transcripts and sidecars are synthesized into a `mktemp -d` at test run time, never
 committed here as JSON blobs.
 
@@ -18,7 +18,13 @@ committed here as JSON blobs.
   `gitBranch` — alongside the same usage block. Separate from `transcript_line` because the
   two consumers read different halves: `recover_attempts.py` finds a transcript by filename
   and needs only usage, while `capture_planning.py` decides membership from those three
-  fields, and is blind to a line without them.
+  fields, and is blind to a line without them. `subagent_line SESSION_ID AGENT_ID CWD
+  BRANCH MESSAGE_ID MODEL TIMESTAMP INPUT OUTPUT CACHE_READ CACHE_5M CACHE_1H` prints one
+  billable line of a *subagent* transcript — the parent's `sessionId`/`cwd`/`gitBranch`
+  (inherited at spawn, never the subagent's own) plus `agentId` and `isSidechain: true` —
+  to be written under `<projects>/<SESSION_ID>/subagents/agent-<AGENT_ID>.jsonl`;
+  `subagent_prompt_line SESSION_ID AGENT_ID CWD BRANCH TIMESTAMP TEXT` prints its unbilled
+  opening `user` line, the brief `--list-subagents` shows.
 - `usage/build-usage.sh` — `write_usage_json PATH ATTEMPT...` writes a minimal `usage.json`
   sidecar with one `attempts[]` entry per `"session_id:outcome:total_cost_usd"` argument
   (`total_cost_usd` may be the literal `null`), in the shape `analysis/README.md` documents.

@@ -12,6 +12,10 @@ to the machinery is made once and pulled everywhere.
 - `interactive/` — standing runbooks that outlive any one feature (e.g. first-run
   setup). A feature's own bash-heavy steps live in `features/<slug>/interactive/`
   instead.
+- `experiments/` — one directory per A/B of the doctrine or the runner (or of the
+  delegation tier itself): the checklist written before either arm runs, the behaviour
+  score script, batch logs and the scorecard. See `../agentTooling/EXPERIMENTS.md`.
+  Absent until the repo runs one.
 - `PROJECT_FACTS.md` — repo-specific facts every plan must pin. Read this before authoring.
 - `gate.sh` — *seeded once from the skeleton by `sync-plans.sh` on first run, then
   repo-owned and never overwritten again* — same treatment as `PROJECT_FACTS.md`. Runs this

@@ -220,6 +220,14 @@ The manifest ends with a machine-readable fence:
 - `exclude_sessions` — optional escape hatch for sessions inside that window that still
   belong to a different feature. Both `session_window` and `exclude_sessions` are
   optional and usually absent.
+- `subagents` — optional. Agent ids (`agent-<id>.jsonl` under the parent session's
+  `subagents/` directory) to claim outright. Needed only when the delegate's parent was
+  not on the feature's branch — a plan author spawned from a coordinator sitting on
+  `main` inherits `main` as its `gitBranch` and can never be branch-matched. A delegate
+  whose parent is selected is claimed with it, by window, without a pin. A pin outranks
+  an `exclude_sessions` entry on its parent (runner sessions excepted), so a coordinator
+  can be excluded from a feature while its architect is kept.
+  `capture_planning.py --list-subagents` prints the ids with each one's cost and brief.
 
 **The windows are a patch over a workflow problem, not the fix for it.** Both fields exist
 because one session, or one branch, held work for more than one feature. If you keep to one

@@ -18,6 +18,17 @@ never summed across sessions first and priced once. A feature whose planning pha
 straddles the Sonnet 5 intro-pricing expiry would otherwise have every token priced
 at whichever rate wins after aggregation, silently mispricing part of the feature.
 
+Subagent transcripts — `<session-id>/subagents/agent-<id>.jsonl` beside the parent's
+file — are priced too. They carry the *parent's* `gitBranch` and `cwd`, not their own
+(a plan author spawned from a coordinator on `main` says `main` even when its whole
+job was one feature branch), so they cannot be selected by branch. Two routes in:
+a subagent whose parent session is selected is priced when its own start falls in
+the `session_window`; and a manifest may pin `"subagents": ["<agent-id>"]` to claim
+one whose parent is not selected at all — the coordinator-on-main case. Pinned
+subagents bypass the branch and window filters: the pin is the human's word.
+`--list-subagents [--since DATE]` prints every subagent this repo's transcripts
+hold, with its cost and opening prompt, which is how to find an id to pin.
+
 Populates only what is not yet populated. A feature whose `planning.json` already
 carries a `captured_at` is skipped — nothing rewrites a frozen record without being
 asked, and the skip happens before the transcript scan, so a corpus-wide run costs
@@ -25,6 +36,7 @@ almost nothing. `--recapture` rebuilds anyway; `--all` walks every feature.
 
 Usage: python3 agentTooling/analysis/capture_planning.py <slug>
        python3 agentTooling/analysis/capture_planning.py --all [--recapture]
+       python3 agentTooling/analysis/capture_planning.py --list-subagents [--since YYYY-MM-DD]
 """
 
 from __future__ import annotations
@@ -242,6 +254,160 @@ def load_transcript_lines(path):
     return lines
 
 
+def subagent_transcript_paths(transcript_dir, session_id):
+    """The subagent transcripts of one session: `<transcript_dir>/<session_id>/subagents/
+    agent-*.jsonl`. Sorted, so a capture is deterministic. Empty when the session spawned
+    none, which is every runner session and most interactive ones."""
+    subagents_dir = transcript_dir / session_id / "subagents"
+    if not subagents_dir.is_dir():
+        return []
+    return sorted(subagents_dir.glob("agent-*.jsonl"))
+
+
+def agent_id_of(path, lines):
+    """A subagent's id: the `agentId` its lines carry, else the filename minus `agent-`.
+    The two agree on every transcript seen so far; the fallback is for a file whose
+    first lines are attachments without the field."""
+    for line in lines:
+        agent_id = line.get("agentId")
+        if isinstance(agent_id, str) and agent_id:
+            return agent_id
+    return path.stem[len("agent-"):] if path.stem.startswith("agent-") else path.stem
+
+
+def first_user_text(lines, limit=80):
+    """The opening prompt of a transcript, truncated — what `--list-subagents` shows so
+    a human can tell a plan author from a reviewer from a reconnaissance one-shot."""
+    for line in lines:
+        if line.get("type") != "user":
+            continue
+        content = (line.get("message") or {}).get("content")
+        if isinstance(content, list):
+            content = " ".join(
+                block.get("text", "") for block in content if isinstance(block, dict)
+            )
+        if isinstance(content, str) and content.strip():
+            return " ".join(content.split())[:limit]
+    return ""
+
+
+def check_unmatched_subagents(pinned, reachable_agent_ids):
+    """Warn for each pinned subagent id no reachable transcript carries. Same shape as
+    `check_unmatched_branches`, same two indistinguishable causes: a mistyped id, or a
+    transcript that has aged out — and the same consequence, a feature quietly short by
+    exactly the cost it meant to claim."""
+    warnings = []
+    for agent_id in sorted(pinned):
+        if agent_id not in reachable_agent_ids:
+            warnings.append(
+                f"pinned subagent {agent_id!r} matches no transcript under this repo's "
+                "project directories — a mistyped id, or its parent session has aged "
+                "out (run --list-subagents to see what is still on disk)"
+            )
+    return warnings
+
+
+def check_subagent_overlap(features_dirs, slug, manifest):
+    """Warn when another manifest in either corpus pins one of this feature's subagent
+    ids. A pin bypasses the window filter, so nothing else keeps two features from
+    both claiming the same architect — this is the whole overlap check for pins."""
+    pinned = set(manifest.get("subagents", []) or [])
+    if not pinned:
+        return []
+    warnings = []
+    readmes = sorted(
+        path for features_dir in features_dirs for path in features_dir.glob("*/README.md")
+    )
+    for readme in readmes:
+        other_slug = readme.parent.name
+        if other_slug == slug:
+            continue
+        try:
+            other = parse_manifest(readme)
+        except ValueError:
+            continue
+        shared = pinned & set(other.get("subagents", []) or [])
+        for agent_id in sorted(shared):
+            warnings.append(
+                f"subagent {agent_id!r} is also pinned by feature {other_slug!r} — "
+                "its cost is being counted twice"
+            )
+    return warnings
+
+
+def list_subagents(sessions_dir, since):
+    """Print every subagent transcript reachable from this repo's project directories:
+    start date, agent id, parent session, the parent's branch, the model, its priced
+    cost and its opening prompt. `since` (a UTC date string) drops older ones. This is
+    the discovery step for a manifest's `subagents` pin — the ids are not written
+    anywhere a human would otherwise read."""
+    session_dir_str = str(sessions_dir)
+    rows = []
+    for transcript_dir in find_transcript_dirs(sessions_dir):
+        for session_dir in sorted(p for p in transcript_dir.iterdir() if p.is_dir()):
+            for agent_path in subagent_transcript_paths(transcript_dir, session_dir.name):
+                lines = load_transcript_lines(agent_path)
+                if not lines:
+                    continue
+                if not any(
+                    line.get("cwd") == session_dir_str
+                    or (
+                        isinstance(line.get("cwd"), str)
+                        and line["cwd"].startswith(session_dir_str + "/")
+                    )
+                    for line in lines
+                ):
+                    continue
+                timestamps = [
+                    moment
+                    for moment in (to_utc(line.get("timestamp")) for line in lines)
+                    if moment is not None
+                ]
+                if not timestamps:
+                    continue
+                start = min(timestamps).date().isoformat()
+                if since and start < since:
+                    continue
+                branch = next(
+                    (line.get("gitBranch") for line in lines if line.get("gitBranch")), ""
+                )
+                totals = {}
+                for model, usage, _ in iter_billable_messages(lines):
+                    add_usage(totals, model, usage)
+                cost = 0.0
+                models = []
+                for model in sorted(totals):
+                    priced, _ = compute_cost(model, totals[model], as_of=start)
+                    cost += priced or 0.0
+                    models.append(model)
+                rows.append(
+                    (
+                        start,
+                        agent_id_of(agent_path, lines),
+                        session_dir.name,
+                        branch,
+                        "/".join(models),
+                        cost,
+                        first_user_text(lines),
+                    )
+                )
+    rows.sort()
+    if not rows:
+        print("no subagent transcripts found")
+        return
+    print("date        agent-id           parent    branch            model             cost  opening prompt")
+    for start, agent_id, parent, branch, model, cost, prompt in rows:
+        print(
+            f"{start}  {agent_id:<18} {parent[:8]}  {branch[:16]:<16}  "
+            f"{model[:16]:<16} ${cost:8.2f}  {prompt}"
+        )
+    print(
+        f"{len(rows)} subagent(s). Pin one to a feature with \"subagents\": [\"<agent-id>\"] "
+        "in its manifest; it is then priced regardless of its parent's branch or the "
+        "session_window."
+    )
+
+
 def windows_overlap(a, b):
     """Whether two normalized session_windows can both claim the same session.
 
@@ -378,7 +544,7 @@ def check_unmatched_branches(branches, branches_seen):
     ]
 
 
-def check_frozen_cost(output_path, reachable_session_ids, excluded_ids):
+def check_frozen_cost(output_path, reachable_session_ids, excluded_ids, reachable_agent_ids=()):
     """Sessions the prior capture priced that this run would silently drop forever.
 
     `planning.json` is a frozen record, and the transcripts it was derived from are on
@@ -412,7 +578,11 @@ def check_frozen_cost(output_path, reachable_session_ids, excluded_ids):
     manifest edit — narrowing a `session_window`, correcting `branches` — stays
     reachable and the guard stays quiet, which is the case that must not become noisy.
 
-    Returns (lost_session_ids, prior_total). An empty list means the write is safe.
+    Subagents are guarded the same way: a prior `subagents[]` entry whose transcript this
+    scan could not reach (`reachable_agent_ids`, collected at the same point of proof as
+    the session set) is lost, and is reported as `agent-<id>` so the two kinds read apart.
+
+    Returns (lost_ids, prior_total). An empty list means the write is safe.
     """
     if not output_path.exists():
         return [], 0.0
@@ -433,6 +603,11 @@ def check_frozen_cost(output_path, reachable_session_ids, excluded_ids):
         if entry.get("session_id")
         and entry["session_id"] not in reachable_session_ids
         and entry["session_id"] not in excluded_ids
+    )
+    lost += sorted(
+        f"agent-{entry['agent_id']}"
+        for entry in prior.get("subagents") or []
+        if entry.get("agent_id") and entry["agent_id"] not in reachable_agent_ids
     )
     return lost, prior_total
 
@@ -479,6 +654,64 @@ def feature_slugs(features_dir):
     return sorted(path.parent.name for path in features_dir.glob("*/README.md"))
 
 
+def select_parent(
+    lines, session_id, window, warnings, matched_session_ids,
+    session_start, session_end, session_branch, matching_branches, totals,
+):
+    """Decide one branch-matched session's window membership and, if selected, price it.
+    Returns whether it was selected. Split out of `capture_feature` so the subagent walk
+    can run for a parent this function rejected."""
+    # Ordered as instants, not as strings. A session's *start* is what window
+    # membership is decided on below, and string ordering picks the wrong line
+    # as soon as the transcript mixes formats: "2026-08-21T23:00:00-04:00"
+    # sorts first but is an hour later than "2026-08-22T01:00:00Z".
+    timestamps = [
+        moment
+        for moment in (to_utc(line.get("timestamp")) for line in lines)
+        if moment is not None
+    ]
+    if not timestamps:
+        return False
+    start_ts = min(timestamps)
+    end_ts = max(timestamps)
+
+    selected = in_window(start_ts, window)
+
+    if selected:
+        if window["to"] is not None and end_ts > window["to"]:
+            warnings.append(
+                f"session {session_id} may span the window boundary "
+                f"(window {describe_window(window)} UTC, "
+                f"session ends {end_ts.isoformat()})"
+            )
+    else:
+        frm = window["from"]
+        if frm is not None and start_ts < frm and end_ts >= frm:
+            warnings.append(
+                f"session {session_id} may span the window boundary "
+                f"(window {describe_window(window)} UTC, "
+                f"session starts {start_ts.isoformat()}, "
+                f"ends {end_ts.isoformat()})"
+            )
+        return False
+
+    matched_session_ids.add(session_id)
+    session_start[session_id] = start_ts
+    session_end[session_id] = end_ts
+    session_branch[session_id] = next(iter(matching_branches))
+
+    # One API response is written to the transcript as several `assistant`
+    # lines — one per content block (thinking, text, each tool_use) — and every
+    # one of them repeats that response's `usage` verbatim, not a running total.
+    # Summing per line therefore bills the same tokens once per content block:
+    # measured 2.4x-2.8x over on real sessions, with individual responses
+    # repeated up to 9 times. `iter_billable_messages` bills each response once,
+    # keyed on its API id, and skips locally-generated `<synthetic>` notices.
+    for model, usage, is_sidechain in iter_billable_messages(lines):
+        add_usage(totals, (session_id, None, model, is_sidechain), usage)
+    return True
+
+
 def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, force):
     """Capture one feature, printing its own result line. Returns one of "captured",
     "skipped" or "refused" — `main` counts these and picks the exit code from them.
@@ -490,11 +723,13 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     manifest_path = Path(features_dir, slug, "README.md")
     manifest = parse_manifest(manifest_path)
     branches = manifest.get("branches", [])
+    pinned_agent_ids = set(manifest.get("subagents", []) or [])
     window = normalize_window(manifest)
 
     warnings = check_naive_bounds(manifest)
     warnings += check_empty_window(window)
     warnings += check_branch_overlap(both_corpora, slug, manifest)
+    warnings += check_subagent_overlap(both_corpora, slug, manifest)
 
     output_path = Path(features_dir, slug, "planning.json")
 
@@ -518,6 +753,14 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         return "skipped"
 
     excluded_ids = collect_excluded_session_ids(both_corpora, manifest)
+    # Runner-spawned exclusions (a usage.json already holds that session's cost, its
+    # subagents included) are never overridable. A manual `exclude_sessions` entry drops
+    # only the session's own context cost: a pin on one of its subagents is an explicit
+    # claim and still wins — the coordinator case, where the parent's cost belongs to
+    # the coordinator's manifest and the architect's to the feature's.
+    runner_excluded_ids = collect_excluded_session_ids(
+        both_corpora, {**manifest, "exclude_sessions": []}
+    )
     excluded_ids_encountered = set()
 
     session_dir_str = str(sessions_dir)
@@ -532,6 +775,12 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     # calls recoverable. Populated only past repo_match, because that is the point the
     # scan has proved it can reach the transcript at all.
     reachable_session_ids = set()
+    # The subagents this scan can reach, selected or not — the same proof point as
+    # `reachable_session_ids`, for the same guard.
+    reachable_agent_ids = set()
+    agent_start = {}
+    agent_parent = {}
+    agent_selected_by = {}
     # Every branch name seen anywhere in this repo's transcript dirs, for the
     # does-this-name-even-exist check. Deliberately wider than `reachable`: a name is
     # not a typo just because its sessions were filtered out.
@@ -553,9 +802,12 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             if session_id is None:
                 continue
 
+            pins_only = False
             if session_id in excluded_ids:
                 excluded_ids_encountered.add(session_id)
-                continue
+                if session_id in runner_excluded_ids or not pinned_agent_ids:
+                    continue
+                pins_only = True
 
             repo_match = any(
                 line.get("cwd") == session_dir_str
@@ -568,62 +820,53 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             if not repo_match:
                 continue
 
-            reachable_session_ids.add(session_id)
-
+            # A parent that is not selected — wrong branch, outside the window, manually
+            # excluded — still has its subagents walked below, because a pinned subagent
+            # is claimed on its own id and its parent's branch is usually `main`. So the
+            # parent path sets a flag rather than `continue`-ing past the subagent walk.
+            parent_selected = False
             matching_branches = branches_seen & set(branches)
-            if not matching_branches:
-                continue
-
-            # Ordered as instants, not as strings. A session's *start* is what window
-            # membership is decided on below, and string ordering picks the wrong line
-            # as soon as the transcript mixes formats: "2026-08-21T23:00:00-04:00"
-            # sorts first but is an hour later than "2026-08-22T01:00:00Z".
-            timestamps = [
-                moment
-                for moment in (to_utc(line.get("timestamp")) for line in lines)
-                if moment is not None
-            ]
-            if not timestamps:
-                continue
-            start_ts = min(timestamps)
-            end_ts = max(timestamps)
-
-            selected = in_window(start_ts, window)
-
-            if selected:
-                if window["to"] is not None and end_ts > window["to"]:
-                    warnings.append(
-                        f"session {session_id} may span the window boundary "
-                        f"(window {describe_window(window)} UTC, "
-                        f"session ends {end_ts.isoformat()})"
-                    )
+            if pins_only:
+                matching_branches = set()
             else:
-                frm = window["from"]
-                if frm is not None and start_ts < frm and end_ts >= frm:
-                    warnings.append(
-                        f"session {session_id} may span the window boundary "
-                        f"(window {describe_window(window)} UTC, "
-                        f"session starts {start_ts.isoformat()}, "
-                        f"ends {end_ts.isoformat()})"
-                    )
-                continue
+                reachable_session_ids.add(session_id)
+            if matching_branches:
+                parent_selected = select_parent(
+                    lines, session_id, window, warnings, matched_session_ids,
+                    session_start, session_end, session_branch, matching_branches, totals,
+                )
 
-            matched_session_ids.add(session_id)
-            session_start[session_id] = start_ts
-            session_end[session_id] = end_ts
-            session_branch[session_id] = next(iter(matching_branches))
-
-            # One API response is written to the transcript as several `assistant`
-            # lines — one per content block (thinking, text, each tool_use) — and every
-            # one of them repeats that response's `usage` verbatim, not a running total.
-            # Summing per line therefore bills the same tokens once per content block:
-            # measured 2.4x-2.8x over on real sessions, with individual responses
-            # repeated up to 9 times. `iter_billable_messages` bills each response once,
-            # keyed on its API id, and skips locally-generated `<synthetic>` notices.
-            for model, usage, is_sidechain in iter_billable_messages(lines):
-                add_usage(totals, (session_id, model, is_sidechain), usage)
+            for agent_path in subagent_transcript_paths(transcript_dir, session_id):
+                agent_lines = load_transcript_lines(agent_path)
+                if not agent_lines:
+                    continue
+                agent_id = agent_id_of(agent_path, agent_lines)
+                reachable_agent_ids.add(agent_id)
+                agent_timestamps = [
+                    moment
+                    for moment in (to_utc(line.get("timestamp")) for line in agent_lines)
+                    if moment is not None
+                ]
+                if not agent_timestamps:
+                    continue
+                agent_start_ts = min(agent_timestamps)
+                if agent_id in pinned_agent_ids:
+                    selected_by = "pinned"
+                elif parent_selected and in_window(agent_start_ts, window):
+                    selected_by = "parent"
+                else:
+                    continue
+                agent_start[agent_id] = agent_start_ts
+                agent_parent[agent_id] = session_id
+                agent_selected_by[agent_id] = selected_by
+                # Every line of a subagent transcript says `isSidechain: true`, so the
+                # flag is pinned here rather than read — a subagent is sidechain cost by
+                # definition, whatever an individual line says.
+                for model, usage, _ in iter_billable_messages(agent_lines):
+                    add_usage(totals, (session_id, agent_id, model, True), usage)
 
     warnings += check_unmatched_branches(branches, branches_seen_anywhere)
+    warnings += check_unmatched_subagents(pinned_agent_ids, reachable_agent_ids)
 
     sessions = [
         {
@@ -634,22 +877,34 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         for sid in sorted(matched_session_ids)
     ]
 
+    subagents = [
+        {
+            "agent_id": agent_id,
+            "parent_session_id": agent_parent[agent_id],
+            "date": agent_start[agent_id].date().isoformat(),
+            "selected_by": agent_selected_by[agent_id],
+        }
+        for agent_id in sorted(agent_start)
+    ]
+
     priced = []
     total_is_partial = False
-    for key in sorted(totals.keys()):
-        session_id, model, is_sidechain = key
+    for key in sorted(totals.keys(), key=lambda k: (k[0], k[1] or "", k[2], k[3])):
+        session_id, agent_id, model, is_sidechain = key
         tokens = totals[key]
-        as_of = session_start[session_id].date().isoformat()
+        # A subagent is dated by its own start, not its parent's: a four-day coordinator
+        # spawns architects on every one of those days, and the rate tier is per day.
+        started = agent_start[agent_id] if agent_id else session_start[session_id]
+        as_of = started.date().isoformat()
         cost, rates_applied = compute_cost(model, tokens, as_of=as_of)
         if cost is None:
-            warnings.append(
-                f"no rate for model {model!r} (session {session_id}); "
-                "excluded from cost total"
-            )
+            where = f"subagent {agent_id} of session {session_id}" if agent_id else f"session {session_id}"
+            warnings.append(f"no rate for model {model!r} ({where}); excluded from cost total")
             total_is_partial = True
         priced.append(
             {
                 "session_id": session_id,
+                "agent_id": agent_id,
                 "model": model,
                 "is_sidechain": is_sidechain,
                 "date": as_of,
@@ -667,6 +922,13 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         (p["cost_usd"] for p in priced if p["is_sidechain"] and p["cost_usd"] is not None),
         0.0,
     )
+    # The part of `sidechain` that came from subagent transcript files rather than
+    # inline sidechain messages — reported separately because it is the figure the
+    # delegation-tier comparison needs, and it was invisible before this scan read them.
+    subagent_cost = sum(
+        (p["cost_usd"] for p in priced if p["agent_id"] and p["cost_usd"] is not None),
+        0.0,
+    )
     total_cost = main_cost + sidechain_cost
 
     if is_rates_stale():
@@ -676,12 +938,15 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         "slug": slug,
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "manifest_branches": branches,
+        "manifest_subagents": sorted(pinned_agent_ids),
         "sessions": sessions,
+        "subagents": subagents,
         "excluded_session_ids": sorted(excluded_ids_encountered),
         "priced": priced,
         "cost_usd": {
             "main": main_cost,
             "sidechain": sidechain_cost,
+            "subagents": subagent_cost,
             "total": total_cost,
             "total_is_partial": total_is_partial,
         },
@@ -689,11 +954,13 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         "warnings": warnings,
     }
 
-    lost, prior_total = check_frozen_cost(output_path, reachable_session_ids, excluded_ids)
+    lost, prior_total = check_frozen_cost(
+        output_path, reachable_session_ids, excluded_ids, reachable_agent_ids
+    )
     if lost and not force:
         print(
             f"{slug}: REFUSING to overwrite planning.json — "
-            f"{len(lost)} priced session(s) are missing from this scan and their "
+            f"{len(lost)} priced session(s)/subagent(s) are missing from this scan and their "
             "transcripts are gone from ~/.claude/projects/, so the frozen figure is "
             "the only surviving record:"
         )
@@ -713,7 +980,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
 
     cost_str = "cost unavailable — see warnings" if total_is_partial else f"${total_cost:.4f}"
     print(
-        f"{slug}: {len(sessions)} sessions matched, "
+        f"{slug}: {len(sessions)} sessions matched, {len(subagents)} subagents, "
         f"{len(excluded_ids_encountered)} excluded, total {cost_str}"
     )
     for warning in warnings:
@@ -748,8 +1015,26 @@ def main():
         help="overwrite planning.json even when doing so would discard a priced "
         "session whose transcript is gone (see check_frozen_cost)",
     )
+    parser.add_argument(
+        "--list-subagents",
+        action="store_true",
+        help="print every subagent transcript reachable from this repo's project "
+        "directories — date, id, parent, branch, model, cost, opening prompt — instead "
+        "of capturing anything. How to find an id for a manifest's `subagents` pin",
+    )
+    parser.add_argument(
+        "--since",
+        metavar="YYYY-MM-DD",
+        help="with --list-subagents: only subagents that started on or after this UTC date",
+    )
     add_self_flag(parser)
     args = parser.parse_args()
+
+    if args.list_subagents:
+        if args.slug or args.all_features:
+            parser.error("--list-subagents takes no slug and no --all")
+        list_subagents(session_root(args.self_mode), args.since)
+        return
 
     if args.all_features == bool(args.slug):
         parser.error("give either a feature slug or --all, not both and not neither")

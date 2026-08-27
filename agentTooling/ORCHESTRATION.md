@@ -56,6 +56,11 @@ warm context, persisted, at a fraction of the cost.
   recoverable from disk.
 - Features sharing a branch chain their manifests' `session_window`s end-to-start —
   two open windows on one branch double-count planning cost.
+- A delegate's transcript inherits the coordinator's `gitBranch`, so an architect
+  spawned from `main` is invisible to the feature's `branches`. Pin its agent id in the
+  manifest's `subagents` (find it with `capture_planning.py --list-subagents`), and do
+  it while the transcript still exists — the coordinator's own cost is claimed the
+  same way, with `main` in `branches` and a window around the run.
 
 ## NOTES.md
 

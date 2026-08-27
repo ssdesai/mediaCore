@@ -95,6 +95,22 @@ calls a model or the network. `../PROJECT_FACTS.md` → Tests says there is no t
   (`05:00:00-04:00` .. `13:00:00Z`) are not. That last pair is what pins the check to
   instants rather than strings, and it is the assertion that fails if someone
   "simplifies" it to a lexicographic compare. RED until `check_empty_window` landed.
+- `subagent-capture.sh` — same scaffolding as `capture-guard.sh`, plus the
+  `<session_id>/subagents/agent-<id>.jsonl` files beside the parent transcripts (built with
+  `subagent_line` / `subagent_prompt_line` from `fixtures/transcripts/build-transcript.sh`).
+  Asserts `capture_planning.py`'s subagent attribution: a selected parent's in-window
+  subagent is priced and the total rises by exactly `cost_usd.subagents`, with
+  `subagents[]` naming it as selected by `"parent"`; one starting after the window's `to`
+  is not; a subagent under a parent on `main` — the coordinator case, where the child
+  inherits the parent's `gitBranch` and can never be branch-matched — is unpriced until
+  the manifest pins its id, then priced as `"pinned"` while the parent stays out of
+  `sessions[]`; a pin matching nothing is warned about by id; the frozen-cost guard
+  refuses a re-capture whose subagents directory is gone, naming `agent-<id>`, and
+  `--force` still overrides; `--list-subagents` prints every reachable subagent with its
+  opening prompt and parent, and `--since` drops earlier ones; a subagent of a runner
+  session (parent claimed by a `usage.json`) is not priced even when pinned, and the pin
+  is reported unmatched; and two manifests pinning one id are warned about, naming the
+  other feature. RED until the subagent walk landed.
 - `timestamps-are-utc.sh` — same scaffolding, asserting the UTC convention in
   `analysis/README.md` → "Every instant is UTC": `transcript.utc_date` dates an offset
   timestamp by its UTC day (`2026-07-01T23:00:00-04:00` → `2026-07-02`), a session's start

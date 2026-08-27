@@ -18,7 +18,14 @@ Two things, in this order, and the first one decides:
 2. **Cost** — the `*.usage.json` sidecars rolled up by `analysis/report.py`, split by
    pass (build / level passes / verify / review), plus the count of human interventions
    the batch needed (re-queues, budget raises, hand-run steps). Planning cost is the
-   author's session and is shared when one author writes both arms.
+   author's session and is shared when one author writes both arms. When the author is
+   a delegate rather than the human's own session, its transcript is a subagent file
+   under the coordinator's session and inherits the coordinator's branch — pin its id
+   in the arm's manifest (`subagents`, `AGENT_PLANS.md` → manifest) or it prices as $0.
+   Charge the coordinator too: run each arm's coordination from its own session, from
+   the repo root, and claim it with `main` + a `session_window`; a four-day coordinator
+   measured at $206 was the largest single line of the program it ran, and no
+   per-feature figure saw it.
 
 A tie on correctness with a cost difference under ~15% is **noise** at n=1: run-to-run
 executor variance is that large. Either run again or weight the defect lists, which are

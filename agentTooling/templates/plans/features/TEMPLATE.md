@@ -43,11 +43,12 @@ Delete this section when the batch has a single level.
   "plans": ["NN-description-MODEL", "NN-verify-MODEL", "NN-review-opus"],
   "branches": ["<branch-name>"],
   "session_window": {"from": "<YYYY-MM-DDTHH:MM:SSZ>", "to": "<YYYY-MM-DDTHH:MM:SSZ>"},
-  "exclude_sessions": ["<session-id>"]
+  "exclude_sessions": ["<session-id>"],
+  "subagents": ["<agent-id>"]
 }
 ```
 
-Every field is required. These are the ones that go wrong quietly:
+Every field but `subagents` is required. These are the ones that go wrong quietly:
 
 - **`branches`** — copy each name from `git branch --show-current`, verbatim. It is
   matched literally against the `gitBranch` in every session transcript, so an added
@@ -67,6 +68,17 @@ Every field is required. These are the ones that go wrong quietly:
   UTC offset, four hours in US Eastern, which is enough to hand a session to the wrong
   feature. Write local time only with its offset spelled out (`2026-07-17T18:00:00-04:00`);
   `analysis/capture_planning.py` warns on any bound that states no zone.
+- **`subagents`** — optional; usually absent. Agent ids of delegates whose *parent*
+  session was not on this feature's branch — the coordinator-on-`main` case. A subagent
+  inherits its parent's `gitBranch` at spawn and never records its own, so an architect
+  spawned from `main` is invisible to `branches` and `session_window` alike; pinning its
+  id claims it outright. Find the id with
+  `python3 agentTooling/analysis/capture_planning.py --list-subagents --since <date>`,
+  which prints each one's cost and opening prompt. A subagent whose parent *is* on the
+  branch needs no pin — it is claimed with its parent when its own start is in the window.
+  A pin wins over an `exclude_sessions` entry naming its parent: excluding the coordinator
+  drops the coordinator's own context cost and keeps the pinned architect. Runner sessions
+  are the exception — their usage.json already holds the cost, pins included.
 - **`session_window.to`** — `null` means "still open", and open is the right value only
   while the feature is still being planned. Set a real bound as soon as it is done. Two
   open-ended windows on a shared branch claim each other's sessions and price the same
