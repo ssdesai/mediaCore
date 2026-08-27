@@ -132,7 +132,7 @@ Every assertion in plan 01 is satisfiable without doing any of the above.
   "slug": "bundle-store-plans",
   "plans": ["01-acceptance-tests-sonnet", "02-tests-store-core-haiku", "03-tests-store-file-sonnet", "04-store-core-file-sonnet", "05-level-store-core-sonnet", "06-tests-store-s3-sonnet", "07-store-s3-sonnet", "08-level-store-s3-sonnet", "09-fixture-seeding-sonnet", "10-level-fixture-store-sonnet", "11-verify-sonnet", "12-review-opus"],
   "branches": ["bundleStorePlans"],
-  "session_window": {"from": "2026-08-27T21:44:00Z", "to": null},
+  "session_window": {"from": "2026-08-27T21:44:00Z", "to": "2026-08-27T23:00:00Z"},
   "exclude_sessions": [],
   "subagents": ["a6c2bbe4b2c558baa"]
 }
