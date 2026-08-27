@@ -354,8 +354,12 @@ Both frontends accept `?ref=<ref-uri>` on their root URL, resolve it at boot via
 own `/resolve`, and then: exactly one match → navigate straight to it (navigation is not
 an import; §2's human-supervision rule does not apply); several → show the
 disambiguation; none → a "nothing here carries that reference" notice. The `?ref=` param
-is consumed — replaced by the app's own state URL once handled. In-app landing UX beyond
-this rule is each repo's own design.
+is consumed — replaced by the app's own state URL once handled. The value is written
+percent-encoded as an ordinary query value and read back with `URLSearchParams` (which
+decodes) — pinned here because a mismatch would break links silently and neither repo's
+checks would catch it. In-app landing UX beyond this rule is each repo's own design,
+with one floor: a landing must offer a next step into the entity's actual data (e.g. an
+artist match lists that artist's songs), never a dead-end label.
 
 ### 10.3 humanNetworkMap URL-addressable state
 
