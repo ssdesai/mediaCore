@@ -154,11 +154,15 @@ record_skip() {            # record_skip <label> <reason>
 #   1. regenerate in place, then regenerate again into a temp directory and require
 #      the two trees to be byte-identical (catches randomness/timestamps even before
 #      the fixture is committed, which is the state during the batch that builds it);
-#   2. require `git status --porcelain fixtures/` to be empty afterwards — i.e. the
-#      committed fixture is exactly what the script produces today.
-# The `?? fixtures/` line is filtered out of (2): a wholly-untracked fixtures/ means
-# "not committed yet", which (1) already covers, whereas a modified tracked file
-# shows up as ` M fixtures/...` and is a real failure.
+#   2. require `git status --porcelain fixtures/its-saxy/` to be empty afterwards —
+#      i.e. the committed fixture is exactly what the script produces today.
+# Scoped to `fixtures/its-saxy/`, the generated tree, not all of `fixtures/`: sibling
+# files like `fixtures/README.md` are hand-maintained prose, not generator output, and
+# their own edits (tracked, reviewed like any other doc change) are not evidence of
+# non-determinism here. The `?? fixtures/its-saxy` line is filtered out of (2): a
+# wholly-untracked tree means "not committed yet", which (1) already covers, whereas a
+# modified tracked file under it shows up as ` M fixtures/its-saxy/...` and is a real
+# failure.
 fixture_idempotent() {
   local tmp dirty
   "${PY[@]}" scripts/make_fixture_its_saxy.py || return 1
@@ -171,9 +175,9 @@ fixture_idempotent() {
     rm -rf "$tmp"; return 1
   fi
   rm -rf "$tmp"
-  dirty="$(git status --porcelain fixtures/ | grep -v '^?? fixtures/$' || true)"
+  dirty="$(git status --porcelain fixtures/its-saxy/ | grep -v '^?? fixtures/its-saxy/$' || true)"
   if [[ -n "$dirty" ]]; then
-    echo "fixtures/ changed when the generator was re-run:"
+    echo "fixtures/its-saxy/ changed when the generator was re-run:"
     echo "$dirty"
     return 1
   fi

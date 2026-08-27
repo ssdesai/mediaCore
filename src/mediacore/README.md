@@ -95,6 +95,60 @@ Release, read_bundle, normalize_text` — never from a submodule.
   Also `sha256_file(path)`, `bundle_entries(release)` (the single walk both directions
   share), `BUNDLE_RELEASE_FILENAME`, `BUNDLE_MEDIA_DIRNAME` (re-exported from
   `release.py`), and `BundleError`.
+- `store.py` — the URI-addressed bundle store (§5.1). `open_store(uri) -> BundleStore`
+  picks the backend from the scheme (`file`, `s3`); anything else raises `StoreError`.
+  A `BundleStore` has three methods and nothing else:
+  `list(*, all_versions=False) -> list[BundleEntry]`,
+  `open(entry, *, verify=True) -> Release` — `entry` is a `BundleEntry` **or its own
+  `uri` string**, which is what a consumer posts back — and
+  `put(release, files) -> BundleEntry`, `files` being the same `{sha256: Path}`
+  mapping `write_bundle` takes.
+  - `BundleEntry { record_id, exported_at, slug, uri, schema_version }` — frozen,
+    `extra="forbid"`. `record_id` and `exported_at` are read from the entry's own
+    `release.json`, from the `provenance` entry whose `kind` is `"vinylcat"` (§4),
+    never parsed out of its path; `slug` is `bundle_slug(release)`; `uri` is the
+    entry's address.
+  - Layout `<root>/<record ULID>/<exported_at as `%Y%m%dT%H%M%SZ`>/<slug>/`, holding
+    a §5 bundle. A re-export is a new version beside the old one; `list()` returns the
+    latest per record, newest first, `all_versions=True` the rest. **Nothing here
+    overwrites or deletes an entry** — `put` on an existing address raises
+    `StoreError`.
+  - `open` verifies exactly as `read_bundle` does and lets `BundleError` through:
+    hashes, audio sizes, and a `schema_version` newer than this install's, the last
+    of those even with `verify=False`. `list` does **not** refuse such an entry — it
+    is returned with its own `schema_version` so a consumer page can offer an upgrade
+    instead of hiding it — which is why `list` builds entries from the raw
+    `release.json` payload and never validates a `Release`.
+  - `StoreError` is the store's own failure (unusable URI, missing root, an entry
+    that is not addressable, a `put` that would overwrite, a `release.json` that
+    cannot become an entry). `BundleError` stays the bundle's.
+  - The store root is a containment boundary, because §5.1's consumer flow posts an
+    entry `uri` back from a browser (`preview-from-store {entry_uri}`): `open` resolves
+    the URI before checking it against the root, so neither a `..` segment nor a
+    symlinked entry can address anything outside the store, and `put` refuses a
+    `record_id` that is not a single path segment. On `s3://`, a key that would land
+    outside the temp directory it downloads into is refused the same way, and a prefix
+    holding objects but no `release.json` raises `StoreError` — the same exception the
+    `file://` backend raises for the same fault.
+  - Also `bundle_slug(release) -> str` — `<artist>--<title>--<catalogue number>`,
+    each segment folded through `normalize_text`, lowercased, and every run outside
+    `[a-z0-9]` collapsed to `-`. It reproduces the slug vinylCatalogue records for a
+    record (§11), but nothing addresses an entry by slug: `record_id` and `uri` do
+    that, so a divergence is cosmetic.
+  - Depends on two contracts no import reveals: a bundle's `release.json` carrying a
+    `provenance` entry with `kind == "vinylcat"` (written by vinylCatalogue's adapter,
+    §6), and — for `s3://` — `boto3` from the optional extra `mediacore[s3]` plus the
+    ambient boto3 credential chain. `mediacore` itself takes no keys.
+  - `s3://` is the same layout under a key prefix, over a `boto3` client built from the
+    ambient credential chain with no key, region or endpoint argument of its own.
+    `boto3` is imported lazily through one seam, so `import mediacore` works without the
+    optional `mediacore[s3]` extra and asking for an `s3://` store without it raises
+    `StoreError` naming the extra. `open` downloads an entry into a temporary directory
+    and reads it with `read_bundle`, so every §5 check has one implementation; `put`
+    stages with `write_bundle` and uploads `release.json` **last**, which is the
+    `s3://` substitute for the `file://` atomic swap — an interrupted upload leaves
+    objects that `list` never matches instead of a listable entry with missing media.
+    `S3_LIST_PAGE_SIZE` bounds the `list_objects_v2` pagination.
 - `fixtures.py` — `its_saxy_bundle() -> Path`, the directory of the committed IT'S SAXY
   bundle, so consumer suites never hard-code a path. Depends on two things no import
   reveals: the repo-root `fixtures/its-saxy/` directory produced by
@@ -102,3 +156,12 @@ Release, read_bundle, normalize_text` — never from a submodule.
   `[tool.hatch.build.targets.wheel.force-include]` mapping `fixtures` to
   `mediacore/_fixtures` — the checkout copy wins, the packaged copy is the fallback for
   an installed wheel. Raises `FileNotFoundError` when neither is present.
+  `seed_its_saxy_store(store_uri) -> BundleEntry` is the §5.1 "Fixture" bullet's
+  implementation ("Each dev stack seeds *IT'S SAXY* into a local `file://` store, so
+  the store path is exercised by tests and not only by upload") — it reads the
+  committed bundle and `put`s it into `open_store(store_uri)`. Idempotent: before
+  putting, it checks `list(all_versions=True)` for an entry already carrying this
+  record's `record_id` and `exported_at`, and returns that instead of putting again, so
+  a dev stack can reseed on every restart without error. A `StoreError` from an
+  unusable `store_uri` or a `BundleError` from a damaged checkout propagates
+  unchanged.

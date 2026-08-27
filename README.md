@@ -2,8 +2,8 @@
 
 The shared contract between the owner's recorded-media repos: a neutral `Release`
 schema, refs (evidence recorded by external sources, never identity), the shared
-name-normalisation fold, a bundle reader/writer, and one real-world test fixture.
-Python package `mediacore`, no app code, no database.
+name-normalisation fold, a bundle reader/writer, a URI-addressed bundle store, and one
+real-world test fixture. Python package `mediacore`, no app code, no database.
 
 `INTEGRATION.md` is the cross-repo design — who produces a release bundle
 (vinylCatalogue), who consumes it (humanNetworkMap, musicMap), what the contract is, and
@@ -29,6 +29,10 @@ mediacore @ git+https://github.com/ssdesai/mediaCore.git@v0.1.0
 ```
 
 Pin a tag, never a branch. Version policy is in `INTEGRATION.md` §12.
+
+The bundle store arrived in `v0.2.0`, and its `s3://` backend needs the optional extra:
+`mediacore[s3] @ git+https://github.com/ssdesai/mediaCore.git@v0.2.0`. `v0.1.0` has
+neither the module nor the extra.
 
 ## Working in this repo
 

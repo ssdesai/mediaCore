@@ -1,0 +1,68 @@
+{
+  "plan": "01-acceptance-tests-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "5db7b076-23b6-44c1-aea7-372ab01bdd3b",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 19,
+  "duration_ms": 163818,
+  "total_cost_usd": 0.5728059999999999,
+  "usage": {
+    "input_tokens": 34,
+    "cache_creation_input_tokens": 60340,
+    "cache_read_input_tokens": 744475,
+    "output_tokens": 17766
+  },
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 4763,
+      "outputTokens": 12,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.004823,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 34,
+      "outputTokens": 17766,
+      "cacheReadInputTokens": 744475,
+      "cacheCreationInputTokens": 60340,
+      "webSearchRequests": 0,
+      "costUSD": 0.567983,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Edit": 9,
+    "Glob": 1,
+    "Grep": 2,
+    "Read": 5,
+    "Write": 1
+  },
+  "files_edited": [
+    "tests/README.md",
+    "tests/conftest.py",
+    "tests/test_store_fixture.py"
+  ],
+  "edit_count": 10,
+  "attempts": [
+    {
+      "session_id": "5db7b076-23b6-44c1-aea7-372ab01bdd3b",
+      "outcome": "complete",
+      "total_cost_usd": 0.5728059999999999,
+      "num_turns": 19,
+      "duration_ms": 163818
+    }
+  ]
+}

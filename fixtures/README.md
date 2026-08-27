@@ -12,6 +12,10 @@ edited by hand, never edited by a test.
   Regenerate with `.venv/bin/python scripts/make_fixture_its_saxy.py`; the generator is
   deterministic, so a regeneration that changes a byte is a bug in the generator.
   Reach it from code with `mediacore.its_saxy_bundle()`, never by hard-coded path.
+  It is also the bundle `mediacore.seed_its_saxy_store()` puts into a `file://` (or
+  `s3://`) store (`INTEGRATION.md` §5.1 "Fixture"). Seeding writes **outside** the
+  checkout, into whatever store root or bucket the caller names — nothing under
+  `fixtures/` is ever written by the store.
 
   **One field in this bundle is invented rather than transcribed.** Every other value
   in `release.json` comes from `INTEGRATION.md` §11, which was read from the live

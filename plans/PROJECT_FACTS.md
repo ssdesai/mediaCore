@@ -45,6 +45,29 @@ executors share no context, so repeating a fact across plans in a batch is corre
   (`~/dev/vinylCatalogue/src/vinylcat/normalize.py`): NFKD, drop combining marks,
   uppercase, collapse whitespace, strip. `normalize_catno` likewise strips non-alnum.
 
+## Bundle store
+
+- `src/mediacore/store.py` implements `INTEGRATION.md` §5.1: `open_store(uri) ->
+  BundleStore`, a `BundleStore` with exactly three methods
+  (`list`/`open`/`put`), over `file://` and `s3://`.
+- `BundleEntry { record_id, exported_at, slug, uri, schema_version }` — frozen,
+  `extra="forbid"`. `record_id` and `exported_at` are always read from the entry's own
+  `release.json`, from the `provenance` entry whose `kind == "vinylcat"` — never parsed
+  out of the entry's path or key, even though the path also encodes them.
+- Layout: `<root>/<record ULID>/<exported_at as %Y%m%dT%H%M%SZ>/<slug>/`, holding a §5
+  bundle. **Nothing here ever overwrites or deletes an entry** — a re-export is a new
+  version beside the old one, and `put` on an address that already exists raises
+  `StoreError` rather than replacing it.
+- `StoreError` is the store's own failure (unusable URI, missing root, an entry that
+  can't be addressed, a `put` that would overwrite). `BundleError` — from `read_bundle`
+  / `write_bundle` — stays the bundle's; a plan must not blur the two.
+- `boto3` is the optional extra `mediacore[s3]`, imported lazily so `import mediacore`
+  works without it; `moto[s3]` is a dev-only test double (`tests/test_store_s3.py`), so
+  the suite needs no network access and no real AWS credentials.
+- `mediacore.seed_its_saxy_store(store_uri) -> BundleEntry`
+  (`src/mediacore/fixtures.py`) writes only **outside** the checkout, into whatever
+  store root or bucket `store_uri` names — never under `fixtures/`.
+
 ## Fixture
 
 - `fixtures/its-saxy/` is a complete bundle (`release.json` + `media/<sha256>.<ext>`)
@@ -68,7 +91,14 @@ Build plans have no bash — these belong in verify plans and interactive plans.
 ## Tests
 
 - Tests mirror `src/`: `tests/test_release.py`, `tests/test_refs.py`,
-  `tests/test_normalize.py`, `tests/test_bundle.py`, `tests/test_fixture.py`.
+  `tests/test_normalize.py`, `tests/test_bundle.py`, `tests/test_fixture.py`. The
+  bundle store (`src/mediacore/store.py`) is covered by three files instead of one:
+  `tests/test_store.py` (backend-independent — URI dispatch, `BundleEntry`,
+  `bundle_slug`), `tests/test_store_file.py` (the `file://` backend), and
+  `tests/test_store_s3.py` (the `s3://` backend, run against `moto[s3]` — no network,
+  no real credentials). `tests/test_store_fixture.py` is the acceptance test: it seeds
+  the committed IT'S SAXY bundle and drives `put`/`list`/`open`/`seed_its_saxy_store`
+  against both backends.
 - No behavioural spec file; `INTEGRATION.md` is quoted instead.
 
 ## Conventions and gotchas

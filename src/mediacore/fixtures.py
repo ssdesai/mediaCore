@@ -12,7 +12,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mediacore.bundle import BUNDLE_RELEASE_FILENAME
+from mediacore.bundle import BUNDLE_RELEASE_FILENAME, read_bundle
+from mediacore.store import VINYLCAT_PROVENANCE_KIND, BundleEntry, open_store
 
 ITS_SAXY_SLUG = "its-saxy"
 # The repo-root fixtures directory, and its name inside an installed wheel.
@@ -38,3 +39,23 @@ def its_saxy_bundle() -> Path:
         f"{packaged}. In a source checkout, generate it with "
         f"`python scripts/make_fixture_its_saxy.py`."
     )
+
+
+def seed_its_saxy_store(store_uri: str) -> BundleEntry:
+    """Seed the committed IT'S SAXY bundle into the store at `store_uri`
+    (`INTEGRATION.md` §5.1 "Fixture"). Idempotent: a dev stack restarts and must be
+    able to re-seed without failing, so an existing entry for this record's
+    `record_id` and `exported_at` is returned as-is rather than put again. A
+    `StoreError` from an unusable `store_uri` or a `BundleError` from a damaged
+    checkout both propagate."""
+    bundle = its_saxy_bundle()
+    release = read_bundle(bundle)
+    files = {entry.sha256: bundle / entry.file for entry in (*release.media, *release.audio)}
+    vinylcat = next(
+        entry for entry in release.provenance if entry.kind == VINYLCAT_PROVENANCE_KIND
+    )
+    store = open_store(store_uri)
+    for entry in store.list(all_versions=True):
+        if entry.record_id == vinylcat.id and entry.exported_at == vinylcat.exported_at:
+            return entry
+    return store.put(release, files)

@@ -1,0 +1,12 @@
+edit: /Users/sahildesai/dev/mediaCore-bundleStorePlans/src/mediacore/fixtures.py
+edit: /Users/sahildesai/dev/mediaCore-bundleStorePlans/src/mediacore/fixtures.py
+edit: /Users/sahildesai/dev/mediaCore-bundleStorePlans/src/mediacore/__init__.py
+edit: /Users/sahildesai/dev/mediaCore-bundleStorePlans/src/mediacore/__init__.py
+write: /Users/sahildesai/dev/mediaCore-bundleStorePlans/scripts/seed_bundle_store.py
+edit: /Users/sahildesai/dev/mediaCore-bundleStorePlans/scripts/README.md
+edit: /Users/sahildesai/dev/mediaCore-bundleStorePlans/fixtures/README.md
+edit: /Users/sahildesai/dev/mediaCore-bundleStorePlans/src/mediacore/README.md
+edit: /Users/sahildesai/dev/mediaCore-bundleStorePlans/README.md
+edit: /Users/sahildesai/dev/mediaCore-bundleStorePlans/README.md
+edit: /Users/sahildesai/dev/mediaCore-bundleStorePlans/plans/PROJECT_FACTS.md
+edit: /Users/sahildesai/dev/mediaCore-bundleStorePlans/plans/PROJECT_FACTS.md

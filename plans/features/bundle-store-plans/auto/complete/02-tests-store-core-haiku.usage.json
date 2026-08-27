@@ -1,0 +1,52 @@
+{
+  "plan": "02-tests-store-core-haiku",
+  "model": "haiku",
+  "outcome": "complete",
+  "session_id": "e2e7c346-f19e-44de-a59f-85a70e0c9692",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 6,
+  "duration_ms": 61333,
+  "total_cost_usd": 0.0881004,
+  "usage": {
+    "input_tokens": 42,
+    "cache_creation_input_tokens": 21542,
+    "cache_read_input_tokens": 116004,
+    "output_tokens": 5882
+  },
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 3906,
+      "outputTokens": 5902,
+      "cacheReadInputTokens": 116004,
+      "cacheCreationInputTokens": 21542,
+      "webSearchRequests": 0,
+      "costUSD": 0.0881004,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Edit": 1,
+    "Read": 3,
+    "Write": 1
+  },
+  "files_edited": [
+    "tests/README.md",
+    "tests/test_store.py"
+  ],
+  "edit_count": 2,
+  "attempts": [
+    {
+      "session_id": "e2e7c346-f19e-44de-a59f-85a70e0c9692",
+      "outcome": "complete",
+      "total_cost_usd": 0.0881004,
+      "num_turns": 6,
+      "duration_ms": 61333
+    }
+  ]
+}
