@@ -273,7 +273,7 @@ write_manifest "[\"$AGENT_3\"]"
 
 # ── 11. the claims ledger records every priced subagent ───────────────────────
 LEDGER="$FAKE_HOME/.claude/subagent-claims.json"
-REPO_NAME="$(basename "$AT")"
+REPO_NAME="$(basename "$AT")"   # the fixture copy has no .git, so identity falls back to the directory name
 claim() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); c=d.get(sys.argv[2]); print(c and (c['repo_name'], c['slug'], c['selected_by']))" "$LEDGER" "$1"; }
 capture > /dev/null   # manifest pins AGENT_3 only; AGENT_5 was pinned in phase 10
 check "11. the ledger names the feature for a parent-selected subagent" \

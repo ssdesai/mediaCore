@@ -186,7 +186,7 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   **The claims ledger enforces the pins.** Every subagent this tool prices is recorded
   in `~/.claude/subagent-claims.json` — `{ <agent-id>: { repo, repo_name, slug,
   selected_by, cost_usd, claimed_at } }`, `repo` being the origin URL so worktrees and
-  clones agree — beside the transcripts and scoped like them. A capture whose subagent
+  clones agree and `repo_name` its last segment (what a brief's `feature:` line says) — beside the transcripts and scoped like them. A capture whose subagent
   is already claimed by a *different* feature (in any repo) is refused outright, since
   neither manifest can see the other and two features cannot own one transcript's
   cost; re-capturing a feature replaces its own entries, so a dropped pin becomes

@@ -359,6 +359,14 @@ def repo_identity(sessions_dir):
     return Path(sessions_dir).name
 
 
+def repo_display_name(identity):
+    """The name a brief's `feature: <repo>/<slug>` line uses — the last path segment of
+    the origin URL without `.git`, so a scratch worktree named `wt-musicMap` is still
+    `musicMap`; the identity itself when it is already a bare directory name."""
+    tail = identity.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
+    return tail[:-len(".git")] if tail.endswith(".git") else tail
+
+
 def brief_feature_of(lines):
     """`(repo, slug)` from the `feature: <repo>/<slug>` line of a delegate's brief, or
     None when the brief carries none."""
@@ -1095,7 +1103,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             reachable_agent_ids.add(agent_id)
 
     repo = repo_identity(sessions_dir)
-    repo_name = Path(sessions_dir).name
+    repo_name = repo_display_name(repo)
     warnings += check_unmatched_branches(branches, branches_seen_anywhere)
     warnings += check_unmatched_subagents(pinned_agent_ids, reachable_agent_ids)
     warnings += check_brief_headers(agent_briefs, repo_name, slug)
