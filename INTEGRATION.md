@@ -340,7 +340,8 @@ expressible as a ref URI and stays internal.
   cross-project disambiguation):
   `ResolveOut { ref: str, nodes: list[ResolvedNodeOut], sources: list[ResolvedSourceOut] }`
   where `ResolvedNodeOut { id, project_id, name, asset_type }` and
-  `ResolvedSourceOut { id, project_id, name }`. 400 on a malformed URI
+  `ResolvedSourceOut { id, project_id, name: str | None }` — a source's name is nullable
+  (`source_name` is an optional column); peers must not assume it. 400 on a malformed URI
   (`mediacore.refs.parse_ref_uri` is the arbiter). Sources are included because
   `vinylcat:record` / `discogs:release` live on information sources in hNM (§8) — a
   record deep-link lands on the source, not on a node.
