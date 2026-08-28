@@ -48,8 +48,8 @@ executors share no context, so repeating a fact across plans in a batch is corre
   `list` / `open` / `put` and no delete, over `file://` and `s3://`. Key layout
   `<root>/<record ULID>/<exported_at, ISO basic>/<slug>/<bundle>`; `BundleEntry
   { record_id, exported_at, slug, uri, schema_version }` is always read from the entry's
-  `release.json` (first `provenance` entry, plus a derived slug), never from the key. A
-  re-export is a new version beside the old and `put` refuses an existing one; `open`
+  `release.json` (the `provenance` entry whose `kind` is `vinylcat`, plus a derived
+  slug), never from the key. A re-export is a new version beside the old and `put` refuses an existing one; `open`
   verifies through `read_bundle` and refuses a newer `schema_version`, while `list`
   reports it without validating. No plan may add a delete, an overwrite, or key parsing.
 - `normalize_text` must equal `vinylcat.normalize.normalize_text`
