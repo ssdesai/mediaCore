@@ -6,16 +6,21 @@ that the local→hosted move is configuration, not code.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import re
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from mediacore import (
+    BundleStore,
+    Release,
     StoreError,
+    StoreNotFound,
     bundle_slug,
     open_store,
     seed_its_saxy_store,
 )
+from mediacore.store import VINYLCAT_PROVENANCE_KIND
 
 from conftest import its_saxy_source
 
@@ -29,6 +34,24 @@ SAXY_MEDIA_COUNT = 4
 SAXY_AUDIO_COUNT = 12
 # A second export of the same record, one day later
 SECOND_EXPORT_AT = datetime(2026, 8, 26, tzinfo=UTC)
+# A re-export inside the same second: the layout formats `exported_at` to seconds, so
+# this is the *same* version address however the metadata differs.
+SAME_SECOND_EXPORT_AT = SAXY_EXPORTED_AT + timedelta(microseconds=1)
+RETITLED_TITLE = "IT'S SAXY (Remastered)"
+
+# Addresses that are inside a store's namespace but are not entries
+FOREIGN_URI = "https://example.com/bundles"
+UNUSED_TIMESTAMP_DIRNAME = "20990101T000000Z"
+
+# Record ids that are not a single path segment (`Provenance.id` is an unconstrained
+# `str` off a possibly hand-edited release.json)
+ESCAPING_RECORD_IDS = ("../escaped-record", "nested/record", "..")
+
+# A pressing whose artist and title fold to nothing under `[a-z0-9]` and which carries
+# no catalogue number, and the segment the store names it with instead
+UNSLUGGABLE_ARTIST = "Кино"
+UNSLUGGABLE_TITLE = "Звезда"
+FALLBACK_SLUG = "release"
 
 
 def test_put_lists_and_opens_the_fixture(store_uri: str) -> None:
@@ -155,6 +178,175 @@ def test_slug_matches_the_vinylcat_slug(store_uri: str) -> None:
 
     assert entry.slug == SAXY_SLUG
     assert entry.slug == bundle_slug(release)
+
+
+def _reexported(release: Release, exported_at: datetime, **overrides: object) -> Release:
+    """A deep copy of `release` whose `vinylcat` provenance claims `exported_at`."""
+    return release.model_copy(
+        deep=True,
+        update={
+            "provenance": [
+                provenance.model_copy(update={"exported_at": exported_at})
+                if provenance.kind == VINYLCAT_PROVENANCE_KIND
+                else provenance
+                for provenance in release.provenance
+            ],
+            **overrides,
+        },
+    )
+
+
+def _raised_type(store: BundleStore, address: str) -> type[BaseException]:
+    """The type of whatever `open(address)` raises — the thing being compared when the
+    question is whether both backends fail the same way, not merely that both fail."""
+    try:
+        store.open(address)
+    except BaseException as exc:  # noqa: BLE001 - the type is the assertion
+        return type(exc)
+    raise AssertionError(f"opening {address} did not raise")
+
+
+def test_put_refuses_a_second_version_in_the_same_second(store_uri: str) -> None:
+    """A version is `<record>/<exported_at to seconds>`, so two exports of one record
+    in the same second are one address whatever their metadata says. Both used to
+    succeed under one timestamp with different slugs, and `list()` then returned the
+    older of the two — refusal is the only answer that keeps one address, one bundle."""
+    store = open_store(store_uri)
+    release, files = its_saxy_source()
+
+    first_entry = store.put(release, files)
+
+    # Differs only in microseconds, which the layout truncates away.
+    with pytest.raises(StoreError, match=re.escape(SAXY_RECORD_ID)):
+        store.put(_reexported(release, SAME_SECOND_EXPORT_AT), files)
+
+    # Same instant, different metadata — a different slug is a different leaf, not a
+    # different version.
+    retitled = _reexported(release, SAXY_EXPORTED_AT, title=RETITLED_TITLE)
+    assert bundle_slug(retitled) != bundle_slug(release)
+    with pytest.raises(StoreError, match=re.escape(SAXY_RECORD_ID)):
+        store.put(retitled, files)
+
+    entries = store.list(all_versions=True)
+    assert entries == [first_entry]
+    assert store.open(entries[0]).title == SAXY_TITLE
+
+
+@pytest.mark.parametrize("record_id", ESCAPING_RECORD_IDS)
+def test_put_refuses_a_record_id_that_is_not_one_path_segment(
+    store_uri: str, record_id: str
+) -> None:
+    """The record id becomes one path (or key) segment, and it is a string off a
+    possibly hand-edited `release.json`: neither backend may be made to write outside
+    the store root, and both refuse with the same exception."""
+    store = open_store(store_uri)
+    release, files = its_saxy_source()
+    escaping = release.model_copy(
+        deep=True,
+        update={
+            "provenance": [
+                provenance.model_copy(update={"id": record_id})
+                if provenance.kind == VINYLCAT_PROVENANCE_KIND
+                else provenance
+                for provenance in release.provenance
+            ]
+        },
+    )
+
+    with pytest.raises(StoreError, match="path segment"):
+        store.put(escaping, files)
+
+    assert store.list(all_versions=True) == []
+
+
+def test_a_release_that_folds_to_no_slug_is_stored_and_listed(store_uri: str) -> None:
+    """A pressing whose artist, title and catalogue number all fold away used to be
+    written a level above where `list` looks on `file://` (an empty path component
+    disappears from a join) and listed with `slug=""` on `s3://`. One named fallback
+    segment, and the two backends agree again."""
+    store = open_store(store_uri)
+    release, files = its_saxy_source()
+    unsluggable = release.model_copy(
+        deep=True,
+        update={
+            "title": UNSLUGGABLE_TITLE,
+            "artists": [
+                artist.model_copy(update={"name": UNSLUGGABLE_ARTIST})
+                for artist in release.artists
+            ],
+            "labels": [],
+        },
+    )
+
+    entry = store.put(unsluggable, files)
+
+    assert entry.slug == FALLBACK_SLUG
+    assert entry.uri.endswith(f"/{FALLBACK_SLUG}")
+    assert store.list() == [entry]
+    assert store.open(entry).title == UNSLUGGABLE_TITLE
+
+
+def test_a_missing_store_root_fails_the_same_way_on_both_backends(
+    missing_file_store_uri: str, missing_s3_store_uri: str
+) -> None:
+    """A `file://` root that does not exist and an `s3://` bucket that does not are the
+    same misconfiguration, and a consumer's `except StoreError` around `list()` has to
+    catch both — botocore's `NoSuchBucket` means nothing to it."""
+    file_store = open_store(missing_file_store_uri)
+    s3_store = open_store(missing_s3_store_uri)
+
+    with pytest.raises(StoreNotFound):
+        file_store.list()
+    with pytest.raises(StoreNotFound):
+        s3_store.list()
+
+    assert issubclass(StoreNotFound, StoreError)
+
+
+def test_the_same_fault_raises_the_same_type_on_both_backends(
+    file_store_uri: str, s3_store_uri: str
+) -> None:
+    """§5.1's claim is that the local→hosted move is configuration, not code — which
+    only holds if a consumer's error handling is the same on both sides. Each backend
+    is covered on its own elsewhere; this pins them to each other."""
+    release, files = its_saxy_source()
+    file_store = open_store(file_store_uri)
+    s3_store = open_store(s3_store_uri)
+    file_store.put(release, files)
+    s3_store.put(release, files)
+
+    faults = [
+        FOREIGN_URI,
+        # An address at entry depth that holds nothing
+        f"/{SAXY_RECORD_ID}/{UNUSED_TIMESTAMP_DIRNAME}/{SAXY_SLUG}",
+        # A prefix inside the store that is not an entry: the record's own directory
+        f"/{SAXY_RECORD_ID}",
+    ]
+    for fault in faults:
+        file_address = fault if fault == FOREIGN_URI else f"{file_store_uri}{fault}"
+        s3_address = fault if fault == FOREIGN_URI else f"{s3_store_uri}{fault}"
+        assert _raised_type(file_store, file_address) is _raised_type(s3_store, s3_address)
+        assert _raised_type(file_store, file_address) is StoreError
+
+
+def test_seed_creates_a_store_that_has_never_been_written_to(unseeded_store_uri: str) -> None:
+    """§5.1's Fixture bullet is the first thing a dev stack runs, against a store root
+    nothing has created yet. The idempotency check reads before `put` writes, so a
+    `list` that refuses a missing root has to be read as "empty store" here — otherwise
+    the documented first-run command exits 1 on a fresh machine."""
+    entry = seed_its_saxy_store(unseeded_store_uri)
+
+    assert entry.record_id == SAXY_RECORD_ID
+    assert entry.exported_at == SAXY_EXPORTED_AT
+    assert entry.slug == SAXY_SLUG
+
+    store = open_store(unseeded_store_uri)
+    assert store.list() == [entry]
+    assert store.open(entry).title == SAXY_TITLE
+
+    # And the second run, now that the store exists, is still idempotent.
+    assert seed_its_saxy_store(unseeded_store_uri) == entry
+    assert len(store.list(all_versions=True)) == 1
 
 
 def test_seed_its_saxy_store_is_idempotent(file_store_uri: str) -> None:

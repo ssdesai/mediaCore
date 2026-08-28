@@ -13,7 +13,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from mediacore.bundle import BUNDLE_RELEASE_FILENAME, read_bundle
-from mediacore.store import VINYLCAT_PROVENANCE_KIND, BundleEntry, open_store
+from mediacore.store import (
+    VINYLCAT_PROVENANCE_KIND,
+    BundleEntry,
+    StoreNotFound,
+    open_store,
+)
 
 ITS_SAXY_SLUG = "its-saxy"
 # The repo-root fixtures directory, and its name inside an installed wheel.
@@ -47,7 +52,13 @@ def seed_its_saxy_store(store_uri: str) -> BundleEntry:
     able to re-seed without failing, so an existing entry for this record's
     `record_id` and `exported_at` is returned as-is rather than put again. A
     `StoreError` from an unusable `store_uri` or a `BundleError` from a damaged
-    checkout both propagate."""
+    checkout both propagate.
+
+    First run creates the store: the idempotency check reads the store *before* `put`
+    writes to it, and `list` on a root that does not exist yet raises `StoreNotFound`.
+    That one exception is read as "empty store" — and only that one, which is why it
+    has its own type: a plain `except StoreError` here would also swallow the
+    malformed-entry refusal that a seeded store is supposed to shout about."""
     bundle = its_saxy_bundle()
     release = read_bundle(bundle)
     files = {entry.sha256: bundle / entry.file for entry in (*release.media, *release.audio)}
@@ -55,7 +66,11 @@ def seed_its_saxy_store(store_uri: str) -> BundleEntry:
         entry for entry in release.provenance if entry.kind == VINYLCAT_PROVENANCE_KIND
     )
     store = open_store(store_uri)
-    for entry in store.list(all_versions=True):
+    try:
+        existing = store.list(all_versions=True)
+    except StoreNotFound:
+        existing = []
+    for entry in existing:
         if entry.record_id == vinylcat.id and entry.exported_at == vinylcat.exported_at:
             return entry
     return store.put(release, files)

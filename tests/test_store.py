@@ -7,8 +7,9 @@ parsed out of its key.
 from __future__ import annotations
 
 import importlib.metadata
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 from pydantic import ValidationError
@@ -38,6 +39,16 @@ SAXY_CATALOGUE_NUMBER = "SAAE 1012"
 MISLEADING_RECORD_DIR = "01ZZZZZZZZZZZZZZZZZZZZZZZZ"
 MISLEADING_TIMESTAMP_DIR = "19990101T000000Z"
 MISLEADING_SLUG_DIR = "not-the-slug"
+
+# `file://` hosts: another machine's disk, and this one's
+FOREIGN_FILE_HOST = "example.com"
+LOCAL_FILE_HOST = "localhost"
+
+# A pressing whose every slug segment folds away under `[a-z0-9]`, and the segment the
+# store names it with instead (mirrored by vinylCatalogue's slugify, INTEGRATION.md §13)
+UNSLUGGABLE_ARTIST = "Кино"
+UNSLUGGABLE_TITLE = "Звезда"
+FALLBACK_SLUG = "release"
 
 
 def test_open_store_accepts_a_file_uri(file_store_uri: str) -> None:
@@ -81,18 +92,50 @@ def test_open_store_rejects_a_uri_with_no_scheme(uri: str) -> None:
     assert "file://" in str(exc_info.value)
 
 
-def test_open_store_rejects_a_foreign_file_host() -> None:
-    """file://example.com raises StoreError, but file://localhost is accepted."""
-    with pytest.raises(StoreError):
-        open_store("file://example.com/bundles")
+def test_open_store_rejects_a_foreign_file_host(file_store_uri: str) -> None:
+    """`file://example.com` is another machine's disk and raises; `file://localhost` is
+    this one, so it addresses the same store an empty host does — asserted by listing
+    the store the `file:///…` form just created, not by a try/except that passes
+    whether or not the URI was accepted."""
+    with pytest.raises(StoreError, match="host"):
+        open_store(f"file://{FOREIGN_FILE_HOST}/bundles")
 
-    # file://localhost is accepted (same machine)
-    # We just verify it doesn't raise StoreError for the host
-    try:
-        open_store("file://localhost/tmp")
-    except StoreError as e:
-        # Should not be about the host
-        assert "host" not in str(e).lower() or "localhost" in str(e)
+    root_path = urlsplit(file_store_uri).path
+    localhost_store = open_store(f"file://{LOCAL_FILE_HOST}{root_path}")
+
+    assert localhost_store.list() == []
+
+
+def test_bundle_entry_reads_a_naive_exported_at_as_utc() -> None:
+    """`Provenance.exported_at` is a plain `datetime`, so a `release.json` written
+    without the `Z` produces a naive one. `BundleEntry` reads it as UTC, because a
+    naive datetime cannot be compared with an aware one at all and `list` sorts every
+    entry in the store against every other."""
+    naive = BundleEntry(
+        record_id=SAMPLE_RECORD_ID,
+        exported_at=SAMPLE_EXPORTED_AT.replace(tzinfo=None),
+        slug="test-slug",
+        uri="file://store/test",
+        schema_version=1,
+    )
+
+    assert naive.exported_at.tzinfo is not None
+    assert naive.exported_at == SAMPLE_EXPORTED_AT
+    assert naive.exported_at.utcoffset() == timedelta(0)
+
+
+def test_bundle_slug_falls_back_when_every_segment_folds_away() -> None:
+    """A non-Latin-script pressing with no catalogue number folds to nothing under
+    `[a-z0-9]`. An empty leaf is not a directory — on `file://` it would vanish from
+    the path and put the bundle a level above where `list` looks — so the slug is a
+    named segment instead."""
+    release = make_release(
+        title=UNSLUGGABLE_TITLE,
+        artists=[{"name": UNSLUGGABLE_ARTIST}],
+        labels=[],
+    )
+
+    assert bundle_slug(release) == FALLBACK_SLUG
 
 
 def test_bundle_entry_fields() -> None:

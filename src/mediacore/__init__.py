@@ -71,6 +71,7 @@ from mediacore.store import (
     BundleEntry,
     BundleStore,
     StoreError,
+    StoreNotFound,
     bundle_slug,
     open_store,
 )
@@ -114,6 +115,7 @@ __all__ = [
     "Release",
     "Sha256Hex",
     "StoreError",
+    "StoreNotFound",
     "Track",
     "__version__",
     "bundle_entries",

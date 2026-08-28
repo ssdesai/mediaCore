@@ -24,6 +24,7 @@ from mediacore import (
     bundle_slug,
     open_store,
     read_bundle,
+    write_bundle,
 )
 
 from conftest import (
@@ -41,6 +42,19 @@ SECOND_EXPORT_TIMESTAMP_DIRNAME = "20260304T050607Z"
 OTHER_RECORD_ID = "01M08WYYQGY1S66KY425FYCBS8"
 # A release.json claiming a schema this install does not know
 FUTURE_SCHEMA_VERSION = SCHEMA_VERSION + 1
+
+# Record ids that are not a single path segment, and the directory the first of them
+# would create beside the store root if `put` joined it unchecked.
+ESCAPED_DIRNAME = "escaped-record"
+ESCAPING_RECORD_IDS = (f"../{ESCAPED_DIRNAME}", "nested/record", "..")
+# A sibling of the store root, addressed the way an untrusted caller would reach it:
+# through the root, not around it.
+SIBLING_STORE_DIRNAME = "sibling-store"
+# An `exported_at` written without its `Z`, as an exporter that dropped the timezone
+# leaves it, and the same instant read as UTC. Later than every other export here, so
+# ordering has to place it first.
+NAIVE_EXPORTED_AT_TEXT = "2026-05-06T07:08:09"
+NAIVE_EXPORTED_AT_AS_UTC = datetime(2026, 5, 6, 7, 8, 9, tzinfo=UTC)
 
 
 def _path_for_uri(uri: str) -> Path:
@@ -113,7 +127,7 @@ def test_list_on_a_missing_root_raises(tmp_path: Path) -> None:
 
 def test_put_refuses_to_overwrite(file_store_uri: str) -> None:
     """§5.1: "Nothing in `mediacore` overwrites or deletes an entry" — put refuses a
-    duplicate outright."""
+    duplicate outright, naming the version address it will not write twice."""
     store = open_store(file_store_uri)
     release = make_release()
 
@@ -121,11 +135,33 @@ def test_put_refuses_to_overwrite(file_store_uri: str) -> None:
     bundle_dir = _path_for_uri(first_entry.uri)
     original_bytes = (bundle_dir / BUNDLE_RELEASE_FILENAME).read_bytes()
 
-    with pytest.raises(StoreError, match=re.escape(bundle_slug(release))):
+    with pytest.raises(StoreError, match=re.escape(ENTRY_TIMESTAMP_DIRNAME)):
         store.put(release, {})
 
     assert (bundle_dir / BUNDLE_RELEASE_FILENAME).read_bytes() == original_bytes
     assert store.list(all_versions=True) == [first_entry]
+
+
+@pytest.mark.parametrize("record_id", ESCAPING_RECORD_IDS)
+def test_put_refuses_a_record_id_that_is_not_one_path_segment(
+    file_store_uri: str, tmp_path: Path, record_id: str
+) -> None:
+    """`Provenance.id` is an unconstrained `str` off a possibly hand-edited
+    `release.json`, and `put` joins it onto the store root: nothing in `mediacore` can
+    be made to write outside the entry it is putting."""
+    root = _path_for_uri(file_store_uri)
+    store = open_store(file_store_uri)
+    release = make_release(
+        provenance=[Provenance(kind="vinylcat", id=record_id, exported_at=SAMPLE_EXPORTED_AT)]
+    )
+
+    with pytest.raises(StoreError, match="path segment"):
+        store.put(release, {})
+
+    assert list(root.iterdir()) == []
+    # The traversal's target, one level above the root, is where a joined `..` lands.
+    assert not (tmp_path / ESCAPED_DIRNAME).exists()
+    assert {path.name for path in tmp_path.iterdir()} == {root.name}
 
 
 def test_put_requires_vinylcat_provenance(file_store_uri: str) -> None:
@@ -217,6 +253,28 @@ def test_open_accepts_an_entry_or_its_uri(file_store_uri: str, tmp_path: Path) -
         store.open(no_bundle.as_uri())
 
 
+def test_open_refuses_a_uri_that_traverses_out_of_the_root(
+    file_store_uri: str, tmp_path: Path
+) -> None:
+    """§5.1's consumer flow posts an entry `uri` back from a browser
+    (`preview-from-store {entry_uri}`), so the root is a boundary an untrusted caller
+    must not step over. `<root>/../<sibling>` is the form a purely lexical containment
+    check accepts: it *is* prefixed by the root, and still addresses a bundle outside
+    the store."""
+    store = open_store(file_store_uri)
+    root = _path_for_uri(file_store_uri)
+
+    # A real, readable bundle, so the refusal can only be about containment.
+    sibling = tmp_path / SIBLING_STORE_DIRNAME
+    sibling_bundle = sibling / SAMPLE_RECORD_ID / ENTRY_TIMESTAMP_DIRNAME / "a-slug"
+    write_bundle(make_release(), sibling_bundle, {})
+    assert (sibling_bundle / BUNDLE_RELEASE_FILENAME).is_file()
+
+    traversal = f"{root.as_uri()}/../{sibling_bundle.relative_to(tmp_path)}"
+    with pytest.raises(StoreError, match=re.escape(str(root))):
+        store.open(traversal)
+
+
 def test_open_verifies_by_default(file_store_uri: str, tmp_path: Path) -> None:
     """§5.1: "`open` verifies like `read_bundle`" — hashes, audio sizes, and the
     schema-version guard below."""
@@ -267,6 +325,60 @@ def test_list_does_not_refuse_a_newer_schema_version(file_store_uri: str) -> Non
     entries = store.list()
     assert len(entries) == 1
     assert entries[0].schema_version == FUTURE_SCHEMA_VERSION
+
+
+def test_list_returns_older_entries_beside_a_newer_schema_one(file_store_uri: str) -> None:
+    """The listing exception §5.1 grants is per entry, not per store: an entry this
+    install cannot open must not take the entries beside it out of the inbox."""
+    store = open_store(file_store_uri)
+    readable_entry = store.put(make_release(), {})
+    future_release = make_release(
+        provenance=[
+            Provenance(kind="vinylcat", id=OTHER_RECORD_ID, exported_at=SECOND_EXPORT_AT)
+        ]
+    )
+    future_entry = store.put(future_release, {})
+    _rewrite_release_json(
+        _path_for_uri(future_entry.uri), schema_version=FUTURE_SCHEMA_VERSION
+    )
+
+    entries = store.list()
+
+    assert {entry.record_id for entry in entries} == {SAMPLE_RECORD_ID, OTHER_RECORD_ID}
+    by_record = {entry.record_id: entry for entry in entries}
+    assert by_record[SAMPLE_RECORD_ID] == readable_entry
+    assert by_record[OTHER_RECORD_ID].schema_version == FUTURE_SCHEMA_VERSION
+    assert store.open(readable_entry) == make_release()
+
+
+def test_list_reads_a_naive_exported_at_as_utc(file_store_uri: str) -> None:
+    """A `release.json` written without the `Z` yields a naive `exported_at`, and
+    Python refuses to compare a naive datetime with an aware one — so one such entry
+    made `list()` raise `TypeError` while sorting, an exception that is neither
+    `StoreError` nor `BundleError` and lands on a consumer as an unclassified 500."""
+    store = open_store(file_store_uri)
+    aware_entry = store.put(make_release(), {})
+    naive_release = make_release(
+        provenance=[
+            Provenance(
+                kind="vinylcat", id=OTHER_RECORD_ID, exported_at=NAIVE_EXPORTED_AT_AS_UTC
+            )
+        ]
+    )
+    naive_entry = store.put(naive_release, {})
+    _rewrite_release_json(
+        _path_for_uri(naive_entry.uri),
+        provenance=[
+            {"kind": "vinylcat", "id": OTHER_RECORD_ID, "exported_at": NAIVE_EXPORTED_AT_TEXT}
+        ],
+    )
+
+    entries = store.list(all_versions=True)
+
+    assert [entry.record_id for entry in entries] == [OTHER_RECORD_ID, SAMPLE_RECORD_ID]
+    assert entries[0].exported_at == NAIVE_EXPORTED_AT_AS_UTC
+    assert entries[0].exported_at.tzinfo is not None
+    assert entries[1] == aware_entry
 
 
 def test_list_ignores_what_is_not_an_entry(file_store_uri: str) -> None:

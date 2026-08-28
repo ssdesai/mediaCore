@@ -18,6 +18,9 @@ imported. They require `mediacore` to be installed (`.venv/bin/python -m pip ins
   (`INTEGRATION.md` §5.1 "Fixture") via `mediacore.seed_its_saxy_store`. Takes the
   store URI (`file://` or `s3://`) as its only argument and refuses to guess one — a
   missing argument prints a usage message and exits non-zero. Idempotent, so it is safe
-  to rerun; prints the seeded entry's `uri` on success. Run by hand when setting up a
+  to rerun, and it works on first run against a `file://` root that does not exist yet
+  (`put` creates it); prints the seeded entry's `uri` on success. An `s3://` bucket is
+  provisioned rather than created here, so seeding one that does not exist fails
+  naming it. Run by hand when setting up a
   dev stack for WP7b/7c/7d, never by `plans/gate.sh`, which never writes outside the
   checkout.

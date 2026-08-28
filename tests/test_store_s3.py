@@ -8,6 +8,8 @@ from __future__ import annotations
 import inspect
 import json
 import re
+import sys
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,11 +22,13 @@ from mediacore import (
     Provenance,
     Release,
     StoreError,
+    StoreNotFound,
     bundle_slug,
     open_store,
 )
 
 from conftest import (
+    S3_MISSING_BUCKET,
     S3_TEST_BUCKET,
     S3_TEST_CREDENTIAL,
     S3_TEST_PREFIX,
@@ -39,6 +43,10 @@ from conftest import (
 # Objects an entry is made of
 ENTRY_RELEASE_KEY_SUFFIX = "/release.json"
 ENTRY_MEDIA_KEY_PART = "/media/"
+# A key that walks out of the entry `open` is downloading, and the directory the
+# download is confined to while the test watches for it.
+ESCAPING_OBJECT_NAME = "escaped.txt"
+TEMP_DOWNLOAD_SANDBOX_DIRNAME = "download-sandbox"
 # A release.json claiming a schema this install does not know
 FUTURE_SCHEMA_VERSION = SCHEMA_VERSION + 1
 
@@ -262,7 +270,7 @@ def test_put_refuses_to_overwrite(s3_store_uri: str) -> None:
     key = f"{prefix}{ENTRY_RELEASE_KEY_SUFFIX}"
     original_bytes = client.get_object(Bucket=S3_TEST_BUCKET, Key=key)["Body"].read()
 
-    with pytest.raises(StoreError, match=re.escape(bundle_slug(release))):
+    with pytest.raises(StoreError, match=re.escape(ENTRY_TIMESTAMP_DIRNAME)):
         store.put(release, {})
 
     assert client.get_object(Bucket=S3_TEST_BUCKET, Key=key)["Body"].read() == original_bytes
@@ -314,15 +322,74 @@ def test_list_spans_pages(s3_store_uri: str, monkeypatch: pytest.MonkeyPatch) ->
 def test_missing_boto3_names_the_extra(
     s3_store_uri: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """§5.1 makes boto3 optional, so the failure has to say what to install."""
-
-    def _raise_import_error() -> None:
-        raise ImportError("no module named boto3")
-
-    monkeypatch.setattr(mediacore.store, "_import_boto3", _raise_import_error)
+    """§5.1 makes boto3 optional, so the failure has to say what to install. `None` in
+    `sys.modules` is what makes `import boto3` fail the way a machine without the extra
+    fails, so this exercises the real `_import_boto3`; a double raising `ImportError`
+    from outside it would only assert that the test's own double was called."""
+    monkeypatch.setitem(sys.modules, "boto3", None)
 
     with pytest.raises(StoreError, match=re.escape("mediacore[s3]")):
         open_store(s3_store_uri)
+
+
+def test_list_on_a_missing_bucket_raises_store_error(missing_s3_store_uri: str) -> None:
+    """botocore's own exceptions are the store's problem, not the caller's: a consumer
+    holding `except StoreError` around `list()` must catch a bucket that is not there,
+    exactly as it catches a `file://` root that is not there."""
+    store = open_store(missing_s3_store_uri)
+
+    with pytest.raises(StoreNotFound, match=re.escape(S3_MISSING_BUCKET)):
+        store.list()
+
+
+def test_a_credential_failure_is_a_store_error(
+    s3_store_uri: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other half of the same rule: `NoCredentialsError` is a `BotoCoreError`, not
+    a `ClientError`, and nothing outside boto knows either name."""
+    import botocore.exceptions
+
+    store = open_store(s3_store_uri)
+
+    def _no_credentials(*args: object, **kwargs: object) -> None:
+        raise botocore.exceptions.NoCredentialsError()
+
+    monkeypatch.setattr(store._client, "get_paginator", _no_credentials)
+
+    with pytest.raises(StoreError, match="NoCredentialsError"):
+        store.list()
+
+
+def test_open_refuses_a_key_that_escapes_the_entry(
+    s3_store_uri: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An S3 key is arbitrary text — `<entry>/../escaped.txt` is a perfectly legal key
+    — and `open` downloads an entry into a temp directory before reading it, so a key
+    with a `..` segment would otherwise write outside that directory."""
+    import boto3
+
+    sandbox = tmp_path / TEMP_DOWNLOAD_SANDBOX_DIRNAME
+    sandbox.mkdir()
+    # `open`'s temp directory is created below this, so an escaping key lands here.
+    monkeypatch.setattr(tempfile, "tempdir", str(sandbox))
+
+    store = open_store(s3_store_uri)
+    release = make_release()
+    entry = store.put(release, {})
+
+    client = boto3.client("s3", region_name=S3_TEST_REGION)
+    prefix = _entry_key_prefix(SAMPLE_RECORD_ID, ENTRY_TIMESTAMP_DIRNAME, bundle_slug(release))
+    client.put_object(
+        Bucket=S3_TEST_BUCKET,
+        Key=f"{prefix}/../{ESCAPING_OBJECT_NAME}",
+        Body=b"escaped",
+    )
+
+    with pytest.raises(StoreError, match=re.escape(ESCAPING_OBJECT_NAME)):
+        store.open(entry)
+
+    assert not (sandbox / ESCAPING_OBJECT_NAME).exists()
+    assert list(sandbox.rglob(ESCAPING_OBJECT_NAME)) == []
 
 
 def test_versions_and_latest_per_record(s3_store_uri: str) -> None:

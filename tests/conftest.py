@@ -27,6 +27,11 @@ S3_TEST_BUCKET = "mediacore-test-bundles"
 S3_TEST_PREFIX = "bundles"
 S3_TEST_REGION = "us-east-1"
 S3_TEST_CREDENTIAL = "testing"
+# A bucket the moto session never creates: the `s3://` reading of "the store root is
+# not there", which `file://` spells as a directory that does not exist.
+S3_MISSING_BUCKET = "mediacore-test-no-such-bucket"
+# The store root a `file://` fixture names under `tmp_path`.
+FILE_STORE_DIRNAME = "store"
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -96,9 +101,16 @@ def write_source_files(directory: Path, payloads: dict[str, bytes]) -> dict[str,
 @pytest.fixture
 def file_store_uri(tmp_path: Path) -> str:
     """A `file://` bundle store root that already exists."""
-    root = tmp_path / "store"
+    root = tmp_path / FILE_STORE_DIRNAME
     root.mkdir()
     return root.as_uri()
+
+
+@pytest.fixture
+def missing_file_store_uri(tmp_path: Path) -> str:
+    """A `file://` bundle store root that does **not** exist — the first-run case a
+    dev stack meets before anything has been seeded (INTEGRATION.md §5.1)."""
+    return (tmp_path / FILE_STORE_DIRNAME).as_uri()
 
 
 @pytest.fixture
@@ -115,10 +127,37 @@ def s3_store_uri(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
         yield f"s3://{S3_TEST_BUCKET}/{S3_TEST_PREFIX}"
 
 
+@pytest.fixture
+def missing_s3_store_uri(s3_store_uri: str) -> str:
+    """A store URI inside the same moto session naming a bucket nobody created. Depends
+    on `s3_store_uri` only to keep `mock_aws` active for the caller."""
+    return f"s3://{S3_MISSING_BUCKET}/{S3_TEST_PREFIX}"
+
+
 @pytest.fixture(params=["file", "s3"])
 def store_uri(request: pytest.FixtureRequest, file_store_uri: str, s3_store_uri: str) -> str:
     """Both backends, so a test written once runs against each (INTEGRATION.md §5.1)."""
     return {"file": file_store_uri, "s3": s3_store_uri}[request.param]
+
+
+@pytest.fixture(params=["file", "s3"])
+def unseeded_store_uri(
+    request: pytest.FixtureRequest, missing_file_store_uri: str, s3_store_uri: str
+) -> str:
+    """Both backends on first run, before anything has written to the store: a
+    `file://` root that does not exist yet, and an `s3://` bucket holding nothing under
+    the prefix (a bucket is provisioned, not created by `put`, so an empty prefix is
+    what "not seeded yet" means there)."""
+    return {"file": missing_file_store_uri, "s3": s3_store_uri}[request.param]
+
+
+@pytest.fixture(params=["file", "s3"])
+def missing_store_uri(
+    request: pytest.FixtureRequest, missing_file_store_uri: str, missing_s3_store_uri: str
+) -> str:
+    """Both backends pointed at a store root that is not there at all — a directory
+    that does not exist, and a bucket that does not exist."""
+    return {"file": missing_file_store_uri, "s3": missing_s3_store_uri}[request.param]
 
 
 def its_saxy_source() -> tuple[Release, dict[str, Path]]:

@@ -107,12 +107,20 @@ Release, read_bundle, normalize_text` — never from a submodule.
     `extra="forbid"`. `record_id` and `exported_at` are read from the entry's own
     `release.json`, from the `provenance` entry whose `kind` is `"vinylcat"` (§4),
     never parsed out of its path; `slug` is `bundle_slug(release)`; `uri` is the
-    entry's address.
+    entry's address. A **naive `exported_at` is read as UTC** by a field validator
+    (`ENTRY_TIMEZONE`, the same one the path's timestamp segment is written in):
+    `Provenance.exported_at` is a plain `datetime`, so
+    a `release.json` written without its `Z` yields one, and Python refuses to compare
+    a naive datetime with an aware one — `list`'s sort over the whole store would
+    otherwise raise `TypeError`, which is neither `StoreError` nor `BundleError`.
   - Layout `<root>/<record ULID>/<exported_at as `%Y%m%dT%H%M%SZ`>/<slug>/`, holding
     a §5 bundle. A re-export is a new version beside the old one; `list()` returns the
     latest per record, newest first, `all_versions=True` the rest. **Nothing here
-    overwrites or deletes an entry** — `put` on an existing address raises
-    `StoreError`.
+    overwrites or deletes an entry** — and the address `put` refuses is the *version*,
+    `<record>/<timestamp>`, not the leaf: the timestamp is truncated to seconds and the
+    slug is only a label on the leaf, so a re-titled export of the same record in the
+    same second raises `StoreError` instead of landing as a second bundle at one
+    version, which `list` would then have to choose between.
   - `open` verifies exactly as `read_bundle` does and lets `BundleError` through:
     hashes, audio sizes, and a `schema_version` newer than this install's, the last
     of those even with `verify=False`. `list` does **not** refuse such an entry — it
@@ -121,7 +129,14 @@ Release, read_bundle, normalize_text` — never from a submodule.
     `release.json` payload and never validates a `Release`.
   - `StoreError` is the store's own failure (unusable URI, missing root, an entry
     that is not addressable, a `put` that would overwrite, a `release.json` that
-    cannot become an entry). `BundleError` stays the bundle's.
+    cannot become an entry). `BundleError` stays the bundle's. `StoreNotFound` is the
+    one subclass: **the store root itself is not there** — a `file://` directory that
+    does not exist, or an `s3://` bucket that does not. `list` raises it rather than
+    returning `[]` (a configured store you are reading that is absent is a
+    misconfiguration, not an empty inbox), while `put` creates its own root; the
+    subclass exists so a caller that may create the store — `seed_its_saxy_store`
+    before its first `put` — can read that one case as "empty" without also swallowing
+    the malformed-entry refusal.
   - The store root is a containment boundary, because §5.1's consumer flow posts an
     entry `uri` back from a browser (`preview-from-store {entry_uri}`): `open` resolves
     the URI before checking it against the root, so neither a `..` segment nor a
@@ -134,11 +149,23 @@ Release, read_bundle, normalize_text` — never from a submodule.
     each segment folded through `normalize_text`, lowercased, and every run outside
     `[a-z0-9]` collapsed to `-`. It reproduces the slug vinylCatalogue records for a
     record (§11), but nothing addresses an entry by slug: `record_id` and `uri` do
-    that, so a divergence is cosmetic.
+    that, so a divergence is cosmetic. When **every** segment folds away (a
+    non-Latin-script pressing with no catalogue number) the slug is
+    `SLUG_FALLBACK_SEGMENT` (`"release"`), because an empty leaf is not a directory:
+    it disappeared from the `file://` join — putting the bundle one level above where
+    `list`'s depth-3 glob looks — and doubled the separator in the `s3://` key.
+    vinylCatalogue's mirrored slugify takes the same fallback (`INTEGRATION.md` §13).
   - Depends on two contracts no import reveals: a bundle's `release.json` carrying a
     `provenance` entry with `kind == "vinylcat"` (written by vinylCatalogue's adapter,
     §6), and — for `s3://` — `boto3` from the optional extra `mediacore[s3]` plus the
     ambient boto3 credential chain. `mediacore` itself takes no keys.
+  - Every `s3://` call is wrapped so **botocore's exceptions never escape**:
+    `NoSuchBucket` becomes `StoreNotFound`, and any other `ClientError` /
+    `BotoCoreError` (`NoCredentialsError` included) becomes `StoreError`. A consumer's
+    `except StoreError` around `list()` has never heard of boto, and §5.1's promise is
+    that the two backends differ by configuration only. `botocore.exceptions` is
+    imported through its own lazy seam beside `_import_boto3`, so a missing extra still
+    fails with the message naming `mediacore[s3]`.
   - `s3://` is the same layout under a key prefix, over a `boto3` client built from the
     ambient credential chain with no key, region or endpoint argument of its own.
     `boto3` is imported lazily through one seam, so `import mediacore` works without the
@@ -162,6 +189,8 @@ Release, read_bundle, normalize_text` — never from a submodule.
   committed bundle and `put`s it into `open_store(store_uri)`. Idempotent: before
   putting, it checks `list(all_versions=True)` for an entry already carrying this
   record's `record_id` and `exported_at`, and returns that instead of putting again, so
-  a dev stack can reseed on every restart without error. A `StoreError` from an
-  unusable `store_uri` or a `BundleError` from a damaged checkout propagates
-  unchanged.
+  a dev stack can reseed on every restart without error. That check reads the store
+  before `put` creates it, so a `StoreNotFound` from it — and **only** that subclass,
+  never a bare `StoreError` — is read as "empty store"; without it the documented
+  first-run command exits 1 on a fresh machine. Any other `StoreError` from an unusable
+  `store_uri`, or a `BundleError` from a damaged checkout, propagates unchanged.
