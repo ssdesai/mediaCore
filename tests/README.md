@@ -50,17 +50,34 @@ pins.
   fake what the API refuses to create. Pins: scheme dispatch and every rejected URI shape
   (bare path, `http://`, a `file://` naming another host, an `s3://` with no bucket or
   with credentials in it); `put`/`list`/`open` round trip and the documented key layout;
-  a re-export as a new version beside the old, with `put` refusing the existing one; the
-  `list`/`open` asymmetry on a newer `schema_version` (listed with its version — even
-  carrying a field this install's models forbid — but refused by `open` with the upgrade
-  message); `open` catching a bad hash and a wrong audio size, and `verify=False`
-  skipping both; `open(dest=…)` materialising the whole bundle and refusing a non-empty
-  destination; entry fields coming from `release.json` under a deliberately misleading
-  key; malformed entries raising `StoreError`; a directory with no `release.json` not
-  being an entry; `open` refusing a foreign or wrong-depth `entry.uri`; the slug fold;
-  and `seed_its_saxy_store` seeding the committed fixture into a `file://` store, twice,
-  idempotently. `test_s3_store_names_the_extra_when_boto3_is_missing` sets
-  `sys.modules["boto3"] = None` to make the import fail, and
+  the entry keying on the `vinylcat`-kinded `provenance` entry rather than on
+  `provenance[0]` (with another kind recorded first), and `put` refusing a release with no
+  such entry; a re-export as a new version beside the old, with `put` refusing an existing
+  **version** — `<record>/<timestamp>` — including a same-second re-export whose slug
+  differs and one whose `exported_at` differs only in microseconds; the `list`/`open`
+  asymmetry on a newer `schema_version` (listed with its version — even carrying a field
+  this install's models forbid — *beside* an older valid entry, but refused by `open` with
+  the upgrade message); `open` catching a bad hash and a wrong audio size, and
+  `verify=False` skipping both; `open(dest=…)` materialising the whole bundle and refusing
+  a non-empty destination; entry fields coming from `release.json` under a deliberately
+  misleading key; a malformed entry being logged to the `mediacore.store` logger and left
+  out of the listing instead of raising, and not hiding a valid entry beside it; a
+  directory with no `release.json` not being an entry; `open` refusing a foreign or
+  wrong-depth entry URI **and** accepting the bare URI string a browser posts back,
+  refusing one that escapes the root; `put` refusing a `provenance` id of
+  `"../../escaped"` or `"/tmp/escaped"` and creating nothing outside the store root; a
+  missing store root listing as `[]` on *both* backends (a missing directory, a missing
+  bucket); the slug fold; and `seed_its_saxy_store` seeding the committed fixture into a
+  `file://` store, twice, idempotently — including for a bundle whose `exported_at` is
+  tz-naive, which the seed's version-key comparison has to survive.
+  Three tests are deliberately single-backend rather than parametrized, because the other
+  backend cannot express what they assert:
+  `test_open_refuses_an_s3_key_that_escapes_the_destination` (a POSIX directory entry
+  cannot be named `..`, so only a bucket key can spell the traversal `_contained_path`
+  guards), `test_botocore_faults_surface_as_store_errors` (a stub client raising
+  `NoCredentialsError`, pinning that `except StoreError` catches it), and
+  `test_s3_store_names_the_extra_when_boto3_is_missing`, which sets
+  `sys.modules["boto3"] = None` to make the import fail.
   `test_s3_store_uses_the_ambient_credential_chain` builds the client with no injection
   so the ambient path itself is exercised — under fake credentials from `monkeypatch`,
   never a developer profile.

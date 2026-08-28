@@ -19,7 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from mediacore.bundle import BUNDLE_RELEASE_FILENAME, bundle_entries, read_bundle
-from mediacore.store import BundleEntry, open_store
+from mediacore.store import BundleEntry, open_store, release_version_key, version_key
 
 ITS_SAXY_SLUG = "its-saxy"
 # The repo-root fixtures directory, and its name inside an installed wheel.
@@ -27,9 +27,6 @@ FIXTURES_DIRNAME = "fixtures"
 PACKAGED_FIXTURES_DIRNAME = "_fixtures"
 # src/mediacore/fixtures.py -> parents[0] src/mediacore, [1] src, [2] the repo root.
 REPO_ROOT_PARENT_INDEX = 2
-# The export that produced the fixture bundle: the store keys on the first provenance
-# entry (`mediacore.store`), so seeding compares against the same one.
-FIXTURE_PROVENANCE_INDEX = 0
 
 
 def its_saxy_bundle() -> Path:
@@ -58,15 +55,20 @@ def seed_its_saxy_store(store_uri: str) -> BundleEntry:
     Re-putting it would be refused anyway — the version key is the fixture's fixed
     `exported_at`, and nothing in `mediacore` overwrites an entry — so the check is what
     makes seeding safe to repeat, not a way around that rule.
+
+    The check compares the *version key* `put` would build, never the raw timestamps:
+    `Provenance.exported_at` is a plain `datetime` and need not carry a timezone, while a
+    `BundleEntry.exported_at` always does (the store reads a naive value as UTC). Comparing
+    the datetimes would make a tz-naive fixture look like a different export, so the seed
+    would call `put` and get "refusing to overwrite" instead of the entry it wanted.
     """
     bundle = its_saxy_bundle()
     release = read_bundle(bundle)
     store = open_store(store_uri)
 
-    record_id = release.provenance[FIXTURE_PROVENANCE_INDEX].id
-    exported_at = release.provenance[FIXTURE_PROVENANCE_INDEX].exported_at
+    wanted = release_version_key(release)
     for entry in store.list(all_versions=True):
-        if entry.record_id == record_id and entry.exported_at == exported_at:
+        if version_key(entry.record_id, entry.exported_at) == wanted:
             return entry
 
     files = {sha256: bundle / relative for sha256, relative in bundle_entries(release)}

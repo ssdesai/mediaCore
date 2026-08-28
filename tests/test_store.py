@@ -5,12 +5,20 @@ Every behavioural test runs against both backends: the `file://` store and a rea
 offline rather than skipped. `StoreHarness` is what makes that possible — it carries
 the raw write a test needs to fake an entry the API refuses to create (a newer
 `schema_version`, a misleading key, a half-uploaded bundle).
+
+Two guards can only be tested on one backend, and are written as single-backend tests
+rather than as a parametrized test that quietly asserts nothing on the other:
+`test_open_refuses_an_s3_key_that_escapes_the_destination` (a POSIX directory entry
+cannot be named `..`, so only an S3 key can spell the traversal) and
+`test_botocore_faults_surface_as_store_errors` (there is no botocore on the file path).
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import sys
+import tempfile
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import timedelta
@@ -19,6 +27,7 @@ from typing import Any
 
 import boto3
 import pytest
+from botocore.exceptions import NoCredentialsError
 from moto import mock_aws
 
 from mediacore import (
@@ -36,9 +45,13 @@ from mediacore import (
     read_bundle,
     release_slug,
     seed_its_saxy_store,
+    write_bundle,
 )
+from mediacore import fixtures as mediacore_fixtures
+from mediacore import store as mediacore_store
 from mediacore.store import (
     EXPORTED_AT_KEY_FORMAT,
+    RECORD_PROVENANCE_KIND,
     SCHEMA_VERSION_FIELD,
     SLUG_FALLBACK,
     FileBundleStore,
@@ -66,6 +79,8 @@ TEST_PREFIX = "bundles/releases"
 TEST_AWS_REGION = "us-east-1"
 FAKE_AWS_CREDENTIAL = "testing"
 AWS_ENVIRONMENT_OVERRIDES = ("AWS_PROFILE", "AWS_SHARED_CREDENTIALS_FILE", "AWS_CONFIG_FILE")
+# Never created by any test: the s3 half of "a store root that is not there is empty".
+MISSING_BUCKET = "mediacore-test-bucket-that-was-never-created"
 
 # Payloads for the bundle a test puts into a store.
 IMAGE_BYTES = b"\x89PNG\r\n\x1a\n-placeholder-image"
@@ -76,15 +91,30 @@ TRACK_POSITION = "A1"
 TRACK_TITLE = "LOVE GROWS"
 LABEL_NAME = "A. A. E."
 CATALOGUE_NUMBER = "SAAE 1012"
-PROVENANCE_KIND = "vinylcat"
+PROVENANCE_KIND = RECORD_PROVENANCE_KIND
 PROVENANCE_LABEL = "Test"
+# A second kind of provenance (§4 names `cd-rip` and `digital` as future ones): evidence
+# the store must *not* key on, recorded before the one it must.
+OTHER_PROVENANCE_KIND = "cd-rip"
+OTHER_PROVENANCE_ID = "01M0000000000000000000000X"
+OTHER_EXPORTED_AT = SAMPLE_EXPORTED_AT - timedelta(days=30)
+
+# Source directories are named after a digest of the export they hold, not after the
+# record id: a test that puts a traversing id must not spell that traversal on disk.
+SOURCE_DIR_PREFIX = "sources"
+SOURCE_DIR_DIGEST_LENGTH = 12
 
 # The slug `release_slug` derives for the release `make_bundle` builds, and the version
 # segment for `SAMPLE_EXPORTED_AT` (2026-01-02T03:04:05Z).
 EXPECTED_SLUG = "the-duke-s-combo--it-s-saxy--saae-1012"
+EXPECTED_SLUG_WITHOUT_LABEL = "the-duke-s-combo--it-s-saxy"
 EXPECTED_VERSION_SEGMENT = "20260102T030405Z"
 SECOND_RECORD_ID = "01M08WYYQGY1S66KY425FYCBS8"
 RE_EXPORT_OFFSET = timedelta(days=1)
+# Smaller than the whole-second key granularity: a re-export this close is the same
+# version, whatever else changed.
+SUB_SECOND_OFFSET = timedelta(microseconds=1)
+NAIVE_EXPORTED_AT = SAMPLE_EXPORTED_AT.replace(tzinfo=None)
 
 # INTEGRATION.md §11 pins these for the committed fixture.
 FIXTURE_RECORD_ID = "01M08WYYQGY1S66KY425FYCBS7"
@@ -92,6 +122,21 @@ FIXTURE_SLUG = "the-duke-s-combo--it-s-saxy--saae-1012"
 
 # §5.1: "A BundleStore has three methods and nothing else."
 STORE_METHODS = {"list", "open", "put"}
+
+# Record ids that would walk `put` out of the store root if the key guard were absent.
+# `"/tmp/escaped"` lands at an absolute path; `"../../escaped"` lands beside `tmp_path`,
+# in pytest's per-run basetemp — both are checked, since neither is under `tmp_path`.
+ESCAPE_TARGET_NAME = "escaped"
+ESCAPING_RECORD_IDS = ("../../escaped", "/tmp/escaped")
+ESCAPED_ABSOLUTE_PATH = Path("/tmp") / ESCAPE_TARGET_NAME
+# A bucket key that spells a traversal out of the directory `open` is filling.
+ESCAPED_FILENAME = "escaped.txt"
+RELATIVE_KEY_SEGMENT = ".."
+# Deep enough to leave the store root from an entry key three segments down.
+ESCAPING_URI_SUFFIX = "/../../../../escaped"
+# A field only a newer mediacore would write; this install's models forbid it.
+FUTURE_FIELD_NAME = "a_field_from_the_future"
+FUTURE_FIELD_VALUE = "written by a newer mediacore"
 
 
 @dataclass
@@ -151,16 +196,29 @@ def harness(
         yield s3_harness(client)
 
 
+def source_directory(tmp_path: Path, *parts: str) -> Path:
+    """A per-export directory for the source files, named after a digest of `parts`.
+
+    Never after the record id itself: a test that puts an id like `"../../escaped"` would
+    otherwise write its own source files outside `tmp_path` while setting up.
+    """
+    digest = sha256_bytes("|".join(parts).encode("utf-8"))[:SOURCE_DIR_DIGEST_LENGTH]
+    return tmp_path / f"{SOURCE_DIR_PREFIX}-{digest}"
+
+
 def make_bundle(
     tmp_path: Path,
     *,
     record_id: str = SAMPLE_RECORD_ID,
     exported_at: Any = SAMPLE_EXPORTED_AT,
     with_label: bool = True,
+    provenance: list[Provenance] | None = None,
 ) -> tuple[Release, dict[str, Path]]:
     """A release with one photo and one audio file, plus the `files` mapping `put` takes."""
     release = make_release(
-        provenance=[
+        provenance=provenance
+        if provenance is not None
+        else [
             Provenance(
                 kind=PROVENANCE_KIND,
                 id=record_id,
@@ -176,10 +234,15 @@ def make_bundle(
         audio=[make_audio_file(AUDIO_BYTES, position=TRACK_POSITION)],
     )
     files = write_source_files(
-        tmp_path / f"sources-{record_id}-{exported_at.strftime(EXPORTED_AT_KEY_FORMAT)}",
+        source_directory(tmp_path, record_id, exported_at.isoformat()),
         {"photo.png": IMAGE_BYTES, "track.wav": AUDIO_BYTES},
     )
     return release, files
+
+
+def paths_under(root: Path) -> set[Path]:
+    """Everything below `root`, for "and it created nothing" assertions."""
+    return set(root.rglob("*"))
 
 
 def valid_payload(release: Release, **overrides: Any) -> bytes:
@@ -279,6 +342,60 @@ def test_put_returns_an_entry_read_from_the_release(
     )
 
 
+def test_the_entry_keys_on_the_vinylcat_provenance_not_the_first_one(
+    harness: StoreHarness, tmp_path: Path
+) -> None:
+    """§5.1: `record_id` is the `vinylcat:record` ULID. A bundle may record other evidence
+    first (§4 names `cd-rip` and `digital` as future kinds); keying on `provenance[0]`
+    would then key the store on the wrong export entirely."""
+    release, files = make_bundle(
+        tmp_path,
+        provenance=[
+            Provenance(
+                kind=OTHER_PROVENANCE_KIND,
+                id=OTHER_PROVENANCE_ID,
+                label=PROVENANCE_LABEL,
+                exported_at=OTHER_EXPORTED_AT,
+            ),
+            Provenance(
+                kind=PROVENANCE_KIND,
+                id=SAMPLE_RECORD_ID,
+                label=PROVENANCE_LABEL,
+                exported_at=SAMPLE_EXPORTED_AT,
+            ),
+        ],
+    )
+    entry = harness.store.put(release, files)
+
+    assert entry.record_id == SAMPLE_RECORD_ID
+    assert entry.exported_at == SAMPLE_EXPORTED_AT
+    assert entry.uri == harness.entry_uri(
+        SAMPLE_RECORD_ID, EXPECTED_VERSION_SEGMENT, EXPECTED_SLUG
+    )
+    assert harness.store.list() == [entry]
+
+
+def test_put_refuses_a_release_with_no_vinylcat_provenance(
+    harness: StoreHarness, tmp_path: Path
+) -> None:
+    """Without that entry the store cannot say which record the bundle is a version of,
+    so there is no key to write it under."""
+    release, files = make_bundle(
+        tmp_path,
+        provenance=[
+            Provenance(
+                kind=OTHER_PROVENANCE_KIND,
+                id=OTHER_PROVENANCE_ID,
+                label=PROVENANCE_LABEL,
+                exported_at=OTHER_EXPORTED_AT,
+            )
+        ],
+    )
+    with pytest.raises(StoreError, match=RECORD_PROVENANCE_KIND):
+        harness.store.put(release, files)
+    assert harness.store.list(all_versions=True) == []
+
+
 def test_put_uses_the_documented_key_layout(harness: StoreHarness, tmp_path: Path) -> None:
     release, files = make_bundle(tmp_path)
     entry = harness.store.put(release, files)
@@ -362,18 +479,93 @@ def test_put_refuses_to_overwrite_an_existing_version(
     assert harness.store.list() == [entry]
 
 
+def test_put_refuses_a_same_second_re_export_with_a_different_slug(
+    harness: StoreHarness, tmp_path: Path
+) -> None:
+    """A version is `<record>/<timestamp>`, not `<record>/<timestamp>/<slug>`: editing the
+    metadata between two exports of one second must not buy a second entry under the same
+    timestamp, which `list` would then choose between by lexicographic slug."""
+    first, first_files = make_bundle(tmp_path)
+    first_entry = harness.store.put(first, first_files)
+
+    # Dropping the label changes the derived slug, and nothing else.
+    second, second_files = make_bundle(tmp_path, with_label=False)
+    assert release_slug(second) == EXPECTED_SLUG_WITHOUT_LABEL != EXPECTED_SLUG
+
+    with pytest.raises(StoreError, match="refusing to overwrite"):
+        harness.store.put(second, second_files)
+    assert harness.store.list(all_versions=True) == [first_entry]
+
+
+def test_put_refuses_a_re_export_that_differs_only_in_microseconds(
+    harness: StoreHarness, tmp_path: Path
+) -> None:
+    """The key is whole seconds, so a sub-second re-export is the same version."""
+    first, first_files = make_bundle(tmp_path)
+    first_entry = harness.store.put(first, first_files)
+    second, second_files = make_bundle(
+        tmp_path, exported_at=SAMPLE_EXPORTED_AT + SUB_SECOND_OFFSET, with_label=False
+    )
+
+    with pytest.raises(StoreError, match="refusing to overwrite"):
+        harness.store.put(second, second_files)
+    assert harness.store.list(all_versions=True) == [first_entry]
+
+
+# ── store-level faults are StoreError on both backends ────────────────────────
+
+
+def test_list_is_empty_for_a_store_root_that_does_not_exist(
+    tmp_path: Path, aws_environment: None
+) -> None:
+    """Both backends agree: a store nobody has created yet is empty, not broken. On
+    `file://` that is a missing directory, on `s3://` a missing bucket — which botocore
+    reports as `NoSuchBucket` and would otherwise escape `except StoreError` entirely."""
+    file_store = open_store((tmp_path / "never-created").absolute().as_uri())
+    assert file_store.list() == []
+    assert file_store.list(all_versions=True) == []
+
+    with mock_aws():
+        s3_store = open_store(
+            f"s3://{MISSING_BUCKET}/{TEST_PREFIX}",
+            s3_client=boto3.client("s3", region_name=TEST_AWS_REGION),
+        )
+        assert s3_store.list() == []
+        assert s3_store.list(all_versions=True) == []
+
+
+def test_botocore_faults_surface_as_store_errors(aws_environment: None) -> None:
+    """A consumer wraps store calls in `except StoreError`; an absent or expired ambient
+    credential must not sail through that handler as a botocore type it never imported."""
+
+    class NoCredentialsClient:
+        def get_paginator(self, name: str) -> Any:
+            raise NoCredentialsError()
+
+    store = open_store(
+        f"s3://{TEST_BUCKET}/{TEST_PREFIX}", s3_client=NoCredentialsClient()
+    )
+    with pytest.raises(StoreError, match="credentials"):
+        store.list()
+
+
 # ── the list / open asymmetry on schema_version ───────────────────────────────
 
 
-def test_list_reports_a_newer_schema_version_instead_of_hiding_it(
+def test_list_reports_a_newer_schema_version_beside_the_entries_it_can_read(
     harness: StoreHarness, tmp_path: Path
 ) -> None:
     """A page must be able to say "upgrade to import this", so `list` never refuses —
-    including for a bundle carrying fields this install's models forbid."""
-    release, _ = make_bundle(tmp_path)
-    payload = release.model_dump(mode="json")
+    including for a bundle carrying fields this install's models forbid. The invariant
+    that matters is that the too-new entry does not take the older valid ones down with
+    it, so the store holds both."""
+    older, older_files = make_bundle(tmp_path, record_id=SECOND_RECORD_ID)
+    older_entry = harness.store.put(older, older_files)
+
+    future, _ = make_bundle(tmp_path)
+    payload = future.model_dump(mode="json")
     payload[SCHEMA_VERSION_FIELD] = SCHEMA_VERSION + 1
-    payload["a_field_from_the_future"] = "written by a newer mediacore"
+    payload[FUTURE_FIELD_NAME] = FUTURE_FIELD_VALUE
     harness.write_raw(
         SAMPLE_RECORD_ID,
         EXPECTED_VERSION_SEGMENT,
@@ -382,10 +574,13 @@ def test_list_reports_a_newer_schema_version_instead_of_hiding_it(
         data=json.dumps(payload).encode("utf-8"),
     )
 
-    (entry,) = harness.store.list()
-    assert entry.schema_version == SCHEMA_VERSION + 1
-    assert entry.record_id == SAMPLE_RECORD_ID
-    assert entry.slug == EXPECTED_SLUG
+    listed = harness.store.list()
+    assert {entry.record_id: entry.schema_version for entry in listed} == {
+        SAMPLE_RECORD_ID: SCHEMA_VERSION + 1,
+        SECOND_RECORD_ID: SCHEMA_VERSION,
+    }
+    assert older_entry in listed
+    assert {entry.slug for entry in listed} == {EXPECTED_SLUG}
 
 
 def test_open_refuses_a_newer_schema_version_with_the_upgrade_message(
@@ -527,21 +722,40 @@ def test_a_directory_without_release_json_is_not_an_entry(
 
 
 @pytest.mark.parametrize(
-    ("payload", "match"),
+    ("payload", "logged"),
     [
         (b"{not json", "not valid JSON"),
         (b"[]", "not a JSON object"),
         (b'{"schema_version": 1}', "provenance"),
-        (b'{"provenance": [{"id": "x", "exported_at": "2026-01-02T03:04:05Z"}]}', "schema_version"),
+        (
+            b'{"provenance": [{"kind": "vinylcat", "id": "x", '
+            b'"exported_at": "2026-01-02T03:04:05Z"}]}',
+            "schema_version",
+        ),
         (b'{"schema_version": 1, "provenance": []}', "provenance"),
-        (b'{"schema_version": 1, "provenance": [{"exported_at": "2026-01-02T03:04:05Z"}]}', "id"),
-        (b'{"schema_version": 1, "provenance": [{"id": "x"}]}', "exported_at"),
-        (b'{"schema_version": 1, "provenance": [{"id": "x", "exported_at": "nope"}]}', "ISO 8601"),
+        (
+            b'{"schema_version": 1, "provenance": [{"kind": "cd-rip", "id": "x", '
+            b'"exported_at": "2026-01-02T03:04:05Z"}]}',
+            "vinylcat",
+        ),
+        (
+            b'{"schema_version": 1, "provenance": [{"kind": "vinylcat", '
+            b'"exported_at": "2026-01-02T03:04:05Z"}]}',
+            "id",
+        ),
+        (b'{"schema_version": 1, "provenance": [{"kind": "vinylcat", "id": "x"}]}', "exported_at"),
+        (
+            b'{"schema_version": 1, "provenance": [{"kind": "vinylcat", "id": "x", '
+            b'"exported_at": "nope"}]}',
+            "ISO 8601",
+        ),
     ],
 )
-def test_a_malformed_entry_is_reported_not_swallowed(
-    harness: StoreHarness, payload: bytes, match: str
+def test_a_malformed_entry_is_logged_and_left_out_of_the_listing(
+    harness: StoreHarness, caplog: pytest.LogCaptureFixture, payload: bytes, logged: str
 ) -> None:
+    """`list` never fails on one entry's account (§5.1) — the fault goes to the
+    `mediacore.store` logger with the entry's own URI, and the listing goes on."""
     harness.write_raw(
         SAMPLE_RECORD_ID,
         EXPECTED_VERSION_SEGMENT,
@@ -549,8 +763,32 @@ def test_a_malformed_entry_is_reported_not_swallowed(
         name=BUNDLE_RELEASE_FILENAME,
         data=payload,
     )
-    with pytest.raises(StoreError, match=match):
-        harness.store.list()
+    with caplog.at_level(logging.WARNING, logger=mediacore_store.__name__):
+        assert harness.store.list() == []
+        assert harness.store.list(all_versions=True) == []
+
+    assert logged in caplog.text
+    assert SAMPLE_RECORD_ID in caplog.text
+
+
+def test_a_corrupt_entry_does_not_hide_the_valid_ones(
+    harness: StoreHarness, caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
+    release, files = make_bundle(tmp_path, record_id=SECOND_RECORD_ID)
+    entry = harness.store.put(release, files)
+    harness.write_raw(
+        SAMPLE_RECORD_ID,
+        EXPECTED_VERSION_SEGMENT,
+        EXPECTED_SLUG,
+        name=BUNDLE_RELEASE_FILENAME,
+        data=CORRUPT_BYTES,
+    )
+
+    with caplog.at_level(logging.WARNING, logger=mediacore_store.__name__):
+        assert harness.store.list() == [entry]
+
+    assert SAMPLE_RECORD_ID in caplog.text
+    assert harness.store.open(entry) == release
 
 
 # ── entry URIs are untrusted input ────────────────────────────────────────────
@@ -592,6 +830,104 @@ def test_open_refuses_an_entry_that_is_not_there(harness: StoreHarness) -> None:
     )
     with pytest.raises(StoreError, match="no such entry"):
         harness.store.open(missing)
+
+
+def test_open_accepts_the_entry_uri_a_browser_posts_back(
+    harness: StoreHarness, tmp_path: Path
+) -> None:
+    """§5.1's `preview-from-store` posts `{entry_uri}`, so the server holds the string and
+    not the `BundleEntry` — `open` takes either."""
+    release, files = make_bundle(tmp_path)
+    entry = harness.store.put(release, files)
+    dest = tmp_path / "from-a-uri"
+
+    assert harness.store.open(entry.uri) == release
+    assert harness.store.open(entry.uri, dest=dest) == release
+    assert (dest / BUNDLE_RELEASE_FILENAME).is_file()
+
+
+@pytest.mark.parametrize("bad", ["", "   ", "not a uri", "http://example.test/bundles"])
+def test_open_refuses_an_entry_uri_string_that_is_not_this_store(
+    harness: StoreHarness, tmp_path: Path, bad: str
+) -> None:
+    release, files = make_bundle(tmp_path)
+    harness.store.put(release, files)
+    with pytest.raises(StoreError):
+        harness.store.open(bad)
+
+
+def test_open_refuses_an_entry_uri_string_that_escapes_the_root(
+    harness: StoreHarness, tmp_path: Path
+) -> None:
+    """The string is validated exactly as an entry's `uri` is: a traversal appended to a
+    real entry key still has to resolve to one entry key under this store's own root."""
+    release, files = make_bundle(tmp_path)
+    entry = harness.store.put(release, files)
+
+    with pytest.raises(StoreError):
+        harness.store.open(entry.uri + ESCAPING_URI_SUFFIX)
+    with pytest.raises(StoreError, match="not a store entry key"):
+        harness.store.open(
+            f"{entry.uri.rsplit('/', 1)[0]}/{RELATIVE_KEY_SEGMENT}/{EXPECTED_SLUG}"
+        )
+
+
+# ── nothing is ever written outside the entry it addresses ────────────────────
+
+
+@pytest.mark.parametrize("record_id", ESCAPING_RECORD_IDS)
+def test_put_refuses_a_record_id_that_is_not_one_key_segment(
+    harness: StoreHarness, tmp_path: Path, record_id: str
+) -> None:
+    """The record id is the one key segment that reaches `put` out of `release.json`
+    unfiltered, and `Provenance.id` is an unconstrained `str`. `Path.joinpath` silently
+    leaves the root on an absolute or `..` segment, and §5.1's import path `put`s bundles
+    that arrived as browser uploads."""
+    release, files = make_bundle(tmp_path, record_id=record_id)
+    before = paths_under(tmp_path)
+
+    with pytest.raises(StoreError, match="single key segment"):
+        harness.store.put(release, files)
+
+    assert harness.store.list(all_versions=True) == []
+    assert paths_under(tmp_path) == before
+    assert not ESCAPED_ABSOLUTE_PATH.exists()
+    assert not (tmp_path.parent / ESCAPE_TARGET_NAME).exists()
+
+
+def test_open_refuses_an_s3_key_that_escapes_the_destination(
+    tmp_path: Path, aws_environment: None
+) -> None:
+    """Object keys come from the bucket, not from `mediacore`, so a key spelling `..` must
+    never put bytes outside the directory `open` is filling. s3 only: a `file://` entry is
+    a directory, and a directory entry cannot be named `..`."""
+    release, files = make_bundle(tmp_path)
+    with mock_aws():
+        client = boto3.client("s3", region_name=TEST_AWS_REGION)
+        client.create_bucket(Bucket=TEST_BUCKET)
+        store = open_store(f"s3://{TEST_BUCKET}/{TEST_PREFIX}", s3_client=client)
+        entry = store.put(release, files)
+        client.put_object(
+            Bucket=TEST_BUCKET,
+            Key="/".join(
+                (
+                    TEST_PREFIX,
+                    SAMPLE_RECORD_ID,
+                    EXPECTED_VERSION_SEGMENT,
+                    EXPECTED_SLUG,
+                    RELATIVE_KEY_SEGMENT,
+                    ESCAPED_FILENAME,
+                )
+            ),
+            Body=CORRUPT_BYTES,
+        )
+
+        with pytest.raises(StoreError, match="escapes its destination"):
+            store.open(entry)
+
+    # `open` without `dest` downloads into a TemporaryDirectory; the escaping key aimed
+    # one level above it, which is the system temp directory itself.
+    assert not (Path(tempfile.gettempdir()) / ESCAPED_FILENAME).exists()
 
 
 # ── slugs ─────────────────────────────────────────────────────────────────────
@@ -639,4 +975,24 @@ def test_seed_its_saxy_store_is_idempotent(tmp_path: Path) -> None:
     second = seed_its_saxy_store(store_uri)
 
     assert second == first
+    assert open_store(store_uri).list(all_versions=True) == [first]
+
+
+def test_seed_its_saxy_store_is_idempotent_for_a_naive_exported_at(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`Provenance.exported_at` is a plain `datetime` and need not carry a timezone, while
+    a `BundleEntry`'s always does. Comparing the two datetimes would make the seed miss its
+    own entry and call `put`, which refuses to overwrite — so it compares version keys."""
+    release, files = make_bundle(tmp_path, exported_at=NAIVE_EXPORTED_AT)
+    assert release.provenance[0].exported_at.tzinfo is None
+    bundle = write_bundle(release, tmp_path / "naive-bundle", files)
+    monkeypatch.setattr(mediacore_fixtures, "its_saxy_bundle", lambda: bundle)
+
+    store_uri = (tmp_path / "dev-store").absolute().as_uri()
+    first = seed_its_saxy_store(store_uri)
+    second = seed_its_saxy_store(store_uri)
+
+    assert second == first
+    assert first.exported_at == SAMPLE_EXPORTED_AT
     assert open_store(store_uri).list(all_versions=True) == [first]

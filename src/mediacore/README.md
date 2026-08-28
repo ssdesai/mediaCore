@@ -107,40 +107,61 @@ Release, read_bundle, normalize_text` — never from a submodule.
     store, returned by `list` and `put` and accepted by `open`, and the shape both
     consumers' `InboxEntryOut` is built from. A `ContractModel`, so it round-trips through
     `model_dump(mode="json")`. **Every field is read from the entry's own `release.json`,
-    never parsed out of its key**: `record_id` and `exported_at` are the *first*
-    `provenance` entry's `id` and `exported_at` (not a `kind`-matched one — nothing
-    vinyl-specific lives here), `slug` is derived by `release_slug`, `schema_version` is
-    the bundle's own and may be *newer* than this install understands, and `uri` is the
-    entry's own address — what a consumer posts back to pick it.
+    never parsed out of its key**: `record_id` and `exported_at` are the `id` and
+    `exported_at` of the `provenance` entry whose `kind` is `RECORD_PROVENANCE_KIND`
+    (`"vinylcat"` — §5.1 defines `record_id` as the `vinylcat:record` ULID, so the store
+    cannot key on `provenance[0]` whatever its kind), `slug` is derived by `release_slug`,
+    `schema_version` is the bundle's own and may be *newer* than this install understands,
+    and `uri` is the entry's own address — what a consumer posts back to pick it. There is
+    deliberately no error field: an entry that cannot be read is logged and omitted, not
+    listed as broken.
   - `BundleStore` — the three public methods of §5.1 and nothing else. `list(*,
     all_versions=False)` returns the latest version per record, newest export first
     (`all_versions=True` for every version); it reads the four entry fields out of the
     raw JSON *without* model validation, so an entry written by a newer `mediacore` is
     listed with its `schema_version` rather than hidden. `open(entry, *, verify=True,
-    dest=None)` goes through `read_bundle` instead — hashes, audio sizes, and a refusal
-    naming the upgrade when `schema_version` is newer — and with `dest` materialises the
-    whole bundle into that (absent or empty) directory. `put(release, files)` writes a
-    new entry through `write_bundle` and returns it. There is no delete: nothing here
-    overwrites or removes an entry.
-  - The key layout is `<root>/<record ULID>/<exported_at, ISO basic>/<slug>/` — a
-    re-export is a new version *beside* the old one, and `put` refuses a version key that
-    already exists (`StoreError`) rather than replacing it. `release_slug(release)`
-    derives `<artist>--<title>--<catalogue number>` over `normalize_text`. The record id
-    is the one key segment that comes out of `release.json` unfiltered (`Provenance.id`
-    is an unconstrained `str`), so `put` refuses one that is not a single segment — a
-    `/`, `\`, `.` or `..` would otherwise walk `write_bundle` out of the store root.
+    dest=None)` takes **a `BundleEntry` or its `uri` string** — §5.1's
+    `preview-from-store` posts `{entry_uri}` back from a browser, so a server holds the
+    string; both are untrusted and validated identically — and goes through `read_bundle`
+    — hashes, audio sizes, and a refusal naming the upgrade when `schema_version` is
+    newer — and with `dest` materialises the whole bundle into that (absent or empty)
+    directory. `put(release, files)` writes a new entry through `write_bundle` and returns
+    it. There is no delete: nothing here overwrites or removes an entry.
+  - **`list` never fails on one entry's account.** A store root that does not exist is `[]`
+    on both backends (a missing directory, a missing bucket), and an entry whose
+    `release.json` cannot be read is logged to the `mediacore.store` logger at WARNING with
+    its own URI (`ENTRY_SKIPPED_LOG_MESSAGE`) and left out, so one corrupt or unkeyable row
+    does not hide the valid ones beside it — that is the same reason a too-new
+    `schema_version` is reported rather than refused.
+  - The key layout is `<root>/<record ULID>/<exported_at, ISO basic>/<slug>/`, of which
+    the **version** is `<record ULID>/<exported_at>` — the slug makes the key readable and
+    is no part of its identity. A re-export is a new version *beside* the old one, and
+    `put` refuses any existing version prefix (`StoreError`) *whatever the slug*, so two
+    exports of one record inside one second with edited metadata cannot both land under
+    that second. `version_key(record_id, exported_at)` / `release_version_key(release)`
+    build that key and are public for `fixtures.seed_its_saxy_store`'s "is this export
+    already here?" check — functions, not `BundleStore` methods, which stay three.
+    `release_slug(release)` derives `<artist>--<title>--<catalogue number>` over
+    `normalize_text`. The record id is the one key segment that comes out of `release.json`
+    unfiltered (`Provenance.id` is an unconstrained `str`), so `put` refuses one that is
+    not a single segment — a `/`, `\`, `.` or `..` would otherwise walk `write_bundle` out
+    of the store root.
   - `S3BundleStore` depends on two things no import shows: `boto3` is **not** a runtime
     dependency but the optional extra `mediacore[s3]` (a missing one raises `StoreError`
     naming the extra), and its client comes from the **ambient boto3 credential chain** —
     environment, shared config, or instance role. `mediacore` accepts no keys, holds
     none, and the browser never talks to the bucket. `release.json` is uploaded last, so
-    an interrupted `put` leaves an entry `list` does not see.
+    an interrupted `put` leaves an entry `list` does not see. Every call into that client
+    is wrapped by `_s3_faults`, which re-raises botocore's `ClientError` / `BotoCoreError`
+    as `StoreError` — a consumer catches store faults without importing botocore — except
+    that a `NoSuchBucket` reaching `list` is answered `[]` rather than raised.
   - Faults *inside* a bundle stay `BundleError` (hash, size, schema upgrade);
-    `StoreError` covers store-level faults — an unusable URI, a malformed entry, an
-    attempted overwrite, a record id that is not one key segment, and an `entry.uri` that
-    is not an entry key of this store. Those last two are boundaries, not niceties: §5.1's
-    `preview-from-store` posts the URI back from a browser, and a bundle reaching `put`
-    may have arrived as an upload.
+    `StoreError` covers store-level faults — an unusable URI, a release with no `vinylcat`
+    provenance, an attempted overwrite, a record id that is not one key segment, an entry
+    URI that is not an entry key of this store, an object key that would escape the
+    directory `open` is filling, and any botocore fault. Those are boundaries, not
+    niceties: §5.1's `preview-from-store` posts the URI back from a browser, a bundle
+    reaching `put` may have arrived as an upload, and object keys come from the bucket.
 - `fixtures.py` — `its_saxy_bundle() -> Path`, the directory of the committed IT'S SAXY
   bundle, so consumer suites never hard-code a path. Depends on two things no import
   reveals: the repo-root `fixtures/its-saxy/` directory produced by
@@ -151,6 +172,11 @@ Release, read_bundle, normalize_text` — never from a submodule.
   `seed_its_saxy_store(store_uri) -> BundleEntry` puts that bundle into the store at
   `store_uri` (§5.1, "Fixture") and is idempotent — a stack re-running its seed gets the
   entry that is already there, which is what keeps seeding compatible with the
-  no-overwrite rule. It lives in the package, not in `scripts/`, because the dev stacks
-  that call it (vinylCatalogue, humanNetworkMap, musicMap) install `mediacore` as a wheel
-  and have no access to this repo's scripts.
+  no-overwrite rule. It recognises its own entry by the *version key* `put` would build
+  (`store.release_version_key` against `store.version_key`), never by comparing the
+  timestamps: `Provenance.exported_at` is a plain `datetime` and need not carry a
+  timezone, while a `BundleEntry.exported_at` always does, so a tz-naive fixture would
+  otherwise look like a different export and the seed would call `put` and be refused. It
+  lives in the package, not in `scripts/`, because the dev stacks that call it
+  (vinylCatalogue, humanNetworkMap, musicMap) install `mediacore` as a wheel and have no
+  access to this repo's scripts.
