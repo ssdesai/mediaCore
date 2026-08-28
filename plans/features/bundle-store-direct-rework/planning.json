@@ -1,0 +1,58 @@
+{
+  "slug": "bundle-store-direct-rework",
+  "captured_at": "2026-08-28T00:05:18.623263+00:00",
+  "manifest_branches": [
+    "bundleStoreDirect"
+  ],
+  "manifest_subagents": [
+    "af3a7618c8e1412ee"
+  ],
+  "sessions": [],
+  "subagents": [
+    {
+      "agent_id": "af3a7618c8e1412ee",
+      "parent_session_id": "3f2c9afd-9417-463f-b1e1-655f31c56ce0",
+      "date": "2026-08-27",
+      "selected_by": "pinned",
+      "cross_repo": true
+    }
+  ],
+  "excluded_session_ids": [
+    "7b929042-1447-442e-b56a-cbbf2cfd8993"
+  ],
+  "priced": [
+    {
+      "session_id": "3f2c9afd-9417-463f-b1e1-655f31c56ce0",
+      "agent_id": "af3a7618c8e1412ee",
+      "model": "claude-opus-5",
+      "is_sidechain": true,
+      "date": "2026-08-27",
+      "tokens": {
+        "input": 138,
+        "output": 7626,
+        "cache_read": 9391469,
+        "cache_creation_5m": 170656,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 5.9536745,
+      "rates_applied": {
+        "model": "claude-opus-5",
+        "input": 5,
+        "output": 25,
+        "cache_read": 0.5,
+        "cache_creation_5m": 6.25,
+        "cache_creation_1h": 10.0,
+        "tier": "standard"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 0.0,
+    "sidechain": 5.9536745,
+    "subagents": 5.9536745,
+    "total": 5.9536745,
+    "total_is_partial": false
+  },
+  "rates_source": "agentTooling/analysis/pricing.py RATES_VERIFIED=2026-08-22",
+  "warnings": []
+}
