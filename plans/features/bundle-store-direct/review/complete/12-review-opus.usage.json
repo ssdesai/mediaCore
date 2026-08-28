@@ -1,0 +1,67 @@
+{
+  "plan": "12-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "7b929042-1447-442e-b56a-cbbf2cfd8993",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 27,
+  "duration_ms": 383291,
+  "total_cost_usd": 2.1120559999999995,
+  "usage": {
+    "input_tokens": 36,
+    "cache_creation_input_tokens": 81851,
+    "cache_read_input_tokens": 1132862,
+    "output_tokens": 28934
+  },
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 3530,
+      "outputTokens": 11,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.003585,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5": {
+      "inputTokens": 36,
+      "outputTokens": 28934,
+      "cacheReadInputTokens": 1132862,
+      "cacheCreationInputTokens": 81851,
+      "webSearchRequests": 0,
+      "costUSD": 2.1084709999999998,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "canonicalModel": "claude-opus-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 18,
+    "Edit": 4,
+    "Read": 3,
+    "Write": 1
+  },
+  "files_edited": [
+    "plans/review-report.md",
+    "src/mediacore/README.md",
+    "src/mediacore/store.py"
+  ],
+  "edit_count": 5,
+  "attempts": [
+    {
+      "session_id": "7b929042-1447-442e-b56a-cbbf2cfd8993",
+      "outcome": "complete",
+      "total_cost_usd": 2.1120559999999995,
+      "num_turns": 27,
+      "duration_ms": 383291
+    }
+  ]
+}

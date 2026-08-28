@@ -1,0 +1,58 @@
+{
+  "slug": "bundle-store-direct",
+  "captured_at": "2026-08-27T22:09:16.121331+00:00",
+  "manifest_branches": [
+    "bundleStoreDirect"
+  ],
+  "manifest_subagents": [
+    "a8de4a2fdd869ce6e"
+  ],
+  "sessions": [],
+  "subagents": [
+    {
+      "agent_id": "a8de4a2fdd869ce6e",
+      "parent_session_id": "1d0e9c07-6179-45eb-a242-528123272d97",
+      "date": "2026-08-27",
+      "selected_by": "pinned",
+      "cross_repo": true
+    }
+  ],
+  "excluded_session_ids": [],
+  "priced": [
+    {
+      "session_id": "1d0e9c07-6179-45eb-a242-528123272d97",
+      "agent_id": "a8de4a2fdd869ce6e",
+      "model": "claude-opus-5",
+      "is_sidechain": true,
+      "date": "2026-08-27",
+      "tokens": {
+        "input": 122,
+        "output": 4909,
+        "cache_read": 7099858,
+        "cache_creation_5m": 140192,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 4.549464,
+      "rates_applied": {
+        "model": "claude-opus-5",
+        "input": 5,
+        "output": 25,
+        "cache_read": 0.5,
+        "cache_creation_5m": 6.25,
+        "cache_creation_1h": 10.0,
+        "tier": "standard"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 0.0,
+    "sidechain": 4.549464,
+    "subagents": 4.549464,
+    "total": 4.549464,
+    "total_is_partial": false
+  },
+  "rates_source": "agentTooling/analysis/pricing.py RATES_VERIFIED=2026-08-22",
+  "warnings": [
+    "branch 'bundleStoreDirect' matched no session in any transcript for this repo, so any planning on it is uncounted and reports as $0.00 rather than as an error. Either the name is wrong \u2014 check it against `git branch --list` and record it exactly as git shows it, with no added prefix \u2014 or the transcripts have aged out of ~/.claude/projects/, in which case the name is fine and the cost is simply unrecoverable"
+  ]
+}
