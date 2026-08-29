@@ -482,6 +482,56 @@ The optional musicMap side panel fetching the band's hNM neighbourhood stays def
 it needs a server-to-server call or CORS story that nothing else in phase 2 needs, and
 the "Open in hNM" button covers the workflow. Recorded in the decisions log.
 
+### 10.6 Imported where (WP7e; designed 2026-08-28)
+
+The vinylCatalogue record page answers "has this record been imported into hNM / into
+musicMap?" by asking each peer's resolve endpoint (§10.1) for the record's own ref,
+`vinylcat:record:<ulid>` (`mediacore.refs.ref_uri`). The answer is computed on request
+and never stored — an import is the peer's state, not the record's, and nothing under
+the collection root records it (§3).
+
+- **Server-to-server, not browser-to-peer.** The vinylCatalogue *server* makes the calls
+  (it already speaks `httpx` to Discogs). Both peers' CORS is locked to their own
+  frontend origin (§10.4, §10.5) and a peer URL is per-collection configuration, so the
+  browser talks only to vinylCatalogue's own API. §10.5's deferral stands for the
+  consumers: this is phase 2's one server-to-server call, and it lives in the source app.
+- **Config.** `config.toml` gains a `[peers]` table, `hnm_url = ""` and
+  `musicmap_url = ""` — each the origin at which that peer's *API* is reachable (the host
+  that serves `/api/resolve` resp. `/api/v1/resolve`; in a dev stack the backend's port,
+  not the Vite dev server's). Empty, the default, means "not configured" — `""` rather
+  than null for the same reason as `bundle_store_uri` (TOML has no null). The resolve
+  path for each peer is the source app's knowledge, a per-peer constant, never
+  configuration.
+- **Per-peer verdict**, from one `GET <url><resolve path>?ref=<uri>` with a short
+  timeout (a named constant of a few seconds, not configuration): **`imported`** — 200
+  and at least one entity in any list of the peer's `ResolveOut` (hNM `nodes` / `sources`,
+  musicMap `artists` / `albums` / `songs`); **`absent`** — 200 and every list empty;
+  **`unknown`** — anything else (connection refused, timeout, a non-200 including the
+  §10.1 400, a body that is not the expected shape), with a one-line `detail` saying
+  why. Peers are asked independently: one peer's failure never changes another's verdict,
+  and an unconfigured peer is neither asked nor reported.
+- **Endpoint.** `GET /api/records/{ref}/imports` →
+  `RecordImportsOut { record_id, ref, peers: list[PeerImportOut] }`,
+  `PeerImportOut { peer: "hnm" | "musicmap", url, status: "imported" | "absent" | "unknown", matches: int, detail: str | None }`
+  — `matches` is the entity count across the peer's lists (0 unless `imported`);
+  `detail` is set only for `unknown`. `peers` is in the fixed order hnm, musicmap and
+  holds only configured peers — `[]` when neither is set. 404 for an unknown record. No
+  sign-off gate: this is a read and answers for any record (a record that was never
+  exported simply comes back `absent`).
+- **Page.** The Browse › Records detail pane (where the export action lives) shows one
+  line per reported peer — the peer's name and its verdict, `detail` alongside
+  `unknown` — and nothing at all when `peers` is empty. It is fetched for the selected
+  record only, after the record's own data, never for the list; a failure of this
+  request is reported the way the pane reports other errors and does not block the pane.
+- **CLI.** vinylCatalogue's peer-adapter rule (its spec §9.1) is that repo's own; whether
+  a CLI peer of the endpoint is added is its call, recorded in its plan or PR.
+- **Not in 7e:** caching or persisting verdicts; "Open in …" links out of vinylCatalogue
+  (they need the peers' *frontend* origins — a second URL per peer — and stay deferred);
+  any change to §10.1 or to either peer; the collection-wide `export`.
+- **Tests** reach no network: the route and the verdict logic are exercised against
+  injected transports or stub peers (the Discogs client's `transport` parameter is the
+  precedent), covering each of the three verdicts and the unconfigured case.
+
 ## 11. The fixture: *IT'S SAXY*
 
 One real, Discogs-matched record from the owner's Test collection is the contract
@@ -534,7 +584,7 @@ copy of the record's `record.json` (metadata only, no photos) in its own tests.
 | 7b | vinylCatalogue | §5.1 source side: `bundle_store_uri` config, `--store`, export writes an entry | 7a |
 | 7c | humanNetworkMap | §5.1 inbox: `BUNDLE_STORE_URI`, inbox + preview-from-store endpoints, inbox section on the Import view | 7a, WP2 |
 | 7d | musicMap | §5.1 inbox: same, replacing the `data/incoming/` pickup | 7a, WP3 |
-| 7e | vinylCatalogue, optional | *imported where* on the record page via the peers' resolve endpoints | 7b, WP5, WP6 |
+| 7e | vinylCatalogue | §10.6: `[peers]` config, `GET /api/records/{ref}/imports`, *imported where* on the record page via the peers' resolve endpoints | 7b, WP5, WP6 |
 
 WP1–3 run in parallel once `v0.1.0` is tagged. Consumers pin
 `mediacore @ git+https://github.com/ssdesai/mediaCore.git@v0.1.0`. Before 1.0 a
@@ -542,7 +592,7 @@ breaking change to §3 bumps the minor version and every consumer re-pins delibe
 `schema_version` changes only when the on-disk `release.json` shape changes. WP7a adds a
 module, not a field: `mediacore` **0.2.0**, `schema_version` unchanged.
 
-WP7 is also an experiment on the delegation tier itself — each of 7a–7d is built twice,
+WP7 is also an experiment on the delegation tier itself — each of 7a–7e is built twice,
 once through the plan workflow and once by a single Opus delegate, from this section as
 the shared brief. The checklist and scorecard live in humanNetworkMap
 `plans/experiments/wp7-bundle-store/`.
@@ -732,3 +782,12 @@ Raised by an implementing agent → recorded here with the answer.
   wire-shape change on both sides for a disambiguation UI nobody scrolls. Deferred
   until a real catalogue makes a 100-match disambiguation plausible; the caps stay
   documented in each repo.
+- 2026-08-28 (WP7e) — **Imported-where is a server-to-server call from the source app**
+  (§10.6). The browser cannot ask the peers (their CORS is locked to their own frontends,
+  §10.4) and a peer URL is collection config, so vinylCatalogue's server queries
+  `/api/resolve` / `/api/v1/resolve` itself; §10.5's deferral for the consumers stands.
+  Config holds the peers' *API* origins under `[peers]` and the resolve paths are
+  constants; the verdict is three-valued (`imported` / `absent` / `unknown`, one peer's
+  failure never colouring another's), computed per request and never stored. "Open in …"
+  links out of vinylCatalogue would need the peers' frontend origins as well and stay
+  deferred.
