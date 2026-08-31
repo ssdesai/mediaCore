@@ -14,8 +14,10 @@ to the machinery is made once and pulled everywhere.
   instead.
 - `experiments/` — one directory per A/B of the doctrine or the runner (or of the
   delegation tier itself): the checklist written before either arm runs, the behaviour
-  score script, batch logs and the scorecard. See `../agentTooling/EXPERIMENTS.md`.
-  Absent until the repo runs one.
+  score script, batch logs and the scorecard. Also `experiments/fixtures/`, the frozen
+  features `../agentTooling/harness/` builds, and the experiment directories it appends
+  `results.jsonl` to. See `../agentTooling/EXPERIMENTS.md` → "Running one" and
+  `../agentTooling/harness/README.md`. Absent until the repo runs one.
 - `PROJECT_FACTS.md` — repo-specific facts every plan must pin. Read this before authoring.
 - `gate.sh` — *seeded once from the skeleton by `sync-plans.sh` on first run, then
   repo-owned and never overwritten again* — same treatment as `PROJECT_FACTS.md`. Runs this

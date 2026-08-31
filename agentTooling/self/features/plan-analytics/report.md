@@ -1,24 +1,25 @@
 # plan-analytics — cost and waste report
 
-Generated 2026-08-05T18:39:53.431973+00:00.
+Generated 2026-08-27T21:32:00.153466+00:00.
 
 ## Cost
 
 | bucket | usd | % of total |
 |---|---|---|
-| planning | $39.2380 | 85.2% |
-| build | $5.4695 | 11.9% |
-| verify | $1.3526 | 2.9% |
-| **total** | **$46.0601** (partial) | 100.0% |
+| planning | $41.0559 | 81.1% |
+| build | $5.4695 | 10.8% |
+| verify | $4.0929 | 8.1% |
+| review | $0.0000 | 0.0% |
+| **total** | **$50.6183** | 100.0% |
 
-**This total is a lower bound** — at least one input is unavailable, so the real cost is higher and the percentages are skewed toward whatever survived.
+cost per plan: $5.6243  
+cost per file touched: $2.3008
 
-cost per plan: $5.1178  
-cost per file touched: $2.0936
+$2.7403 of the total above is **derived**, not measured — priced from session transcripts by recover_attempts.py for attempts the CLI itself never reported a cost for.
 
 ## Cold-start tax
 
-511368 cache-creation tokens across build/verify plans.
+511368 cache-creation tokens across build/verify/review plans.
 
 ## Model fit
 
@@ -44,30 +45,19 @@ cost per file touched: $2.0936
 
 | plan | plan.md lines | LoC changed |
 |---|---|---|
-| 48-feature-scoped-runner-sonnet | 310 | 268 |
-| 49-feature-layout-sync-and-docs-sonnet | 414 | 157 |
-| 50-plan-layout-migration-script-sonnet | 498 | 395 |
-| 52-runner-usage-capture-sonnet | 208 | 96 |
-| 53-analysis-pricing-haiku | 209 | 152 |
-| 54-analysis-backfill-sonnet | 159 | 223 |
-| 55-analysis-capture-planning-sonnet | 254 | 379 |
-| 56-analysis-report-sonnet | 221 | 764 |
-| 57-verify-sonnet | 81 | 0 |
+| 48-feature-scoped-runner-sonnet | 310 | not computed: streams unavailable |
+| 49-feature-layout-sync-and-docs-sonnet | 414 | not computed: streams unavailable |
+| 50-plan-layout-migration-script-sonnet | 498 | not computed: streams unavailable |
+| 52-runner-usage-capture-sonnet | 208 | not computed: streams unavailable |
+| 53-analysis-pricing-haiku | 209 | not computed: streams unavailable |
+| 54-analysis-backfill-sonnet | 159 | not computed: streams unavailable |
+| 55-analysis-capture-planning-sonnet | 254 | not computed: streams unavailable |
+| 56-analysis-report-sonnet | 221 | not computed: streams unavailable |
+| 57-verify-sonnet | 81 | not computed: streams unavailable |
 
 ## Re-hunting
 
-| target | tool | plans |
-|---|---|---|
-| `agentTooling/analysis/*` | Glob | 54-analysis-backfill-sonnet, 55-analysis-capture-planning-sonnet, 56-analysis-report-sonnet |
-| `plans/features/*/README.md` | Glob | 50-plan-layout-migration-script-sonnet, 55-analysis-capture-planning-sonnet |
-| `/Users/sahildesai/dev/vinylCatalogue/agentTooling/README.md` | Read | 49-feature-layout-sync-and-docs-sonnet, 50-plan-layout-migration-script-sonnet, 53-analysis-pricing-haiku, 57-verify-sonnet |
-| `/Users/sahildesai/dev/vinylCatalogue/agentTooling/RUNNER.md` | Read | 48-feature-scoped-runner-sonnet, 54-analysis-backfill-sonnet, 56-analysis-report-sonnet, 57-verify-sonnet |
-| `/Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/README.md` | Read | 54-analysis-backfill-sonnet, 55-analysis-capture-planning-sonnet, 56-analysis-report-sonnet, 57-verify-sonnet |
-| `/Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/backfill_usage.py` | Read | 54-analysis-backfill-sonnet, 55-analysis-capture-planning-sonnet, 56-analysis-report-sonnet, 57-verify-sonnet |
-| `/Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/capture_planning.py` | Read | 56-analysis-report-sonnet, 57-verify-sonnet |
-| `/Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/pricing.py` | Read | 53-analysis-pricing-haiku, 54-analysis-backfill-sonnet, 55-analysis-capture-planning-sonnet, 56-analysis-report-sonnet, 57-verify-sonnet |
-| `/Users/sahildesai/dev/vinylCatalogue/agentTooling/plan-runner-lib.sh` | Read | 48-feature-scoped-runner-sonnet, 52-runner-usage-capture-sonnet, 54-analysis-backfill-sonnet, 57-verify-sonnet |
-| `/Users/sahildesai/dev/vinylCatalogue/plans/features/plan-analytics/README.md` | Read | 50-plan-layout-migration-script-sonnet, 55-analysis-capture-planning-sonnet, 56-analysis-report-sonnet |
+not computed: streams unavailable
 
 ## Plan drift
 
@@ -77,24 +67,13 @@ cost per file touched: $2.0936
 
 ## Cross-plan edit overlap
 
-| file | earlier plan | later plan | overlap chars |
-|---|---|---|---|
-| README.md | 49-feature-layout-sync-and-docs-sonnet | 50-plan-layout-migration-script-sonnet | 248 |
-| analysis/backfill_usage.py | 54-analysis-backfill-sonnet | 54-analysis-backfill-sonnet | 116 |
-| analysis/backfill_usage.py | 54-analysis-backfill-sonnet | 54-analysis-backfill-sonnet | 133 |
-| analysis/README.md | 53-analysis-pricing-haiku | 54-analysis-backfill-sonnet | 867 |
-| analysis/README.md | 54-analysis-backfill-sonnet | 55-analysis-capture-planning-sonnet | 779 |
-| analysis/README.md | 55-analysis-capture-planning-sonnet | 56-analysis-report-sonnet | 531 |
-| analysis/README.md | 55-analysis-capture-planning-sonnet | 56-analysis-report-sonnet | 586 |
-| analysis/README.md | 53-analysis-pricing-haiku | 56-analysis-report-sonnet | 163 |
-| analysis/README.md | 54-analysis-backfill-sonnet | 56-analysis-report-sonnet | 163 |
-| analysis/README.md | 55-analysis-capture-planning-sonnet | 56-analysis-report-sonnet | 163 |
+not computed: streams unavailable
 
 ## Warnings
 
-- plan 57-verify-sonnet has 2 attempt(s) with no recorded cost (sessions: 0aa7f47d-4f02-43d1-a97d-0c431e21a27d, 886aa05b-2498-4e91-9553-ded8cc1dbbb5); its total is a lower bound
+- plan 57-verify-sonnet has 2 attempt(s) priced from session transcripts rather than reported by the CLI (sessions: 0aa7f47d-4f02-43d1-a97d-0c431e21a27d, 886aa05b-2498-4e91-9553-ded8cc1dbbb5)
 - plan 57-verify-sonnet has 0 files_edited; excluded from churn ratio
 
 ---
 
-Rates last verified 2026-07-30 (fresh as of report generation). This footnote is display-only and does not affect any figure above.
+Rates last verified 2026-08-22 (fresh as of report generation). This footnote is display-only and does not affect any figure above.

@@ -95,6 +95,7 @@ sharing a branch with no `session_window` separating them.
 ```json
 {
   "slug": "plan-analytics",
+  "subagents": ["a0a4c47c06f3ac7be", "a818347796243832f", "a9f7a841694e8fc74", "aad99bf9f4de37a30"],
   "branches": ["browseImages"],
   "session_window": { "from": "2026-07-30T15:49:00", "to": "2026-07-30T19:03:00" },
   "plans": [
