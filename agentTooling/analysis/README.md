@@ -65,7 +65,7 @@ python3 agentTooling/analysis/report.py --all     # cross-feature trend, stdout 
 
 `report.py` reads only what is already on disk, so re-run it for whatever changed — it is the capture step that has to be careful, not this one.
 
-**A full refresh is `--all --recapture`, and it is not cadence work.** It re-derives every `planning.json` from transcripts, so reach for it with a reason — a pricing correction, a manifest fix — and read the diff before committing. On a corpus older than transcript retention it does two different things: where a *priced* session is gone, `check_frozen_cost` refuses that feature, leaves it untouched, and the run carries on (exiting non-zero at the end); where only a *runner* session is gone, the feature re-captures **successfully** with fewer `excluded_session_ids` than before, which is a silent metadata loss no guard catches. Both are reasons the default is to skip.
+**A full refresh is `--all --recapture`, and it is not cadence work.** It re-derives every `planning.json` from transcripts, so reach for it with a reason — a pricing correction, a manifest fix — and read the diff before committing. On a corpus older than transcript retention it does two different things: where a *priced* session is gone, `check_frozen_cost` refuses that feature, leaves it untouched, and the run carries on (exiting non-zero at the end) — `--carry-lost` instead keeps those entries verbatim (each marked `carried_from`, the file gaining a top-level `carried_from`) and adds what the scan reaches, which is how a subagent pin is added to a feature whose own sessions have expired; where only a *runner* session is gone, the feature re-captures **successfully** with fewer `excluded_session_ids` than before, which is a silent metadata loss no guard catches. Both are reasons the default is to skip.
 
 Each command takes `--self` in the same position to operate on agentTooling's own corpus instead:
 
@@ -195,7 +195,10 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   `feature: <repo>/<slug>` first line `ORCHESTRATION.md` requires) as the pin to
   write; `--all` ends by counting the unclaimed under this repo's directories. A pin
   whose brief names another feature is warned about — the pin is the human's word,
-  the brief the coordinator's, and one is wrong. Dropping a cross-repo pin does not
+  the brief the coordinator's, and one is wrong. `exclude_subagents` is the pin's
+  inverse — a selected session's children that another feature pins, so a
+  coordinator's manifest and its arm's manifest do not both claim the architect
+  (recorded in `excluded_agent_ids`). Dropping a cross-repo pin does not
   trip `check_frozen_cost`: the transcript is proved still on disk before the guard
   looks, so "unpinned" is not read as "expired".
   `--list-subagents` is the discovery step: every reachable subagent with

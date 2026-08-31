@@ -82,6 +82,7 @@ mkdir -p "$PROJECTS" "$FEATURE_DIR"
 write_manifest() {
   local pins="${1:-[]}"
   local excludes="${2:-[]}"
+  local agent_excludes="${3:-[]}"
   cat > "$FEATURE_DIR/README.md" <<MANIFEST
 # $SLUG
 
@@ -93,6 +94,7 @@ Fixture feature for self/tests/subagent-capture.sh.
   "branches": ["$BRANCH"],
   "session_window": {"from": "$WINDOW_FROM", "to": "$WINDOW_TO"},
   "exclude_sessions": $excludes,
+  "exclude_subagents": $agent_excludes,
   "subagents": $pins
 }
 \`\`\`
@@ -336,6 +338,55 @@ check "14b. and listed once in subagents[]" \
 list_subs > "$TMP/out14.txt"
 check "14c. --list-subagents shows it once" "[ \"$(grep -c "$AGENT_3" "$TMP/out14.txt")\" = 1 ]"
 rm "$PROJECTS/$SESSION_P/subagents/agent-$AGENT_3.jsonl"
+
+# ── 15. --carry-lost adds a pin to a feature whose sessions have expired ──────
+SESSION_X="xxxxxxxx-0000-0000-0000-000000000005"
+AGENT_8="a8888888888888888"
+write_parent "$SESSION_X" "$BRANCH" "2026-07-02T12:00:00.000Z" 5000
+capture > /dev/null
+frozen="$(total_of)"
+# Make the prior file look like one written before subagent capture existed: no
+# agent_id on priced rows, no subagents[] at all — the shape of every real frozen file.
+python3 - "$PLANNING" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["priced"] = [{k: v for k, v in p.items() if k != "agent_id"} for p in d["priced"] if not p.get("agent_id")]
+d.pop("subagents", None)
+json.dump(d, open(sys.argv[1], "w"))
+PY
+rm "$PROJECTS/$SESSION_X.jsonl"
+capture > "$TMP/out15.txt"; rc15=$?
+check "15. a priced session whose transcript is gone still refuses a plain recapture" \
+  "[ $rc15 -ne 0 ] && grep -q 'REFUSING' '$TMP/out15.txt' && grep -q 'carry-lost' '$TMP/out15.txt'"
+write_subagent "$SESSION_M" "$AGENT_8" "main" "2026-07-03T11:00:00.000Z" 8000 "Late pin on a frozen feature"
+write_manifest "[\"$AGENT_3\", \"$AGENT_8\"]"
+capture --carry-lost > "$TMP/out15b.txt"; rc15b=$?
+a8="$(field "sum(p['cost_usd'] for p in d['priced'] if p['agent_id']=='$AGENT_8')")"
+check "15b. --carry-lost writes: frozen figure plus the new pin, exactly" \
+  "[ $rc15b -eq 0 ] && near '$(total_of)' \"\$(python3 -c 'print($frozen + $a8)')\""
+check "15c. the lost session is carried, marked with the capture it came from" \
+  "[ \"\$(field \"[s['session_id'] for s in d['sessions'] if s.get('carried_from')]\")\" = \"['$SESSION_X']\" ] && [ \"\$(field \"d['carried_from'] is not None\")\" = True ]"
+check "15d. the new pin is priced and claimed beside it" \
+  "[ \"$(claim $AGENT_8)\" = \"('$REPO_NAME', '$SLUG', 'pinned')\" ]"
+check "15e. and the run says what it carried" "grep -q 'carried forward' '$TMP/out15b.txt'"
+write_manifest "[\"$AGENT_3\"]"
+
+# ── 16. exclude_subagents: a selected parent disowns a child another feature pins ─
+# AGENT_1 is parent-selected under SESSION_P (phase 1). The coordinator case: the
+# coordinator's manifest owns the session, the arm's manifest pins the architect.
+write_manifest "[\"$AGENT_3\"]" "[]" "[\"$AGENT_1\"]"
+capture --carry-lost > "$TMP/out16.txt"
+check "16. an excluded subagent is not claimed by the parent route" \
+  "[ \"\$(field \"'$AGENT_1' in [s['agent_id'] for s in d['subagents']]\")\" = False ]"
+check "16b. and is recorded as excluded" \
+  "[ \"\$(field \"d['excluded_agent_ids']\")\" = \"['$AGENT_1']\" ]"
+check "16c. the parent's own cost is still counted" "gt '$(field "d['cost_usd']['main']")' 0"
+check "16d. and the id leaves the ledger, free for the other feature to pin" "[ \"$(claim $AGENT_1)\" = None ]"
+write_manifest "[\"$AGENT_3\", \"$AGENT_1\"]" "[]" "[\"$AGENT_1\"]"
+capture --carry-lost > "$TMP/out16b.txt"
+check "16e. pinned and excluded at once warns, and the pin wins" \
+  "grep -q \"both pinned and in exclude_subagents\" '$TMP/out16b.txt' && [ \"\$(field \"'$AGENT_1' in [s['agent_id'] for s in d['subagents']]\")\" = True ]"
+write_manifest "[\"$AGENT_3\"]"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "subagent-capture: all ok"; else echo "subagent-capture: $fails FAIL"; exit 1; fi

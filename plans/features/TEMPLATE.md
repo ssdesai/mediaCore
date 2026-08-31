@@ -44,11 +44,12 @@ Delete this section when the batch has a single level.
   "branches": ["<branch-name>"],
   "session_window": {"from": "<YYYY-MM-DDTHH:MM:SSZ>", "to": "<YYYY-MM-DDTHH:MM:SSZ>"},
   "exclude_sessions": ["<session-id>"],
+  "exclude_subagents": ["<agent-id>"],
   "subagents": ["<agent-id>"]
 }
 ```
 
-Every field but `subagents` is required. These are the ones that go wrong quietly:
+Every field but `subagents` and `exclude_subagents` is required. These are the ones that go wrong quietly:
 
 - **`branches`** — copy each name from `git branch --show-current`, verbatim. It is
   matched literally against the `gitBranch` in every session transcript, so an added
@@ -85,6 +86,11 @@ Every field but `subagents` is required. These are the ones that go wrong quietl
   question — every delegate on this machine no feature has claimed, with the
   feature its brief names; a pin already claimed by another feature refuses the
   capture rather than counting twice.
+- **`exclude_subagents`** — optional. Delegates of a session this manifest *does* select
+  that belong to another feature — a coordinator's manifest (on `main`, windowed around
+  the run) lists the architect it spawned, which the arm's own manifest pins. Without it
+  the parent route claims the architect here too and the ledger refuses the other
+  capture as a double claim.
 - **`session_window.to`** — `null` means "still open", and open is the right value only
   while the feature is still being planned. Set a real bound as soon as it is done. Two
   open-ended windows on a shared branch claim each other's sessions and price the same

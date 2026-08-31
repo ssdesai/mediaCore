@@ -810,6 +810,34 @@ def check_frozen_cost(output_path, reachable_session_ids, excluded_ids, reachabl
     return lost, prior_total
 
 
+def carry_lost_entries(output_path, lost):
+    """The prior capture's rows for the ids `check_frozen_cost` reports lost, each
+    marked `carried_from` with that capture's timestamp — so a re-capture can add what
+    it reaches now (a pin on a feature whose own sessions have expired) without
+    destroying the only surviving account of what it cannot. Returns
+    (captured_at, sessions, subagents, priced)."""
+    prior = json.loads(output_path.read_text())
+    stamp = prior.get("captured_at")
+    lost_sessions = {i for i in lost if not i.startswith("agent-")}
+    lost_agents = {i[len("agent-"):] for i in lost if i.startswith("agent-")}
+
+    def mark(entry):
+        entry = dict(entry)
+        # Rows written before subagent capture existed carry no agent_id at all.
+        entry.setdefault("agent_id", None)
+        entry["carried_from"] = stamp
+        return entry
+
+    sessions = [mark(e) for e in prior.get("sessions") or [] if e.get("session_id") in lost_sessions]
+    subagents = [mark(e) for e in prior.get("subagents") or [] if e.get("agent_id") in lost_agents]
+    priced = [
+        mark(e) for e in prior.get("priced") or []
+        if (e.get("agent_id") in lost_agents)
+        or (not e.get("agent_id") and e.get("session_id") in lost_sessions)
+    ]
+    return stamp, sessions, subagents, priced
+
+
 def prior_cross_repo_ids(output_path):
     """Agent ids the last capture priced from another repo's project directory."""
     if not output_path.exists():
@@ -925,7 +953,7 @@ def select_parent(
     return True
 
 
-def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, force):
+def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, force, carry_lost=False):
     """Capture one feature, printing its own result line. Returns one of "captured",
     "skipped" or "refused" — `main` counts these and picks the exit code from them.
 
@@ -937,6 +965,11 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     manifest = parse_manifest(manifest_path)
     branches = manifest.get("branches", [])
     pinned_agent_ids = set(manifest.get("subagents", []) or [])
+    # Subagents this manifest disowns: children of a selected session that another
+    # feature pins — the coordinator case, where the coordinator's manifest owns the
+    # coordinator's context and the arm's manifest owns the architect. The parent
+    # route skips them; a pin on the same id is a contradiction and is warned about.
+    excluded_agent_ids = set(manifest.get("exclude_subagents", []) or [])
     window = normalize_window(manifest)
 
     warnings = check_naive_bounds(manifest)
@@ -975,6 +1008,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         both_corpora, {**manifest, "exclude_sessions": []}
     )
     excluded_ids_encountered = set()
+    excluded_agent_ids_encountered = set()
 
     session_dir_str = str(sessions_dir)
     dir_fragment = transcript_dir_name(sessions_dir)
@@ -1069,6 +1103,9 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                 if agent_id in pinned_agent_ids:
                     selected_by = "pinned"
                     agent_briefs[agent_id] = brief_feature_of(agent_lines)
+                elif agent_id in excluded_agent_ids:
+                    excluded_agent_ids_encountered.add(agent_id)
+                    continue
                 elif parent_selected and in_window(agent_start_ts, window):
                     selected_by = "parent"
                 else:
@@ -1114,6 +1151,11 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     warnings += check_unmatched_branches(branches, branches_seen_anywhere)
     warnings += check_unmatched_subagents(pinned_agent_ids, reachable_agent_ids)
     warnings += check_brief_headers(agent_briefs, repo_name, slug)
+    for agent_id in sorted(pinned_agent_ids & excluded_agent_ids):
+        warnings.append(
+            f"subagent {agent_id!r} is both pinned and in exclude_subagents — the pin "
+            "wins; drop one of them"
+        )
 
     sessions = [
         {
@@ -1162,6 +1204,24 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             }
         )
 
+    lost, prior_total = check_frozen_cost(
+        output_path, reachable_session_ids, excluded_ids, reachable_agent_ids
+    )
+    carried_from = None
+    if lost and carry_lost and not force:
+        carried_from, c_sessions, c_subagents, c_priced = carry_lost_entries(output_path, lost)
+        sessions += c_sessions
+        subagents += c_subagents
+        priced += c_priced
+        for entry in c_subagents:
+            agent_selected_by[entry["agent_id"]] = entry.get("selected_by", "pinned")
+        warnings.append(
+            f"{len(lost)} entr{'y' if len(lost) == 1 else 'ies'} carried forward from the "
+            f"capture of {carried_from}: their transcripts are gone, so the figure is the "
+            f"prior one — {', '.join(lost)}"
+        )
+        lost = []
+
     main_cost = sum(
         (p["cost_usd"] for p in priced if not p["is_sidechain"] and p["cost_usd"] is not None),
         0.0,
@@ -1190,6 +1250,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         "sessions": sessions,
         "subagents": subagents,
         "excluded_session_ids": sorted(excluded_ids_encountered),
+        "excluded_agent_ids": sorted(excluded_agent_ids_encountered),
         "priced": priced,
         "cost_usd": {
             "main": main_cost,
@@ -1201,10 +1262,9 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         "rates_source": f"agentTooling/analysis/pricing.py RATES_VERIFIED={RATES_VERIFIED}",
         "warnings": warnings,
     }
+    if carried_from:
+        data["carried_from"] = carried_from
 
-    lost, prior_total = check_frozen_cost(
-        output_path, reachable_session_ids, excluded_ids, reachable_agent_ids
-    )
     if lost and not force:
         print(
             f"{slug}: REFUSING to overwrite planning.json — "
@@ -1216,15 +1276,16 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             print(f"  {session_id}")
         print(
             f"  recorded total ${prior_total:.4f} left untouched. Transcripts expire; "
-            "re-capture a feature only while they still exist. Pass --force to "
-            "overwrite anyway."
+            "re-capture a feature only while they still exist. Pass --carry-lost to keep "
+            "these entries and add what this scan reaches (how a pin is added to an old "
+            "feature), or --force to overwrite anyway."
         )
         for warning in warnings:
             print(f"WARN: {warning}")
         return "refused"
 
     claims = load_claims()
-    conflicts = check_claims(agent_start, repo, slug, claims)
+    conflicts = check_claims(agent_selected_by, repo, slug, claims)
     if conflicts:
         print(
             f"{slug}: REFUSING to write planning.json — {len(conflicts)} subagent(s) are "
@@ -1298,6 +1359,13 @@ def main():
         "of capturing anything. How to find an id for a manifest's `subagents` pin",
     )
     parser.add_argument(
+        "--carry-lost",
+        action="store_true",
+        help="re-capture, keeping the prior entries whose transcripts have expired "
+        "(marked carried_from) and adding what this scan reaches — the way to add a "
+        "subagent pin to a feature whose own sessions are gone. Implies --recapture",
+    )
+    parser.add_argument(
         "--unclaimed",
         action="store_true",
         help="with --list-subagents: only subagents no feature has claimed in the "
@@ -1335,7 +1403,7 @@ def main():
     both_corpora = all_features_roots()
     # --force is the stronger ask of the two — it overwrites past the frozen-cost guard —
     # so it cannot be stopped by the skip that sits in front of that guard.
-    recapture = args.recapture or args.force
+    recapture = args.recapture or args.force or args.carry_lost
 
     slugs = feature_slugs(features_dir) if args.all_features else [args.slug]
 
@@ -1343,7 +1411,8 @@ def main():
     for slug in slugs:
         try:
             outcome = capture_feature(
-                slug, features_dir, sessions_dir, both_corpora, recapture, args.force
+                slug, features_dir, sessions_dir, both_corpora, recapture, args.force,
+                carry_lost=args.carry_lost,
             )
         except (ValueError, OSError, json.JSONDecodeError) as exc:
             # One unparseable manifest must not end a corpus-wide run — the features
