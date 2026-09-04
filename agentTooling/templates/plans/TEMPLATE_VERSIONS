@@ -1,0 +1,10 @@
+# Recorded content hash per repo-owned template, checked by self/tests/template-versions.sh.
+# Format: <file> <template-version> <sha256>
+# The hash is of the file with comment-only and blank lines stripped:
+#   grep -v '^[[:space:]]*#' <file> | grep -v '^[[:space:]]*$' | shasum -a 256
+# so a comment or doc edit never forces a bump, while any change to the code does.
+# Editing a template's body: bump its `# template-version:` line, then re-record the
+# hash here with the command above. See ../README.md.
+gate.sh 2 883d9c0a6c2cbadc4501e4e7452a4e22e8638a16eb44da7adfd01967db7f707a
+pr.sh 2 17eeb826fed7e0e92e402eee48a81b1b0d0cc29818d8747709633bb95946c8ba
+worktree-setup.sh 1 cba109b693adb65afee5d86aaee9f8eda7340644e63364193d7c1c2542ae83c3

@@ -48,7 +48,11 @@ set -uo pipefail
 #      (write_usage_sidecar erases it on a resumed plan) — report.py sums attempts[]
 #      instead and does not mark the total partial on that account; when the top-level
 #      figure is present but disagrees with the attempts[] sum, report.py warns naming
-#      both figures rather than silently preferring one.
+#      both figures rather than silently preferring one;
+#  15. a level-verify the runner filed as SKIPPED (a .progress.md opening `skipped:` and
+#      no .usage.json, by design — AGENT_PLANS.md → Levels, D3) is not "missing usage"
+#      and does not make the feature's total a lower bound, while a plan with no sidecar
+#      and no skipped: line still is.
 #
 # Assertions 13-14 exercise report.py's reading of recovered_is_partial / unpriced_models
 # and the attempts[]-vs-top-level cross-check. They were authored RED against
@@ -262,8 +266,11 @@ check "2a. a date inside the intro window prices intro (got $t2)" '[[ "$t2" == "
 r2="$(V cost_ratio_check "$ANALYSIS_DIR" "$MODEL" 2026-08-01 2026-08-22 "$TOKENS_23" 0.6666666666666666 "$TOL")"
 check "2b. intro-tier cost is exactly 2/3 of standard for identical tokens (got $r2)" '[[ "$r2" == "True" ]]'
 
+# The intro rate was made permanent on 2026-09-01 (pricing.py's sonnet-5 entry says
+# why the window is open-ended rather than re-based), so a date after the announced
+# expiry still prices at the intro tier.
 t3="$(V tier "$ANALYSIS_DIR" "$MODEL" 2026-09-01)"
-check "3. a date after the window's expiry prices standard again (got $t3)" '[[ "$t3" == "standard" ]]'
+check "3. a date after the announced expiry still prices intro — the cut is permanent (got $t3)" '[[ "$t3" == "intro" ]]'
 
 # ── Fixture corpus for assertions 4-12 ────────────────────────────────────────
 FEAT="$AT/self/features/fixcost/auto/complete"
@@ -588,6 +595,107 @@ python3 "$AT/analysis/report.py" rpt14-mismatch --self >/dev/null 2>&1
 R14B="$REPFEAT14B/report.json"
 r14d="$(V report_warning_contains "$R14B" "4.25" "9.75")"
 check "14d. a disagreeing top-level recovered_cost_usd warns naming both figures (got $r14d)" '[[ "$r14d" == "True" ]]'
+
+# assertion 15 — a skipped level-verify is not missing usage. The runner files the plan
+# to verify/complete/ with a one-line progress log and no sidecar on purpose (D3: the
+# level's gate was green, so nothing ran and nothing was billed). Reading that as a
+# missing input marked whole features partial — seen on vinylCatalogue's
+# shell-jobs-and-review-refresh, plan 05-level-backend.
+REPFEAT15="$AT/self/features/rpt15-skipped"
+VFEAT15="$REPFEAT15/verify/complete"
+mkdir -p "$VFEAT15"
+cat > "$REPFEAT15/README.md" <<'MDEOF'
+# rpt15-skipped
+
+Test fixture only, for cost-recovery.sh assertion 15.
+
+```json
+{"plans": ["05-level-backend-sonnet", "10-verify-sonnet"]}
+```
+MDEOF
+cat > "$REPFEAT15/planning.json" <<'JSONEOF'
+{"cost_usd": {"total": 0.0, "total_is_partial": false}}
+JSONEOF
+cat > "$VFEAT15/05-level-backend-sonnet.md" <<'MDEOF'
+# 05-level-backend-sonnet
+
+Test fixture plan for cost-recovery.sh assertion 15. Not a real plan.
+MDEOF
+# Verbatim the line skip_level_verify writes (plan-runner-lib.sh) — the marker
+# self/tests/level-sentinel.sh already asserts the runner produces.
+echo "skipped: level 05 gate reported 'all checks passed' — level-verify not run (AGENT_PLANS.md → Levels, D3)" \
+  > "$VFEAT15/05-level-backend-sonnet.progress.md"
+cat > "$VFEAT15/10-verify-sonnet.md" <<'MDEOF'
+# 10-verify-sonnet
+
+Test fixture plan for cost-recovery.sh assertion 15. Not a real plan.
+MDEOF
+# Written inline rather than through write_usage_json: this plan must carry a real
+# top-level total_cost_usd, so the feature's only partiality can be the skipped plan.
+cat > "$VFEAT15/10-verify-sonnet.usage.json" <<'JSONEOF'
+{
+  "plan": "10-verify-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "sess-p15",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 4,
+  "duration_ms": 60000,
+  "total_cost_usd": 1.5,
+  "usage": {"input_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "output_tokens": 0},
+  "model_usage": {},
+  "permission_denials": 0,
+  "tool_counts": {},
+  "files_edited": [],
+  "edit_count": 0,
+  "attempts": [
+    {"session_id": "sess-p15", "outcome": "complete", "total_cost_usd": 1.5, "num_turns": 4, "duration_ms": 60000}
+  ]
+}
+JSONEOF
+python3 "$AT/analysis/report.py" rpt15-skipped --self >/dev/null 2>&1
+R15="$REPFEAT15/report.json"
+r15a="$(V report_field_equals "$R15" cost.missing_usage_plans '[]')"
+check "15a. a skipped level-verify is not listed as missing usage (got $r15a)" '[[ "$r15a" == "True" ]]'
+r15b="$(V report_field_equals "$R15" cost.total_is_partial false)"
+check "15b. ...and does not make the total a lower bound (got $r15b)" '[[ "$r15b" == "True" ]]'
+# Scoped to the Cost table: this fixture has no planning duration_s, so the Time table
+# is legitimately a lower bound and a bare grep would pass on the wrong section.
+check "15c. ...and the Cost table's total is not marked partial" 'grep -q "^| \*\*total\*\* | \*\*\$1.5000\*\* | 100.0% |$" "$REPFEAT15/report.md" && ! grep -q "Missing usage for" "$REPFEAT15/report.md"'
+r15d="$(V report_field_equals "$R15" cost.verify 1.5)"
+check "15d. ...while the plan that DID run is still priced (got $r15d)" '[[ "$r15d" == "True" ]]'
+
+# The other half: absence with no `skipped:` line is still absence.
+REPFEAT15B="$AT/self/features/rpt15-missing"
+VFEAT15B="$REPFEAT15B/verify/complete"
+mkdir -p "$VFEAT15B"
+cat > "$REPFEAT15B/README.md" <<'MDEOF'
+# rpt15-missing
+
+Test fixture only, for cost-recovery.sh assertion 15.
+
+```json
+{"plans": ["05-level-backend-sonnet"]}
+```
+MDEOF
+cat > "$REPFEAT15B/planning.json" <<'JSONEOF'
+{"cost_usd": {"total": 0.0, "total_is_partial": false}}
+JSONEOF
+cat > "$VFEAT15B/05-level-backend-sonnet.md" <<'MDEOF'
+# 05-level-backend-sonnet
+
+Test fixture plan for cost-recovery.sh assertion 15. Not a real plan.
+MDEOF
+# A progress log that exists but records real work, not a skip — the plan ran and its
+# sidecar is genuinely gone.
+echo "Edit: /repo/src/thing.py" > "$VFEAT15B/05-level-backend-sonnet.progress.md"
+python3 "$AT/analysis/report.py" rpt15-missing --self >/dev/null 2>&1
+R15B="$REPFEAT15B/report.json"
+r15e="$(V report_field_equals "$R15B" cost.missing_usage_plans '["05-level-backend-sonnet"]')"
+check "15e. a plan with no sidecar and no skipped: line is still missing (got $r15e)" '[[ "$r15e" == "True" ]]'
+r15f="$(V report_field_equals "$R15B" cost.total_is_partial true)"
+check "15f. ...and still makes the total a lower bound (got $r15f)" '[[ "$r15f" == "True" ]]'
 
 # ── 9: run again, unchanged ────────────────────────────────────────────────────
 SNAPSHOT="$TMP/features-after-run1"

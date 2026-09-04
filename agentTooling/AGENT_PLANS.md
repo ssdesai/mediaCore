@@ -29,6 +29,7 @@ plan changes. The facts to pin come from `agentTooling/self/PROJECT_FACTS.md` in
 3. **Delegate only when orientation isn't enough.** When orientation reveals broad or cross-cutting scope, or the READMEs are too thin to locate the work, spawn an Explore or Plan subagent with a tight brief ("list the files that implement X and the pattern they use, under 400 words"). Do not pull those files into your own context. You only need the subagent's summary. If the subagent returns a thin or confusing summary, stop and ask me for the file list rather than reading the files yourself in the main context. Don't delegate scope-discovery you could finish with a few README reads.
 
 4. **Push back on plans that shouldn't exist.** Tell me explicitly if:
+   - The feature is under roughly a thousand lines of diff and nothing about it needs a level gate → a direct one-shot (`AGENT_DIRECT.md`) is cheaper or tied and 2–4× faster, measured; say so before authoring anything.
    - The change is a trivial single-file edit under 20 LoC → I should do it myself, not plan it. "Trivial" means mechanical: renames, one-liner additions, cosmetic tweaks. Non-trivial changes (schema/migrations, auth, anything requiring judgment or touching shared state) deserve a plan regardless of line count.
    - A proposed plan is just README updates → fold into the code plan that owns them, don't make a dedicated README plan. CONVENTIONS.md already mandates README updates during any change.
    - A proposed plan has no code changes, only audit/verification → it's a **verify plan** (automated post-build test/check pass; see "Verify plans"), a **review plan** (post-verify judgment on the diff; see "Review plans"), or an **interactive plan** (bash-heavy step a human runs by hand) — either way, not `plans/auto/`. Which of the first two: if answering it means *running* something, it's verify; if answering it means *reading* the change, it's review.
@@ -128,6 +129,8 @@ Pick deliberately; the default ("inherit parent, no thoroughness specified") is 
 - Length target: if the change is N lines of code, the plan should be ~N lines. A 15 LoC change should not have 40 lines of prose justification.
 - Size cap: a plan producing more than ~300 lines of new code splits. See "Sizing plans for executor cost".
 
+`check-plans.sh` enforces the filename rule, uniform digit padding, the `plans[]` ↔ file correspondence and the absence of a queued `@@TODO@@` stub, and `run-batch.sh` runs it before the build pass.
+
 ## Plan content
 
 Each plan must have, in this order:
@@ -145,9 +148,11 @@ Each plan must have, in this order:
 
 ## The feature manifest
 
-One `plans/features/<slug>/README.md` per feature — written once, at plan-generation
-time, by whoever authors the batch. Never written or edited by a build, verify or
-review executor.
+One `plans/features/<slug>/README.md` per feature. `feature-start.sh` writes the file
+and owns its machine-readable fence for the life of the feature (`LIFECYCLE.md`); the
+prose above the fence belongs to whoever authors the batch, written once at
+plan-generation time. A build, verify or review executor may correct that prose — a plan
+table that drifted, an exclusion that turned out wrong — and never the fence.
 
 It holds what does not belong in every individual plan: the feature's goal, a table of
 every plan in the batch and what it does, and what was deliberately excluded and why.
@@ -169,8 +174,18 @@ The manifest ends with a machine-readable fence:
 ```
 
 - `slug` — kebab-case, stable for the life of the feature; cost reports key off it.
+- `method` — optional; `"plans"` when absent, and otherwise what
+  `feature-start.sh --method` was given. `"direct"` marks a feature built per
+  `AGENT_DIRECT.md` by one implementer delegate; `"hand"` one the coordinator built
+  itself, with no delegate to pin and no plans. Both tell `analysis/report.py` that the
+  transcripts in `planning.json` are the build rather than the planning — the row reads
+  "build: implementer" for `direct` and "build: by hand" for `hand`. Any other value is
+  warned about and read as `"plans"`.
 - `plans` — every plan stem in the batch, **across all queues** — build plans, the
-  verify plan, and the review plan alike. `analysis/report.py` rolls up cost by walking
+  verify plan, and the review plan alike. The architect writes the list with
+  `python3 agentTooling/analysis/manifest.py [--self] <slug> set-plans <stem>...`;
+  `feature-start.sh` numbers the review stub first, so renumber it to sort last and
+  include the new stem. `analysis/report.py` rolls up cost by walking
   this list, so a plan omitted here runs and bills but appears in no cost record, and
   the feature's total silently under-reports. It is the one field whose omission is
   invisible in the output rather than flagged.
@@ -186,6 +201,10 @@ The manifest ends with a machine-readable fence:
   to check rather than a verdict. Copy the name, don't retype it.
   A branch that is renamed or deleted mid-feature keeps its old name in the transcripts
   already written — list **both** names rather than replacing one with the other.
+- `base` — the branch this feature branched from, written by `feature-start.sh` from
+  `--base` (`main` unless it was given). `run-review.sh` reads it and exports
+  `FEATURE_BASE`, which is the base `plans/pr.sh` opens the PR against — so a feature
+  stacked on one that has not merged shows only its own diff. Capture ignores it.
 - `session_window` — optional. One branch can host several features in sequence — this
   repo's `browseImages` branch hosted three — so `branches` alone over-attributes
   planning cost to whichever feature you're asking about. `session_window` narrows
@@ -220,6 +239,15 @@ The manifest ends with a machine-readable fence:
 - `exclude_sessions` — optional escape hatch for sessions inside that window that still
   belong to a different feature. Both `session_window` and `exclude_sessions` are
   optional and usually absent.
+- `sessions` — the top-level twin of `subagents`: session ids claimed outright, across
+  every project directory, regardless of branch, window or `cwd`. `feature-start.sh`
+  writes the id of the session that ran it, which is the answer to "I planned on `main`
+  and then cut the branch" — an open window on `main` would sweep in every later session
+  in that checkout, a pin names one. A pinned session that branch and window would also
+  select is priced once, and each `planning.json` entry records `selected_by` (`pinned`
+  or `branch`) and the `cwd` it was launched in. A pin that is also in
+  `exclude_sessions` warns, and the pin wins. Find an id with
+  `capture_planning.py --list-sessions [--unclaimed] [--since <date>]`.
 - `subagents` — optional. Agent ids (`agent-<id>.jsonl` under the parent session's
   `subagents/` directory) to claim outright. Needed only when the delegate's parent was
   not on the feature's branch — a plan author spawned from a coordinator sitting on
@@ -260,7 +288,8 @@ escalation at level NN (RUNNER.md → "Red gates: the tier ladder") writes
 `plans/features/<slug>/escalations/NN.md`; the review brief should tell the reviewer to
 read it, because what it records is a contract the batch changed after authoring.
 
-See `templates/plans/features/TEMPLATE.md` for the skeleton to copy.
+`templates/plans/features/TEMPLATE.md` is the skeleton `feature-start.sh` writes the
+manifest from, with the fence already filled; read it for the section shapes above.
 
 ## Writing the per-file changes
 
@@ -313,7 +342,7 @@ When generating an auto plan, ask: *does every step here reduce to editing text 
 
 ## Levels: tests first, gate between layers
 
-Two A/Bs settled this section (`EXPERIMENTS.md` → "What the pilots established"): items
+Two A/Bs settled this section (`harness/EXPERIMENTS.md` → "What the pilots established"): items
 1–7 against a flat batch, then items 8–11 and the `Fixture` column against items 1–7
 alone. The runner needs no switch either way — a batch containing no `NN-gate.md` behaves
 exactly as it did before sentinels existed, which is what makes a levels A/B a

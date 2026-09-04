@@ -32,11 +32,13 @@ hold, with its cost and opening prompt, which is how to find an id to pin.
 Populates only what is not yet populated. A feature whose `planning.json` already
 carries a `captured_at` is skipped — nothing rewrites a frozen record without being
 asked, and the skip happens before the transcript scan, so a corpus-wide run costs
-almost nothing. `--recapture` rebuilds anyway; `--all` walks every feature.
+almost nothing. `--recapture` rebuilds anyway; `--all` walks every feature, skipping any whose
+`session_window.to` is still null — in flight, and `feature-close.sh`'s to capture.
 
 Usage: python3 agentTooling/analysis/capture_planning.py <slug>
        python3 agentTooling/analysis/capture_planning.py --all [--recapture]
        python3 agentTooling/analysis/capture_planning.py --list-subagents [--since YYYY-MM-DD]
+       python3 agentTooling/analysis/capture_planning.py --list-subagents --unclaimed --for <repo>/<slug>
 """
 
 from __future__ import annotations
@@ -265,6 +267,38 @@ def subagent_transcript_paths(transcript_dir, session_id):
     return sorted(subagents_dir.glob("agent-*.jsonl"))
 
 
+def cwd_under_any(lines, roots):
+    """Whether any line's cwd is one of `roots` or a path beneath one. The roots are the
+    primary checkout and the feature's own worktree `<primary>-<slug>` (LIFECYCLE.md): a
+    worktree is a *sibling* of the primary, so a prefix test on the primary alone dropped
+    every session launched in one — the bug the triage under self/ measured."""
+    for line in lines:
+        cwd = line.get("cwd")
+        if not isinstance(cwd, str):
+            continue
+        for root in roots:
+            if cwd == root or cwd.startswith(root + "/"):
+                return True
+    return False
+
+
+def find_session_elsewhere(session_id, skip_dirs):
+    """The transcript of a pinned *session* under any project directory but the ones
+    already scanned — the planning session that began on `main` in some other checkout
+    before the feature branch existed. A session id is unambiguous, so the pin is
+    honoured wherever the file is."""
+    projects_root = Path.home() / ".claude" / "projects"
+    if not projects_root.exists():
+        return None
+    for project_dir in sorted(projects_root.iterdir()):
+        if not project_dir.is_dir() or project_dir in skip_dirs:
+            continue
+        candidate = project_dir / f"{session_id}.jsonl"
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def find_pinned_elsewhere(agent_id, skip_dirs):
     """The transcript of a pinned subagent under *any* project directory but the ones
     already scanned. A delegate's transcript lives beside its parent's, under the
@@ -302,6 +336,27 @@ def agent_start_of(agent_lines):
     return min(moments) if moments else None
 
 
+def agent_end_of(agent_lines):
+    """Latest timestamp in a transcript, or None when it carries none."""
+    moments = [
+        moment
+        for moment in (to_utc(line.get("timestamp")) for line in agent_lines)
+        if moment is not None
+    ]
+    return max(moments) if moments else None
+
+
+def duration_seconds(start, end):
+    """Whole seconds from `start` to `end`, or None when either is missing. A span,
+    not an activity measure: a subagent runs start to finish with no idle in between,
+    so its span is its working time, but an interactive session's span includes every
+    minute the human was away, and a coordinator's every minute it waited on a batch.
+    report.py keeps the two apart for that reason."""
+    if start is None or end is None:
+        return None
+    return int((end - start).total_seconds())
+
+
 def agent_id_of(path, lines):
     """A subagent's id: the `agentId` its lines carry, else the filename minus `agent-`.
     The two agree on every transcript seen so far; the fallback is for a file whose
@@ -321,6 +376,8 @@ CLAIMS_LEDGER_NAME = "subagent-claims.json"
 # The first line of a delegate's brief names the feature it is for (ORCHESTRATION.md):
 #   feature: <repo>/<slug>
 BRIEF_FEATURE_RE = re.compile(r"^\s*feature:\s*([\w.-]+)/([\w.-]+)\s*$", re.MULTILINE)
+# The same `<repo>/<slug>` as an argument rather than a brief line: what `--for` takes.
+FEATURE_REF_RE = re.compile(r"^([\w.-]+)/([\w.-]+)$")
 
 
 def claims_ledger_path():
@@ -371,6 +428,14 @@ def brief_feature_of(lines):
     """`(repo, slug)` from the `feature: <repo>/<slug>` line of a delegate's brief, or
     None when the brief carries none."""
     match = BRIEF_FEATURE_RE.search(first_user_text(lines, limit=None))
+    return (match.group(1), match.group(2)) if match else None
+
+
+def parse_feature_ref(text):
+    """`(repo, slug)` from a `<repo>/<slug>` argument — the inverse of the header
+    `brief_feature_of` reads, so `--for` can compare the two as the same structured
+    pair. None when the argument is not that shape."""
+    match = FEATURE_REF_RE.match(text.strip())
     return (match.group(1), match.group(2)) if match else None
 
 
@@ -498,7 +563,98 @@ def check_subagent_overlap(features_dirs, slug, manifest):
     return warnings
 
 
-def list_subagents(sessions_dir, since, everywhere=False, unclaimed=False):
+def claimed_session_ids(features_dirs):
+    """Every top-level session some feature in either corpus already accounts for: the
+    ones a planning.json lists as selected or excluded, the ones a manifest pins, and
+    the runner sessions a usage.json holds. What `--list-sessions --unclaimed` subtracts."""
+    claimed = collect_excluded_session_ids(features_dirs, {})
+    for features_dir in features_dirs:
+        for planning_path in features_dir.glob("*/planning.json"):
+            try:
+                data = json.loads(planning_path.read_text())
+            except (OSError, json.JSONDecodeError):
+                continue
+            claimed.update(s.get("session_id") for s in data.get("sessions", []) if s.get("session_id"))
+            claimed.update(data.get("excluded_session_ids", []) or [])
+        for readme_path in features_dir.glob("*/README.md"):
+            try:
+                manifest = parse_manifest(readme_path)
+            except (ValueError, OSError, json.JSONDecodeError):
+                continue
+            claimed.update(manifest.get("sessions", []) or [])
+    return claimed
+
+
+def list_sessions(sessions_dir, since, unclaimed, features_dirs):
+    """Print every top-level session launched in this repo's primary checkout or one of
+    its sibling worktrees (`<primary>-*`): date, id, branch, cwd, model, cost, minutes
+    and opening prompt. The twin of `--list-subagents`, and the close step's question:
+    `unclaimed` keeps only the sessions no planning.json lists, no manifest pins and no
+    usage.json holds — cost that belongs to somebody and is counted by nobody."""
+    session_dir_str = str(sessions_dir)
+    claimed = claimed_session_ids(features_dirs) if unclaimed else set()
+    rows = []
+    seen = set()
+    for transcript_dir in find_transcript_dirs(sessions_dir):
+        for jsonl_path in sorted(transcript_dir.glob("*.jsonl")):
+            lines = load_transcript_lines(jsonl_path)
+            if not lines:
+                continue
+            session_id = next((line.get("sessionId") for line in lines if line.get("sessionId")), None)
+            if session_id is None or session_id in seen or session_id in claimed:
+                continue
+            cwd = next((line.get("cwd") for line in lines if isinstance(line.get("cwd"), str)), "")
+            if not (
+                cwd == session_dir_str
+                or cwd.startswith(session_dir_str + "/")
+                or cwd.startswith(session_dir_str + "-")
+            ):
+                continue
+            timestamps = [
+                moment for moment in (to_utc(line.get("timestamp")) for line in lines)
+                if moment is not None
+            ]
+            if not timestamps:
+                continue
+            start = min(timestamps).date().isoformat()
+            if since and start < since:
+                continue
+            seen.add(session_id)
+            minutes = (max(timestamps) - min(timestamps)).total_seconds() / 60
+            branch = next((line.get("gitBranch") for line in lines if line.get("gitBranch")), "")
+            totals = {}
+            for model, usage, _ in iter_billable_messages(lines):
+                add_usage(totals, model, usage)
+            cost = 0.0
+            models = []
+            for model in sorted(totals):
+                priced, _ = compute_cost(model, totals[model], as_of=start)
+                cost += priced or 0.0
+                models.append(model)
+            rows.append((start, session_id, branch, cwd, "/".join(models), cost, minutes, first_user_text(lines)))
+    rows.sort()
+    if not rows:
+        print("no unclaimed sessions" if unclaimed else "no sessions found under this repo's project directories")
+        return
+    print(
+        "date        session-id                            branch            "
+        "launched in                  model             cost   mins  opening prompt"
+    )
+    for start, session_id, branch, cwd, model, cost, minutes, prompt in rows:
+        print(
+            f"{start}  {session_id:<36}  {branch[:16]:<16}  {cwd[-27:]:<27}  "
+            f"{model[:16]:<16} ${cost:8.2f} {minutes:5.0f}  {prompt}"
+        )
+    if unclaimed:
+        print(
+            f"{len(rows)} unclaimed session(s), ${sum(r[5] for r in rows):.2f} no feature counts. "
+            "Pin one with \"sessions\": [\"<session-id>\"] in the manifest it belongs to."
+        )
+    else:
+        print(f"{len(rows)} session(s).")
+
+
+def list_subagents(sessions_dir, since, everywhere=False, unclaimed=False, only_feature=None):
     """Print every subagent transcript reachable from this repo's project directories:
     start date, agent id, parent session, the parent's branch, the model, its priced
     cost and its opening prompt. `since` (a UTC date string) drops older ones. This is
@@ -507,7 +663,14 @@ def list_subagents(sessions_dir, since, everywhere=False, unclaimed=False):
     project directory and adds the parent's cwd, for the delegate a coordinator in
     another repo spawned to work on this one. `unclaimed` (implies `everywhere`)
     keeps only the ones no feature has claimed in the ledger, and shows the feature
-    each one's brief names — the pin to write."""
+    each one's brief names — the pin to write.
+
+    `only_feature`, a `(repo, slug)` pair (`--for`, which the caller pairs with
+    `unclaimed`), keeps only the rows whose brief names exactly that feature, compared
+    as the pair `brief_feature_of` returns. It exists because `feature-close.sh`'s
+    stray-delegate guard reads this list: matching text in the printed table instead
+    both over-fired on `<slug>-two` and under-fired on a `<repo>/<slug>` too long for
+    the pin column. For the same caller, the agent-id column is never truncated."""
     everywhere = everywhere or unclaimed
     claims = load_claims() if unclaimed else {}
     session_dir_str = str(sessions_dir)
@@ -548,6 +711,7 @@ def list_subagents(sessions_dir, since, everywhere=False, unclaimed=False):
                 start = min(timestamps).date().isoformat()
                 if since and start < since:
                     continue
+                minutes = (max(timestamps) - min(timestamps)).total_seconds() / 60
                 branch = next(
                     (line.get("gitBranch") for line in lines if line.get("gitBranch")), ""
                 )
@@ -562,6 +726,8 @@ def list_subagents(sessions_dir, since, everywhere=False, unclaimed=False):
                     models.append(model)
                 cwd = next((line.get("cwd") for line in lines if line.get("cwd")), "")
                 named = brief_feature_of(lines)
+                if only_feature is not None and named != only_feature:
+                    continue
                 rows.append(
                     (
                         start,
@@ -570,28 +736,53 @@ def list_subagents(sessions_dir, since, everywhere=False, unclaimed=False):
                         branch,
                         "/".join(models),
                         cost,
+                        minutes,
                         Path(cwd).name if cwd else "",
                         f"{named[0]}/{named[1]}" if named else "-",
                         first_user_text(lines),
                     )
                 )
     rows.sort()
+    feature_ref = f"{only_feature[0]}/{only_feature[1]}" if only_feature else ""
     if not rows:
-        print("no unclaimed subagent transcripts" if unclaimed else "no subagent transcripts found")
+        # An empty scan has two very different causes and the message must not read like
+        # the first: there really are no subagents, or this was run from a directory the
+        # repo's project directories are not under (session_root is the nearest ancestor
+        # holding .git, so from above the repo it resolves somewhere else entirely) and
+        # the narrow scan reached nothing. `unclaimed` implies `everywhere`, so only the
+        # narrow scan can be wrong about it.
+        if only_feature:
+            print(f"no unclaimed subagent transcripts briefed for {feature_ref}")
+        elif unclaimed:
+            print("no unclaimed subagent transcripts")
+        elif everywhere:
+            print("no subagent transcripts found")
+        else:
+            print(
+                "no subagent transcripts found; scanned "
+                f"{sessions_dir} only; run from the repo, or pass --everywhere"
+            )
         return
     cwd_header = "parent cwd        " if everywhere else ""
     pin_header = "brief names (pin here)      " if unclaimed else ""
     print(
         "date        agent-id           parent    branch            model             "
-        f"cost  {cwd_header}{pin_header}opening prompt"
+        f"cost   mins  {cwd_header}{pin_header}opening prompt"
     )
-    for start, agent_id, parent, branch, model, cost, cwd, named, prompt in rows:
+    for start, agent_id, parent, branch, model, cost, minutes, cwd, named, prompt in rows:
         cwd_col = f"{cwd[:16]:<16}  " if everywhere else ""
         pin_col = f"{named[:26]:<26}  " if unclaimed else ""
         print(
             f"{start}  {agent_id:<18} {parent[:8]}  {branch[:16]:<16}  "
-            f"{model[:16]:<16} ${cost:8.2f}  {cwd_col}{pin_col}{prompt}"
+            f"{model[:16]:<16} ${cost:8.2f} {minutes:5.0f}  {cwd_col}{pin_col}{prompt}"
         )
+    if only_feature:
+        print(
+            f"{len(rows)} unclaimed subagent(s) briefed for {feature_ref}, "
+            f"${sum(r[5] for r in rows):.2f} no feature counts. Pin each in "
+            f"{feature_ref}'s manifest as \"subagents\": [\"<agent-id>\"]."
+        )
+        return
     if unclaimed:
         print(
             f"{len(rows)} unclaimed subagent(s), ${sum(r[5] for r in rows):.2f} no feature "
@@ -712,7 +903,7 @@ def check_branch_overlap(features_dirs, slug, manifest):
     return warnings
 
 
-def check_unmatched_branches(branches, branches_seen):
+def check_unmatched_branches(branches, branches_seen, feature_worktree=""):
     """Warn for each declared branch that no transcript in this repo carries.
 
     A branch name in `branches` that matches nothing is indistinguishable, in the
@@ -731,13 +922,15 @@ def check_unmatched_branches(branches, branches_seen):
     is worded so a reader is not sent to check a name that was always correct.
     """
     unmatched = sorted(set(branches) - branches_seen)
+    where = f" ({feature_worktree})" if feature_worktree else ""
     return [
         f"branch {name!r} matched no session in any transcript for this repo, so any "
-        "planning on it is uncounted and reports as $0.00 rather than as an error. "
-        "Either the name is wrong — check it against `git branch --list` and record it "
-        "exactly as git shows it, with no added prefix — or the transcripts have aged "
-        "out of ~/.claude/projects/, in which case the name is fine and the cost is "
-        "simply unrecoverable"
+        "planning on it is uncounted. One of three things is true: the name is wrong — "
+        "check it against `git branch --list` and record it exactly as git shows it, with "
+        "no added prefix; or its sessions were launched somewhere other than the primary "
+        f"checkout and this feature's worktree{where} — launch the coordinator inside the "
+        "worktree, or pin each session id in `sessions`; or the transcripts have aged out "
+        "of ~/.claude/projects/, in which case the name is fine and the cost is unrecoverable"
         for name in unmatched
     ]
 
@@ -884,6 +1077,15 @@ def prior_capture(output_path):
     return captured_at, (prior.get("cost_usd") or {}).get("total") or 0.0
 
 
+def window_is_open(features_dir, slug):
+    """True when the manifest's `session_window` exists and its `to` is null — the shape
+    `feature-start.sh` writes and `feature-close.sh` stamps shut, so the feature is still
+    in flight. A manifest with no `session_window` at all is a legacy one, not in flight."""
+    manifest = parse_manifest(Path(features_dir, slug, "README.md"))
+    window = manifest.get("session_window")
+    return isinstance(window, dict) and "to" in window and window["to"] is None
+
+
 def feature_slugs(features_dir):
     """Every feature in a corpus, in name order: a directory holding the README.md whose
     last ```json fence is its manifest.
@@ -898,6 +1100,7 @@ def feature_slugs(features_dir):
 def select_parent(
     lines, session_id, window, warnings, matched_session_ids,
     session_start, session_end, session_branch, matching_branches, totals,
+    pinned=False,
 ):
     """Decide one branch-matched session's window membership and, if selected, price it.
     Returns whether it was selected. Split out of `capture_feature` so the subagent walk
@@ -916,7 +1119,8 @@ def select_parent(
     start_ts = min(timestamps)
     end_ts = max(timestamps)
 
-    selected = in_window(start_ts, window)
+    # A pin is the human's word: it is claimed whatever the window says.
+    selected = pinned or in_window(start_ts, window)
 
     if selected:
         if window["to"] is not None and end_ts > window["to"]:
@@ -939,7 +1143,10 @@ def select_parent(
     matched_session_ids.add(session_id)
     session_start[session_id] = start_ts
     session_end[session_id] = end_ts
-    session_branch[session_id] = next(iter(matching_branches))
+    session_branch[session_id] = (
+        next(iter(matching_branches)) if matching_branches
+        else next((line.get("gitBranch") for line in lines if line.get("gitBranch")), "")
+    )
 
     # One API response is written to the transcript as several `assistant`
     # lines — one per content block (thinking, text, each tool_use) — and every
@@ -965,6 +1172,10 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     manifest = parse_manifest(manifest_path)
     branches = manifest.get("branches", [])
     pinned_agent_ids = set(manifest.get("subagents", []) or [])
+    # Top-level sessions claimed by id — the twin of a subagent pin. How a planning
+    # session that began on `main` before the branch existed is attributed without
+    # `main` ever appearing in `branches`.
+    pinned_session_ids = set(manifest.get("sessions", []) or [])
     # Subagents this manifest disowns: children of a selected session that another
     # feature pins — the coordinator case, where the coordinator's manifest owns the
     # coordinator's context and the arm's manifest owns the architect. The parent
@@ -1007,16 +1218,33 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     runner_excluded_ids = collect_excluded_session_ids(
         both_corpora, {**manifest, "exclude_sessions": []}
     )
+    # Every excluded session whose transcript sits in this repo's directories. Serialized
+    # as `excluded_session_ids` — deliberately wide, and NOT evidence about any branch.
     excluded_ids_encountered = set()
+    # The subset that is evidence: excluded sessions that carry one of the manifest's
+    # `branches` AND passed `repo_match`. Only this set lifts the zero refusal below.
+    excluded_on_branch = set()
     excluded_agent_ids_encountered = set()
 
     session_dir_str = str(sessions_dir)
     dir_fragment = transcript_dir_name(sessions_dir)
+    # LIFECYCLE.md: the feature's worktree is the primary checkout's path plus `-<slug>`,
+    # so it is derived here rather than looked up — it still resolves after the worktree
+    # is removed, and there is nothing to configure.
+    feature_worktree_str = f"{session_dir_str}-{slug}"
+    claimable_roots = (session_dir_str, feature_worktree_str)
 
     totals = {}
     session_start = {}
     session_end = {}
     session_branch = {}
+    # Where each selected session was launched, and by which route it was claimed —
+    # both written to its planning.json entry so a reader can see why it is there.
+    session_cwd = {}
+    session_selected_by = {}
+    # Sessions carrying a declared branch that were launched somewhere this feature
+    # cannot claim from: cwd -> the branches seen there. The warning names them.
+    launched_elsewhere = {}
     matched_session_ids = set()
     # Every session this scan can actually use, selected or not — what check_frozen_cost
     # calls recoverable. Populated only past repo_match, because that is the point the
@@ -1026,6 +1254,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     # `reachable_session_ids`, for the same guard.
     reachable_agent_ids = set()
     agent_start = {}
+    agent_end = {}
     agent_parent = {}
     agent_selected_by = {}
     # Pinned ids whose transcript sits under another repo's project directory.
@@ -1053,22 +1282,46 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             if session_id is None:
                 continue
 
+            session_pinned = session_id in pinned_session_ids
             pins_only = False
+            # Hoisted above the exclusion branch so an excluded session can be judged on
+            # the same two terms the selection path uses below.
+            first_cwd = next(
+                (line.get("cwd") for line in lines if isinstance(line.get("cwd"), str)), ""
+            )
+            repo_match = session_pinned or cwd_under_any(lines, claimable_roots)
             if session_id in excluded_ids:
                 excluded_ids_encountered.add(session_id)
-                if session_id in runner_excluded_ids or not pinned_agent_ids:
+                # The evidenced zero rests on this narrower set, not on the wide one: an
+                # excluded session only confirms the branch name when it actually carries
+                # one of the declared branches (the same `branches_seen & set(branches)`
+                # test the selection path makes) and was launched somewhere this feature
+                # can claim from. A session carrying the branch from a directory it cannot
+                # claim is the `launched_elsewhere` cause the refusal already names, so
+                # counting it as evidence would trade one silent zero for another.
+                if repo_match and (branches_seen & set(branches)):
+                    excluded_on_branch.add(session_id)
+                if session_id in runner_excluded_ids:
+                    if session_pinned:
+                        warnings.append(
+                            f"session {session_id!r} is pinned in `sessions` but is a runner "
+                            "session whose cost a usage.json already holds — the pin is ignored"
+                        )
                     continue
-                pins_only = True
+                # A manual exclusion of a pinned session: the pin wins (warned about below,
+                # from the manifest alone, so it fires wherever the transcript sits).
+                if not session_pinned:
+                    if not pinned_agent_ids:
+                        continue
+                    pins_only = True
 
-            repo_match = any(
-                line.get("cwd") == session_dir_str
-                or (
-                    isinstance(line.get("cwd"), str)
-                    and line["cwd"].startswith(session_dir_str + "/")
-                )
-                for line in lines
-            )
             if not repo_match:
+                # A declared branch seen from a directory this feature cannot claim from —
+                # a sibling worktree that is not this feature's — is the case the naming
+                # rule exists for. Remembered so the warning can say where it was seen.
+                seen_here = branches_seen & set(branches)
+                if seen_here:
+                    launched_elsewhere.setdefault(first_cwd, set()).update(seen_here)
                 continue
 
             # A parent that is not selected — wrong branch, outside the window, manually
@@ -1081,11 +1334,15 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                 matching_branches = set()
             else:
                 reachable_session_ids.add(session_id)
-            if matching_branches:
+            if session_pinned or matching_branches:
                 parent_selected = select_parent(
                     lines, session_id, window, warnings, matched_session_ids,
                     session_start, session_end, session_branch, matching_branches, totals,
+                    pinned=session_pinned,
                 )
+                if parent_selected:
+                    session_selected_by[session_id] = "pinned" if session_pinned else "branch"
+                    session_cwd[session_id] = first_cwd
 
             for agent_path in subagent_transcript_paths(transcript_dir, session_id):
                 agent_lines = load_transcript_lines(agent_path)
@@ -1111,6 +1368,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                 else:
                     continue
                 agent_start[agent_id] = agent_start_ts
+                agent_end[agent_id] = agent_end_of(agent_lines)
                 agent_parent[agent_id] = session_id
                 agent_selected_by[agent_id] = selected_by
                 price_subagent(totals, session_id, agent_id, agent_lines)
@@ -1134,10 +1392,33 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         reachable_agent_ids.add(agent_id)
         agent_cross_repo.add(agent_id)
         agent_start[agent_id] = agent_start_ts
+        agent_end[agent_id] = agent_end_of(agent_lines)
         agent_parent[agent_id] = parent_id
         agent_selected_by[agent_id] = "pinned"
         agent_briefs[agent_id] = brief_feature_of(agent_lines)
         price_subagent(totals, parent_id, agent_id, agent_lines)
+
+    # A pinned session none of this repo's directories carry — launched in another
+    # checkout, on whatever branch, before this feature existed — is looked for
+    # everywhere else and claimed on its id alone, window and cwd notwithstanding.
+    for session_id in sorted(pinned_session_ids - matched_session_ids):
+        if session_id in runner_excluded_ids:
+            continue
+        session_path = find_session_elsewhere(session_id, this_repo_dirs)
+        if session_path is None:
+            continue
+        lines = load_transcript_lines(session_path)
+        if not lines:
+            continue
+        reachable_session_ids.add(session_id)
+        if select_parent(
+            lines, session_id, window, warnings, matched_session_ids,
+            session_start, session_end, session_branch, set(), totals, pinned=True,
+        ):
+            session_selected_by[session_id] = "pinned"
+            session_cwd[session_id] = next(
+                (line.get("cwd") for line in lines if isinstance(line.get("cwd"), str)), ""
+            )
 
     # A cross-repo id priced last time and unpinned since is not *gone*: the guard
     # below reads "unreachable" as "expired", so prove the transcript is still on disk
@@ -1148,7 +1429,25 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
 
     repo = repo_identity(sessions_dir)
     repo_name = repo_display_name(repo)
-    warnings += check_unmatched_branches(branches, branches_seen_anywhere)
+    warnings += check_unmatched_branches(branches, branches_seen_anywhere, feature_worktree_str)
+    for cwd, seen_branches in sorted(launched_elsewhere.items()):
+        warnings.append(
+            f"session(s) carrying branch(es) {sorted(seen_branches)} were launched from "
+            f"{cwd!r}, which is neither the primary checkout {session_dir_str!r} nor this "
+            f"feature's worktree {feature_worktree_str!r}, so they are not claimable from "
+            "here — launch the coordinator inside the feature worktree, or pin each "
+            "session id in the manifest's `sessions`"
+        )
+    for session_id in sorted(pinned_session_ids - reachable_session_ids):
+        warnings.append(
+            f"pinned session {session_id!r} matched no transcript under ~/.claude/projects/ "
+            "— the id is wrong, or the transcript has aged out"
+        )
+    for session_id in sorted(pinned_session_ids & set(manifest.get("exclude_sessions") or [])):
+        warnings.append(
+            f"session {session_id!r} is both pinned and in exclude_sessions — the pin wins; "
+            "drop one of them"
+        )
     warnings += check_unmatched_subagents(pinned_agent_ids, reachable_agent_ids)
     warnings += check_brief_headers(agent_briefs, repo_name, slug)
     for agent_id in sorted(pinned_agent_ids & excluded_agent_ids):
@@ -1157,11 +1456,18 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             "wins; drop one of them"
         )
 
+    # `started_at`/`ended_at`/`duration_s` are the transcript's first and last instants
+    # and the seconds between — a span, with the caveat `duration_seconds` states.
     sessions = [
         {
             "session_id": sid,
             "git_branch": session_branch[sid],
+            "selected_by": session_selected_by.get(sid, "branch"),
+            "cwd": session_cwd.get(sid),
             "date": session_start[sid].date().isoformat(),
+            "started_at": session_start[sid].isoformat(),
+            "ended_at": session_end[sid].isoformat(),
+            "duration_s": duration_seconds(session_start[sid], session_end[sid]),
         }
         for sid in sorted(matched_session_ids)
     ]
@@ -1171,6 +1477,9 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             "agent_id": agent_id,
             "parent_session_id": agent_parent[agent_id],
             "date": agent_start[agent_id].date().isoformat(),
+            "started_at": agent_start[agent_id].isoformat(),
+            "ended_at": agent_end[agent_id].isoformat() if agent_end.get(agent_id) else None,
+            "duration_s": duration_seconds(agent_start[agent_id], agent_end.get(agent_id)),
             "selected_by": agent_selected_by[agent_id],
             "cross_repo": agent_id in agent_cross_repo,
         }
@@ -1185,6 +1494,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         # A subagent is dated by its own start, not its parent's: a four-day coordinator
         # spawns architects on every one of those days, and the rate tier is per day.
         started = agent_start[agent_id] if agent_id else session_start[session_id]
+        ended = agent_end.get(agent_id) if agent_id else session_end[session_id]
         as_of = started.date().isoformat()
         cost, rates_applied = compute_cost(model, tokens, as_of=as_of)
         if cost is None:
@@ -1198,6 +1508,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                 "model": model,
                 "is_sidechain": is_sidechain,
                 "date": as_of,
+                "duration_s": duration_seconds(started, ended),
                 "tokens": dict(tokens),
                 "cost_usd": cost,
                 "rates_applied": rates_applied,
@@ -1239,6 +1550,18 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     )
     total_cost = main_cost + sidechain_cost
 
+    # Summed over the entries above, carried ones included, so a re-capture that kept an
+    # old entry counts its time exactly as it counts its cost. An entry captured before
+    # this field existed has none and contributes nothing — the figure is then a lower
+    # bound, exactly like a partial cost total, and `sessions_without_duration` says so.
+    sessions_duration = sum((e.get("duration_s") or 0) for e in sessions)
+    subagents_duration = sum((e.get("duration_s") or 0) for e in subagents)
+    without_duration = sorted(
+        e.get("session_id") or e.get("agent_id")
+        for e in [*sessions, *subagents]
+        if e.get("duration_s") is None
+    )
+
     if is_rates_stale():
         warnings.append(f"RATES_VERIFIED is stale (verified {RATES_VERIFIED})")
 
@@ -1258,6 +1581,14 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             "subagents": subagent_cost,
             "total": total_cost,
             "total_is_partial": total_is_partial,
+        },
+        # Kept as two figures, never one: a subagent's span is its working time, a
+        # session's span is a span (see `duration_seconds`). report.py's Time table
+        # shows both rows and lets the reader weigh them.
+        "duration_s": {
+            "sessions": sessions_duration,
+            "subagents": subagents_duration,
+            "entries_without_duration": without_duration,
         },
         "rates_source": f"agentTooling/analysis/pricing.py RATES_VERIFIED={RATES_VERIFIED}",
         "warnings": warnings,
@@ -1283,6 +1614,55 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         for warning in warnings:
             print(f"WARN: {warning}")
         return "refused"
+
+    # Three causes for an unmatched zero are indistinguishable from here — a wrong branch
+    # name, sessions launched outside this worktree, or aged-out transcripts — so the
+    # refusal below spells out all three rather than guessing which applies. A fourth
+    # outcome is not a cause for refusal: when `excluded_on_branch` is non-empty, an
+    # excluded session (a runner session, or one named in the manifest's
+    # `exclude_sessions`) was seen carrying one of these branches, from a directory this
+    # feature can claim from, so the name is confirmed right and the zero is evidenced
+    # rather than suspicious — that case falls through to the block below instead of
+    # refusing. `excluded_ids_encountered` is deliberately NOT the set used here: it holds
+    # every excluded session whose transcript sits in this repo's directories, so in any
+    # repo that has ever run a batch it is non-empty regardless of branch, and a typo'd
+    # `branches` would read as an evidenced $0.00 instead of the refusal it is.
+    if not sessions and not subagents and not excluded_on_branch and not force:
+        elsewhere = (
+            "; ".join(
+                f"{sorted(b)} seen from {cwd!r}" for cwd, b in sorted(launched_elsewhere.items())
+            )
+            or "no transcript carrying these branches was seen outside the primary checkout"
+        )
+        print(
+            f"{slug}: REFUSING to write planning.json — no session and no subagent matched, "
+            'and a $0.00 record reads as "planning was free". One of three things is true:'
+        )
+        print(
+            f"  1. a branch name is wrong: `branches` is {branches} — check `git branch "
+            "--list` and copy the name exactly, with no prefix;"
+        )
+        print(
+            f"  2. the sessions were launched somewhere else: {elsewhere} — launch the "
+            f"coordinator inside the feature worktree ({feature_worktree_str}), or pin "
+            "each session id in the manifest's `sessions`;"
+        )
+        print(
+            "  3. the transcripts have aged out of ~/.claude/projects/ — the cost is "
+            "unrecoverable, and --force writes the honest zero."
+        )
+        for warning in warnings:
+            print(f"WARN: {warning}")
+        return "refused"
+
+    if not sessions and not subagents and excluded_on_branch:
+        note = (
+            f"no planning session matched, but {len(excluded_on_branch)} excluded "
+            f"session(s) on {branches} were met — the branch name is right and the zero is "
+            "evidenced; their cost is in usage.json or belongs to the feature that excluded them"
+        )
+        warnings.append(note)
+        print(f"{slug}: {note}; writing planning.json with cost $0.00")
 
     claims = load_claims()
     conflicts = check_claims(agent_selected_by, repo, slug, claims)
@@ -1359,6 +1739,14 @@ def main():
         "of capturing anything. How to find an id for a manifest's `subagents` pin",
     )
     parser.add_argument(
+        "--list-sessions",
+        action="store_true",
+        help="print every top-level session launched in this repo's primary checkout or "
+        "a sibling worktree — date, id, branch, cwd, model, cost, opening prompt — "
+        "instead of capturing anything. With --unclaimed, only those no feature "
+        "accounts for; the id is what a manifest's `sessions` pin takes",
+    )
+    parser.add_argument(
         "--carry-lost",
         action="store_true",
         help="re-capture, keeping the prior entries whose transcripts have expired "
@@ -1368,9 +1756,18 @@ def main():
     parser.add_argument(
         "--unclaimed",
         action="store_true",
-        help="with --list-subagents: only subagents no feature has claimed in the "
+        help="with --list-subagents or --list-sessions: only those no feature has claimed in the "
         f"ledger (~/.claude/{CLAIMS_LEDGER_NAME}), scanning every project directory, "
         "with the feature each brief names — the pins still to write",
+    )
+    parser.add_argument(
+        "--for",
+        dest="for_feature",
+        metavar="REPO/SLUG",
+        help="with --list-subagents --unclaimed: keep only the delegates whose brief "
+        "names exactly this feature, compared as the (repo, slug) pair the brief "
+        "carries and never as text in the printed table. What feature-close.sh's "
+        "stray-delegate guard reads",
     )
     parser.add_argument(
         "--everywhere",
@@ -1382,15 +1779,34 @@ def main():
     parser.add_argument(
         "--since",
         metavar="YYYY-MM-DD",
-        help="with --list-subagents: only subagents that started on or after this UTC date",
+        help="with --list-subagents or --list-sessions: only those that started on or after this UTC date",
     )
     add_self_flag(parser)
     args = parser.parse_args()
 
+    # --for narrows a list of unclaimed delegates to one feature's; on any other run
+    # there is nothing for it to narrow, and silently ignoring it would be a filter the
+    # caller believes in and did not get.
+    only_feature = None
+    if args.for_feature is not None:
+        if not (args.list_subagents and args.unclaimed):
+            parser.error("--for takes --list-subagents --unclaimed")
+        only_feature = parse_feature_ref(args.for_feature)
+        if only_feature is None:
+            parser.error(f"--for takes <repo>/<slug>, not {args.for_feature!r}")
+
     if args.list_subagents:
         if args.slug or args.all_features:
             parser.error("--list-subagents takes no slug and no --all")
-        list_subagents(session_root(args.self_mode), args.since, args.everywhere, args.unclaimed)
+        list_subagents(
+            session_root(args.self_mode), args.since, args.everywhere, args.unclaimed,
+            only_feature=only_feature,
+        )
+        return
+    if args.list_sessions:
+        if args.slug or args.all_features:
+            parser.error("--list-sessions takes no slug and no --all")
+        list_sessions(session_root(args.self_mode), args.since, args.unclaimed, all_features_roots())
         return
 
     if args.all_features == bool(args.slug):
@@ -1407,9 +1823,20 @@ def main():
 
     slugs = feature_slugs(features_dir) if args.all_features else [args.slug]
 
-    counts = {"captured": 0, "skipped": 0, "refused": 0, "conflict": 0, "unreadable": 0}
+    counts = {"captured": 0, "skipped": 0, "refused": 0, "conflict": 0, "unreadable": 0, "in_flight": 0}
     for slug in slugs:
         try:
+            # A sweep must not freeze a feature that is still being built: its first
+            # capture is feature-close.sh's, after the PR merged and every session ended.
+            # A record frozen here would make that close skip as "already captured" and
+            # report the premature figure. Only --all skips; naming the slug still captures.
+            if args.all_features and window_is_open(features_dir, slug):
+                print(
+                    f"{slug}: in flight — session_window.to is null, so feature-close.sh has "
+                    "not run yet; skipped (name the slug to capture it anyway)"
+                )
+                counts["in_flight"] += 1
+                continue
             outcome = capture_feature(
                 slug, features_dir, sessions_dir, both_corpora, recapture, args.force,
                 carry_lost=args.carry_lost,
@@ -1429,6 +1856,7 @@ def main():
         print(
             f"{len(slugs)} features: {counts['captured']} captured, "
             f"{counts['skipped']} already captured, {counts['refused']} refused"
+            + (f", {counts['in_flight']} in flight" if counts["in_flight"] else "")
             + (f", {counts['conflict']} in conflict" if counts["conflict"] else "")
             + (f", {counts['unreadable']} unreadable" if counts["unreadable"] else "")
         )

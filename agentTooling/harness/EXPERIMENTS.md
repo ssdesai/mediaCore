@@ -245,4 +245,6 @@ subagents of the design session so their cost is in every figure.
   one-shot briefed to write its acceptance test first. Either way an independent review
   — a brief written from the spec before the build, never the other arm's review plan —
   and one rework pass from its findings, because that is where both arms' remaining
-  defects were found.
+  defects were found. This rule, and the procedure the one-shot follows, now live in
+  `AGENT_DIRECT.md`; the harness's `methods/direct/template.md` carries the tests-first
+  step as of that change.

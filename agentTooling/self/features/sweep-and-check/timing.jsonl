@@ -1,0 +1,29 @@
+{"at":"2026-09-04T04:49:22Z","event":"pass_start","queue":"auto"}
+{"at":"2026-09-04T04:49:22Z","event":"plan_start","plan":"73-tests-check-plans-sonnet","queue":"auto"}
+{"at":"2026-09-04T04:54:18Z","event":"plan_end","plan":"73-tests-check-plans-sonnet","queue":"auto","rc":"0"}
+{"at":"2026-09-04T04:54:18Z","event":"plan_start","plan":"74-tests-sync-check-sonnet","queue":"auto"}
+{"at":"2026-09-04T04:59:22Z","event":"plan_end","plan":"74-tests-sync-check-sonnet","queue":"auto","rc":"0"}
+{"at":"2026-09-04T04:59:22Z","event":"plan_start","plan":"75-tests-sweep-sonnet","queue":"auto"}
+{"at":"2026-09-04T05:03:56Z","event":"plan_end","plan":"75-tests-sweep-sonnet","queue":"auto","rc":"0"}
+{"at":"2026-09-04T05:03:56Z","event":"plan_start","plan":"76-check-plans-sonnet","queue":"auto"}
+{"at":"2026-09-04T05:11:10Z","event":"plan_end","plan":"76-check-plans-sonnet","queue":"auto","rc":"0"}
+{"at":"2026-09-04T05:11:10Z","event":"plan_start","plan":"77-sync-check-and-update-sonnet","queue":"auto"}
+{"at":"2026-09-04T05:17:54Z","event":"plan_end","plan":"77-sync-check-and-update-sonnet","queue":"auto","rc":"0"}
+{"at":"2026-09-04T05:17:54Z","event":"plan_start","plan":"78-sweep-sonnet","queue":"auto"}
+{"at":"2026-09-04T05:22:04Z","event":"plan_end","plan":"78-sweep-sonnet","queue":"auto","rc":"0"}
+{"at":"2026-09-04T05:22:04Z","event":"plan_start","plan":"79-zero-with-evidence-sonnet","queue":"auto"}
+{"at":"2026-09-04T05:25:40Z","event":"plan_end","plan":"79-zero-with-evidence-sonnet","queue":"auto","rc":"0"}
+{"at":"2026-09-04T05:25:40Z","event":"gate_start","level":"80"}
+{"at":"2026-09-04T05:26:22Z","event":"gate_end","level":"80","rc":"0","green":"false"}
+{"at":"2026-09-04T05:26:22Z","event":"pass_end","queue":"auto","reason":"paused at level boundary 80-gate.md — a level-verify plan is queued; run: run-verify.sh --self --up-to 80 sweep-and-check, then re-run run-plans.sh --self sweep-and-check to continue"}
+{"at":"2026-09-04T05:28:48Z","event":"pass_start","queue":"auto"}
+{"at":"2026-09-04T05:28:48Z","event":"plan_start","plan":"81-docs-haiku","queue":"auto"}
+{"at":"2026-09-04T05:33:24Z","event":"plan_end","plan":"81-docs-haiku","queue":"auto","rc":"0"}
+{"at":"2026-09-04T05:33:24Z","event":"pass_end","queue":"auto","reason":"all plans complete"}
+{"at":"2026-09-04T05:34:25Z","event":"pass_start","queue":"verify"}
+{"at":"2026-09-04T05:34:25Z","event":"plan_start","plan":"82-verify-sonnet","queue":"verify"}
+{"at":"2026-09-04T05:36:57Z","event":"plan_end","plan":"82-verify-sonnet","queue":"verify","rc":"0"}
+{"at":"2026-09-04T05:36:57Z","event":"pass_end","queue":"verify","reason":"all verify plans complete"}
+{"at":"2026-09-04T05:36:57Z","event":"pass_start","queue":"review"}
+{"at":"2026-09-04T05:36:57Z","event":"plan_start","plan":"83-review-opus","queue":"review"}
+{"at":"2026-09-04T05:44:46Z","event":"plan_end","plan":"83-review-opus","queue":"review","rc":"0"}

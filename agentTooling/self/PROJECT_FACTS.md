@@ -12,9 +12,10 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
 
 - Shared machinery at the top level: `run-plans.sh`, `run-verify.sh`, `run-review.sh`,
   `run-batch.sh`, `run-escalation-plan.sh`, `plan-runner-lib.sh`, `plan-runner-roots.sh`,
-  `sync-plans.sh`, `migrate-plans-layout.sh`.
-- Doctrine at the top level too: `CONVENTIONS.md`, `AGENT_PLANS.md`, `RUNNER.md`,
-  `EXPERIMENTS.md`, `README.md`.
+  `check-plans.sh`, `sync-plans.sh`, `sweep.sh`, `update.sh`, `stamp-timing.sh`, `feature-start.sh`, `feature-close.sh`.
+- Doctrine at the top level too: `LIFECYCLE.md`, `CONVENTIONS.md`, `AGENT_PLANS.md`,
+  `AGENT_DIRECT.md`, `ORCHESTRATION.md`, `RUNNER.md`, `README.md`. `EXPERIMENTS.md` lives
+  with its tool, under `harness/`.
 - `templates/` — the stubs `sync-plans.sh` writes into a *consuming* repo's `plans/`.
   Never edited in the consuming repo.
 - `analysis/` — stdlib-only Python 3 cost tooling.
@@ -23,14 +24,24 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
 
 ## Commands
 
+- Start a feature: `./feature-start.sh --self <slug> [--method direct|plans|hand]`, from
+  the primary checkout — it makes branch `<slug>` and worktree `<repo>-<slug>` and writes
+  `self/features/<slug>/` there. Close it after the PR merges:
+  `./feature-close.sh --self <slug>`, which captures, reports, stamps the window shut,
+  commits the cost records and removes the worktree. Both refuse to run from a worktree.
+  See `../LIFECYCLE.md`.
 - Mechanical gate: `./self/gate.sh [NN]` — writes `self/gate-report.txt`, plus
   `self/gate-report.NN.txt` when given a level label.
+- Lint: `./check-plans.sh --self <slug>` — run by `./run-batch.sh --self <slug>` first,
+  exits 1 on lint failures.
 - Build: `./run-plans.sh --self <slug>`; verify: `./run-verify.sh --self <slug>`;
   review: `./run-review.sh --self <slug>`; all three: `./run-batch.sh --self <slug>`.
+- Sweep: `./sweep.sh --self` — the weekly cadence; rates, backfill, recover, capture `--all`, report, then unclaimed delegates and sessions.
 - Cost: `python3 analysis/backfill_usage.py --self`,
   `python3 analysis/capture_planning.py --self --all` (captures features with no
   `planning.json`; a single `<slug>` works too, and `--recapture` rebuilds one that is
-  already captured), `python3 analysis/report.py --self <slug>`.
+  already captured), `python3 analysis/report.py --self <slug>`,
+  `python3 analysis/manifest.py [--self] <slug> set-plans <stem>...`.
 - `--self` is always the **first** argument, before any slug.
 
 ## Tests

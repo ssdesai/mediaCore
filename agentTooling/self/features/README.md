@@ -36,11 +36,12 @@ every feature that will ever exist here.
 **There is no separate archiving step.** The feature directory IS the archive: a
 completed feature's `auto/complete/` and `verify/complete/` are its permanent record.
 
-To start a new feature, copy the manifest skeleton from
-`../../templates/plans/features/TEMPLATE.md` and fill it in at
-`self/features/<slug>/README.md`. See `../../AGENT_PLANS.md` → "The feature manifest"
-for what belongs in it — the template is shared with consuming repos even though the
-rest of this tree is not.
+To start a new feature, run `../../feature-start.sh --self <slug>`. It creates the
+feature's branch and worktree, writes `self/features/<slug>/` there from
+`../../templates/plans/features/TEMPLATE.md` with the manifest's fence already filled,
+and commits it — see `../../LIFECYCLE.md`. Then fill in the manifest's prose;
+`../../AGENT_PLANS.md` → "The feature manifest" says what belongs in it. The template is
+shared with consuming repos even though the rest of this tree is not.
 
 ## Features
 
@@ -76,3 +77,19 @@ rest of this tree is not.
   `session_window` chains off the parent's `to` and is expected to match nothing — a real
   `$0.00`, not a missed capture. Widening it back over the parent's window double-counts
   the session, which is what `check_branch_overlap` would then warn about.
+- `feature-lifecycle` — the naming rule (branch `S`, worktree `<repo>-S`),
+  `feature-start.sh` and `feature-close.sh`, session pins, the zero refusal, `pr.sh`
+  without a review branch, `LIFECYCLE.md` and the prune, and the README index by
+  category. Built by hand (`method: "hand"`) with four pinned delegates for the close
+  script, the doctrine, one test fix, and a rework delegate; plan `72` is its review. The bootstrap: the
+  first feature costed by the rule it introduces, with the building session claimed by
+  pin because it began on `main`.
+- `sweep-and-check` — the weekly cost sweep, a pre-run lint of a feature's plan corpus,
+  drift detection for repo-owned files and the consumer update: four scripts (`check-plans.sh`,
+  `sync-plans.sh`, `update.sh`, `sweep.sh`), the capture change that lifts the zero refusal on excluded
+  sessions. Plans `73`–`83`. Built with the plans method, planned from the session pinned to
+  `feature-lifecycle`.
+- `tooling-backlog-2026-09` — nine small items that accumulated while the direct one-shot and the
+  timing work landed and while three vinylCatalogue batches ran on the runners. None is large;
+  together they are one direct one-shot, the first run of that method on this repo, with its own
+  checkpoint doctrine applied to itself. Plan `71-review-opus`.

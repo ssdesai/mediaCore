@@ -19,6 +19,7 @@ worktrees. There is no cross-check stage.
 
 | File | What it is |
 |---|---|
+| `EXPERIMENTS.md` | How to think about an A/B: what is measured, the checklist written first, arms as pinned worktrees, what counts as noise, and what the pilots established. This directory is how one is run. |
 | `SPEC.md` | The build spec and design record: nouns, stages, naming, file shapes, the pinned facts every part of this depends on. Where this README and the code disagree with it, it is the one that decided. |
 | `run.sh` | The driver. `run.sh <experiment-dir> [--only <fixture>:<method>[:<n>]] [--from <stage>] [--dry-run] [--no-cleanup] [--consumer <path>]`, run from the consuming repo root. Walks the eight stages per cell, writes the state file and the ledger row, renders the scorecard, removes the worktree and keeps the branch. |
 | `lib.sh` | Everything a stage or a method would otherwise implement twice: naming, template filling, the manifest skeleton, gate running and counting, findings parsing, state-file writes, and `harness_claude` — the **single** seam every model call goes through. Sourced, never run. |

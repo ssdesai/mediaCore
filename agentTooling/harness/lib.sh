@@ -232,7 +232,7 @@ harness_build_isolation() {
 # feature README. `branches` must match `git branch --show-current` verbatim, and every
 # session_window bound ends with Z.
 harness_write_manifest() {
-  local tree="$1" slug="$2" branch="$3" from="$4" title="$5"
+  local tree="$1" slug="$2" branch="$3" from="$4" title="$5" method="${6:-plans}"
   local dir="$tree/plans/features/$slug"
   mkdir -p "$dir"
   cat > "$dir/README.md" <<MANIFEST
@@ -253,6 +253,7 @@ Populated by the method. A method with no plans leaves the array empty.
 \`\`\`json
 {
   "slug": "$slug",
+  "method": "$method",
   "plans": [],
   "branches": ["$branch"],
   "session_window": {"from": "$from", "to": null},

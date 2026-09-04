@@ -6,7 +6,8 @@ set -uo pipefail
 # (run-verify.sh, Bash enabled), then the review pass (run-review.sh) — so a batch
 # of build plans plus its verify and review plans can be executed with a single
 # command. Each stage IS the real runner; this script only sequences them and gates
-# each pass on the one before it.
+# each pass on the one before it. A corpus lint (check-plans.sh) runs first, at no
+# model cost, and stops the batch before the build pass on any FAIL.
 #
 # The build pass may pause at a level boundary rather than finish or fail outright,
 # signaled by exit code 64 (LEVEL_PAUSE_RC, plan-runner-roots.sh): run-plans.sh exits
@@ -76,8 +77,31 @@ if (( SELF_MODE )); then SELF_FLAG=(--self); fi
 # plan would then capture that pass and get a run — and a usage record — belonging to the
 # feature just built. Capture what the build pass resolved and pass it to both.
 FEATURE_SLUG_FILE="$(mktemp)"
-trap 'rm -f "$FEATURE_SLUG_FILE"' EXIT
+# The second handshake, shaped exactly like the first. run-plans.sh KNOWS which sentinel
+# paused it — it had the file in its hand one process ago — while this script could only
+# re-derive the number by sorting auto/complete/, which is right only as long as the
+# highest-numbered filed sentinel is the one that paused. Reading it back is the same
+# fix as FEATURE_SLUG_OUT above: let the process that knows say so.
+LEVEL_PAUSE_NN_FILE="$(mktemp)"
+# The batch's own timing stamps (stamp_timing, plan-runner-roots.sh) need the slug; an
+# explicit one is known now, an inferred one only after the build pass — FEATURE_SLUG is
+# re-resolved there. The closing stamp rides the EXIT trap so every exit path leaves it.
+FEATURE_SLUG="${1:-}"
+trap 'batch_rc=$?; stamp_timing batch_end rc="$batch_rc"; rm -f "$FEATURE_SLUG_FILE" "$LEVEL_PAUSE_NN_FILE"' EXIT
 export FEATURE_SLUG_OUT="$FEATURE_SLUG_FILE"
+export LEVEL_PAUSE_NN_OUT="$LEVEL_PAUSE_NN_FILE"
+stamp_timing batch_start
+
+# The lint runs before anything is spent. A malformed corpus — a plan without a model
+# suffix, a stem missing from plans[], a review stub still carrying its marker — is
+# otherwise found by a runner mid-batch or by a cost report that omits a plan.
+if [[ -n "$FEATURE_SLUG" && -x "$SCRIPT_DIR/check-plans.sh" ]]; then
+  echo "########## BATCH: check-plans ##########"
+  if ! "$SCRIPT_DIR/check-plans.sh" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} "$FEATURE_SLUG"; then
+    echo "########## BATCH: check-plans failed — nothing run; fix the corpus and re-run ##########"
+    exit 1
+  fi
+fi
 
 # Did level NN's gate report a fully green tree? Same rule as level_gate_green in
 # plan-runner-lib.sh (this script does not source the lib): the line under "# VERDICT"
@@ -113,9 +137,13 @@ regate() {
   [[ -x "$GATE_SCRIPT" ]] || return 0
   echo "########## BATCH: level $2 — re-running the gate (${GATE_SCRIPT#$REPO_DIR/} $2) ##########"
   level_expectations "$FEATURES_DIR/$1/auto/complete/$2-gate.md"
+  stamp_timing gate_start level="$2" regate=true
   "$GATE_SCRIPT" "$2"
   local rc=$?
   unset GATE_EXPECTED_RED GATE_DEFERRED
+  local green=false
+  gate_green "$2" && green=true
+  stamp_timing gate_end level="$2" rc="$rc" green="$green" regate=true
   return "$rc"
 }
 
@@ -180,10 +208,19 @@ last_sentinel_nn() {
 # --- Resume check: settle an unsettled level before the build pass runs again. ---
 # Only when the slug is explicit; an inferred slug is not known until the build pass has
 # run once, and a fresh batch has no crossed level to settle anyway.
+#
+# The condition is about the LEVEL, not about the queue behind it: an unsettled level owes
+# its tier ladder whether or not there are build plans left to run on top of it. A batch
+# killed during its last level's level-verify has every build plan complete, and gating the
+# settle on a non-empty auto/incomplete/ let such a resume walk straight past the ladder —
+# the ordinary verify pass then ran the queued level-verify with no tier behind it, a red
+# gate there escalated nothing, and the batch reported the failure only at the final gate.
+# The cost of the wider condition is bounded: a finished batch re-run with its gate reports
+# intact is already settled and settles nothing, and one re-run on a fresh clone (the
+# reports are gitignored) re-runs that level's mechanical gate once, at no model cost.
 if [[ -n "${1:-}" ]]; then
   resume_nn="$(last_sentinel_nn "$1")"
-  if [[ -n "$resume_nn" ]] && ( level_verify_pending "$1" "$resume_nn" || ! gate_green "$resume_nn" ) \
-     && [[ -n "$(ls "$FEATURES_DIR/$1/auto/incomplete/" 2>/dev/null)" ]]; then
+  if [[ -n "$resume_nn" ]] && ( level_verify_pending "$1" "$resume_nn" || ! gate_green "$resume_nn" ); then
     echo "########## BATCH: resuming — level $resume_nn was crossed but is not settled; settling it before building on ##########"
     settle_level "$1" "$resume_nn" || exit 1
   fi
@@ -191,13 +228,27 @@ fi
 
 while :; do
   echo "########## BATCH 1/3: build pass (run-plans.sh) ##########"
+  # Truncated per iteration so a second pause can never be settled against the first
+  # pause's number, and so "the runner reported nothing" is a state this loop can see.
+  : > "$LEVEL_PAUSE_NN_FILE"
   "$SCRIPT_DIR/run-plans.sh" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} "$@"
   build_rc=$?
   if (( build_rc == LEVEL_PAUSE_RC )); then
     # Paused at a level boundary with a level-verify plan queued and the gate red. The
-    # sentinel that paused us is the highest-numbered NN-gate.md now in auto/complete/.
+    # runner named the sentinel through LEVEL_PAUSE_NN_OUT; the sort over auto/complete/
+    # is the fallback for a runner that predates the handshake.
     level_slug="$(resolve_batch_slug "${1:-}")"
-    level_nn="$(last_sentinel_nn "$level_slug")"
+    level_nn=""
+    if [[ -s "$LEVEL_PAUSE_NN_FILE" ]]; then level_nn="$(cat "$LEVEL_PAUSE_NN_FILE")"; fi
+    if [[ -z "$level_nn" ]]; then level_nn="$(last_sentinel_nn "$level_slug")"; fi
+    if [[ -z "$level_nn" ]]; then
+      # Neither source knows which level paused. Settling an empty level would run
+      # `run-verify.sh --up-to ""`, which drains no plan and re-gates an unlabelled
+      # level — a silent no-op the batch would then read as progress. Stop instead.
+      echo ""
+      echo "########## BATCH: paused at a level boundary but no level number was reported and none is filed in auto/complete/ — cannot settle an unknown level ##########"
+      exit 1
+    fi
     if ! settle_level "$level_slug" "$level_nn"; then
       echo ""
       echo "########## BATCH: level $level_nn could not be settled unattended — not building the next level on it ##########"
@@ -214,12 +265,17 @@ if (( build_rc != 0 )); then
   exit "$build_rc"
 fi
 unset FEATURE_SLUG_OUT
+FEATURE_SLUG="$(resolve_batch_slug "${1:-}")"
 
 if [[ -x "$GATE_SCRIPT" ]]; then
   echo ""
   echo "########## BATCH: mechanical gate (${GATE_SCRIPT#$REPO_DIR/}) ##########"
+  stamp_timing gate_start level=final
   "$GATE_SCRIPT"
   gate_rc=$?
+  final_green=false
+  gate_green final && final_green=true
+  stamp_timing gate_end level=final rc="$gate_rc" green="$final_green"
   if (( gate_rc != 0 )); then
     echo ""
     echo "########## BATCH: gate reports an unusable environment (exit $gate_rc) — skipping verify ##########"

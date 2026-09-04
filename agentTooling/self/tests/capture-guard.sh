@@ -59,7 +59,22 @@ set -uo pipefail
 #  13. --all --recapture — the full refresh — does not abort on a refusal: the remaining
 #      features are still captured, and the run exits non-zero at the end;
 #  14. an empty session_window (from == to, or from > to) is warned about, while an
-#      open-ended one and a real interval written across two zone formats are not.
+#      open-ended one and a real interval written across two zone formats are not;
+#  15. the naming rule: a session launched in the feature's own worktree, R-<slug>, is
+#      selected and its entry records that cwd, while one launched in any other sibling
+#      directory is not, and the warning names the directory it came from;
+#  16. a capture that matches no session and no subagent writes nothing and exits
+#      non-zero, naming the three causes; --force writes the honest zero.
+#  17. that refusal is lifted when the only sessions on the branch are excluded ones —
+#      named in the manifest's exclude_sessions, or claimed by a usage.json as a runner
+#      session — because either route proves the branch name is right; capture writes
+#      the zero without --force and says so, while a branch with no session at all is
+#      still refused, and so is a corpus whose excluded session carries some OTHER
+#  18. --all skips a feature whose session_window.to is null as in flight and writes
+#      nothing; naming the slug still captures it.
+#      branch (17d): the evidence is pinned to the manifest's branches, not to the
+#      presence of excluded sessions in the repo, or a branch typo would read as an
+#      evidenced $0.00 in every repo that has ever run a batch.
 #
 # Assertions 3-7 were RED until the guard landed in analysis/capture_planning.py; 10-13
 # were RED until the skip did; 14 until check_empty_window did. A run against a script
@@ -110,7 +125,9 @@ mkdir -p "$FEATURE_DIR"
 
 # write_manifest [FROM] [TO] — the feature README whose last ```json fence capture reads.
 write_manifest() {
-  local frm="${1:-null}" to="${2:-null}"
+  # Default `to` is a far bound, not null: capture --all skips an open window as in
+  # flight (phase 18), and every --all phase here means to walk this feature.
+  local frm="${1:-null}" to="${2:-2099-01-01T00:00:00.000Z}"
   [ "$frm" != "null" ] && frm="\"$frm\""
   [ "$to" != "null" ] && to="\"$to\""
   cat > "$FEATURE_DIR/README.md" <<EOF
@@ -220,6 +237,7 @@ rm -f "$PROJECTS/$SESSION_A.jsonl" "$PROJECTS/$SESSION_B.jsonl"
 capture --force > /dev/null
 check "7. prior capture is zero-cost" \
   "python3 -c \"import sys; sys.exit(0 if float('$(total_of "$PLANNING")') == 0.0 else 1)\""
+write_transcript "$SESSION_A" "2026-07-01T10:00:00.000Z" 5000
 recapture > "$TMP/out7.txt"
 rc7=$?
 check "7b. overwriting a zero-cost capture needs no --force" "[ $rc7 -eq 0 ]"
@@ -349,7 +367,7 @@ Second fixture feature, so --all has something to walk.
 {
   "slug": "$SLUG2",
   "branches": ["$BRANCH2"],
-  "session_window": {"from": null, "to": null},
+  "session_window": {"from": null, "to": "2099-01-01T00:00:00.000Z"},
   "exclude_sessions": []
 }
 \`\`\`
@@ -401,8 +419,8 @@ write_manifest "2026-07-01T09:00:00Z" "2026-07-01T09:00:00Z"
 capture > "$TMP/out14.txt"
 check "14. an empty window (from == to) is warned about" \
   "grep -q 'session_window is empty' '$TMP/out14.txt'"
-check "14b. the empty window really does capture \$0.00" \
-  "[ \"\$(total_of '$PLANNING')\" = '0.0' ]"
+check "14b. the empty window really does match nothing — no planning.json is written" \
+  "[ ! -f '$PLANNING' ]"
 
 # Backwards is the same emptiness, and must not read as a valid window.
 write_manifest "2026-07-01T12:00:00Z" "2026-07-01T08:00:00Z"
@@ -424,6 +442,168 @@ write_manifest
 capture --recapture > "$TMP/out14f.txt"
 check "14f. an open-ended window is not warned about" \
   "! grep -q 'session_window is empty' '$TMP/out14f.txt'"
+
+# ── 15. the naming rule: R-<slug> is the feature's worktree ────────────────────
+# LIFECYCLE.md: for slug S in a repo whose primary checkout is R, the worktree is R-S,
+# and the coordinator session is launched inside it. Its transcript lives in that
+# path's own project directory with every line's cwd = R-S — a sibling of R, so the
+# old prefix test (cwd under R) dropped it. Capture derives R-S from the slug and
+# accepts it; any other sibling stays out, and the warning says where it was seen.
+write_manifest
+rm -f "$PLANNING" "$PROJECTS"/*.jsonl
+FEATURE_WT="$AT-$SLUG"
+FEATURE_WT_PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$FEATURE_WT" | tr '/' '-')"
+OTHER_WT="$AT-other"
+OTHER_WT_PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$OTHER_WT" | tr '/' '-')"
+mkdir -p "$FEATURE_WT_PROJECTS" "$OTHER_WT_PROJECTS"
+session_line "$SESSION_A" "$FEATURE_WT" "$BRANCH" "msg-$SESSION_A" "$MODEL" \
+  "2026-07-01T10:00:00.000Z" 100 5000 0 0 0 > "$FEATURE_WT_PROJECTS/$SESSION_A.jsonl"
+session_line "$SESSION_B" "$OTHER_WT" "$BRANCH" "msg-$SESSION_B" "$MODEL" \
+  "2026-07-01T11:00:00.000Z" 100 5000 0 0 0 > "$OTHER_WT_PROJECTS/$SESSION_B.jsonl"
+capture > "$TMP/out15.txt"
+rc15=$?
+check "15. a session launched in R-<slug> is selected" \
+  "[ $rc15 -eq 0 ] && [ \"\$(python3 -c \"import json;print([s['session_id'] for s in json.load(open('$PLANNING'))['sessions']])\")\" = \"['$SESSION_A']\" ]"
+check "15b. its entry records the cwd it was launched in, and that it was selected by branch" \
+  "[ \"\$(python3 -c \"import json;s=json.load(open('$PLANNING'))['sessions'][0];print(s['cwd'], s['selected_by'])\")\" = '$FEATURE_WT branch' ]"
+check "15c. a session in another sibling directory is not selected" \
+  "! grep -q '$SESSION_B' '$PLANNING'"
+check "15d. and the warning names the directory it was launched from" \
+  "grep -q '$OTHER_WT' '$TMP/out15.txt'"
+rm -rf "$FEATURE_WT_PROJECTS" "$OTHER_WT_PROJECTS"
+
+# ── 16. nothing matched: no silent zero ───────────────────────────────────────
+# The frozen \$0.00 that reads as "planning was free". A first capture that matches
+# nothing must not leave a file behind for --all to protect ever after.
+write_manifest
+rm -f "$PLANNING" "$PROJECTS"/*.jsonl
+capture > "$TMP/out16.txt"
+rc16=$?
+check "16. a capture that matches nothing exits non-zero" "[ $rc16 -ne 0 ]"
+check "16b. and writes no planning.json" "[ ! -f '$PLANNING' ]"
+check "16c. naming the three causes and the command for each" \
+  "grep -q 'git branch --list' '$TMP/out16.txt' && grep -qi 'aged out' '$TMP/out16.txt' && grep -qi 'launched' '$TMP/out16.txt'"
+capture --force > "$TMP/out16d.txt"
+rc16d=$?
+check "16d. --force writes the honest zero" \
+  "[ $rc16d -eq 0 ] && [ \"\$(total_of '$PLANNING')\" = '0.0' ]"
+# Under --all the refusal counts like any other: the run goes on and exits non-zero.
+rm -f "$PLANNING"
+capture_all > "$TMP/out16e.txt"
+rc16e=$?
+check "16e. --all counts the refusal and exits non-zero" \
+  "[ $rc16e -ne 0 ] && [ ! -f '$PLANNING' ] && grep -q 'refused' '$TMP/out16e.txt'"
+
+# ── 17. an evidenced zero: excluded sessions met on the branch lift the refusal ──
+# A feature whose only sessions on its branch are excluded ones — runner sessions a
+# usage.json already prices, or ids the manifest excludes — has still been seen on that
+# branch: the name is right, and the $0.00 is evidenced rather than suspicious. Unlike
+# assertion 16, this case must not need --force.
+
+# 17a. the manifest's exclude_sessions names the one session that carries the branch.
+rm -f "$FEATURE_DIR/planning.json" "$PROJECTS"/*.jsonl
+write_transcript "$SESSION_A" "2026-07-01T10:00:00.000Z" 5000
+cat > "$FEATURE_DIR/README.md" <<EOF
+# $SLUG
+
+\`\`\`json
+{
+  "slug": "$SLUG",
+  "branches": ["$BRANCH"],
+  "session_window": {"from": null, "to": null},
+  "exclude_sessions": ["$SESSION_A"]
+}
+\`\`\`
+EOF
+capture > "$TMP/out17a.txt"
+rc17a=$?
+check "17a. a manifest-excluded session carrying the branch is not refused" "[ $rc17a -eq 0 ]"
+check "17a2. planning.json is written" "[ -f '$PLANNING' ]"
+check "17a3. sessions is empty" \
+  "python3 -c \"import json,sys; sys.exit(0 if json.load(open('$PLANNING'))['sessions'] == [] else 1)\""
+check "17a4. excluded_session_ids holds it" \
+  "python3 -c \"import json,sys; sys.exit(0 if '$SESSION_A' in json.load(open('$PLANNING'))['excluded_session_ids'] else 1)\""
+check "17a5. cost_usd.total is 0" \
+  "[ \"\$(total_of '$PLANNING')\" = '0.0' ]"
+check "17a6. stdout says the zero is evidenced" \
+  "grep -qi 'evidenced' '$TMP/out17a.txt'"
+
+# 17b. the manifest excludes nothing; a usage.json elsewhere claims the session as a
+# runner session (attempts[].session_id) — the other route collect_excluded_session_ids
+# checks.
+write_manifest
+rm -f "$FEATURE_DIR/planning.json" "$PROJECTS"/*.jsonl
+write_transcript "$SESSION_A" "2026-07-01T10:00:00.000Z" 5000
+mkdir -p "$FEATURE_DIR/auto/complete"
+printf '{"plan":"01-x","attempts":[{"session_id":"%s","outcome":"complete","total_cost_usd":1.0}]}\n' \
+  "$SESSION_A" > "$FEATURE_DIR/auto/complete/01-x-haiku.usage.json"
+capture > "$TMP/out17b.txt"
+rc17b=$?
+check "17b. a runner session claimed by a usage.json is not refused" "[ $rc17b -eq 0 ]"
+check "17b2. planning.json is written" "[ -f '$PLANNING' ]"
+check "17b3. sessions is empty" \
+  "python3 -c \"import json,sys; sys.exit(0 if json.load(open('$PLANNING'))['sessions'] == [] else 1)\""
+check "17b4. excluded_session_ids holds it" \
+  "python3 -c \"import json,sys; sys.exit(0 if '$SESSION_A' in json.load(open('$PLANNING'))['excluded_session_ids'] else 1)\""
+check "17b5. cost_usd.total is 0" \
+  "[ \"\$(total_of '$PLANNING')\" = '0.0' ]"
+check "17b6. stdout says the zero is evidenced" \
+  "grep -qi 'evidenced' '$TMP/out17b.txt'"
+rm -rf "$FEATURE_DIR/auto"
+
+# 17c. no session at all still refuses — the two outcomes side by side.
+write_manifest
+rm -f "$FEATURE_DIR/planning.json" "$PROJECTS"/*.jsonl
+capture > "$TMP/out17c.txt"
+rc17c=$?
+check "17c. a branch no transcript carries is still refused" "[ $rc17c -ne 0 ]"
+check "17c2. and writes no planning.json" "[ ! -f '$PLANNING' ]"
+
+# 17d. the evidence has to be on THIS feature's branch. A corpus with an excluded session
+# on some other branch is every repo that has ever run a batch, so if that alone lifted
+# the refusal a typo'd `branches` would read as an evidenced $0.00 — the one failure the
+# refusal exists to catch. Unlike 17c the corpus is not empty: the transcript is there,
+# in a claimable directory, runner-excluded exactly as in 17b, and carries branch `other`.
+rm -f "$FEATURE_DIR/planning.json" "$PROJECTS"/*.jsonl
+session_line "$SESSION_A" "$AT" "other" "msg-$SESSION_A" "$MODEL" \
+  "2026-07-01T10:00:00.000Z" 100 5000 0 0 0 > "$PROJECTS/$SESSION_A.jsonl"
+mkdir -p "$FEATURE_DIR/auto/complete"
+printf '{"plan":"01-x","attempts":[{"session_id":"%s","outcome":"complete","total_cost_usd":1.0}]}\n' \
+  "$SESSION_A" > "$FEATURE_DIR/auto/complete/01-x-haiku.usage.json"
+cat > "$FEATURE_DIR/README.md" <<EOF
+# $SLUG
+
+\`\`\`json
+{
+  "slug": "$SLUG",
+  "branches": ["typo"],
+  "session_window": {"from": null, "to": null},
+  "exclude_sessions": []
+}
+\`\`\`
+EOF
+capture > "$TMP/out17d.txt"
+rc17d=$?
+check "17d. an excluded session on another branch is not evidence for a typo'd one" \
+  "[ $rc17d -ne 0 ]"
+check "17d2. and writes no planning.json" "[ ! -f '$PLANNING' ]"
+check "17d3. the refusal is the three-cause one, naming the branch check" \
+  "grep -q 'git branch --list' '$TMP/out17d.txt' && ! grep -qi 'evidenced' '$TMP/out17d.txt'"
+rm -rf "$FEATURE_DIR/auto"
+
+# ── 18: --all skips a feature whose window is still open ─────────────────────
+# A sweep over the corpus must not freeze a feature feature-close.sh has not captured:
+# a record written here would make that close skip as "already captured" and report the
+# premature figure. Naming the slug still captures it.
+write_manifest "2026-07-01T00:00:00.000Z" null
+rm -f "$PLANNING"
+HOME="$FAKE_HOME" python3 "$AT/analysis/capture_planning.py" --self --all > "$TMP/out18.txt" 2>&1
+check "18a. --all reports the open-window feature as in flight" \
+  "grep -q '^$SLUG: in flight' '$TMP/out18.txt' && grep -q 'in flight' '$TMP/out18.txt'"
+check "18b. and writes no planning.json for it" "[ ! -f '$PLANNING' ]"
+capture > "$TMP/out18c.txt"
+check "18c. naming the slug does not skip it as in flight" "! grep -q 'in flight' '$TMP/out18c.txt'"
+rm -f "$PLANNING"
 
 echo
 if [ "$fails" -eq 0 ]; then

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -uo pipefail
+# template-version: 2
 
+# This is what `sync-plans.sh --check` compares a seeded copy against to report drift.
+# Bump it whenever the body below the marker changes in a way seeded copies must
+# merge by hand.
+#
 # Mechanical pre-verify gate, run by ../../run-batch.sh between the build and
 # verify passes. Runs this repo's deterministic checks — install, lint, tests,
 # typecheck, build — and writes plans/gate-report.txt for the verify plan to read.
@@ -153,7 +158,7 @@ record_skip() {            # record_skip <label> <reason>
 #   else
 #     record_skip "tests" "postgres unreachable — see gate header"
 #   fi
-#   # Two gates run at once whenever two worktrees are in flight (EXPERIMENTS.md arms,
+#   # Two gates run at once whenever two worktrees are in flight (harness/EXPERIMENTS.md arms,
 #   # one batch per feature), and a suite that binds a fixed port — a dev server, a
 #   # real-backend browser suite — makes them race for it; either side can lose and
 #   # read as red. Bind-probe free ports here and hand them to the suites' configs

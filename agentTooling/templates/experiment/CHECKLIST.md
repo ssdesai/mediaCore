@@ -1,7 +1,7 @@
 # <slug> — acceptance checklist (write BEFORE running either arm)
 
 Arms: `<arm-a>` (agentTooling <commit>) vs `<arm-b>` (agentTooling <commit>). Same brief,
-same plan content; only the doctrine differs. Scoring rules: EXPERIMENTS.md.
+same plan content; only the doctrine differs. Scoring rules: agentTooling/harness/EXPERIMENTS.md.
 
 ## A — mechanical (re-run the gate by hand after each batch)
 

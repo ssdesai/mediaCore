@@ -42,6 +42,9 @@ exit_reason="all ${PLAN_KIND}s complete"
 route_failures=0
 
 print_status() {
+  # Runs from the EXIT trap, so every way out of a pass — clean, failed, interrupted,
+  # paused at a sentinel — leaves the same closing stamp with the reason it stopped.
+  stamp_timing pass_end queue="${QUEUE:-}" reason="$exit_reason"
   echo ""
   echo "=================================================="
   echo "  $SUMMARY_TITLE [${FEATURE_SLUG:-none}]: $exit_reason"
@@ -130,9 +133,13 @@ run_level_gate() {
     [[ -f "$sentinel" ]] && break
   done
   level_expectations "$sentinel"
+  stamp_timing gate_start level="$label"
   "$GATE_SCRIPT" "$label"
   rc=$?
   unset GATE_EXPECTED_RED GATE_DEFERRED
+  local green=false
+  level_gate_green "$label" && green=true
+  stamp_timing gate_end level="$label" rc="$rc" green="$green"
   if (( rc != 0 )); then
     exit_reason="stopped: gate reports an unusable environment (exit $rc) at level $label"
     # Never forward the reserved pause code: run-batch.sh would read it as "run the
@@ -410,6 +417,7 @@ run_plan() {
   plan_name="$(basename "$plan_path")"
 
   echo "=== Running $PLAN_KIND: $plan_name ==="
+  stamp_timing plan_start plan="${plan_name%.md}" queue="$QUEUE"
 
   # The raw event stream is kept beside the plan rather than in a temp file, so
   # finalize_plan can move it into complete/ or failed/ alongside the plan for
@@ -664,6 +672,7 @@ finalize_plan() {
   plan_name="$(basename "$plan_path")"
 
   write_usage_sidecar "$plan_path" "$rc" "$stream_path" "$usage_path"
+  stamp_timing plan_end plan="${plan_name%.md}" queue="$QUEUE" rc="$rc"
 
   if (( rc == 2 )); then
     exit_reason="stopped: Claude usage limit reached on $plan_name (left in inprogress for next run)"
@@ -747,6 +756,7 @@ run_all() {
   mkdir -p "$INCOMPLETE_DIR" "$INPROGRESS_DIR" "$COMPLETE_DIR" "$FAILED_DIR"
 
   echo "Feature: $FEATURE_SLUG   queue: $QUEUE"
+  stamp_timing pass_start queue="$QUEUE"
 
   # Report the resolved slug to a caller that asked for it, so run-batch.sh can hand the
   # verify pass the same feature the build pass chose instead of letting it infer again.
@@ -783,11 +793,33 @@ run_all() {
         if level_gate_green "$level_nn"; then
           skip_level_verify "$level_nn"
         else
+          # Report the paused level to a caller that asked for it, the same handshake
+          # FEATURE_SLUG_OUT is: this process knows which sentinel it stopped at, and
+          # run-batch.sh would otherwise have to re-derive the number by sorting
+          # auto/complete/. Written before the exit reason so a stop between the two
+          # cannot leave a stale number behind.
+          if [[ -n "${LEVEL_PAUSE_NN_OUT:-}" ]]; then
+            echo "$level_nn" > "$LEVEL_PAUSE_NN_OUT"
+          fi
           exit_reason="paused at level boundary $current_plan — a level-verify plan is queued; run: run-verify.sh $SELF_ARG--up-to $level_nn $FEATURE_SLUG, then re-run run-plans.sh $SELF_ARG$FEATURE_SLUG to continue"
           exit "$LEVEL_PAUSE_RC"
         fi
       fi
       continue
+    fi
+    # A brief that still carries the placeholder feature-start.sh wrote is not a brief.
+    # An empty review queue is a clean no-op, which is exactly how a forgotten brief
+    # would go unnoticed; a stub that fails loudly cannot be skipped by accident. Filed
+    # to failed/ with the reason, no model called, and the pass stops here.
+    # Anchored: the stub puts the marker at the start of a line, and a real brief may
+    # mention it mid-sentence — this feature's own review brief did, and was refused.
+    if grep -q '^@@TODO@@' "$plan_file"; then
+      local stub_log="$FAILED_DIR/${current_plan%.md}.progress.md"
+      echo "refused: $current_plan still contains @@TODO@@ — the stub feature-start.sh wrote was never replaced with a real brief; write it and re-queue the plan" > "$stub_log"
+      mv "$plan_file" "$FAILED_DIR/$current_plan"
+      echo "=== refused $current_plan: still contains @@TODO@@ (moved to failed) ==="
+      exit_reason="stopped: $current_plan still contains @@TODO@@ (moved to failed; write the brief and move it back to incomplete/)"
+      exit 1
     fi
     local inprogress_plan="$INPROGRESS_DIR/$current_plan"
     local inprogress_log="${inprogress_plan%.md}.progress.md"
