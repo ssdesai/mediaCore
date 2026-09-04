@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -uo pipefail
+# template-version: 2
 
+# This is what `sync-plans.sh --check` compares a seeded copy against to report drift.
+# Bump it whenever the body below the marker changes in a way seeded copies must
+# merge by hand.
+#
 # Opens a pull request for the batch just built, run by ../agentTooling/run-review.sh
 # after a clean review pass. Seeded once from agentTooling/templates/plans/pr.sh by
 # sync-plans.sh, then REPO-OWNED and never overwritten — customize it freely.
@@ -29,9 +34,9 @@ REPORT="${2:-}"
 # REPO-SPECIFIC — everything below is yours to change.
 # ---------------------------------------------------------------------------
 
-BASE_BRANCH="main"
-BRANCH_PREFIX="review"
 FORGE_CLI="gh"
+# The base of last resort, when neither the manifest nor the environment names one.
+FALLBACK_BASE="main"
 
 if ! command -v "$FORGE_CLI" >/dev/null 2>&1; then
   echo "  skip  $FORGE_CLI not installed — no PR opened"
@@ -49,18 +54,22 @@ if [[ -z "$current_branch" || "$current_branch" == "HEAD" ]]; then
   exit 0
 fi
 
-# Never commit onto the base branch. `checkout -b` creates from the current HEAD and
-# leaves every file — tracked and untracked — exactly where it is, so the plan queue
-# this run is being driven from travels with it. That is the one git operation in this
-# script that touches a ref, and it is safe for the reason `git stash` is not.
+# This script never creates a branch. The head is whatever is checked out: feature-start.sh
+# cut the feature branch and the whole feature — plans, build, verify, review — ran in its
+# worktree, so the output is already on its own branch and there is nothing left to cut.
+# The base is what that branch was cut from: FEATURE_BASE, which run-review.sh exports from
+# the manifest's `base`, else BASE_BRANCH from the environment, else main. A stacked feature
+# therefore targets the feature beneath it, and the forge retargets the PR once that merges.
+#
+# On the base branch itself there is no feature branch to open a PR from, and committing
+# and pushing it would be the one thing the branch rule exists to prevent — so refuse, and
+# say what to do instead. (LIFECYCLE.md; self/features/feature-lifecycle/README.md item 13.)
+BASE_BRANCH="${FEATURE_BASE:-${BASE_BRANCH:-$FALLBACK_BASE}}"
 if [[ "$current_branch" == "$BASE_BRANCH" ]]; then
-  current_branch="$BRANCH_PREFIX/$SLUG"
-  if git show-ref --verify --quiet "refs/heads/$current_branch"; then
-    echo "  fail  branch $current_branch already exists; not switching onto it"
-    exit 1
-  fi
-  git checkout -b "$current_branch" || exit 1
-  echo "  branch  created $current_branch off $BASE_BRANCH"
+  echo "  fail  on '$current_branch', which is this PR's base — nothing to open a PR from."
+  echo "        Run the batch inside the feature worktree feature-start.sh made, so it"
+  echo "        builds on its own branch; nothing is committed or pushed from here."
+  exit 1
 fi
 
 # The batch's output IS the working tree, so everything goes in — including this

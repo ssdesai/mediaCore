@@ -32,6 +32,7 @@ from pathlib import Path
 
 from pricing import RATES_VERIFIED, is_rates_stale
 from roots import add_self_flag, artifact_root, features_root
+from transcript import to_utc
 
 # Turn-count flags. The first two are model-fit — the plan ran on the wrong model.
 # The third is scope: the model was right, the plan was too big.
@@ -104,6 +105,39 @@ def build_usage_index(feature_dir):
         if plan_stem:
             index[plan_stem] = usage_path
     return index
+
+
+# A plan the runner filed WITHOUT running it. `skip_level_verify` (plan-runner-lib.sh)
+# does this when a level's gate came back green: the level-verify is not owed, so the
+# plan moves to verify/complete/ with a one-line progress log and — deliberately — no
+# usage.json, because nothing ran and nothing was billed. The log's first line is the
+# only marker, and `self/tests/level-sentinel.sh` asserts the runner writes it.
+SKIPPED_LOG_PREFIX = "skipped:"
+PROGRESS_LOG_SUFFIX = ".progress.md"
+
+
+def build_skipped_index(feature_dir):
+    """The set of plan stems whose progress log says the runner skipped them.
+
+    Scoped to one feature and keyed by the log's filename, the same way
+    build_usage_index is keyed by the sidecar's own `plan` field: a progress log has no
+    body to read a stem out of, but it always sits beside the plan it belongs to and
+    plan numbers restart per feature.
+
+    Without this, a skipped level-verify reads exactly like a plan whose usage.json is
+    gone — reported under "Missing usage for" and marking the feature's total a lower
+    bound, when in fact the roll-up is complete and the plan cost nothing. Seen on
+    vinylCatalogue's shell-jobs-and-review-refresh, plan 05-level-backend."""
+    skipped = set()
+    for log_path in feature_dir.rglob("*" + PROGRESS_LOG_SUFFIX):
+        try:
+            with open(log_path) as handle:
+                first_line = handle.readline()
+        except OSError:
+            continue
+        if first_line.lstrip().startswith(SKIPPED_LOG_PREFIX):
+            skipped.add(log_path.name[: -len(PROGRESS_LOG_SUFFIX)])
+    return skipped
 
 
 def find_queue_segment(usage_path):
@@ -207,15 +241,26 @@ def manifest_plan_stems(manifest, usage_index, warnings):
     return order, True
 
 
-def load_manifest_plans(repo_dir, plan_stems, usage_index, warnings):
+def load_manifest_plans(repo_dir, plan_stems, usage_index, warnings, skipped_stems=()):
     """(stem, usage_data, usage_path) triples for every plan in `plan_stems` that
     has a usage.json. A plan with none is a warning, not a crash, and is
-    skipped from every downstream table."""
+    skipped from every downstream table.
+
+    A stem in `skipped_stems` (build_skipped_index) is the one absence that is not a
+    gap: the runner filed it without running it, so there is nothing to load and
+    nothing missing. It gets a note rather than the missing-usage warning, and the
+    caller keeps it out of `missing_usage_plans` and the partial flag."""
     loaded = []
     for stem in plan_stems:
         usage_path = usage_index.get(stem)
         if usage_path is None:
-            warnings.append(f"no usage.json for plan {stem}")
+            if stem in skipped_stems:
+                warnings.append(
+                    f"plan {stem} was filed as skipped by the runner (its level gate was "
+                    "green); it never ran, so it has no usage.json by design"
+                )
+            else:
+                warnings.append(f"no usage.json for plan {stem}")
             continue
         usage_data = json.loads(usage_path.read_text())
         loaded.append((stem, usage_data, usage_path))
@@ -257,12 +302,45 @@ def find_orphan_usage(plan_stems, usage_index, warnings):
 # --------------------------------------------------------------------------
 
 
-def compute_cost_rollup(
-    plan_stems, plans_recovered, planning_data, loaded_plans, warnings, orphan_plans=()
-):
-    planning_cost = planning_data["cost_usd"]["total"]
+KNOWN_METHODS = ("plans", "direct", "hand")
+# The methods whose planning.json IS the build: no architect, so every transcript it
+# holds is the implementer (direct) or the coordinator building it itself (hand).
+BUILD_BY_TRANSCRIPT_METHODS = ("direct", "hand")
+BUILD_ROW_LABELS = {"direct": "build: implementer", "hand": "build: by hand"}
 
-    build_cost = 0.0
+
+def manifest_method(manifest, warnings):
+    """How the feature was built, from the manifest's optional `method`: "plans" (the
+    default, and every manifest written before the field existed), "direct"
+    (AGENT_DIRECT.md: an implementer delegate) or "hand" (LIFECYCLE.md: the
+    coordinator built it itself, no delegate). An unknown value is reported and read as
+    "plans" rather than silently changing what a dollar means."""
+    method = manifest.get("method") or "plans"
+    if method not in KNOWN_METHODS:
+        warnings.append(
+            f"manifest method {method!r} is not one of {', '.join(KNOWN_METHODS)}; "
+            "read as 'plans'"
+        )
+        return "plans"
+    return method
+
+
+def compute_cost_rollup(
+    plan_stems, plans_recovered, planning_data, loaded_plans, warnings, orphan_plans=(),
+    method="plans", skipped_plans=(),
+):
+    # For a planned feature, planning.json is what it says: the architect and the
+    # sessions around it. For a direct feature there is no architect — the transcripts
+    # it holds ARE the build (the implementer, a rework one-shot), so the whole figure
+    # moves to the build bucket and planning proper (the coordinator's few minutes on
+    # the brief) is not separated out. Same rule for time, in compute_time_rollup.
+    implementer_cost = 0.0
+    planning_cost = planning_data["cost_usd"]["total"]
+    if method in BUILD_BY_TRANSCRIPT_METHODS:
+        implementer_cost = planning_cost
+        planning_cost = 0.0
+
+    build_cost = implementer_cost
     verify_cost = 0.0
     review_cost = 0.0
     recovered_cost = 0.0
@@ -357,7 +435,14 @@ def compute_cost_rollup(
     # A roll-up missing an input is still a number, and reads as a complete one unless
     # it says otherwise — the warning alone is not enough, since the trend table shows
     # totals without warnings. Mirrors planning.json's `total_is_partial`.
-    missing_usage = [s for s in plan_stems if s not in {stem for stem, _, _ in loaded_plans}]
+    loaded_stems = {stem for stem, _, _ in loaded_plans}
+    # A plan the runner filed as skipped has no usage.json and no cost, and is neither
+    # an absence nor a gap — excluded from `missing_usage` so it cannot mark the total
+    # a lower bound, and listed separately so the reader can see why it is not counted.
+    skipped_usage = [s for s in plan_stems if s not in loaded_stems and s in skipped_plans]
+    missing_usage = [
+        s for s in plan_stems if s not in loaded_stems and s not in skipped_plans
+    ]
     # An orphan run makes the total too LOW rather than incomplete, which is the harder
     # error to spot — nothing is visibly absent. It marks the total partial for the same
     # reason missing_usage does: the trend table shows totals without warnings.
@@ -384,7 +469,9 @@ def compute_cost_rollup(
     cost_per_file = (total_cost / len(all_files)) if all_files else 0.0
 
     return {
+        "method": method,
         "planning": planning_cost,
+        "implementer": implementer_cost,
         "build": build_cost,
         "verify": verify_cost,
         "review": review_cost,
@@ -397,11 +484,241 @@ def compute_cost_rollup(
         "cost_per_file": cost_per_file,
         "total_is_partial": total_is_partial,
         "missing_usage_plans": missing_usage,
+        "skipped_plans": skipped_usage,
         "orphan_usage_plans": list(orphan_plans),
         "recovered": recovered_cost,
         "unrecoverable_attempts": unrecoverable_attempts,
         "partially_recovered_attempts": partially_recovered_attempts,
     }
+
+
+def duration_from_usage(usage_data):
+    """Seconds a plan's executors ran, summed over attempts[] — each a separate
+    `claude -p` — falling back to the top-level duration_ms for a sidecar written
+    before attempts[] existed. None when neither is present. Same source as the cost
+    figure beside it (the CLI's own result event), so the two are comparable."""
+    attempts = usage_data.get("attempts") or []
+    per_attempt = [a.get("duration_ms") for a in attempts if a.get("duration_ms") is not None]
+    if per_attempt:
+        return sum(per_attempt) / 1000.0
+    top_level = usage_data.get("duration_ms")
+    return None if top_level is None else top_level / 1000.0
+
+
+def load_timing_events(feature_dir, warnings):
+    """The runner's wall-clock stamps (timing.jsonl, written by stamp_timing in
+    plan-runner-roots.sh), parsed and sorted by instant. An absent file is the normal
+    case for any feature that ran before stamping existed and yields []; a malformed
+    line is skipped with a warning rather than failing the whole report."""
+    path = feature_dir / "timing.jsonl"
+    if not path.is_file():
+        return []
+    events = []
+    for line_no, raw in enumerate(path.read_text().splitlines(), 1):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError:
+            warnings.append(f"timing.jsonl line {line_no} is not JSON; skipped")
+            continue
+        at = to_utc(event.get("at"))
+        if at is None:
+            warnings.append(f"timing.jsonl line {line_no} has no parseable `at`; skipped")
+            continue
+        event["_at"] = at
+        events.append(event)
+    events.sort(key=lambda e: e["_at"])
+    return events
+
+
+def paired_seconds(events, start_name, end_name, key):
+    """Sum of the spans between each `start_name` event and the next `end_name` event
+    sharing the same `key` value, plus how many pairs closed. An unclosed start (a
+    killed run) contributes nothing rather than a span to now."""
+    open_starts = {}
+    total = 0.0
+    pairs = 0
+    for event in events:
+        name = event.get("event")
+        k = event.get(key)
+        if name == start_name:
+            open_starts[k] = event["_at"]
+        elif name == end_name and k in open_starts:
+            total += (event["_at"] - open_starts.pop(k)).total_seconds()
+            pairs += 1
+    return total, pairs
+
+
+def compute_wall_clock(events):
+    """What the runner saw from outside the executors: the batch end to end, each
+    pass, the gates, the plans as the runner timed them (so a parallel pair counts
+    once per plan, same as the executor sum), and when the PR opened. None without
+    stamps."""
+    if not events:
+        return None
+    first = events[0]["_at"]
+    last = events[-1]["_at"]
+    batch_starts = [e["_at"] for e in events if e.get("event") == "batch_start"]
+    batch_ends = [e["_at"] for e in events if e.get("event") == "batch_end"]
+    pr_opened = [e for e in events if e.get("event") == "pr_opened"]
+    pr_at = pr_opened[-1]["_at"] if pr_opened else None
+    # A batch resumed after a stop has several start/end pairs; the honest single
+    # figure is first start to last end (or to the PR, whichever is later), and the
+    # sum of the closed pairs is reported beside it as the attended time.
+    span_end = max([t for t in [*batch_ends, pr_at, last] if t is not None])
+    span_start = batch_starts[0] if batch_starts else first
+    batch_runs_s, batch_runs = paired_seconds(events, "batch_start", "batch_end", "_none")
+    passes = {}
+    for queue in ("auto", "verify", "review"):
+        seconds, count = paired_seconds(
+            [e for e in events if e.get("queue") == queue], "pass_start", "pass_end", "queue"
+        )
+        if count:
+            passes[queue] = seconds
+    gates_s, gate_runs = paired_seconds(events, "gate_start", "gate_end", "level")
+    plans_s, plan_runs = paired_seconds(events, "plan_start", "plan_end", "plan")
+    return {
+        "first_at": first.isoformat(),
+        "last_at": last.isoformat(),
+        "batch_span_s": (span_end - span_start).total_seconds(),
+        "batch_runs": batch_runs,
+        "batch_runs_s": batch_runs_s,
+        "passes_s": passes,
+        "gates_s": gates_s,
+        "gate_runs": gate_runs,
+        "plans_s": plans_s,
+        "plan_runs": plan_runs,
+        "pr_opened_at": pr_at.isoformat() if pr_at else None,
+        "pr_url": (pr_opened[-1].get("url") or None) if pr_opened else None,
+    }
+
+
+# A direct build's own milestones (AGENT_DIRECT.md -> "Checkpoint and resume"), stamped
+# by the top-level stamp-timing.sh as `checkpoint` events carrying the checkpoint file's
+# own `status`. A planned feature's passes are timed by the runners; a direct feature has
+# no runner until review, so without these its whole build is one undivided span.
+CHECKPOINT_EVENT = "checkpoint"
+# (report.json key, opening status, closing status) — in render order.
+CHECKPOINT_SPANS = (
+    ("tests_s", "planned", "tests-written"),
+    ("direct_build_s", "tests-written", "gating"),
+    ("gate_s", "gating", "committed"),
+)
+CHECKPOINT_ROW_LABELS = {
+    "tests_s": "\u21b3 acceptance tests",
+    "direct_build_s": "\u21b3 implementation",
+    "gate_s": "\u21b3 gate",
+}
+
+
+def compute_checkpoint_spans(events, warnings):
+    """{key: seconds | None} for each span in CHECKPOINT_SPANS, or `{}` when the feature
+    stamped no checkpoint at all — which is every feature built before stamp-timing.sh
+    existed, and every planned one. An empty dict adds no keys to the roll-up, so such a
+    report is unchanged.
+
+    Each status is taken at its FIRST instant. The checkpoint file is rewritten whole at
+    every milestone and a status can be re-stamped (a resumed implementer re-declares
+    where it is); the first time a milestone was reached is what the span means.
+
+    A missing endpoint yields None rather than an invented figure — a build killed
+    before `committed`, or one whose implementer skipped a stamp, has no gate span, and
+    a zero there would read as an instant gate."""
+    first_at = {}
+    for event in events:
+        if event.get("event") != CHECKPOINT_EVENT:
+            continue
+        status = event.get("status")
+        if status and status not in first_at:
+            first_at[status] = event["_at"]
+    if not first_at:
+        return {}
+    spans = {}
+    for key, opening, closing in CHECKPOINT_SPANS:
+        if opening not in first_at or closing not in first_at:
+            spans[key] = None
+            continue
+        seconds = (first_at[closing] - first_at[opening]).total_seconds()
+        if seconds < 0:
+            warnings.append(
+                f"checkpoint status {closing!r} was stamped before {opening!r}; "
+                f"{key} is not derivable from timing.jsonl"
+            )
+            spans[key] = None
+        else:
+            spans[key] = seconds
+    return spans
+
+
+def compute_time_rollup(planning_data, loaded_plans, events, warnings, method="plans"):
+    """The Cost table's twin: seconds per bucket from the same two sources the dollars
+    come from — planning.json's `duration_s` (sessions and delegates kept apart, see
+    capture_planning.duration_seconds for why) and each usage.json's attempts[] — plus
+    the runner's wall clock from timing.jsonl where it exists. Executor time sums over
+    plans, so two plans run in parallel count twice; `wall_clock` is the figure that
+    does not."""
+    planning = planning_data.get("duration_s") or {}
+    planning_sessions = planning.get("sessions")
+    planning_subagents = planning.get("subagents")
+    planning_known = planning_sessions is not None or planning_subagents is not None
+    if not planning_known:
+        warnings.append(
+            "planning.json carries no duration_s — captured before timing existed; "
+            "re-capture (capture_planning.py --recapture <slug>) while the transcripts "
+            "survive to fill it in"
+        )
+    build_s = verify_s = review_s = 0.0
+    missing = []
+    for stem, usage_data, usage_path in loaded_plans:
+        seconds = duration_from_usage(usage_data)
+        if seconds is None:
+            missing.append(stem)
+            continue
+        queue = find_queue_segment(usage_path)
+        if queue == "auto":
+            build_s += seconds
+        elif queue == "verify":
+            verify_s += seconds
+        elif queue == "review":
+            review_s += seconds
+    if missing:
+        warnings.append(
+            f"no duration_ms for plan(s) {', '.join(missing)}; excluded from the time roll-up"
+        )
+    planning_total = (planning_sessions or 0) + (planning_subagents or 0)
+    # Mirrors compute_cost_rollup: a direct feature's transcript spans are its build.
+    implementer_s = None
+    checkpoint_spans = {}
+    if method in BUILD_BY_TRANSCRIPT_METHODS:
+        implementer_s = planning_total if planning_known else None
+        build_s += planning_total
+        planning_total = 0.0
+        # Only for a direct feature: the spans subdivide the implementer's transcript,
+        # and a planned feature has no implementer row for them to sit under. A stray
+        # checkpoint event on a planned feature is therefore ignored, not rendered.
+        checkpoint_spans = compute_checkpoint_spans(events, warnings)
+    executor_total = build_s + verify_s + review_s
+    rollup = {
+        "method": method,
+        "planning_sessions_s": planning_sessions,
+        "planning_subagents_s": planning_subagents,
+        "planning_s": planning_total if planning_known else None,
+        "implementer_s": implementer_s,
+        "build_s": build_s,
+        "verify_s": verify_s,
+        "review_s": review_s,
+        "executor_s": executor_total,
+        "total_s": planning_total + executor_total,
+        "total_is_partial": bool(missing) or not planning_known,
+        "missing_duration_plans": missing,
+        "wall_clock": compute_wall_clock(events),
+    }
+    # Added only when the feature stamped checkpoints, so a report that has none is
+    # byte-identical to what it was before these keys existed.
+    rollup.update(checkpoint_spans)
+    return rollup
 
 
 def compute_cold_start_tax(loaded_plans):
@@ -434,6 +751,8 @@ def compute_model_fit(loaded_plans):
         total_turns = sum((u.get("num_turns") or 0) for _, u, _ in members)
         costs = [u.get("total_cost_usd") for _, u, _ in members]
         total_cost_usd = None if any(c is None for c in costs) else sum(costs)
+        durations = [duration_from_usage(u) for _, u, _ in members]
+        total_duration_s = None if any(d is None for d in durations) else sum(durations)
 
         model_lower = (model or "").lower()
         flags = []
@@ -469,6 +788,7 @@ def compute_model_fit(loaded_plans):
                 "plan_count": plan_count,
                 "total_turns": total_turns,
                 "total_cost_usd": total_cost_usd,
+                "total_duration_s": total_duration_s,
                 "flags": flags,
             }
         )
@@ -730,6 +1050,127 @@ def compute_edit_overlap(loaded_plans, repo_dir, warnings):
 # --------------------------------------------------------------------------
 
 
+def minutes_cell(seconds):
+    return "n/a" if seconds is None else f"{seconds / 60:.1f}"
+
+
+def per_minute_cell(usd, seconds):
+    if usd is None or not seconds:
+        return ""
+    return f"${usd / (seconds / 60):.4f}"
+
+
+def render_time_section(lines, data):
+    """The Cost table's twin, row for row, so a reader can put a bucket's dollars
+    beside its minutes. Written to tolerate a report.json that predates the `time`
+    key (`--all` and re-renders of old features) by rendering nothing."""
+    time = data.get("time")
+    if not time:
+        return
+    cost = data["cost"]
+    planning_cost = data.get("planning_cost_split") or {}
+    lines.append("## Time")
+    lines.append("")
+    lines.append("| bucket | minutes | usd | usd per minute |")
+    lines.append("|---|---|---|---|")
+    if time.get("method") in BUILD_BY_TRANSCRIPT_METHODS:
+        rows = [(BUILD_ROW_LABELS[time["method"]], time.get("implementer_s"), cost.get("implementer"))]
+        # The implementer's own milestones, indented under the row they subdivide. No
+        # dollars: the transcript is priced as one span and nothing splits its cost the
+        # way the instants split its minutes. Absent when the build stamped none.
+        for key, _, _ in CHECKPOINT_SPANS:
+            seconds = time.get(key)
+            if seconds is not None:
+                rows.append((CHECKPOINT_ROW_LABELS[key], seconds, None))
+        rows += [
+            ("verify", time.get("verify_s"), cost.get("verify")),
+            ("review", time.get("review_s"), cost.get("review", 0.0)),
+        ]
+    else:
+        rows = [
+            ("planning: sessions", time.get("planning_sessions_s"), planning_cost.get("sessions")),
+            ("planning: delegates", time.get("planning_subagents_s"), planning_cost.get("subagents")),
+            ("build", time.get("build_s"), cost.get("build")),
+            ("verify", time.get("verify_s"), cost.get("verify")),
+            ("review", time.get("review_s"), cost.get("review", 0.0)),
+        ]
+    for label, seconds, usd in rows:
+        usd_cell = "" if usd is None else f"${usd:.4f}"
+        lines.append(
+            f"| {label} | {minutes_cell(seconds)} | {usd_cell} | {per_minute_cell(usd, seconds)} |"
+        )
+    total_marker = " (partial)" if time.get("total_is_partial") else ""
+    # No rate on a partial total: the dollars would be whole and the minutes not, and
+    # the quotient would read as a real figure.
+    total_rate = "" if time.get("total_is_partial") else per_minute_cell(cost["total"], time.get("total_s"))
+    lines.append(
+        f"| **total** | **{minutes_cell(time.get('total_s'))}**{total_marker} "
+        f"| **${cost['total']:.4f}** | {total_rate} |"
+    )
+    lines.append("")
+    if time.get("method") in BUILD_BY_TRANSCRIPT_METHODS:
+        who = "The implementer's" if time["method"] == "direct" else "The build's"
+        note = (
+            f"{who} minutes are its transcript span — its working time, since "
+            "a delegate runs start to finish. Verify and review minutes are summed over "
+            "plans; the wall clock below is the review runner's own record."
+        )
+        if any(time.get(key) is not None for key, _, _ in CHECKPOINT_SPANS):
+            note += (
+                " The indented rows split that span at the implementer's own checkpoint "
+                "milestones (`stamp-timing.sh <slug> checkpoint status=…`), so they carry "
+                "minutes and no separate dollars."
+            )
+        lines.append(note)
+    else:
+        lines.append(
+            "Planning minutes are transcript spans: a delegate's span is its working time, "
+            "a session's includes every minute nobody was typing, so the delegates row is "
+            "the planning figure for a feature planned by delegates and the sessions row "
+            "for one planned by hand. Build, verify and review minutes are summed over "
+            "plans, so a parallel pair counts twice — the wall clock below does not."
+        )
+    lines.append("")
+    if time.get("total_is_partial"):
+        missing = time.get("missing_duration_plans") or []
+        detail = f" Missing durations for: {', '.join(missing)}." if missing else ""
+        lines.append(
+            f"**This total is a lower bound** — at least one time input is unavailable."
+            f"{detail}"
+        )
+        lines.append("")
+    wall = time.get("wall_clock")
+    if wall:
+        passes = wall.get("passes_s") or {}
+        pass_parts = ", ".join(
+            f"{name} {seconds / 60:.1f}"
+            for name, seconds in (("build", passes.get("auto")), ("verify", passes.get("verify")), ("review", passes.get("review")))
+            if seconds is not None
+        )
+        lines.append(
+            f"Wall clock, as the runner saw it: **{wall['batch_span_s'] / 60:.1f} min** from "
+            f"{wall['first_at']} to {wall['last_at']}"
+            + (f", PR opened {wall['pr_opened_at']}" if wall.get("pr_opened_at") else "")
+            + "."
+        )
+        lines.append(
+            f"Passes: {pass_parts or 'none stamped'}. "
+            f"Gates: {wall['gates_s'] / 60:.1f} min over {wall['gate_runs']} run(s). "
+            f"Plans as timed by the runner: {wall['plans_s'] / 60:.1f} min over {wall['plan_runs']} run(s)."
+            + (
+                f" Attended in {wall['batch_runs']} batch run(s) totalling {wall['batch_runs_s'] / 60:.1f} min."
+                if wall.get("batch_runs", 0) > 1
+                else ""
+            )
+        )
+    else:
+        lines.append(
+            "No wall clock: this feature has no `timing.jsonl`, so its batch ran on a "
+            "runner that predates stamping. Only the executors' own durations are known."
+        )
+    lines.append("")
+
+
 def render_report_md(data):
     lines = [f"# {data['slug']} — cost and waste report", ""]
     lines.append(f"Generated {data['generated_at']}.")
@@ -749,6 +1190,29 @@ def render_report_md(data):
     total_marker = " (partial)" if cost.get("total_is_partial") else ""
     lines.append(f"| **total** | **${cost['total']:.4f}**{total_marker} | 100.0% |")
     lines.append("")
+    if cost.get("method") in BUILD_BY_TRANSCRIPT_METHODS:
+        if cost["method"] == "direct":
+            how = "Built direct (`AGENT_DIRECT.md`): build is the implementer's transcript(s), "
+        else:
+            how = "Built by hand (`LIFECYCLE.md`): build is the building session's transcript(s), "
+        lines.append(
+            how
+            + f"${cost.get('implementer', 0.0):.4f}, read from `planning.json`; there are no "
+            "build plans, and the coordinator's minutes on the brief are not separated "
+            "from it."
+        )
+        lines.append("")
+    skipped = cost.get("skipped_plans") or []
+    if skipped:
+        # Deliberately outside the partial block below: a skipped plan is not an absence,
+        # so a feature whose only unloaded plan was skipped has a whole total and would
+        # otherwise print nothing explaining why that plan carries no cost.
+        lines.append(
+            f"**Skipped, not missing:** {', '.join(skipped)}. The runner filed each "
+            f"without running it — its level gate was already green — so there is no "
+            f"`usage.json` and no cost to roll up."
+        )
+        lines.append("")
     if cost.get("total_is_partial"):
         missing = cost.get("missing_usage_plans") or []
         detail = f" Missing usage for: {', '.join(missing)}." if missing else ""
@@ -810,6 +1274,8 @@ def render_report_md(data):
         )
         lines.append("")
 
+    render_time_section(lines, data)
+
     lines.append("## Cold-start tax")
     lines.append("")
     lines.append(
@@ -819,14 +1285,16 @@ def render_report_md(data):
 
     lines.append("## Model fit")
     lines.append("")
-    lines.append("| model | plan count | total turns | total cost usd | flags |")
-    lines.append("|---|---|---|---|---|")
+    lines.append("| model | plan count | total turns | total cost usd | minutes | flags |")
+    lines.append("|---|---|---|---|---|---|")
     for row in data["model_fit"]:
         cost_cell = "n/a" if row["total_cost_usd"] is None else f"${row['total_cost_usd']:.4f}"
+        # `.get`: a report.json rendered before this column existed lacks the key.
+        minutes = minutes_cell(row.get("total_duration_s"))
         flags_cell = "; ".join(row["flags"]) if row["flags"] else ""
         lines.append(
             f"| {row['model']} | {row['plan_count']} | {row['total_turns']} "
-            f"| {cost_cell} | {flags_cell} |"
+            f"| {cost_cell} | {minutes} | {flags_cell} |"
         )
     lines.append("")
 
@@ -922,12 +1390,16 @@ def run_single_feature(repo_dir, features_dir, slug):
     warnings = []
     feature_dir = Path(features_dir, slug)
     manifest = parse_manifest(feature_dir / "README.md")
+    method = manifest_method(manifest, warnings)
 
     planning_data = json.loads((feature_dir / "planning.json").read_text())
 
     usage_index = build_usage_index(feature_dir)
+    skipped_stems = build_skipped_index(feature_dir)
     plan_stems, plans_recovered = manifest_plan_stems(manifest, usage_index, warnings)
-    loaded_plans = load_manifest_plans(repo_dir, plan_stems, usage_index, warnings)
+    loaded_plans = load_manifest_plans(
+        repo_dir, plan_stems, usage_index, warnings, skipped_stems=skipped_stems
+    )
     orphan_plans = find_orphan_usage(plan_stems, usage_index, warnings)
 
     cost = compute_cost_rollup(
@@ -937,7 +1409,23 @@ def run_single_feature(repo_dir, features_dir, slug):
         loaded_plans,
         warnings,
         orphan_plans=orphan_plans,
+        method=method,
+        skipped_plans=skipped_stems,
     )
+    timing_events = load_timing_events(feature_dir, warnings)
+    time = compute_time_rollup(planning_data, loaded_plans, timing_events, warnings, method=method)
+    # The planning dollars split the same way the planning minutes are: delegates'
+    # transcripts versus the sessions' own turns (inline sidechains included), so the
+    # Time table can put each row's cost beside it. Absent keys are old captures.
+    planning_cost_usd = planning_data.get("cost_usd") or {}
+    planning_cost_split = {
+        "subagents": planning_cost_usd.get("subagents"),
+        "sessions": (
+            planning_cost_usd["total"] - (planning_cost_usd.get("subagents") or 0.0)
+            if planning_cost_usd.get("total") is not None
+            else None
+        ),
+    }
     cold_start_tax_tokens = compute_cold_start_tax(loaded_plans)
     model_fit = compute_model_fit(loaded_plans)
     churn = compute_churn(loaded_plans, warnings)
@@ -950,6 +1438,8 @@ def run_single_feature(repo_dir, features_dir, slug):
         "slug": slug,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "cost": cost,
+        "time": time,
+        "planning_cost_split": planning_cost_split,
         "cold_start_tax_tokens": cold_start_tax_tokens,
         "model_fit": model_fit,
         "churn": churn,
@@ -970,7 +1460,9 @@ def run_single_feature(repo_dir, features_dir, slug):
         f"planning ${cost['planning']:.4f} ({cost['planning_pct']:.1f}%), "
         f"build ${cost['build']:.4f} ({cost['build_pct']:.1f}%), "
         f"verify ${cost['verify']:.4f} ({cost['verify_pct']:.1f}%), "
-        f"review ${cost.get('review', 0.0):.4f} ({cost.get('review_pct', 0.0):.1f}%)"
+        f"review ${cost.get('review', 0.0):.4f} ({cost.get('review_pct', 0.0):.1f}%); "
+        f"time {minutes_cell(time['total_s'])} min"
+        + (" (partial)" if time["total_is_partial"] else "")
     )
     for warning in warnings:
         print(f"WARN: {warning}")
@@ -987,10 +1479,10 @@ def run_trend_mode(features_dir):
     rows.sort(key=lambda d: d.get("generated_at", ""))
 
     print(
-        "| slug | total cost | planning % | build % | verify % | review % "
+        "| slug | total cost | minutes | planning % | build % | verify % | review % "
         "| cost/plan | generated |"
     )
-    print("|---|---|---|---|---|---|---|---|")
+    print("|---|---|---|---|---|---|---|---|---|")
     for row in rows:
         cost = row["cost"]
         # A partial total must never sit in a comparison table unmarked — the whole
@@ -1000,8 +1492,14 @@ def run_trend_mode(features_dir):
         # review queue existed lacks them, and the trend table's whole job is to put
         # those historical features next to new ones. 0.0 is the honest value for a
         # feature that ran no review pass.
+        # `.get` on `time`, like the review keys: a report.json written before the
+        # time roll-up existed has none, and the honest cell is n/a, not 0.
+        time = row.get("time") or {}
+        minutes = minutes_cell(time.get("total_s")) + (
+            " (partial)" if time.get("total_is_partial") else ""
+        )
         print(
-            f"| {row['slug']} | {total_cell} | {cost['planning_pct']:.1f}% "
+            f"| {row['slug']} | {total_cell} | {minutes} | {cost['planning_pct']:.1f}% "
             f"| {cost['build_pct']:.1f}% | {cost['verify_pct']:.1f}% "
             f"| {cost.get('review_pct', 0.0):.1f}% "
             f"| ${cost['cost_per_plan']:.4f} | {row['generated_at']} |"

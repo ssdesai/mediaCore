@@ -17,18 +17,31 @@ set -uo pipefail
 #      ESCALATION_BUDGET_USD with the escalation preamble, flips green → batch exits 0;
 #   3. red after both tiers → batch exits 1 and a re-run does not synthesize a second
 #      escalation;
-#   4. a resumed batch settles a crossed-but-unsettled level BEFORE building on it;
+#   4. a resumed batch settles a crossed-but-unsettled level BEFORE building on it,
+#      including when nothing is left to build — the tier ladder is owed to the level,
+#      not to the queue behind it — and a settled level is not re-settled on a re-run;
 #   5. run-review.sh opens the PR when the budget cap fires after the report was written,
 #      and still exits non-zero.
+#
+# check-plans.sh is in the sandbox too, so run-batch.sh's corpus lint really runs at the
+# head of every batch here (its `-x` guard skips it silently otherwise). Two assertions
+# pin that — one on the first build, one on the re-run that has a synthesized
+# NN-escalation-opus on disk, which the lint used to reject as absent from plans[]. The
+# fixture manifest is therefore a real ```json fence naming each phase's stems.
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 AT="$TMP/agentTooling"
 mkdir -p "$AT/self/features" "$TMP/bin"
-for f in run-plans.sh run-verify.sh run-review.sh run-batch.sh run-escalation-plan.sh plan-runner-lib.sh plan-runner-roots.sh; do
+# check-plans.sh is copied in with the runners deliberately: run-batch.sh guards the
+# lint with `-x`, so a sandbox missing it silently skips the corpus lint through every
+# escalation and resume phase below — the omission that let the escalation-vs-plans[]
+# defect ship green. With it here, the fixture corpus must be one the lint accepts.
+for f in run-plans.sh run-verify.sh run-review.sh run-batch.sh run-escalation-plan.sh check-plans.sh plan-runner-lib.sh plan-runner-roots.sh; do
   cp "$HERE/$f" "$AT/$f"
 done
+chmod +x "$AT"/*.sh
 VERDICT="$AT/self/verdict.txt"
 CALLS="$TMP/claude-calls.log"
 
@@ -84,25 +97,57 @@ check() { if eval "$2"; then ok "$1"; else fail "$1"; fi; }
 
 SLUG=tier
 F="$AT/self/features/$SLUG"
+
+# The manifest is a real ```json fence, and every phase declares exactly the stems it
+# puts on disk, because check-plans.sh now runs at the head of each run-batch.sh call:
+# a bare JSON blob has no fence to parse, an empty `branches` is a FAIL, and a stem on
+# disk that plans[] does not list is a FAIL. `base` is deliberately absent — run-review.sh
+# is the only runner that reads this file, and phase 5 asserts its default.
+#   write_manifest <stem>...
+write_manifest() {
+  local plans="" stem
+  for stem in "$@"; do
+    if [[ -n "$plans" ]]; then plans="$plans, \"$stem\""; else plans="\"$stem\""; fi
+  done
+  cat > "$F/README.md" <<EOF
+# $SLUG
+
+\`\`\`json
+{"slug": "$SLUG", "plans": [$plans], "branches": ["$SLUG"], "session_window": {"from": "2026-09-04T00:00:00Z", "to": null}}
+\`\`\`
+EOF
+}
+
+# mkplan <path under $F> [<first line>] — every queued plan body names the feature,
+# which is check 13's rule.
+mkplan() {
+  mkdir -p "$(dirname "$F/$1")"
+  { echo "${2:-# plan}"; echo "feature: agentTooling/$SLUG"; } > "$F/$1"
+}
+
 reset_feature() {
   rm -rf "$F" "$AT"/self/gate-report*.txt "$VERDICT" "$AT/self/pr-opened" "$AT/self/review-report.md"
   : > "$CALLS"
   mkdir -p "$F/auto/incomplete" "$F/verify/incomplete" "$F/review/incomplete"
-  echo '{"slug":"tier","plans":[],"branches":[]}' > "$F/README.md"
+  write_manifest
   echo "one or more checks FAILED" > "$VERDICT"
 }
 queue_levelled_batch() {
-  echo "plan" > "$F/auto/incomplete/01-x-haiku.md"
-  echo "# level 1" > "$F/auto/incomplete/05-gate.md"
-  echo "plan" > "$F/auto/incomplete/06-y-haiku.md"
-  echo "brief" > "$F/verify/incomplete/05-level-x-sonnet.md"
-  echo "brief" > "$F/verify/incomplete/10-verify-sonnet.md"
+  mkplan auto/incomplete/01-x-haiku.md
+  echo "# level 1" > "$F/auto/incomplete/05-gate.md"   # a sentinel, never executed
+  mkplan auto/incomplete/06-y-haiku.md
+  mkplan verify/incomplete/05-level-x-sonnet.md "# brief"
+  mkplan verify/incomplete/10-verify-sonnet.md "# brief"
+  write_manifest 01-x-haiku 06-y-haiku 05-level-x-sonnet 10-verify-sonnet
 }
 
 # ── 1: tier 1 fixes it ───────────────────────────────────────────────────────
 reset_feature; queue_levelled_batch
 out="$(cd "$AT" && CLAUDE_STUB_FIX_AT=tier1 ./run-batch.sh --self "$SLUG" 2>&1)"; rc=$?
 check "tier-1 fix: batch exits 0 (got $rc)" '[[ $rc -eq 0 ]]'
+# Pins the copy above: without check-plans.sh in the sandbox this line never appears and
+# every phase below runs with the lint silently skipped.
+check "the corpus lint ran, and passed, before the build pass" 'grep -q "check-plans: 14 checks, 0 failed" <<<"$out"'
 check "tier-1 fix: reported green after tier 1" 'grep -q "green after tier 1" <<<"$out"'
 check "tier-1 fix: no escalation plan written" '[[ -z "$(find "$F/verify" -name "05-escalation-*")" ]]'
 check "tier-1 fix: build resumed" '[[ -f "$F/auto/complete/06-y-haiku.md" ]]'
@@ -131,25 +176,53 @@ check "tier 3: next level NOT built" '[[ -f "$F/auto/incomplete/06-y-haiku.md" ]
 n_before="$(wc -l < "$CALLS")"
 out="$(cd "$AT" && ./run-batch.sh --self "$SLUG" 2>&1)"; rc=$?
 check "re-run: still exits 1 (got $rc)" '[[ $rc -eq 1 ]]'
+# The resume the lint used to block: NN-escalation-opus is on disk and cannot be in
+# plans[], so check 11 must exempt it or the batch stops before the build pass.
+check "re-run: the lint passed with the synthesized escalation on disk" \
+  '[[ -f "$F/verify/complete/05-escalation-opus.md" || -f "$F/verify/failed/05-escalation-opus.md" ]] && grep -q "check-plans: 14 checks, 0 failed" <<<"$out"'
 check "re-run: did not buy a second escalation" 'grep -q "not buying it twice" <<<"$out" && [[ "$(wc -l < "$CALLS")" -eq "$n_before" ]]'
 check "re-run: run-escalation-plan refuses a duplicate" '! (cd "$AT" && ./run-escalation-plan.sh --self "$SLUG" 05 >/dev/null 2>&1)'
 
 # ── 4: resume settles the crossed level before building ─────────────────────
 reset_feature
 mkdir -p "$F/auto/complete"
-echo "# level 1" > "$F/auto/complete/05-gate.md"          # crossed on a previous run
-echo "plan" > "$F/auto/incomplete/06-y-haiku.md"           # next level still queued
-echo "brief" > "$F/verify/incomplete/05-level-x-sonnet.md" # level-verify never ran
+echo "# level 1" > "$F/auto/complete/05-gate.md"           # crossed on a previous run
+mkplan auto/incomplete/06-y-haiku.md                       # next level still queued
+mkplan verify/incomplete/05-level-x-sonnet.md "# brief"    # level-verify never ran
+write_manifest 06-y-haiku 05-level-x-sonnet
 out="$(cd "$AT" && CLAUDE_STUB_FIX_AT=tier1 ./run-batch.sh --self "$SLUG" 2>&1)"; rc=$?
 check "resume: batch exits 0 (got $rc)" '[[ $rc -eq 0 ]]'
 check "resume: settled the level first" 'grep -q "resuming — level 05 was crossed but is not settled" <<<"$out"'
 check "resume: level-verify ran before the next build plan" '[[ "$(grep -n "05-level-x\|06-y-haiku" "$CALLS" | head -1)" == *05-level-x* ]]'
 
+# ── 4d: nothing left to build, and the level still owes its ladder ───────────
+# The last level's build plans are all complete and its level-verify never ran. Without
+# the settle, the ordinary verify pass runs that plan, a red gate there escalates
+# nothing, and the batch reports the failure only at the final gate.
+reset_feature
+mkdir -p "$F/auto/complete"
+echo "# level 1" > "$F/auto/complete/05-gate.md"           # crossed on a previous run
+mkplan auto/complete/06-y-haiku.md                         # ... and nothing left to build
+mkplan verify/incomplete/05-level-x-sonnet.md "# brief"    # level-verify never ran
+mkplan verify/incomplete/10-verify-sonnet.md "# brief"
+write_manifest 06-y-haiku 05-level-x-sonnet 10-verify-sonnet
+out="$(cd "$AT" && CLAUDE_STUB_FIX_AT=tier1 ./run-batch.sh --self "$SLUG" 2>&1)"; rc=$?
+check "empty queue: batch exits 0 (got $rc)" '[[ $rc -eq 0 ]]'
+check "empty queue: settled the crossed level anyway" 'grep -q "resuming — level 05 was crossed but is not settled" <<<"$out"'
+check "empty queue: the level-verify ran before the verify pass" '[[ "$(grep -n "tier 1, the level-verify\|BATCH 2/3: verify pass" <<<"$out" | head -1)" == *"tier 1, the level-verify"* ]]'
+check "empty queue: level 05 re-gated green" 'grep -q "green after tier 1" <<<"$out"'
+check "empty queue: the final gate is green, not red-and-only-reported" 'grep -q "^all checks passed$" "$AT/self/gate-report.txt"'
+check "empty queue: the final verify still ran" '[[ -f "$F/verify/complete/10-verify-sonnet.md" ]]'
+# A finished batch re-run with its gate reports intact settles nothing.
+out="$(cd "$AT" && ./run-batch.sh --self "$SLUG" 2>&1)"; rc=$?
+check "settled level: a re-run settles nothing (got $rc)" '[[ $rc -eq 0 ]] && ! grep -q "was crossed but is not settled" <<<"$out"'
+
 # ── 4b: sentinel expectations reach the gate and are scoped to that level ──────
 reset_feature
 printf '# level 1\nexpected-red: tests/test_acceptance_x.py tests/test_api_*.py\ndefer: npm run typecheck, npm run build\n' > "$F/auto/incomplete/05-gate.md"
-echo "plan" > "$F/auto/incomplete/06-y-haiku.md"
-echo "brief" > "$F/verify/incomplete/05-level-x-sonnet.md"
+mkplan auto/incomplete/06-y-haiku.md
+mkplan verify/incomplete/05-level-x-sonnet.md "# brief"
+write_manifest 06-y-haiku 05-level-x-sonnet
 out="$(cd "$AT" && ./run-batch.sh --self "$SLUG" 2>&1)"; rc=$?
 check "expectations: gate saw expected-red globs" 'grep -q "^expected-red: tests/test_acceptance_x.py tests/test_api_\*.py$" "$AT/self/gate-report.05.txt"'
 check "expectations: gate saw deferred labels" 'grep -q "^deferred: npm run typecheck, npm run build$" "$AT/self/gate-report.05.txt"'

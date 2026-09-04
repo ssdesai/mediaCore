@@ -96,3 +96,38 @@ level_expectations() {
   GATE_DEFERRED="$(sed -n 's/^defer:[[:space:]]*//p' "$sentinel" | tr '\n' ',' | sed 's/,[[:space:]]*$//')"
   export GATE_EXPECTED_RED GATE_DEFERRED
 }
+
+# manifest_field <readme> <key> — one field from the LAST ```json fence of a feature
+# manifest, the fence analysis/capture_planning.py reads. A string prints bare, anything
+# else as JSON; absent or null prints nothing, so a caller can test with [[ -n ... ]].
+# Through jq so a manifest's markdown is parsed in exactly one place on the shell side.
+#   base="$(manifest_field "$FEATURES_DIR/$FEATURE_SLUG/README.md" base)"
+manifest_field() {
+  local readme="$1" key="$2"
+  [[ -f "$readme" ]] || return 0
+  awk '/^```json[[:space:]]*$/{buf=""; f=1; next} /^```[[:space:]]*$/{if(f){last=buf}; f=0; next} f{buf=buf $0 "\n"} END{printf "%s", last}' "$readme" \
+    | jq -r --arg k "$key" '.[$k] // empty | if type == "string" then . else tojson end' 2>/dev/null
+}
+
+# Append one wall-clock event to the feature's timing.jsonl. A plan's own duration is in
+# its usage.json, but everything between plans is invisible from inside an executor:
+# the gates, the parallelism a batch got, the stretch from first plan to PR. This is
+# the record of that — one JSON line per event, UTC to the second, built by jq so a
+# value with a quote in it cannot break the file. analysis/report.py reads it into the
+# report's "Time" section; a feature without one simply has no wall-clock figures.
+# Small and committed, like the usage sidecars. Silent when no feature is resolved yet.
+#   stamp_timing <event> [key=value ...]     e.g. stamp_timing gate_end level=05 rc=0
+stamp_timing() {
+  local event="$1"; shift
+  [[ -n "${FEATURE_SLUG:-}" && -d "$FEATURES_DIR/$FEATURE_SLUG" ]] || return 0
+  local path="$FEATURES_DIR/$FEATURE_SLUG/timing.jsonl"
+  local args=(--arg at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" --arg event "$event")
+  local expr='{at: $at, event: $event}'
+  local kv key
+  for kv in "$@"; do
+    key="${kv%%=*}"
+    args+=(--arg "$key" "${kv#*=}")
+    expr+=" + {$key: \$$key}"
+  done
+  jq -cn "${args[@]}" "$expr" >> "$path" 2>/dev/null || true
+}

@@ -18,13 +18,15 @@ from typing import Optional, TypedDict
 # NOTE: claude-sonnet-5's intro.starts date was inferred from observed billing
 # ratios in this repo's usage corpus and is pending confirmation against
 # Anthropic's published rates.
-RATES_VERIFIED = "2026-08-22"
+RATES_VERIFIED = "2026-09-04"
 
 # Age, in days, past which RATES_VERIFIED must be treated as stale and callers
 # should warn (never fail) that the table needs re-verification.
 STALENESS_THRESHOLD_DAYS = 30
 
-# Cache pricing is expressed as a multiplier on the model's base input rate.
+# Cache pricing is expressed as a multiplier on the model's base input rate. An entry
+# may carry its own "cache_read_multiplier" where the published rate departs from the
+# default — Fable 5.1 and Mythos 5.1 read cache at 0.025x, per the pricing page.
 CACHE_READ_MULTIPLIER = 0.1
 CACHE_WRITE_5M_MULTIPLIER = 1.25
 CACHE_WRITE_1H_MULTIPLIER = 2.0
@@ -36,6 +38,8 @@ CACHE_WRITE_1H_MULTIPLIER = 2.0
 # those dates the intro rate applies instead of the base rate above.
 RATES: dict[str, dict] = {
     "claude-opus-5": {"input": 5, "output": 25},
+    "claude-fable-5-1": {"input": 10, "output": 50, "cache_read_multiplier": 0.025},
+    "claude-mythos-5-1": {"input": 10, "output": 50, "cache_read_multiplier": 0.025},
     "claude-fable-5": {"input": 10, "output": 50},
     "claude-mythos-5": {"input": 10, "output": 50},
     "claude-opus-4-8": {"input": 5, "output": 25},
@@ -44,8 +48,12 @@ RATES: dict[str, dict] = {
     "claude-sonnet-5": {
         "input": 3,
         "output": 15,
-        # Date inferred from observed billing ratios in this repo's corpus; pending confirmation
-        "intro": {"input": 2, "output": 10, "starts": "2026-08-22", "expires": "2026-08-31"},
+        # Announced as introductory through 2026-08-31 and made permanent on 2026-09-01
+        # (platform.claude.com/docs/en/about-claude/pricing, read 2026-09-04): the
+        # window is left open-ended rather than re-basing the entry, so sessions before
+        # 2026-08-22 keep the 3/15 they were billed at. The start date was inferred from
+        # observed billing ratios in this repo's corpus.
+        "intro": {"input": 2, "output": 10, "starts": "2026-08-22", "expires": "9999-12-31"},
     },
     "claude-sonnet-4-6": {"input": 3, "output": 15},
     "claude-haiku-4-5": {"input": 1, "output": 5},
@@ -98,7 +106,7 @@ def get_rates(model_id: str, as_of: str) -> Optional[RatesApplied]:
         "model": normalized,
         "input": base_input,
         "output": base_output,
-        "cache_read": base_input * CACHE_READ_MULTIPLIER,
+        "cache_read": base_input * entry.get("cache_read_multiplier", CACHE_READ_MULTIPLIER),
         "cache_creation_5m": base_input * CACHE_WRITE_5M_MULTIPLIER,
         "cache_creation_1h": base_input * CACHE_WRITE_1H_MULTIPLIER,
         "tier": tier,

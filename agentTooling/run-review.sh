@@ -68,7 +68,7 @@ Process:
 1. Read the progress log first. Each line was appended by the harness as '<tool>: <absolute file path>', recording a mutating tool call from a previous run. Treat it as a hint about which files you may already have changed.
 2. Read the plan. It is a BRIEF, not a diff: it states what the batch was supposed to do and which contracts to hold it to. Use your judgment.
 3. ESTABLISH THE DIFF FIRST, before reading any file in full. Read-only git is available and is the right tool: \`git status\`, \`git diff\`, \`git log --oneline\`, \`git diff <base>...HEAD\`, \`git show\`. The plan names the base to compare against. Read the diff before opening whole files — a diff shows you what changed, and a file shows you everything, most of which this batch did not touch.
-4. If $GATE_REPORT_LABEL exists, read it. Install, format, lint, tests, typecheck and build ALREADY RAN. Do not re-run them, and do not re-derive their verdict. A green gate is your starting condition, not your finding.
+4. If $GATE_REPORT_LABEL exists, read it. Install, format, lint, tests, typecheck and build ALREADY RAN. Do not re-run them, and do not re-derive their verdict. A green gate is your starting condition, not your finding. If it lists a check as SKIPPED, treat that as absent information, not as a pass: either run that check yourself or state in your verdict exactly what is consequently unverified.
 5. DO NOT REDO THE VERIFY PASS. It already ran the work, exercised the behaviour, and triaged what failed. Re-running tests, starting a server, driving an endpoint, or constructing fixtures is either its job or a test's job, and it is not yours. If the only way to settle a question is to run something, that is a signal you are answering the wrong question in this pass — record it as a missing test instead.
 6. LOOK FOR WHAT STAYS GREEN. That is the entire value of this pass, and it is where the batch's real defects live. In particular:
    - An invariant the code depends on that no test asserts — the highest-value finding this pass produces, because naming the missing assertion lets the next batch write it at a cheaper model's rate and the gate then runs it forever.
@@ -144,8 +144,17 @@ if (( open_pr )); then
   else
     echo ""
     echo "=== opening PR (${PR_SCRIPT#$REPO_DIR/}) ==="
-    "$PR_SCRIPT" "$FEATURE_SLUG" "$REVIEW_REPORT"
-    pr_rc=$?
+    # The branch this feature was cut from, recorded by feature-start.sh; pr.sh opens the
+    # PR against it. Read here, once, so the repo-owned hook never parses markdown.
+    feature_base="$(manifest_field "$FEATURES_DIR/$FEATURE_SLUG/README.md" base)"
+    if [[ -n "$feature_base" ]]; then export FEATURE_BASE="$feature_base"; fi
+    # Through tee so the URL pr.sh prints can be stamped: the PR is where the batch's
+    # wall clock ends, and the link is the one thing worth keeping from its output.
+    pr_log="$(mktemp)"
+    "$PR_SCRIPT" "$FEATURE_SLUG" "$REVIEW_REPORT" | tee "$pr_log"
+    pr_rc=${PIPESTATUS[0]}
+    stamp_timing pr_opened rc="$pr_rc" url="$(grep -oE 'https?://[^[:space:]]+' "$pr_log" | tail -1)"
+    rm -f "$pr_log"
     # Advisory, exactly like the gate: the review pass already succeeded, and failing
     # to open a PR does not retroactively make its findings wrong. Report and carry on.
     (( pr_rc != 0 )) && echo "=== PR hook exited $pr_rc — open the PR by hand ==="

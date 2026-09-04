@@ -35,7 +35,16 @@ set -uo pipefail
 #   7. a subagent of a runner session (its parent claimed by a usage.json) is not
 #      priced even when pinned — its cost is already in that sidecar — and the pin is
 #      reported unmatched rather than silently dropped;
-#   8. two manifests pinning the same id are warned about, naming the other feature.
+#   8. two manifests pinning the same id are warned about, naming the other feature;
+#  18. --list-subagents --unclaimed --for <repo>/<slug> keeps exactly the delegates whose
+#      brief names that feature — a `<slug>-two` one is not among them, one whose
+#      `<repo>/<slug>` is longer than the pin column is, the agent id prints untruncated,
+#      and --for without --unclaimed, or not shaped `<repo>/<slug>`, is a usage error;
+#  17. session pins — the top-level twin of a subagent pin: a `sessions` id is claimed
+#      outright from any project directory regardless of branch, window or cwd, with
+#      `selected_by: "pinned"` (branch-selected entries say "branch"); a pin that is also
+#      excluded warns and wins; and --list-sessions prints the top-level sessions under
+#      this repo's directories, --unclaimed keeping only those no planning.json lists.
 #
 # All RED until the subagent walk landed in analysis/capture_planning.py.
 
@@ -325,6 +334,42 @@ list_subs --unclaimed > "$TMP/out13c.txt"
 check "13f. once pinned they leave --unclaimed" "! grep -q '$AGENT_6' '$TMP/out13c.txt' && ! grep -q '$AGENT_7' '$TMP/out13c.txt'"
 write_manifest "[\"$AGENT_3\"]"
 
+# ── 18. --for narrows --unclaimed to exactly one feature ──────────────────────
+# Numbered last, placed here because it reuses phase 13's fixtures — phase 17 clears
+# $PROJECTS. This list is what feature-close.sh's stray-delegate guard reads, and a
+# substring test over the printed table got it wrong both ways: a delegate briefed for
+# `<slug>-two` matched (and the human was sent to pin it into the wrong manifest), while a
+# `<repo>/<slug>` longer than the 26-character pin column matched nothing — a silent miss,
+# and an unpinned delegate is never priced. --for compares the (repo, slug) pair the brief
+# carries.
+AGENT_A="aaaaaaaaaaaaaaaa1"
+AGENT_B="aaaaaaaaaaaaaaaa2"
+AGENT_L="aaaaaaaaaaaaaaaa3"
+LONG_SLUG="alpha-longer-than-the-pin-column-by-a-wide-margin"
+write_subagent "$SESSION_M" "$AGENT_A" "main" "2026-07-03T12:00:00.000Z" 8000 "feature: $REPO_NAME/alpha\\nBuild alpha"
+write_subagent "$SESSION_M" "$AGENT_B" "main" "2026-07-03T12:30:00.000Z" 8000 "feature: $REPO_NAME/alpha-two\\nBuild alpha-two"
+write_subagent "$SESSION_M" "$AGENT_L" "main" "2026-07-03T13:00:00.000Z" 8000 "feature: $REPO_NAME/$LONG_SLUG\\nBuild the long-named one"
+list_subs --unclaimed --for "$REPO_NAME/alpha" > "$TMP/out18.txt"
+check "18. --for <repo>/alpha lists exactly that delegate, not the alpha-two one" \
+  "grep -q '$AGENT_A' '$TMP/out18.txt' && ! grep -q '$AGENT_B' '$TMP/out18.txt' && ! grep -q '$AGENT_6' '$TMP/out18.txt'"
+list_subs --unclaimed --for "$REPO_NAME/alpha-two" > "$TMP/out18b.txt"
+check "18b. --for <repo>/alpha-two lists exactly that one, not alpha" \
+  "grep -q '$AGENT_B' '$TMP/out18b.txt' && ! grep -q '$AGENT_A' '$TMP/out18b.txt'"
+list_subs --unclaimed --for "$REPO_NAME/$LONG_SLUG" > "$TMP/out18c.txt"
+check "18c. a <repo>/<slug> past the 26-character pin column is still matched" \
+  "[ ${#REPO_NAME} -gt 0 ] && [ $(( ${#REPO_NAME} + 1 + ${#LONG_SLUG} )) -gt 26 ] && grep -q '$AGENT_L' '$TMP/out18c.txt' && ! grep -q '$AGENT_A' '$TMP/out18c.txt'"
+check "18d. its agent id is printed untruncated — the close reads that column" \
+  "[ \"\$(awk '/^2026-/ {print \$2}' '$TMP/out18c.txt')\" = '$AGENT_L' ]"
+list_subs --unclaimed --for "$REPO_NAME/no-such-feature" > "$TMP/out18e.txt"
+check "18e. a feature no brief names lists no row at all" \
+  "! grep -q '^2026-' '$TMP/out18e.txt' && grep -q 'no unclaimed subagent transcripts briefed for $REPO_NAME/no-such-feature' '$TMP/out18e.txt'"
+list_subs --for "$REPO_NAME/alpha" > "$TMP/out18f.txt"; rc18=$?
+check "18f. --for without --unclaimed is a usage error naming what it needs" \
+  "[ $rc18 -ne 0 ] && grep -q 'takes --list-subagents --unclaimed' '$TMP/out18f.txt'"
+list_subs --unclaimed --for "not-a-feature-ref" > "$TMP/out18g.txt"; rc18g=$?
+check "18g. --for that is not <repo>/<slug> is a usage error naming the shape" \
+  "[ $rc18g -ne 0 ] && grep -q 'takes <repo>/<slug>' '$TMP/out18g.txt'"
+
 # ── 14. one transcript filed under two parents is priced once ─────────────────
 # A resumed session re-files its subagents under the new session id.
 capture > /dev/null
@@ -386,6 +431,70 @@ write_manifest "[\"$AGENT_3\", \"$AGENT_1\"]" "[]" "[\"$AGENT_1\"]"
 capture --carry-lost > "$TMP/out16b.txt"
 check "16e. pinned and excluded at once warns, and the pin wins" \
   "grep -q \"both pinned and in exclude_subagents\" '$TMP/out16b.txt' && [ \"\$(field \"'$AGENT_1' in [s['agent_id'] for s in d['subagents']]\")\" = True ]"
+write_manifest "[\"$AGENT_3\"]"
+
+# ── 17. session pins ──────────────────────────────────────────────────────────
+# A session that began on main before the feature existed — the planning session that
+# then ran feature-start.sh — is claimed by id, never by putting main in `branches`.
+SESSION_X="xxxxxxxx-0000-0000-0000-000000000009"   # launched elsewhere, on main, out of window
+SESSION_Q="qqqqqqqq-0000-0000-0000-000000000010"   # in this repo, on main, claimed by nobody
+ELSEWHERE_PROJECTS="$FAKE_HOME/.claude/projects/-elsewhere-repo"
+mkdir -p "$ELSEWHERE_PROJECTS"
+write_manifest_sessions() {           # write_manifest_sessions <sessions json> [<excludes json>]
+  cat > "$FEATURE_DIR/README.md" <<MANIFEST
+# $SLUG
+
+\`\`\`json
+{
+  "slug": "$SLUG",
+  "branches": ["$BRANCH"],
+  "session_window": {"from": "$WINDOW_FROM", "to": "$WINDOW_TO"},
+  "exclude_sessions": ${2:-[]},
+  "sessions": $1,
+  "subagents": []
+}
+\`\`\`
+MANIFEST
+}
+rm -rf "$PROJECTS"/* "$PLANNING"
+write_parent "$SESSION_P" "$BRANCH" "2026-07-01T10:00:00.000Z" 5000
+session_line "$SESSION_X" "/elsewhere/repo" "main" "msg-$SESSION_X" "$MODEL" \
+  "2026-01-01T00:00:00.000Z" 100 4000 0 0 0 > "$ELSEWHERE_PROJECTS/$SESSION_X.jsonl"
+write_manifest_sessions "[]"
+capture > /dev/null
+check "17a. without a pin the elsewhere session is invisible" \
+  "[ \"\$(field \"[s['session_id'] for s in d['sessions']]\")\" = \"['$SESSION_P']\" ]"
+check "17b. a branch-selected entry says selected_by branch" \
+  "[ \"\$(field \"[s['selected_by'] for s in d['sessions']]\")\" = \"['branch']\" ]"
+write_manifest_sessions "[\"$SESSION_X\"]"
+capture > "$TMP/out17.txt"
+check "17c. a pinned session is claimed from another project directory, out of window, on main" \
+  "[ \"\$(field \"sorted((s['session_id'], s['selected_by']) for s in d['sessions'])\")\" = \"[('$SESSION_P', 'branch'), ('$SESSION_X', 'pinned')]\" ]"
+check "17d. its entry records the cwd it was launched in" \
+  "[ \"\$(field \"[s['cwd'] for s in d['sessions'] if s['session_id']=='$SESSION_X']\")\" = \"['/elsewhere/repo']\" ]"
+check "17e. and its cost is in the total" "gt '$(total_of)' 0"
+write_manifest_sessions "[\"$SESSION_P\"]"
+capture > /dev/null
+check "17f. a pin that branch and window also select is priced once" \
+  "[ \"\$(field \"[s['session_id'] for s in d['sessions']].count('$SESSION_P')\")\" = 1 ] && [ \"\$(field \"len([p for p in d['priced'] if p['session_id']=='$SESSION_P'])\")\" = 1 ]"
+write_manifest_sessions "[\"$SESSION_X\"]" "[\"$SESSION_X\"]"
+capture > "$TMP/out17g.txt"
+check "17g. pinned and excluded at once warns, and the pin wins" \
+  "grep -q 'both pinned and in exclude_sessions' '$TMP/out17g.txt' && [ \"\$(field \"'$SESSION_X' in [s['session_id'] for s in d['sessions']]\")\" = True ]"
+# --list-sessions: the discovery step for a pin, and the close step's "who is unclaimed".
+write_parent "$SESSION_Q" "main" "2026-07-02T10:00:00.000Z" 1500
+printf '{"type":"user","sessionId":"%s","cwd":"%s","gitBranch":"main","timestamp":"2026-07-02T10:00:00.000Z","message":{"role":"user","content":"triage the flaky tests"}}\n' \
+  "$SESSION_Q" "$AT" >> "$PROJECTS/$SESSION_Q.jsonl"
+list_sess() { HOME="$FAKE_HOME" python3 "$AT/analysis/capture_planning.py" --self --list-sessions "$@" 2>&1; }
+list_sess > "$TMP/out17h.txt"
+check "17h. --list-sessions prints the top-level sessions under this repo, with branch, cwd and prompt" \
+  "grep -q '$SESSION_P' '$TMP/out17h.txt' && grep -q '$SESSION_Q' '$TMP/out17h.txt' && grep -q 'triage the flaky tests' '$TMP/out17h.txt' && ! grep -q '$SESSION_X' '$TMP/out17h.txt'"
+list_sess --unclaimed > "$TMP/out17i.txt"
+check "17i. --unclaimed keeps the one no planning.json lists" \
+  "grep -q '$SESSION_Q' '$TMP/out17i.txt' && ! grep -q '$SESSION_P' '$TMP/out17i.txt'"
+list_sess --since 2026-07-02 > "$TMP/out17j.txt"
+check "17j. --since drops the earlier one" \
+  "grep -q '$SESSION_Q' '$TMP/out17j.txt' && ! grep -q '$SESSION_P' '$TMP/out17j.txt'"
 write_manifest "[\"$AGENT_3\"]"
 
 echo

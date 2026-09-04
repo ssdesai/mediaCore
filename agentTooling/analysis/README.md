@@ -12,6 +12,8 @@ Without `--self`, the artifact root is the consuming repo (`roots.AGENT_TOOLING_
 
 A standalone `agentTooling` clone works too, with both roots landing on the clone itself — that is why the session-root rule is "nearest ancestor holding `.git`" rather than "the parent directory": one rule covers both a vendored subtree and a standalone checkout.
 
+**A feature worktree's copy is the wrong copy for an ordinary capture.** A worktree holds a `.git` of its own (a file rather than a directory, which is why the rule tests `.exists()`), so both roots resolve to the worktree: a capture invoked from `R-<slug>` scans transcripts under `R-<slug>` and the worktree it would derive from *that*, `R-<slug>-<slug>`, and writes its `planning.json` into the worktree's own tree. The primary checkout's sessions are outside both. Run `R`'s copy, which reaches the primary and the feature worktree `R-<slug>` alike (`../LIFECYCLE.md`); the worktree path is derived from the slug rather than looked up, so it stays matchable after `feature-close.sh` removes the worktree. `feature-start.sh` and `feature-close.sh` refuse to run from a worktree for the same reason.
+
 The scripts never take a repo path, so there is no way to point one repo's checkout at another repo's plans. That is deliberate: the subtree is shared across repos, and a `--repo` flag would make it possible to write one repo's costs into another's `plans/` tree. `--self` does not weaken this — it selects between two fixed roots derived from the script's own location, not an arbitrary path.
 
 ## Every instant is UTC
@@ -27,7 +29,16 @@ Asserted by `self/tests/timestamps-are-utc.sh`.
 
 ## How to run them
 
-Weekly, from the consuming repo, in this order. The order is a real dependency chain, not a suggestion — `report.py` reads the `planning.json` and `usage.json` files the two capture steps write, and reports nothing where they are missing rather than failing loudly.
+**One feature is closed by `../feature-close.sh <slug>`, not by hand** (`../LIFECYCLE.md`
+→ step 6). It runs step 4 below for that slug in the order that makes it safe — the
+unclaimed-delegate check, then `capture_planning.py`, then `report.py`, and only then
+`session_window.to` — and shows what was claimed before the number is quoted. What
+follows is the weekly **sweep behind it**, over the whole corpus: it catches the feature
+whose delegate was pinned after it closed, the batch whose `.stream.jsonl` was never
+converted, and the killed attempt nobody recovered — each of which reads as a correct
+number until someone looks.
+
+Weekly, `../sweep.sh [--self]` runs the cadence in this order, then lists the unclaimed delegates and sessions. The order is a real dependency chain, not a suggestion — `report.py` reads the `planning.json` and `usage.json` files the two capture steps write, and reports nothing where they are missing rather than failing loudly.
 
 **1. Check the rate table first.** Costs are tokens × table; there is no cost field in a transcript to fall back on. A stale table silently skews every figure it touches.
 
@@ -53,15 +64,7 @@ python3 agentTooling/analysis/backfill_usage.py
 python3 agentTooling/analysis/recover_attempts.py
 ```
 
-**4. Capture planning cost, then report.** `capture_planning.py --all` walks the corpus and captures the features that have no `planning.json` yet, **skipping the ones that already do**. That skip is what makes this step ordinary cadence work rather than something to be careful with: a frozen record is not rebuilt unless you ask for it, so the run cannot rewrite a figure it can no longer reproduce, and it costs almost nothing (a skipped feature is never scanned).
-
-```bash
-python3 agentTooling/analysis/capture_planning.py --all
-for s in <slug> ...; do
-  python3 agentTooling/analysis/report.py "$s"
-done
-python3 agentTooling/analysis/report.py --all     # cross-feature trend, stdout only
-```
+**4. Capture planning cost, then report.** `capture_planning.py --all` walks the corpus and captures the features that have no `planning.json` yet, **skipping the ones that already do**. It also skips any feature whose `session_window.to` is still `null` — in flight, its first capture is `feature-close.sh`'s, and a record frozen here would make that close skip and report a premature figure. That skip is what makes this step ordinary cadence work rather than something to be careful with: a frozen record is not rebuilt unless you ask for it, so the run cannot rewrite a figure it can no longer reproduce, and it costs almost nothing (a skipped feature is never scanned). The sweep reports each feature whose cost files changed, then `--all` for a cross-feature trend.
 
 `report.py` reads only what is already on disk, so re-run it for whatever changed — it is the capture step that has to be careful, not this one.
 
@@ -166,7 +169,34 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   date, and freezes the result as dollars into `<features root>/<slug>/planning.json`.
   Cost is computed once here; nothing downstream recomputes it. Usage:
   `python3 agentTooling/analysis/capture_planning.py <slug>`,
-  `… --all [--recapture]`, or `… --list-subagents [--since YYYY-MM-DD]`.
+  `… --all [--recapture]`, `… --list-subagents [--since YYYY-MM-DD]`,
+  `… --list-subagents --unclaimed [--for <repo>/<slug>]`, or
+  `… --list-sessions [--unclaimed] [--since YYYY-MM-DD]`.
+  **Sessions are pinned the way subagents are.** A manifest's
+  `"sessions": ["<session-id>"]` claims a top-level session outright — across every
+  project directory, regardless of branch, window or `cwd`. That is how a planning
+  session which began on `main` before the feature branch existed is claimed without
+  widening `branches` to `main`, which would sweep in every later session in that
+  checkout; `feature-start.sh` pins the session that ran it, so the ordinary case needs
+  no hand edit (`../LIFECYCLE.md`). A pinned session that branch and window would also
+  select is priced once, every `sessions[]` entry records `selected_by`
+  (`"pinned"`/`"branch"`) and the `cwd` it was launched in, and a pin also listed in
+  `exclude_sessions` warns and wins. `--list-sessions` is the discovery step: every
+  top-level session launched in the primary checkout or one of its sibling worktrees,
+  with date, id, branch, `cwd`, model, cost, minutes and opening prompt. `--unclaimed`
+  keeps the ones no manifest pins, no `planning.json` in either corpus lists as selected
+  or excluded, and no `usage.json` already holds as runner cost — sessions that belong to
+  somebody and are counted by nobody, which is the pin still to write and what
+  `feature-close.sh` prints before it captures.
+  **Time is frozen beside cost.** Every session and subagent entry carries
+  `started_at`/`ended_at`/`duration_s` (the transcript's first and last instants), every
+  `priced[]` entry the `duration_s` of what it prices, and `duration_s{sessions,
+  subagents}` sums them at the top — two figures, never one, because a delegate's span
+  is its working time while a session's includes every idle minute and, for a
+  coordinator, every minute spent waiting on a batch. `report.py`'s Time table keeps
+  the rows apart for that reason. A `planning.json` captured before this existed has no
+  `duration_s`; re-capture it while the transcripts survive. `--list-subagents` shows
+  each delegate's minutes beside its cost.
   **Subagent transcripts are priced too.** A session that spawned delegates keeps their
   transcripts beside its own, at `<session-id>/subagents/agent-<id>.jsonl`; before this
   scan read them, an opus architect's whole cost was invisible — $184 across one
@@ -193,7 +223,12 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   unclaimed again. `--list-subagents --unclaimed` lists every transcript on this
   machine no feature has claimed, with the feature its brief names (the
   `feature: <repo>/<slug>` first line `ORCHESTRATION.md` requires) as the pin to
-  write; `--all` ends by counting the unclaimed under this repo's directories. A pin
+  write; adding `--for <repo>/<slug>` keeps only the rows whose brief names exactly that
+  feature, compared as the `(repo, slug)` pair rather than as text in the printed table —
+  a `<slug>-two` delegate is somebody else's and a name too long for the 26-character pin
+  column is still matched — which is what `feature-close.sh`'s stray-delegate guard reads,
+  and it is a usage error without `--unclaimed`. `--all` ends by counting the unclaimed
+  under this repo's directories. A pin
   whose brief names another feature is warned about — the pin is the human's word,
   the brief the coordinator's, and one is wrong. `exclude_subagents` is the pin's
   inverse — a selected session's children that another feature pins, so a
@@ -203,7 +238,12 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   looks, so "unpinned" is not read as "expired".
   `--list-subagents` is the discovery step: every reachable subagent with
   its date, id, parent, branch, model, priced cost and opening prompt, so the plan
-  author can be told from the reconnaissance one-shot. Pinned cost lands in
+  author can be told from the reconnaissance one-shot. An **empty** narrow scan says
+  which root it scanned and names `--everywhere`, because "no subagent transcripts
+  found" has two causes that look identical from the output — there genuinely are none,
+  or the copy of the script that was invoked resolves a session root the transcripts are
+  not under (see "Where to run them"). The `--everywhere` and `--unclaimed` scans keep
+  the bare message: they already looked everywhere. Pinned cost lands in
   `subagents[]` (`agent_id`, `parent_session_id`, `date`, `selected_by: parent|pinned`,
   `cross_repo`),
   in `priced[]` under its `agent_id`, and in `cost_usd.subagents` — a subset of
@@ -298,6 +338,24 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   It is the only one of these scripts that calls `roots.session_root` rather than
   `roots.artifact_root` for its transcript lookup — nothing in its imports reveals
   that; see "Where to run them" above for why the two must differ under `--self`.
+  **No silent zero.** A capture that matches no session and no subagent writes nothing
+  and exits non-zero, printing the three things that can be true — a wrong branch name
+  (with `git branch --list` as the check), sessions launched somewhere the feature
+  cannot claim from (each `cwd` seen, and the feature worktree to launch inside or the
+  ids to pin), or transcripts that have aged out. `--force` writes the zero, which is
+  the honest record for the third case. Under `--all` a refused zero is counted with the
+  other refusals: the walk continues and the run exits non-zero at the end. A `$0.00`
+  reads as "planning was free", which is why it has to be asked for. Except when it is
+  evidenced: an excluded session — a runner session, or one named in `exclude_sessions`
+  — that **carries one of the manifest's `branches` and passed `repo_match`** proves the
+  branch name is right and lifts the refusal without `--force`, with a warning saying so.
+  Only that narrower set (`excluded_on_branch`) lifts it. The serialized
+  `excluded_session_ids` is wider — every excluded session whose transcript sits in this
+  repo's directories, on any branch, from any directory — so it is non-empty in every
+  repo that has ever run a batch, and a typo'd `branches` would read as an evidenced
+  `$0.00` if the refusal rested on it. A session that carries the branch but was launched
+  somewhere the feature cannot claim from is the *launched somewhere else* cause above,
+  not evidence against it.
   **The one script here that can destroy data, and the only one that refuses a write.**
   `check_frozen_cost` compares the sessions the prior `planning.json` priced against the
   ones **this scan could reach**: a prior session that is neither reachable nor in
@@ -327,7 +385,10 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   disk. Cost is rolled up by walking the manifest's `plans` array, and both directions
   of disagreement with what is on disk are reported: a listed plan with no `usage.json`
   (`missing_usage_plans`) and a `usage.json` with no manifest entry
-  (`orphan_usage_plans`). The second is the one worth understanding — the runners are
+  (`orphan_usage_plans`). One absence is not a disagreement and is filtered out of the
+  first list: a level-verify the runner **skipped** because its level's gate was green
+  has no `usage.json` by design, and is reported as `skipped_plans[]` with a one-line
+  note instead of making the feature's total a lower bound. The second is the one worth understanding — the runners are
   directory-driven and never read the manifest, so a plan authored into a queue but
   omitted from `plans` runs, bills, and is then excluded from every figure here, making
   the total quietly too low rather than visibly incomplete. Both set `total_is_partial`.
@@ -374,15 +435,71 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   also cover *scope* — a build-queue plan over `PLAN_HIGH_TURN_THRESHOLD` turns is
   flagged as one to split, not as one on the wrong model (`AGENT_PLANS.md`, "Sizing
   plans for executor cost"); verify- and review-queue plans are exempt, as the
-  `--max-budget-usd` their own runners pass is their guard. `--all` scans every committed `*.report.json`
-  and prints a cross-feature trend table to stdout (no file written). Usage:
+  `--max-budget-usd` their own runners pass is their guard. **Time is rolled up the way cost is.** A `## Time` table mirrors the Cost table row
+  for row — planning split into sessions and delegates (from `planning.json`'s
+  `duration_s`), build/verify/review from each `usage.json`'s `attempts[].duration_ms`
+  — with dollars per minute beside each. Executor minutes sum over plans, so a parallel
+  pair counts twice; the wall clock under the table is the runner's own record,
+  read from the feature's `timing.jsonl` (`stamp_timing`, `plan-runner-roots.sh`):
+  batch span, each pass, the gates, and when the PR opened. A feature with no
+  `timing.jsonl` ran before stamping existed and says so. A missing duration input
+  marks the time total `(partial)` and suppresses its rate, for the same reason a
+  partial cost total is marked. **The manifest's `method` decides what `planning.json`
+  means:** absent or `"plans"`, its dollars and minutes are planning; `"direct"`
+  (`AGENT_DIRECT.md`), they are the build — the implementer's transcript — and both
+  tables say so (`cost.implementer`, `time.implementer_s`). A direct feature that
+  stamped `checkpoint` events into `timing.jsonl` gets that one span subdivided:
+  `compute_checkpoint_spans` reads the first instant of each `status` and
+  `render_time_section` renders `tests_s`, `direct_build_s` and `gate_s` as sub-rows
+  under the implementer row. A planned feature's report is unchanged by this even if
+  checkpoint events are somehow present — the spans divide an implementer's span, and a
+  planned feature has none. An unknown value is warned
+  about and read as `"plans"`. `--all` scans every committed `*.report.json`
+  and prints a cross-feature trend table (with a minutes column) to stdout (no file
+  written). Usage:
   `python3 agentTooling/analysis/report.py <slug>` or
   `python3 agentTooling/analysis/report.py --all`.
+- `manifest.py` — reads and writes a feature manifest's machine-readable fence, and reads
+  what its `planning.json` claimed: the JSON edits the lifecycle scripts need, kept out of
+  bash. Five subcommands, `--self` first as everywhere. `init --method M --branch B --base
+  BASE --from TS [--session ID]… [--plan STEM]…` writes `<features root>/<slug>/README.md`
+  from `templates/plans/features/TEMPLATE.md` with the template's fence replaced by a
+  filled one, and refuses if the file exists — `feature-start.sh` runs it once, in the new
+  worktree. `get <key>` prints one scalar or JSON array from the **last** fenced JSON block,
+  the one `capture_planning.py` reads — the same fence `plan-runner-roots.sh`'s
+  `manifest_field` reads on the shell side with awk and `jq`, which is how
+  `run-review.sh` gets `base` for `FEATURE_BASE` without a Python call. `set-window-to [TS]` replaces a `null` `to` bound with TS (default: now,
+  UTC, `Z`) and touches nothing else in the file; a bound already set is left alone and
+  reported, since a second stamp would move a boundary another manifest may chain to.
+  `set-plans <stem>...` replaces the manifest's `plans[]` with the given stems, in the order given, and refuses a stem that is not `NN-name-MODEL` — a sentinel is never a plan.
+  `claimed` prints the sessions and subagents `planning.json` holds, each with how it was
+  selected and where it was launched, plus the total — what `feature-close.sh` shows the
+  human before the number is quoted. The fence it writes is
+  `{ slug, method, plans[], branches[], base, session_window{from,to}, exclude_sessions[],
+  exclude_subagents[], sessions[], subagents[] }`, one key per line in that order with
+  compact values — the shape every hand-written manifest in both corpora already has, so a
+  diff after `init` or `set-window-to` shows the change and nothing else. `method` is one
+  of `plans`, `direct`, `hand`. Depends on `TEMPLATE.md` still carrying a fenced JSON block to
+  replace, and on `roots.features_root` for where the file goes.
 
 ## JSON artifacts
 
-Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.json` / `report.md`) written under `plans/features/<slug>/` by the scripts above.
+Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.json` / `report.md`) written under `plans/features/<slug>/` by the scripts above, plus the manifest fence they all key off.
 
+- The **feature manifest's fence** — the last fenced JSON block in
+  `plans/features/<slug>/README.md`:
+  `{ slug, method, plans[], branches[], base, session_window{from,to},
+  exclude_sessions[], exclude_subagents[], sessions[], subagents[] }`. Written by
+  `manifest.py` on behalf of `feature-start.sh` (`init`) and `feature-close.sh`
+  (`set-window-to`); read by `capture_planning.py` (`branches`, `session_window`,
+  `exclude_sessions`, `exclude_subagents`, `sessions`, `subagents`),
+  by `report.py` (`method`, `plans`) and by `run-review.sh` (`base`, through
+  `plan-runner-roots.sh`'s `manifest_field`). `method` is `"plans"` (or absent),
+  `"direct"`, or `"hand"` — the last two say the transcripts in `planning.json` are the
+  build rather than the planning. `base` is the branch the feature branched from, which
+  becomes `FEATURE_BASE` and the PR's base. `sessions` are session ids claimed outright,
+  the top-level twin of `subagents`. `agentTooling/AGENT_PLANS.md` → "The feature
+  manifest" is the authoring guide; this is the field list the scripts here depend on.
 - `usage.json` — `{ plan, model, outcome, session_id, subtype, is_error, num_turns,
   duration_ms, total_cost_usd, usage{input_tokens,cache_creation_input_tokens,
   cache_read_input_tokens,output_tokens}, model_usage{<modelId>:{...}},
@@ -420,18 +537,37 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   Sidecars written before attempt-tracking landed have no `attempts` key at all, so
   consumers read the top-level `session_id` as well.
 - `planning.json` — `{ slug, captured_at, manifest_branches[], sessions[{session_id,
-  git_branch,date}], excluded_session_ids[], priced[{session_id,model,is_sidechain,
-  date,tokens{input,output,cache_read,cache_creation_5m,cache_creation_1h},cost_usd,
-  rates_applied}], cost_usd{main,sidechain,total,total_is_partial}, rates_source,
-  warnings[] }` — a feature's frozen planning-phase cost, written by
+  git_branch,selected_by,cwd,date,started_at,ended_at,duration_s}], subagents[{agent_id,
+  parent_session_id,date,started_at,ended_at,duration_s,selected_by,cross_repo}],
+  excluded_session_ids[], priced[{session_id,agent_id,model,is_sidechain,date,
+  duration_s,tokens{input,output,cache_read,cache_creation_5m,cache_creation_1h},
+  cost_usd,rates_applied}], cost_usd{main,sidechain,subagents,total,total_is_partial},
+  duration_s{sessions,subagents,entries_without_duration[]}, rates_source,
+  warnings[] }` — a feature's frozen planning-phase cost and time, written by
   `capture_planning.py`. `cost_usd` and `rates_applied` are computed once at capture
   time; `report.py` (plan 56) only reads and sums these dollar figures, never
-  recomputes them.
-- `report.json` — `{ slug, generated_at, cost{planning,build,verify,review,total,
+  recomputes them. `duration_s` is a span in whole seconds (first to last transcript
+  instant), summed separately over sessions and subagents; an entry carried forward
+  from a capture that predates the field has none and is named in
+  `entries_without_duration`, so the sums are then lower bounds.
+  A session entry's `selected_by` is `"branch"` or `"pinned"` — which of the two routes
+  claimed it (the manifest's `branches` plus `session_window`, or its `sessions` pin) —
+  and `cwd` is the directory that session was launched in, the fact the whole naming
+  rule turns on (`../LIFECYCLE.md`): it is what says whether a session is claimable from
+  this checkout at all, and it is `null` only for an entry carried forward from a
+  capture that predates the field. `subagents[]` carries its own `selected_by`,
+  `"parent"` or `"pinned"`, and no `cwd` — a delegate inherits its parent's.
+- `report.json` — `{ slug, generated_at, cost{method,planning,implementer,build,verify,review,total,
   planning_pct,build_pct,verify_pct,review_pct,cost_per_plan,cost_per_file,total_is_partial,
-  missing_usage_plans[],orphan_usage_plans[],recovered,unrecoverable_attempts[{plan,
-  session_id}],partially_recovered_attempts[{plan,session_id}]}, cold_start_tax_tokens,
-  model_fit[{model,plan_count,total_turns,total_cost_usd,flags[]}], churn[{plan,
+  missing_usage_plans[],skipped_plans[],orphan_usage_plans[],recovered,unrecoverable_attempts[{plan,
+  session_id}],partially_recovered_attempts[{plan,session_id}]}, time{method,
+  planning_sessions_s,planning_subagents_s,planning_s,implementer_s,tests_s?,
+  direct_build_s?,gate_s?,build_s,verify_s,review_s,
+  executor_s,total_s,total_is_partial,missing_duration_plans[],wall_clock{first_at,
+  last_at,batch_span_s,batch_runs,batch_runs_s,passes_s{auto,verify,review},gates_s,
+  gate_runs,plans_s,plan_runs,pr_opened_at,pr_url} | null}, planning_cost_split{
+  sessions,subagents}, cold_start_tax_tokens,
+  model_fit[{model,plan_count,total_turns,total_cost_usd,total_duration_s,flags[]}], churn[{plan,
   edit_count,files_edited,churn_ratio}], plan_length_vs_loc[{plan,plan_md_lines,
   loc_changed}], re_hunting[{target,tool,plans[]}] | "not computed: streams
   unavailable", plan_drift[{plan,edited_not_listed[],listed_not_edited[]}],
@@ -443,7 +579,23 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   is itself partial; both renderings mark such a total `(partial)`, because a roll-up
   missing an input is still a number and otherwise reads as a complete one.
   `report.md` is the human-readable rendering of this same data, with no independent
-  numbers of its own. **`cost.review`/`cost.review_pct` are read with a `0.0` default,
+  numbers of its own.
+  `time.tests_s` / `time.direct_build_s` / `time.gate_s` are **present only** for a
+  `method: direct` feature whose `timing.jsonl` carries `checkpoint` events (see that
+  entry below); each is seconds or `null`, and a report without them is byte-identical
+  to one written before they existed. They render as indented sub-rows under the Time
+  table's "build: implementer", carrying minutes and no dollars — the implementer's
+  transcript is priced as one span and nothing divides its cost the way the instants
+  divide its minutes.
+  `cost.skipped_plans[]` names the manifest plans the runner filed **without running**
+  (`skip_level_verify`, `plan-runner-lib.sh`: a level whose gate came back green does
+  not owe its level-verify, so the plan goes to `verify/complete/` with a one-line
+  `.progress.md` and no `usage.json`). They are deliberately kept out of
+  `missing_usage_plans` and out of `total_is_partial`: nothing ran, nothing was billed,
+  and nothing is absent. Detected from the progress log's first line
+  (`report.build_skipped_index`), which is the only marker on disk — read with a `[]`
+  default, like every key added after the fact.
+  **`cost.review`/`cost.review_pct` are read with a `0.0` default,
   never indexed** — every `report.json` written before the review queue existed lacks
   both keys, and `--all`'s whole job is ranking those historical features beside new
   ones. A feature that ran no review pass legitimately reports `0.0`.
@@ -463,6 +615,28 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   unrecoverable buckets both set `total_is_partial`; `cost.unrecoverable_attempts[]` and
   `cost.partially_recovered_attempts[]` each name exactly those `{plan, session_id}`
   pairs.
+
+- `timing.jsonl` — one JSON object per line, `{ at, event, ...detail }`, appended by the
+  runners (`stamp_timing`, `plan-runner-roots.sh`) as a batch runs: `batch_start`/
+  `batch_end{rc}`, `pass_start`/`pass_end{queue,reason}`, `plan_start`/`plan_end{plan,
+  queue,rc}`, `gate_start`/`gate_end{level,rc,green,regate?}`, `pr_opened{rc,url}`, plus
+  `checkpoint{status}` appended by hand. `at`
+  is UTC to the second; every detail value is a string.
+  **`checkpoint{status}`** is a **direct** feature's own milestone
+  (`AGENT_DIRECT.md` → "Checkpoint and resume"), written by the implementer with the
+  top-level `stamp-timing.sh [--self] <slug> checkpoint status=<status>` at each rewrite
+  of its `CHECKPOINT.md`. `status` is one of `planned`, `tests-written`, `implementing`,
+  `gating`, `committed` — the checkpoint file's own vocabulary. There is no runner
+  between a direct build's commits, so these are the only record of how its one span
+  divided; `report.py` reads the **first** instant of each status (a status can be
+  re-stamped by a resumed implementer) and derives `tests_s` (`planned` →
+  `tests-written`), `direct_build_s` (`tests-written` → `gating`) and `gate_s`
+  (`gating` → `committed`). A missing endpoint yields `null` for that span rather than a
+  zero, and a feature that stamped no checkpoint gains none of the three keys at all. This is the only record of what
+  happens *between* executors — the gates, the parallelism, the stretch to the PR —
+  which no `usage.json` can carry. Small and committed. `report.py` pairs the
+  start/end events into the Time section's wall clock; an unclosed start (a killed run)
+  contributes nothing. A feature without one ran before stamping existed.
 
 ### Do not re-price build or verify cost
 

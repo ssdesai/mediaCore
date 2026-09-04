@@ -81,7 +81,7 @@ DO_REVIEW="$(jq -r '.stages.review // true' "$EXPERIMENT_JSON")"
 DO_REWORK="$(jq -r '.stages.rework // true' "$EXPERIMENT_JSON")"
 DO_ACCEPT="$(jq -r '.stages.accept // true' "$EXPERIMENT_JSON")"
 PREDICTION="$(harness_json "$EXPERIMENT_JSON" .prediction)"
-[[ -n "$PREDICTION" ]] || harness_die "experiment.json has no prediction — EXPERIMENTS.md requires the checklist first"
+[[ -n "$PREDICTION" ]] || harness_die "experiment.json has no prediction — harness/EXPERIMENTS.md requires the checklist first"
 
 # `run` is set per cell so the stage functions read one name rather than eight arguments.
 FIXTURE=""; METHOD=""; REPEAT=""; BRANCH=""; SLUG=""; TREE=""; STATE=""
@@ -342,7 +342,7 @@ write_stage_manifest() {  # $1 slug, $2 title — price any orphaned open window
       "$slug: an earlier attempt's open window (from $orphan_from) was priced at \$$lost into cost_lost_usd before the stage re-ran"
     harness_log "$slug: orphaned window priced at \$$lost (cost_lost_usd now \$$COST_LOST)"
   fi
-  harness_write_manifest "$TREE" "$slug" "$BRANCH" "$(harness_utc_now)" "$title"
+  harness_write_manifest "$TREE" "$slug" "$BRANCH" "$(harness_utc_now)" "$title" "$METHOD"
 }
 
 # One fresh claude in the tree, same preamble and same fixture brief on every tree of

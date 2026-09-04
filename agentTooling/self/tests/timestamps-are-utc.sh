@@ -32,7 +32,11 @@ set -uo pipefail
 #   3. a session's start is the earliest INSTANT, not the lexicographically smallest
 #      string, across mixed formats;
 #   4. a window bound with an explicit offset selects exactly what its UTC equivalent
-#      selects;
+#      selects (re-fixtured when item 6's zero refusal landed: the fixture's `to` bound
+#      excludes its only session under both formats, so capture now refuses to write
+#      planning.json instead of writing a $0.00 one, and the assertion compares exit
+#      status and file presence rather than a sessions count read from a file that no
+#      longer exists);
 #   5. a bound with no offset is interpreted as UTC (the committed corpus's meaning);
 #   6. two windows chained at the same instant but written in different formats are
 #      disjoint — no false overlap warning;
@@ -131,20 +135,35 @@ rm -f "$PROJECTS/$SID_MIX.jsonl"
 
 # ── 4-5. window bounds are UTC, offset-aware ─────────────────────────────────
 # One session at 2026-07-17T22:00:00Z. A `to` bound of 2026-07-17T18:00:00-04:00 is the
-# same instant as 2026-07-17T22:00:00Z, so the half-open window must EXCLUDE it either way.
+# same instant as 2026-07-17T22:00:00Z, so the half-open window (`to` exclusive) must
+# EXCLUDE it either way. It is the feature's only session, so an excluding bound leaves
+# nothing matched and capture refuses to write planning.json (item 6, self-hosted
+# feature-lifecycle README) — assert on exit status and file presence, not a sessions
+# count, since a refused capture leaves no file to count sessions in.
 reset_capture
 SID_W="window00-0000-0000-0000-000000000002"
 write_transcript_w() { session_line "$SID_W" "$AT" "$BRANCH" "w1" "$MODEL" "2026-07-17T22:00:00.000Z" 10 10 0 0 0 > "$PROJECTS/$SID_W.jsonl"; }
 write_transcript_w
 
-write_manifest null "2026-07-17T22:00:00Z"; capture > /dev/null; utc_excl="$(sessions_count)"
-write_manifest null "2026-07-17T18:00:00-04:00"; capture > /dev/null; off_excl="$(sessions_count)"
-check "4. an offset bound selects what its UTC equivalent selects" \
-  "[ '$utc_excl' = '$off_excl' ] && [ '$utc_excl' = '0' ]"
+capture_outcome() {
+  # Prints "rc=<exit code> file=<yes|no>" for a fresh capture attempt.
+  capture > /dev/null
+  local rc=$?
+  local has="no"
+  [ -f "$FEATURE_DIR/planning.json" ] && has="yes"
+  echo "rc=$rc file=$has"
+}
 
-write_manifest null "2026-07-17T22:00:00"; capture > /dev/null; naive_excl="$(sessions_count)"
+write_manifest null "2026-07-17T22:00:00Z"; utc_outcome="$(capture_outcome)"
+reset_capture
+write_manifest null "2026-07-17T18:00:00-04:00"; off_outcome="$(capture_outcome)"
+check "4. an offset bound selects what its UTC equivalent selects" \
+  "[ '$utc_outcome' = '$off_outcome' ] && [ '$utc_outcome' = 'rc=1 file=no' ]"
+
+reset_capture
+write_manifest null "2026-07-17T22:00:00"; naive_outcome="$(capture_outcome)"
 check "5. a bound with no offset is interpreted as UTC" \
-  "[ '$naive_excl' = '$utc_excl' ]"
+  "[ '$naive_outcome' = '$utc_outcome' ]"
 rm -f "$PROJECTS/$SID_W.jsonl"
 
 # ── 6. chained windows in different formats do not overlap ───────────────────

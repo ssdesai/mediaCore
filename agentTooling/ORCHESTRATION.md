@@ -6,7 +6,10 @@ work spans repos, or when several features interleave in one repo. It sits above
 `AGENT_PLANS.md` (which governs the delegate authoring plans) and `RUNNER.md` (which
 governs execution); nothing here changes either.
 
-The one-line rule: **the architect plans; the coordinator runs.**
+The one-line rule: **the architect plans; the coordinator runs.** For a feature under
+roughly a thousand lines of diff there is no architect and no batch: **the implementer
+builds** (`AGENT_DIRECT.md`), the coordinator runs the review pass, and the size rule
+that picks between the two is in that file, from the measurements in `harness/EXPERIMENTS.md`.
 
 ## Roles
 
@@ -19,6 +22,13 @@ The one-line rule: **the architect plans; the coordinator runs.**
   design decisions, bubbles design questions up through the coordinator, authors the
   plans per `AGENT_PLANS.md`, then writes `plans/features/<slug>/NOTES.md` and
   **terminates**. It never launches the batch and never watches one.
+- **Implementer** — an opus delegate, one per feature, for the features
+  `AGENT_DIRECT.md` routes away from the plan workflow. Takes the brief, slices the
+  work into `CHECKPOINT.md`, writes and commits the acceptance tests, builds slice by
+  slice keeping the checkpoint and `NOTES.md` current, gates to green, commits and
+  **terminates**. Its context is never resumed: if it dies, a fresh one is briefed to
+  resume from the checkpoint (`AGENT_DIRECT.md` → "Checkpoint and resume"). The
+  coordinator then runs `run-review.sh`, which opens the PR.
 - **Judgment one-shot** — spawned only for a failure the red-gate tier ladder could
   not settle. Briefed with `NOTES.md`, the failed plan's `.progress.md`, and the one
   relevant spec section — never "read the design doc". Dies on delivery.
@@ -54,13 +64,17 @@ warm context, persisted, at a fraction of the cost.
 - Delegate interim messages are one or two lines. The final report follows the
   brief. If a delegate must die early anyway, its handoff contains only what is not
   recoverable from disk.
-- Features sharing a branch chain their manifests' `session_window`s end-to-start —
-  two open windows on one branch double-count planning cost.
+- The manifest's fence is the lifecycle scripts' to write, not a coordinator's
+  (`LIFECYCLE.md`): `feature-start.sh` opens the window, records the base a stacked
+  feature branched from, and pins the session that ran it; `feature-close.sh` stamps
+  the window shut after the capture and refuses to close while a delegate whose brief
+  names this feature is still unpinned. One branch, one worktree and one window per
+  feature is what the naming rule buys — a coordinator that finds itself hand-editing
+  those fields is working around a step it skipped.
 - A delegate's transcript inherits the coordinator's `gitBranch`, so an architect
   spawned from `main` is invisible to the feature's `branches`. Pin its agent id in the
-  manifest's `subagents` (find it with `capture_planning.py --list-subagents`), and do
-  it while the transcript still exists — the coordinator's own cost is claimed the
-  same way, with `main` in `branches` and a window around the run.
+  manifest's `subagents`, found with
+  `capture_planning.py --list-subagents --unclaimed`.
 - **Every delegate brief opens with `feature: <repo>/<slug>`** — the repo's directory
   name and the feature directory it is for, on the first line, before anything else.
   That line is what `capture_planning.py --list-subagents --unclaimed` reads to

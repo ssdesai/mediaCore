@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -uo pipefail
+# template-version: 2
 
 # Mechanical pre-verify gate, run by ../run-batch.sh between the build and
 # verify passes. Runs this repo's deterministic checks — install, lint, tests,
@@ -129,18 +130,31 @@ shell_scripts=(
   plan-runner-lib.sh
   plan-runner-roots.sh
   sync-plans.sh
-  migrate-plans-layout.sh
+  stamp-timing.sh
+  feature-start.sh
+  feature-close.sh
+  check-plans.sh
+  sweep.sh
+  update.sh
   self/gate.sh
   self/pr.sh
+  self/worktree-setup.sh
   self/tests/level-sentinel.sh
   self/tests/tiered-gates.sh
   self/tests/cost-recovery.sh
   self/tests/capture-guard.sh
   self/tests/timestamps-are-utc.sh
   self/tests/subagent-capture.sh
+  self/tests/direct-timing.sh
+  self/tests/feature-lifecycle.sh
+  self/tests/check-plans.sh
+  self/tests/sync-check.sh
+  self/tests/sweep.sh
+  self/tests/template-versions.sh
   run-escalation-plan.sh
   templates/plans/gate.sh
   templates/plans/pr.sh
+  templates/plans/worktree-setup.sh
 )
 for script in "${shell_scripts[@]}"; do
   record "bash -n $script" bash -n "$script"
@@ -165,6 +179,15 @@ record "cost recovery self-test" bash self/tests/cost-recovery.sh
 record "capture guard self-test" bash self/tests/capture-guard.sh
 record "timestamps are utc self-test" bash self/tests/timestamps-are-utc.sh
 record "subagent capture self-test" bash self/tests/subagent-capture.sh
+record "direct timing self-test" bash self/tests/direct-timing.sh
+record "feature lifecycle self-test" bash self/tests/feature-lifecycle.sh
+record "check plans self-test" bash self/tests/check-plans.sh
+record "sync check self-test" bash self/tests/sync-check.sh
+record "sweep self-test" bash self/tests/sweep.sh
+# Reads the checked-in templates rather than driving a runner, but blocking for the same
+# reason as the rest: a template body edited without a version bump reports `in-sync` in
+# every consuming repo while their seeded copies are stale (self/tests/README.md).
+record "template versions self-test" bash self/tests/template-versions.sh
 
 echo "=== gate: python syntax ==="
 # Compiles each file independently — it does NOT exercise the bare cross-imports

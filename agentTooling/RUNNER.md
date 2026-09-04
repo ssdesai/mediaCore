@@ -181,6 +181,8 @@ Otherwise it is inferred from whichever feature under `plans/features/` has plan
 captures whichever feature the build pass resolved and hands that same slug to the
 verify and review passes, so the three stages can never resolve to different features.
 
+Given an explicit slug it runs `check-plans.sh` on that feature first and stops, running nothing, when the lint fails. An inferred slug is not known until the build pass has resolved it, so the lint is skipped on that path.
+
 Each pass is gated on the one before it. A non-zero build code skips verify, because
 the code under test was never finished being written. A non-zero verify code skips
 review, for a different reason: verify is permitted to edit, so a verify pass that
@@ -236,9 +238,15 @@ level's", skipped is "could not run", and only the latter keeps a level from bei
 
 **Resume.** `run-batch.sh <slug>` (explicit slug) first looks at the highest sentinel in
 `auto/complete/`; if a level plan ≤ NN is still queued or that gate's last verdict is not
-green while build plans remain, it settles the level before running the build pass. The
+green, it settles the level before running the build pass. The
 first pilot's re-run after a capped level-verify built level 3 on a half-fixed level 2;
-this is the rule that stops it.
+this is the rule that stops it. The condition is about the **level**, not about the queue
+behind it: an empty `auto/incomplete/` used to skip the settle entirely, so a batch killed
+during its *last* level's level-verify resumed straight past the ladder — the ordinary
+verify pass ran that plan with no tier behind it, a red gate there escalated nothing, and
+the failure surfaced only at the final gate. A finished batch re-run with its gate reports
+intact is already settled and settles nothing; one re-run on a fresh clone (the reports are
+gitignored) re-runs that level's mechanical gate once, at no model cost.
 
 **Once per level.** `run-escalation-plan.sh` refuses to write a second
 `NN-escalation-*` for a level that has one in any state, so a red-forever level costs one
@@ -256,9 +264,18 @@ and still exits non-zero. A cap before the report still opens nothing.
 `self/tests/tiered-gates.sh` asserts every row of this table against a throwaway checkout.
 
 **There is no archiving step any more.** The feature directory *is* the archive — a
-finished feature's `complete/` folders are its permanent record. The branch-named
-subfolders that predate this (e.g. `plans/auto/complete/<branch>/`) are migrated once by
-`agentTooling/migrate-plans-layout.sh`.
+finished feature's `complete/` folders are its permanent record. (The flat
+`plans/{auto,verify}/` layout that predates this is gone from every consuming repo; the
+one-time migration script that moved it was retired with the last of them.)
+
+The feature directory also gains one `timing.jsonl`, appended to by every runner as it
+goes (`stamp_timing`, `plan-runner-roots.sh`): a UTC-stamped line at each batch, pass,
+plan and gate boundary and when the PR opens — plus, for a direct feature, the
+`checkpoint status=…` lines its implementer appends by hand with the top-level
+`stamp-timing.sh` (`AGENT_DIRECT.md` → "Checkpoint and resume"). A plan's own duration is in its
+`usage.json`; this is the record of everything between plans — the gates, how much
+parallelism a batch got, first plan to PR — which `analysis/report.py` turns into the
+report's wall-clock figures. Small and committed, like the usage sidecars.
 
 Every finished plan — complete or failed — lands with four files, not two:
 
@@ -366,6 +383,15 @@ The log is fed through a FIFO whose PID the script waits on, rather than a `tee 
 process substitution: bash does not wait for process substitutions, and the failure
 path calls `exit` immediately, so pending writes could otherwise be lost exactly when
 they matter most.
+
+Direct features (`AGENT_DIRECT.md`) have no plans for a runner to promote and no
+harness-written log: the implementer keeps `plans/features/<slug>/CHECKPOINT.md`
+itself, and a resume is a fresh implementer briefed from it — `AGENT_DIRECT.md` →
+"Checkpoint and resume". The checkpoint is rewritten whole and keeps no history, so each
+milestone is also stamped into `timing.jsonl` (`stamp-timing.sh <slug> checkpoint
+status=<status>`); that append is what survives the rewrite and what
+`analysis/report.py` reads. The review pass that follows is an ordinary `review/` queue
+and resumes as above.
 
 ## Idempotency
 

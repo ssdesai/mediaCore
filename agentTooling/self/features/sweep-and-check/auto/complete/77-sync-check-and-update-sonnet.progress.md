@@ -1,0 +1,9 @@
+write: /Users/sahildesai/dev/agentTooling-sweep-and-check/sync-plans.sh
+write: /Users/sahildesai/dev/agentTooling-sweep-and-check/update.sh
+edit: /Users/sahildesai/dev/agentTooling-sweep-and-check/templates/plans/gate.sh
+edit: /Users/sahildesai/dev/agentTooling-sweep-and-check/templates/plans/pr.sh
+edit: /Users/sahildesai/dev/agentTooling-sweep-and-check/templates/plans/worktree-setup.sh
+edit: /Users/sahildesai/dev/agentTooling-sweep-and-check/self/gate.sh
+edit: /Users/sahildesai/dev/agentTooling-sweep-and-check/self/pr.sh
+edit: /Users/sahildesai/dev/agentTooling-sweep-and-check/self/worktree-setup.sh
+edit: /Users/sahildesai/dev/agentTooling-sweep-and-check/README.md

@@ -61,7 +61,7 @@ done
 [[ "$NAME" =~ ^[a-z][A-Za-z0-9]*$ ]] || harness_die "experiment name must be bare camelCase: $NAME"
 [[ -n "$FIXTURES" ]] || harness_die "--fixtures is required"
 [[ -n "$METHODS" ]] || harness_die "--methods is required"
-[[ -n "$PREDICTION" ]] || harness_die "--prediction is required: write the checklist before the run (EXPERIMENTS.md)"
+[[ -n "$PREDICTION" ]] || harness_die "--prediction is required: write the checklist before the run (harness/EXPERIMENTS.md)"
 [[ "$REPEATS" =~ ^[1-9][0-9]*$ ]] || harness_die "--repeats must be a positive integer"
 [[ "$NOISE_BAND" =~ ^[0-9]+$ ]] || harness_die "--noise-band must be an integer percentage"
 
