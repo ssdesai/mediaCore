@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -uo pipefail
+# template-version: 2
 
 # Mechanical pre-verify gate, run by ../../run-batch.sh between the build and
 # verify passes. Runs this repo's deterministic checks — install, lint, tests,

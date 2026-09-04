@@ -40,16 +40,37 @@ Delete this section when the batch has a single level.
 ```json
 {
   "slug": "<feature-slug>",
+  "method": "plans",
   "plans": ["NN-description-MODEL", "NN-verify-MODEL", "NN-review-opus"],
   "branches": ["<branch-name>"],
+  "base": "<base-branch>",
   "session_window": {"from": "<YYYY-MM-DDTHH:MM:SSZ>", "to": "<YYYY-MM-DDTHH:MM:SSZ>"},
   "exclude_sessions": ["<session-id>"],
   "exclude_subagents": ["<agent-id>"],
+  "sessions": ["<session-id>"],
   "subagents": ["<agent-id>"]
 }
 ```
 
-Every field but `subagents` and `exclude_subagents` is required. These are the ones that go wrong quietly:
+**`agentTooling/feature-start.sh` writes this fence** — the slug, the method, the
+branch, the base, `from`, and a pin for the session that ran it — and
+`feature-close.sh` stamps `to` when the feature is closed
+(`agentTooling/LIFECYCLE.md`). Do not hand-copy it. Only `slug`, `plans` and `branches`
+are required: `method` reads as `"plans"` when absent, `base` as `main`,
+`session_window` as unbounded, and the four id lists as empty. These are the ones that
+go wrong quietly:
+
+- **`method`** — optional, `"plans"` when absent. `"direct"` marks a feature built per
+  `agentTooling/AGENT_DIRECT.md` by one implementer delegate; `"hand"` one the
+  coordinator built itself, with no delegate to pin and no plans. Under either, the
+  transcripts `planning.json` captures are the **build**, and `analysis/report.py` files
+  their dollars and minutes there instead of under planning — as `build: implementer`
+  and `build: by hand` respectively. Leave it out for a planned feature; a wrong value
+  here moves money between buckets without a warning about which was right.
+- **`base`** — the branch the feature branched from, `main` unless
+  `feature-start.sh --base` said otherwise. `run-review.sh` reads it and exports
+  `FEATURE_BASE`, which is the base `plans/pr.sh` opens the PR against, so a feature
+  stacked on one that has not merged shows only its own diff. Cost capture ignores it.
 
 - **`branches`** — copy each name from `git branch --show-current`, verbatim. It is
   matched literally against the `gitBranch` in every session transcript, so an added
@@ -69,6 +90,18 @@ Every field but `subagents` and `exclude_subagents` is required. These are the o
   UTC offset, four hours in US Eastern, which is enough to hand a session to the wrong
   feature. Write local time only with its offset spelled out (`2026-07-17T18:00:00-04:00`);
   `analysis/capture_planning.py` warns on any bound that states no zone.
+- **`sessions`** — session ids claimed outright, across every project directory,
+  regardless of branch, window or `cwd` — the top-level twin of `subagents`.
+  `feature-start.sh` pins the session that ran it, which is what claims a planning
+  session that began on `main` before the branch existed; widening `branches` to `main`
+  instead sweeps in every later session in that checkout. A pinned session that branch
+  and window would also select is priced once, and every entry in `planning.json`
+  records how it was selected (`selected_by`: `"pinned"` or `"branch"`) and the `cwd` it
+  was launched in. A pin that is also in `exclude_sessions` warns, and the pin wins.
+  Find an id with `python3 agentTooling/analysis/capture_planning.py --list-sessions
+  [--unclaimed] [--since <date>]`, which prints every session launched in this repo's
+  primary checkout or one of its feature worktrees with its branch, `cwd`, cost and
+  opening prompt.
 - **`subagents`** — optional; usually absent. Agent ids of delegates whose *parent*
   session was not on this feature's branch — the coordinator-on-`main` case. A subagent
   inherits its parent's `gitBranch` at spawn and never records its own, so an architect
