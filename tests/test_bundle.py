@@ -36,6 +36,18 @@ AUDIO_SOURCE_NAME = "audio.wav"
 RELEASE_FILENAME = "release.json"
 MEDIA_DIRNAME = "media"
 BUNDLE_DIRNAME = "bundle"
+TRACK_POSITION = "A1"
+TRACK_TITLE = "Track One"
+# A track-level artist, as a compilation prints it (§3, `Track.artist`).
+TRACK_ARTIST = "Peter Tetteroo"
+# The frozen bundle written by mediacore 0.2.0, before `Track.artist` existed: the
+# release.json alone, byte-for-byte, never regenerated (tests/assets/README.md).
+FROZEN_SCHEMA_1_BUNDLE = Path(__file__).parent / "assets" / "its-saxy-schema-1"
+FROZEN_SCHEMA_VERSION = 1
+FROZEN_TRACK_COUNT = 12
+# One past this install's SCHEMA_VERSION (2): the bundle a *future* mediacore writes,
+# which this one must refuse rather than half-read.
+UNSUPPORTED_SCHEMA_VERSION = 3
 
 
 def built(tmp_path: Path) -> tuple[Release, dict[str, Path]]:
@@ -193,6 +205,42 @@ def test_read_bundle_rejects_release_json_with_a_newer_schema_version(tmp_path):
 
     with pytest.raises(BundleError, match="upgrade mediacore"):
         read_bundle(dest)
+
+
+def test_read_bundle_rejects_a_schema_version_3_bundle(tmp_path):
+    """The guard still bites after the bump to 2: schema 3 is a shape this install has
+    never seen, and reading it would be guessing (INTEGRATION.md §12)."""
+    assert UNSUPPORTED_SCHEMA_VERSION > SCHEMA_VERSION
+    release, sources = built(tmp_path)
+    dest = tmp_path / BUNDLE_DIRNAME
+    write_bundle(release, dest, sources)
+
+    payload = json.loads((dest / RELEASE_FILENAME).read_text())
+    payload["schema_version"] = UNSUPPORTED_SCHEMA_VERSION
+    (dest / RELEASE_FILENAME).write_text(json.dumps(payload))
+
+    with pytest.raises(BundleError, match="upgrade mediacore"):
+        read_bundle(dest)
+
+
+def test_read_bundle_reads_the_frozen_schema_1_bundle():
+    """A 0.3.0 reader still reads a bundle written by 0.2.0 (§12): the older shape has
+    no `artist` key at all, and every track defaults to `None`. Read with
+    `verify=False` — the asset is the `release.json`, not its media."""
+    release = read_bundle(FROZEN_SCHEMA_1_BUNDLE, verify=False)
+
+    assert release.schema_version == FROZEN_SCHEMA_VERSION
+    assert len(release.tracks) == FROZEN_TRACK_COUNT
+    assert all(track.artist is None for track in release.tracks)
+
+
+def test_the_frozen_schema_1_asset_carries_no_artist_key():
+    """Guards the asset itself: regenerating it under today's writer would give it an
+    `artist` key and the test above would stop proving anything."""
+    payload = json.loads((FROZEN_SCHEMA_1_BUNDLE / RELEASE_FILENAME).read_text())
+
+    assert payload["schema_version"] == FROZEN_SCHEMA_VERSION
+    assert all("artist" not in track for track in payload["tracks"])
 
 
 # --- size_bytes is verified against the actual audio file on disk -------------------
@@ -422,3 +470,48 @@ def test_read_bundle_refuses_a_file_outside_the_media_directory(tmp_path):
 
     with pytest.raises(BundleError):
         read_bundle(dest)
+
+
+# --- Track.artist across the bundle boundary (INTEGRATION.md §3, decision 2026-09-06) --
+
+
+def test_write_then_read_round_trips_a_track_artist(tmp_path):
+    """The field the compilation export needs: written to release.json and read back
+    off disk, not merely round-tripped in memory."""
+    release, sources = built(tmp_path)
+    release = make_release(
+        media=release.media,
+        audio=release.audio,
+        tracks=[Track(position=TRACK_POSITION, title=TRACK_TITLE, artist=TRACK_ARTIST)],
+    )
+    dest = tmp_path / BUNDLE_DIRNAME
+
+    write_bundle(release, dest, sources)
+
+    reread = read_bundle(dest)
+    assert reread == release
+    assert reread.tracks[0].artist == TRACK_ARTIST
+
+
+def test_a_track_written_without_an_artist_reads_as_none(tmp_path):
+    release, sources = built(tmp_path)
+    dest = tmp_path / BUNDLE_DIRNAME
+
+    write_bundle(release, dest, sources)
+
+    reread = read_bundle(dest)
+    assert reread.tracks[0].artist is None
+
+
+def test_release_json_writes_an_absent_track_artist_as_null(tmp_path):
+    """`write_bundle` dumps the model whole, with no `exclude_none`, so every optional
+    field is a key: an artist-less track carries `"artist": null` exactly as it carries
+    `"duration": null` (decision 2026-09-06 — the key is present, not omitted)."""
+    release, sources = built(tmp_path)
+    dest = tmp_path / BUNDLE_DIRNAME
+
+    write_bundle(release, dest, sources)
+
+    track = json.loads((dest / RELEASE_FILENAME).read_text())["tracks"][0]
+    assert track["artist"] is None
+    assert track["duration"] is None

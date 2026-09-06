@@ -10,6 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from mediacore import (
+    SCHEMA_VERSION,
     ArtistRef,
     AudioFile,
     Credit,
@@ -30,6 +31,15 @@ from conftest import (
     make_media_file,
     make_release,
 )
+
+# The on-disk shape this install writes (INTEGRATION.md §12, §13 2026-09-06). Pinned as a
+# literal as well as against SCHEMA_VERSION so a bump is a deliberate edit here, not a
+# test that silently follows the source.
+CURRENT_SCHEMA_VERSION = 2
+
+# A track-level artist: what a compilation, split, or various-artists release prints
+# against one track (§3, `Track.artist`).
+SAMPLE_TRACK_ARTIST = "Peter Tetteroo"
 
 
 def full_release() -> Release:
@@ -79,6 +89,7 @@ def full_release() -> Release:
             Track(
                 position="A2",
                 title="Second Track",
+                artist=SAMPLE_TRACK_ARTIST,
                 duration="4:20",
                 credits=[
                     Credit(
@@ -125,13 +136,52 @@ def test_release_round_trips() -> None:
     assert reloaded == full
 
 
-def test_schema_version_defaults_to_one() -> None:
+def test_schema_version_defaults_to_the_installed_version() -> None:
+    """`SCHEMA_VERSION` is 2 since `Track.artist` (§12): `ContractModel` forbids extras,
+    so a bundle carrying `artist` is a new on-disk shape, not an additive one."""
+    assert SCHEMA_VERSION == CURRENT_SCHEMA_VERSION
+
     release = make_release()
-    assert release.schema_version == 1
+    assert release.schema_version == CURRENT_SCHEMA_VERSION
 
     dumped = release.model_dump(mode="json")
     reloaded = Release.model_validate(dumped)
-    assert reloaded.schema_version == 1
+    assert reloaded.schema_version == CURRENT_SCHEMA_VERSION
+
+
+def test_track_artist_defaults_to_none() -> None:
+    """Absence is absence: a track with no printed artist carries `None`, which does
+    *not* mean "same as the release artist" — a consumer that wants a display artist
+    falls back itself (§3, decision 2026-09-06)."""
+    track = Track(position="A1", title="First Track")
+    assert track.artist is None
+
+
+def test_track_artist_round_trips() -> None:
+    """The field a compilation needs: set on one track, absent on another, through
+    `model_dump(mode="json")` and back."""
+    release = make_release(
+        tracks=[
+            Track(position="A1", title="First Track", artist=SAMPLE_TRACK_ARTIST),
+            Track(position="A2", title="Second Track"),
+        ]
+    )
+
+    dumped = release.model_dump(mode="json")
+    assert dumped["tracks"][0]["artist"] == SAMPLE_TRACK_ARTIST
+    assert dumped["tracks"][1]["artist"] is None
+
+    reloaded = Release.model_validate(json.loads(json.dumps(dumped)))
+    assert reloaded == release
+    assert reloaded.tracks[0].artist == SAMPLE_TRACK_ARTIST
+    assert reloaded.tracks[1].artist is None
+
+
+def test_credit_has_no_artist_field() -> None:
+    """A track artist is not a role credit: `Credit` is untouched, so `artist` on one is
+    an extra and a validation error (decision 2026-09-06)."""
+    with pytest.raises(ValidationError):
+        Credit(role="Written-By", name="n", artist=SAMPLE_TRACK_ARTIST)
 
 
 def test_provenance_datetime_round_trips() -> None:
