@@ -26,8 +26,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mediacore.refs import Refs
 
-# Bumped only when the on-disk release.json shape changes (INTEGRATION.md §12).
-SCHEMA_VERSION = 1
+# Bumped only when the on-disk release.json shape changes (INTEGRATION.md §12). 2 since
+# `Track.artist`: `ContractModel` forbids extras, so a bundle carrying the new key is
+# *refused* by a 0.2.0 reader rather than read with the key ignored — a shape change,
+# not an additive one (decision 2026-09-06).
+SCHEMA_VERSION = 2
 
 # The contract's only closed vocabularies. `format` sits beside `medium` and is the
 # authority's own free text — never parsed, never validated against a list.
@@ -113,8 +116,16 @@ class Credit(ContractModel):
 
 
 class Track(ContractModel):
+    """One track as the release prints it. `artist` is the artist credited against *this
+    track* — what a compilation, a split, or a various-artists release prints beside the
+    title. `None` means the release prints no track-level artist; it does **not** mean
+    "same as the release artist" (absence is absence — a consumer that wants a display
+    artist falls back to `Release.artists` itself). A track artist is not a role credit:
+    `credits` stays for roles the authority spells out (`Written-By`, `saxophone`)."""
+
     position: str
     title: str
+    artist: str | None = None
     duration: str | None = None
     credits: list[Credit] = Field(default_factory=list)
 

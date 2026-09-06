@@ -24,6 +24,15 @@ executors share no context, so repeating a fact across plans in a batch is corre
   `from mediacore import Release, ...`.
 - Models are `extra="forbid"` and round-trip through `model_dump(mode="json")` /
   `model_validate` without loss.
+- `SCHEMA_VERSION` is **2** and the package is **0.3.0** (`INTEGRATION.md` §12, §13
+  2026-09-06). `Track { position, title, artist, duration, credits }`: `artist` is the
+  track-level artist a compilation prints, optional and defaulting to `None`, and `None`
+  is absence — never "same as the release artist". Because extras are forbidden, adding
+  a field is an on-disk shape change and not an additive one, which is why the schema
+  and the minor version both moved; a schema-1 bundle still reads, and `read_bundle`
+  still refuses anything newer than this install's `SCHEMA_VERSION`. No plan may
+  reintroduce a vinyl-specific field alongside it: `artist` is neutral, and
+  vinylCatalogue's `tracklist[].artist` is only its source.
 - Every `refs` field is **evidence recorded by an external source**, never identity
   (`INTEGRATION.md` §4). All are optional and default to `{}`; no plan may make one
   required, privilege a source, or add uniqueness semantics anywhere.

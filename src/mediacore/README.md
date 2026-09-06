@@ -18,7 +18,13 @@ Release, read_bundle, normalize_text` — never from a submodule.
     media, audio, links }` — the on-disk `release.json` shape.
   - `ArtistRef { name, sort_name, refs }`
   - `LabelRef { name, catalogue_number, refs }`
-  - `Track { position, title, duration, credits }`
+  - `Track { position, title, artist, duration, credits }` — `artist` is the artist
+    the release prints against *that track* (compilations, splits, various-artists
+    releases), optional and defaulting to `None`. `None` is **absence**, not "same as
+    the release artist": a consumer that wants a display artist falls back to
+    `Release.artists` itself. It is not a role credit — `credits` keeps the authority's
+    roles. Added at `SCHEMA_VERSION` 2 / package 0.3.0 (`INTEGRATION.md` §12, §13
+    2026-09-06); a bundle written without it reads with `artist` `None`.
   - `Credit { role, name, refs }`
   - `MediaFile { kind, role, sha256, file, mime, source_url, refs }` — `kind` is
     `"photo" | "external_photo"`; `sha256` is a lowercase 64-character hex digest
@@ -37,7 +43,9 @@ Release, read_bundle, normalize_text` — never from a submodule.
   - `Provenance { kind, id, label, exported_at }` — where this copy came from:
     evidence of a different kind, carrying no more authority than any other ref.
   - `Medium` = `"vinyl" | "cd" | "cassette" | "digital" | "other"`; `MediaKind` =
-    `"photo" | "external_photo"`; `SCHEMA_VERSION` = 1; `ContractModel` is the shared
+    `"photo" | "external_photo"`; `SCHEMA_VERSION` = 2 (bumped by `Track.artist`:
+    extras are forbidden, so a 0.2.0 reader *refuses* a bundle carrying the new key,
+    which makes an added field a shape change rather than an additive one); `ContractModel` is the shared
     `extra="forbid"` base; `MIN_ARTISTS` = 1. Also `BUNDLE_MEDIA_DIRNAME` (`"media"` —
     defined here and imported by `bundle.py`, so the directory name has one
     definition), `SHA256_HEX_PATTERN`, `BUNDLE_FILE_EXTENSION_PATTERN`,

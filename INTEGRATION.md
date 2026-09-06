@@ -50,7 +50,7 @@ format-agnostic; MusicBrainz maps onto it cleanly).
 
 ```
 Release
-  schema_version: int = 1
+  schema_version: int = 2
   refs: Refs                      # authority-keyed identity of THIS release (§4)
   provenance: list[Provenance]    # where this copy came from (§4)
   title: str
@@ -73,7 +73,8 @@ Release
 
 ArtistRef   { name: str, sort_name: str | None, refs: Refs }
 LabelRef    { name: str, catalogue_number: str | None, refs: Refs }
-Track       { position: str, title: str, duration: str | None, credits: list[Credit] }
+Track       { position: str, title: str, artist: str | None, duration: str | None,
+              credits: list[Credit] }
 Credit      { role: str, name: str, refs: Refs }
 MediaFile   { kind: "photo" | "external_photo", role: str | None, sha256: str,
               file: str, mime: str, source_url: str | None, refs: Refs }
@@ -90,6 +91,11 @@ Refs = dict[str, str]             # see §4 for key format
 - `Link.refs` says which entity the link is *about* — a Discogs artist URL carries
   `{"discogs:artist": "5682050"}` so a consumer can attach it to the matching node.
   The release's own link carries the release refs.
+- `Track.artist` is the artist the release prints against *that track* — compilations,
+  splits, various-artists releases. `None` means the release prints no track-level
+  artist; it does **not** mean "same as the release artist" (absence is absence — a
+  consumer that wants a display artist falls back to `Release.artists` itself). A track
+  artist is not a role credit: `Track.credits` keeps the roles (`Written-By`).
 - `MediaFile.role` is free text; vinylCatalogue emits its photo-role vocabulary
   (`sleeve_front`, `sleeve_back`, `label_a`, `label_b`), a CD source would emit its own.
   Consumers treat it as a caption hint, nothing more.
@@ -151,7 +157,7 @@ A *bundle* is a directory:
 
 ```
 <slug>/
-  release.json              # one Release, schema_version 1
+  release.json              # one Release, schema_version 2
   media/<sha256>.<ext>      # every MediaFile and AudioFile, named by content hash
 ```
 
@@ -281,7 +287,9 @@ disk generalised — not a shared database. Logged in §13.
     `released`, `format` from identity values. `medium = "vinyl"` — hard-coded in this
     adapter, which is the right place for the only vinyl fact.
   - `tracks`: from `record.tracklist` (values only, where the envelope state is
-    present). Track credits: `role` and `name` from the record; `refs["discogs:artist"]`
+    present), including `artist` from `record.tracklist[].artist` — the track-level
+    artist a compilation prints, dropped by every export before `mediacore` 0.3.0.
+    Track credits: `role` and `name` from the record; `refs["discogs:artist"]`
     resolved by matching `data["tracklist"][same position]["extraartists"]` on
     `(normalize_text(role), normalize_text(name))` — the role is normalized too, since
     it is hand-transcribed on one side and Discogs free text on the other (WP1 review,
@@ -353,6 +361,10 @@ carries `sha256`). Alembic migration. `NodeOut`/`InformationSourceOut`/`MediaOut
 - Nodes: one per `ArtistRef` (default `asset_type = "artist"`), one per `LabelRef`
   (`"label"`), one per distinct credited person across track/release credits
   (`"person"`). Each with `refs`. All defaults editable per row.
+- `Track.artist` is **not** mapped to a node: hNM's nodes are the release artists,
+  labels and credited people, and a track-level artist has no row of its own here. An
+  importer may ignore a contract field it has no use for — the field is the source's
+  to record, not every consumer's to import (§12).
 - Edges (defaults, each a row the human can retype or uncheck):
   - artist → label: type `released on`, `year_started` = year.
   - credited person → artist: type = the credit role as the authority spells it
@@ -398,6 +410,10 @@ result summary. No step advances without a click.
   "vinylcat:record": ...}`. Audio uploaded to the blob store; embed jobs enqueued for the
   models the human ticks (reuse the existing ingest/embed path); attached to the chosen
   dataset (existing or new), as the current ingest dialog does.
+- `Track.artist` may be ignored: the schema has one `artist_id` per song and it is the
+  album artist, so a compilation's per-track artists have nowhere to go until that is
+  widened (deliberately out of scope here, as the multi-artist rule above already is).
+  An importer may ignore a contract field it has no use for (§12).
 - **Already-present songs are skipped by default.** A track whose `sha256` or
   `(discogs:release, release:position)` matches an existing song is shown greyed with
   "already imported <date>" and an explicit *re-import anyway* toggle.
@@ -590,7 +606,15 @@ WP1–3 run in parallel once `v0.1.0` is tagged. Consumers pin
 `mediacore @ git+https://github.com/ssdesai/mediaCore.git@v0.1.0`. Before 1.0 a
 breaking change to §3 bumps the minor version and every consumer re-pins deliberately;
 `schema_version` changes only when the on-disk `release.json` shape changes. WP7a adds a
-module, not a field: `mediacore` **0.2.0**, `schema_version` unchanged.
+module, not a field: `mediacore` **0.2.0**, `schema_version` unchanged. `Track.artist`
+(2026-09-06) *is* a field, and in this contract that is a shape change rather than an
+additive one: every model is `extra="forbid"`, so a 0.2.0 reader **refuses** a bundle
+carrying `artist` instead of ignoring the key. `mediacore` **0.3.0**, `schema_version`
+**2**, tag `v0.3.0`. The compatibility runs one way: a 0.3.0 reader still reads a
+schema-1 bundle (the field defaults to `None`), and `read_bundle` still refuses any
+`schema_version` newer than the install's. Consumers re-pin deliberately, when they next
+need to read a new export; until then a 0.3.0-exported bundle is refused by their 0.2.0
+readers with the schema-version message, which is the designed behaviour.
 
 WP7 is also an experiment on the delegation tier itself — each of 7a–7e is built twice,
 once through the plan workflow and once by a single Opus delegate, from this section as
@@ -602,6 +626,32 @@ Each WP is executed in its own repo with that repo's plan workflow
 by an agent briefed with this file.
 
 ## 13. Decisions log
+
+- **2026-09-06 — `Track.artist`, and why one new field is `schema_version` 2.**
+  vinylCatalogue's export projected each track into `mediacore.Track { position, title,
+  duration, credits }`, so a signed-off compilation left the system with no track
+  artists at all. `Track` gains `artist: str | None = None`, after `title`.
+  - **The bump follows from `ContractModel`, not from the size of the change.** Extras
+    are forbidden, so a `mediacore` 0.2.0 reader rejects any bundle carrying `artist`
+    rather than dropping it silently. That makes an added field an on-disk shape change:
+    `SCHEMA_VERSION` 1 → 2, package 0.2.0 → **0.3.0**, tag `v0.3.0` cut by the human
+    after the PR merges. A 0.3.0 reader still reads a schema-1 bundle; §12 says how
+    consumers re-pin.
+  - **`None` is absence, not inheritance.** It means the release prints no track-level
+    artist. A consumer wanting a display artist falls back to `Release.artists` itself;
+    nothing in the contract does that fallback for it.
+  - **`Credit` is untouched.** A track artist is not a role credit, so nothing moves
+    into or out of `Track.credits`, which keeps the authority's roles (`Written-By`).
+  - **An absent artist is written as `"artist": null`, not omitted.** `write_bundle`
+    dumps the model whole (`model_dump(mode="json")`, no `exclude_none`), so every
+    optional field is already a present key — `duration`, `notes`, `year`. The new field
+    follows what the writer does rather than special-casing itself.
+  - **A frozen schema-1 bundle is a test asset**
+    (`tests/assets/its-saxy-schema-1/release.json`, the previous checked-in fixture
+    byte-for-byte). Backward reads are a promise to three repos, and only an artefact
+    written by the *old* code can hold this one to it.
+  - **Refs on a track artist are out of scope** — a `discogs:artist` ref belongs to the
+    §3/§4 question about refs on tracks, not to this field.
 
 - **2026-08-27 (WP7a) — `mediacore.store` implementation calls.** Taken while building
   §5.1; each one is either something §5.1 left open or a place the code is more specific
