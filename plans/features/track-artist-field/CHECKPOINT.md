@@ -1,7 +1,7 @@
 # Checkpoint: track-artist-field
 
-status: gating
-updated: 2026-09-06T22:58:27Z
+status: committed
+updated: 2026-09-06T22:59:23Z
 gate: all checks passed (5 checks: install, lint, fixture idempotent,
       wheel contains fixture, tests — 286 passed; 0 skipped)
 
@@ -24,7 +24,9 @@ gate: all checks passed (5 checks: install, lint, fixture idempotent,
 - [x] 5. `plans/BACKLOG.md` deleted — the review created it for exactly these two
       entries and both close here (ruling in NOTES.md → Rework).
 - [x] 6. NOTES.md "Rework" rulings; gate green.
-- [ ] 7. commit, push, PR comment on #13.
+- [x] 7. committed `5c1c2f4`, pushed to `origin track-artist-field`, and
+      commented on PR #13
+      (https://github.com/ssdesai/mediaCore/pull/13#issuecomment-5562779597).
 
 ## Learned
 - The fixture is untouched by the stamp: `make_fixture_its_saxy.py` builds a `Release`
