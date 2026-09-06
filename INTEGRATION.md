@@ -615,7 +615,11 @@ carrying `artist` instead of ignoring the key. `mediacore` **0.3.0**, `schema_ve
 schema-1 bundle (the field defaults to `None`), and `read_bundle` still refuses any
 `schema_version` newer than the install's. Consumers re-pin deliberately, when they next
 need to read a new export; until then a 0.3.0-exported bundle is refused by their 0.2.0
-readers with the schema-version message, which is the designed behaviour.
+readers with the schema-version message, which is the designed behaviour. Writing is the
+other direction and always **stamps**: `write_bundle` labels what it writes with the
+install's own `SCHEMA_VERSION`, so a schema-1 bundle re-written by 0.3.0 comes out
+labelled 2 — the label describes the bytes, and the older reader gets the upgrade
+message above rather than an opaque validation error (§13, 2026-09-06).
 
 WP7 is also an experiment on the delegation tier itself — each of 7a–7e is built twice,
 once through the plan workflow and once by a single Opus delegate, from this section as
@@ -627,6 +631,32 @@ Each WP is executed in its own repo with that repo's plan workflow
 by an agent briefed with this file.
 
 ## 13. Decisions log
+
+- **2026-09-06 — `write_bundle` stamps `schema_version`; reading still preserves it.**
+  `read_bundle` keeps whatever version the file carried on the model it returns, and the
+  writer used to dump that model whole — so `write_bundle(read_bundle(old), …)`, and
+  `BundleStore.put` with a `Release` that came from `open`, emitted a bundle labelled
+  `schema_version` 1 whose tracks carried `artist`. `Track.artist` is the first release
+  in which that label can be wrong, which is what forced the call.
+  - **The writer stamps.** `write_bundle` — and therefore `BundleStore.put` — always
+    writes `schema_version: SCHEMA_VERSION`, whatever version the `Release` was read
+    with. What reaches disk is this install's shape, so the label now describes the
+    bytes beside it: a 0.2.0 reader refuses the re-written bundle with the "upgrade
+    mediacore" message §12 promises instead of failing it on `extra="forbid"`, and a
+    store lists the entry at the version that can actually parse it (§5.1's `list`
+    reports `schema_version` without validating, so a wrong one is what a consumer's
+    inbox would show).
+  - **Reading is unchanged.** The version stays on the in-memory `Release` as the file
+    spelled it — that is what keeps a backward read a real read, and what lets the
+    frozen schema-1 asset prove anything. Only writing stamps, and it stamps the payload
+    rather than the model, so the object handed to `write_bundle` is not mutated.
+  - **The alternative was refused.** Having the reader decline to return a
+    stale-versioned model would break §12's one-way compatibility promise — a 0.3.0
+    reader *does* read a schema-1 bundle — and would move the failure to the consumer
+    that only wanted to look at an old export.
+  - Pinned by `test_write_bundle_stamps_the_current_schema_version_on_a_schema_1_release`
+    (over the frozen asset) and, on both store backends,
+    `test_put_stamps_the_current_schema_version_on_a_schema_1_release`.
 
 - **2026-09-06 — `Track.artist`, and why one new field is `schema_version` 2.**
   vinylCatalogue's export projected each track into `mediacore.Track { position, title,

@@ -66,3 +66,57 @@ fixture, and the tests of point 5.
 Nothing in scope. The manifest's "Deliberately excluded" items (every consumer's re-pin,
 per-track `refs`, creating the tag) are out of scope by the spec's own decision and are
 recorded there, so no `plans/BACKLOG.md` was created — this repo still has none.
+
+## Rework (review escalations 1 and 2)
+
+The review pass (`plans/review-report.md`) escalated two invariants nothing asserted.
+Both are closed here, not deferred; the rulings the brief left to this pass:
+
+- **The writer stamps, the reader does not.** `write_bundle` labels every file it
+  writes with this install's `SCHEMA_VERSION`, whatever version the `Release` carries,
+  so a schema-1 bundle re-written by 0.3.0 comes out labelled 2 — which is what its
+  bytes are, since the writer dumps today's model and every track carries `artist`. The
+  alternative the backlog named (the reader refusing to hand back a stale-versioned
+  model) was refused: it would break §12's one-way promise that a 0.3.0 reader *does*
+  read a schema-1 bundle, and would punish a consumer that only wanted to look at an old
+  export. Reading is untouched — the file's own version stays on the in-memory object,
+  which is what keeps the frozen schema-1 asset and its backward-read test meaningful.
+  Recorded in `INTEGRATION.md` §12 (beside the 0.3.0 paragraph) and §13 (a second
+  2026-09-06 entry).
+- **The stamp lives in the payload, not in the model.** `release_payload(release)` in
+  `bundle.py` dumps the release and overwrites `schema_version`; `_populate` serialises
+  that. The `Release` handed to `write_bundle` is never mutated, so a caller's object
+  still says what it was read with. `store.py`'s `_release_payload` now delegates to it
+  rather than calling `model_dump` itself: `put` derives the returned `BundleEntry` from
+  the same payload the file gets, so entry, listing and file can never disagree about a
+  version — which was half the escalation (a store listing 1 for a payload only a 0.3.0
+  reader can parse).
+- **`SCHEMA_VERSION_FIELD` moved to `bundle.py`.** The key name was a literal in
+  `store.py` only; the writer now needs it too, and duplicating the string is what
+  `CONVENTIONS.md` forbids. It is defined where the payload is serialised and imported
+  by `store.py`, exactly as `BUNDLE_MEDIA_DIRNAME` is defined in `release.py` and
+  imported by `bundle.py`. `tests/test_store.py` still imports it from
+  `mediacore.store`, which is unchanged as an import path.
+- **The fixture did not move.** The generator builds a `Release` at the default
+  `schema_version` (2), so stamping is a no-op for it and
+  `fixtures/its-saxy/release.json` is byte-identical; the gate's idempotency step
+  confirms it.
+- **The version assertion went into `tests/test_release.py`.** The tests README names no
+  file covering the package surface — `test_release.py` is the §3 models,
+  `test_fixture.py` the fixture — and `plans/PROJECT_FACTS.md` pins the suite as
+  mirroring `src/`, so a new `tests/test_package.py` would have been a sixth file
+  outside that mirror for one assertion. It sits beside
+  `test_schema_version_defaults_to_the_installed_version`, the other test about what
+  this install *is*, and the README entry says so.
+- **`plans/BACKLOG.md` is deleted, not emptied.** The review created it for exactly
+  these two entries (its report says so) and both close here, so the file has no content
+  left; the brief's instruction on that case is to delete it and say which. This repo
+  therefore still has no backlog, as the "Left unbuilt" line above says — that line
+  predates the review's file and is true again.
+
+### Deviations
+
+None. Both escalations are implemented as the brief settled them, with the tests it
+named: the frozen asset written and re-read in `tests/test_bundle.py`, `BundleStore.put`
+through the parametrized `harness` fixture in `tests/test_store.py` (both backends, no
+skip), and the `__version__` assertion in `tests/test_release.py`.

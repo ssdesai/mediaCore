@@ -4,11 +4,13 @@ reads is asserted here; a field that round-trips wrong here is a bug in three re
 
 from __future__ import annotations
 
+import importlib.metadata
 import json
 
 import pytest
 from pydantic import ValidationError
 
+import mediacore
 from mediacore import (
     SCHEMA_VERSION,
     ArtistRef,
@@ -40,6 +42,10 @@ CURRENT_SCHEMA_VERSION = 2
 # A track-level artist: what a compilation, split, or various-artists release prints
 # against one track (§3, `Track.artist`).
 SAMPLE_TRACK_ARTIST = "Peter Tetteroo"
+
+# The name the wheel and every consumer's pin install under; the metadata side of the
+# version the package also states in `mediacore.__version__`.
+DISTRIBUTION_NAME = "mediacore"
 
 
 def full_release() -> Release:
@@ -147,6 +153,14 @@ def test_schema_version_defaults_to_the_installed_version() -> None:
     dumped = release.model_dump(mode="json")
     reloaded = Release.model_validate(dumped)
     assert reloaded.schema_version == CURRENT_SCHEMA_VERSION
+
+
+def test_package_version_matches_the_installed_distribution() -> None:
+    """`mediacore.__version__` and `pyproject.toml`'s `version` are two hand-kept copies
+    of one number — three with the `v0.3.0` tag consumers pin (§12) — and a bump that
+    moves one and not the other is otherwise green everywhere. The gate installs the
+    package, so the metadata side of this assertion is the real one."""
+    assert mediacore.__version__ == importlib.metadata.version(DISTRIBUTION_NAME)
 
 
 def test_track_artist_defaults_to_none() -> None:

@@ -52,7 +52,12 @@ executors share no context, so repeating a fact across plans in a batch is corre
   (equal passes) — a forward-compatibility guard for a consumer running an older
   `mediacore` than the bundle was written with.
 - `write_bundle` is atomic: it stages into a sibling temp directory and swaps it into
-  place. A failed write leaves the previous `dest` intact, or nothing at all.
+  place. A failed write leaves the previous `dest` intact, or nothing at all. It also
+  **stamps** `schema_version` with this install's (`INTEGRATION.md` §12, §13
+  2026-09-06): whatever version the `Release` carries, the file — and so
+  `BundleStore.put`'s entry — is labelled with the shape it was written in, while
+  reading still preserves the file's own version on the model. No plan may make the
+  writer emit a version it did not write.
 - `mediacore.store` (§5.1) adds `open_store(uri)` → `BundleStore` with exactly
   `list` / `open` / `put` and no delete, over `file://` and `s3://`. Key layout
   `<root>/<record ULID>/<exported_at, ISO basic>/<slug>/<bundle>`; `BundleEntry

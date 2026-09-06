@@ -243,6 +243,31 @@ def test_the_frozen_schema_1_asset_carries_no_artist_key():
     assert all("artist" not in track for track in payload["tracks"])
 
 
+def test_write_bundle_stamps_the_current_schema_version_on_a_schema_1_release(tmp_path):
+    """Rewriting a schema-1 bundle relabels it (§12, §13 2026-09-06). What the writer
+    puts on disk is today's shape — every track carries `artist` — so the label has to
+    say 2; left at 1 it would lie, and a 0.2.0 reader would fail the file on
+    `extra="forbid"` instead of being told to upgrade `mediacore`. Reading is unchanged:
+    the release the reader handed back still says 1."""
+    stale = read_bundle(FROZEN_SCHEMA_1_BUNDLE, verify=False)
+    # The asset is `release.json` alone (tests/assets/README.md), so there are no media
+    # bytes to give `write_bundle`; nothing about the stamp depends on them.
+    without_files = stale.model_copy(update={"media": [], "audio": []})
+    dest = tmp_path / BUNDLE_DIRNAME
+
+    write_bundle(without_files, dest, {})
+
+    assert without_files.schema_version == FROZEN_SCHEMA_VERSION
+    payload = json.loads((dest / RELEASE_FILENAME).read_text())
+    assert payload["schema_version"] == SCHEMA_VERSION
+    assert all("artist" in track for track in payload["tracks"])
+
+    rewritten = read_bundle(dest, verify=False)
+    assert rewritten.schema_version == SCHEMA_VERSION
+    assert len(rewritten.tracks) == FROZEN_TRACK_COUNT
+    assert all(track.artist is None for track in rewritten.tracks)
+
+
 # --- size_bytes is verified against the actual audio file on disk -------------------
 
 

@@ -5,3 +5,6 @@
 {"at":"2026-09-06T22:44:27Z","event":"pass_start","queue":"review"}
 {"at":"2026-09-06T22:44:27Z","event":"plan_start","plan":"01-review-opus","queue":"review"}
 {"at":"2026-09-06T22:49:19Z","event":"plan_end","plan":"01-review-opus","queue":"review","rc":"0"}
+{"at":"2026-09-06T22:49:25Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/mediaCore/pull/13"}
+{"at":"2026-09-06T22:49:25Z","event":"pass_end","queue":"review","reason":"all review plans complete"}
+{"at":"2026-09-06T22:57:51Z","event":"checkpoint","status":"gating"}

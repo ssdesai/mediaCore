@@ -53,7 +53,9 @@ from urllib.request import url2pathname
 
 from mediacore.bundle import (
     BUNDLE_RELEASE_FILENAME,
+    SCHEMA_VERSION_FIELD,
     read_bundle,
+    release_payload,
     write_bundle,
 )
 from mediacore.normalize import normalize_text
@@ -78,7 +80,7 @@ EXPORTED_AT_KEY_FORMAT = "%Y%m%dT%H%M%SZ"
 
 # `release.json` fields read out of the raw JSON mapping by `list`, which must not model
 # validate (see the module docstring). Named because the strings are the contract.
-SCHEMA_VERSION_FIELD = "schema_version"
+# `SCHEMA_VERSION_FIELD` comes from `bundle`, which stamps it on write.
 PROVENANCE_FIELD = "provenance"
 PROVENANCE_KIND_FIELD = "kind"
 PROVENANCE_ID_FIELD = "id"
@@ -569,8 +571,12 @@ def _is_missing_bucket(exc: BaseException | None) -> bool:
 
 def _release_payload(release: Release) -> dict[str, Any]:
     """The release as `list` would read it back off disk, so one derivation serves both
-    `put` and `list` and the two can never disagree about an entry."""
-    return release.model_dump(mode="json")
+    `put` and `list` and the two can never disagree about an entry.
+
+    That is why it is the *writer's* payload rather than a plain `model_dump`: since
+    `write_bundle` stamps `schema_version` (§13 2026-09-06), a release read at schema 1
+    and `put` again is stored — and therefore listed — as 2."""
+    return release_payload(release)
 
 
 def _entry_from_payload(payload: Any, uri: str) -> BundleEntry:
