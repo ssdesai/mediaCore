@@ -45,7 +45,8 @@ Release, read_bundle, normalize_text` — never from a submodule.
   - `Medium` = `"vinyl" | "cd" | "cassette" | "digital" | "other"`; `MediaKind` =
     `"photo" | "external_photo"`; `SCHEMA_VERSION` = 2 (bumped by `Track.artist`:
     extras are forbidden, so a 0.2.0 reader *refuses* a bundle carrying the new key,
-    which makes an added field a shape change rather than an additive one); `ContractModel` is the shared
+    which makes an added field a shape change rather than an additive one);
+    `ContractModel` is the shared
     `extra="forbid"` base; `MIN_ARTISTS` = 1. Also `BUNDLE_MEDIA_DIRNAME` (`"media"` —
     defined here and imported by `bundle.py`, so the directory name has one
     definition), `SHA256_HEX_PATTERN`, `BUNDLE_FILE_EXTENSION_PATTERN`,

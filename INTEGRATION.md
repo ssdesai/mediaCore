@@ -568,7 +568,8 @@ Metadata (read from the live `record.json` on 2026-08-25; read-only):
   catalogue number `SAAE 1012`; country `South Africa`; year unknown (Discogs says 0);
   format `Vinyl, LP, Album`; medium `vinyl`
 - genres `Jazz, Rock, Funk / Soul, Blues, Folk, World, & Country, Stage & Screen`; no styles
-- tracks (position, title, duration — the record's verified values, v0.1.1):
+- tracks (position, title, duration — the record's verified values, v0.1.1; no track
+  carries its own `artist`, this being one artist's album and not a compilation):
   A1 LOVE GROWS 1:57 · A2 ALL I HAVE TO DO IS DREAM 2:37 · A3 JY IS MY LIEFLING 2:10 ·
   A4 I'LL NEVER FALL IN LOVE AGAIN 1:50 · A5 DOMINIQUE 2:07 · A6 THERESA 2:31 ·
   B1 SUGAR SUGAR 2:17 · B2 Love Theme From Romeo And Juliet 2:05 · B3 SEEMAN 2:07 ·
