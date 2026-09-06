@@ -76,6 +76,6 @@ implementer's.
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": ["ed088063-7aea-498e-84b1-7503d4bd88e1"],
-  "subagents": ["af53d0bdccf903f26"]
+  "subagents": ["af53d0bdccf903f26", "af2d221edb1f32f38"]
 }
 ```
