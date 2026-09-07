@@ -41,7 +41,9 @@ set -uo pipefail
 #       id (selected_by, cwd recorded), carries home the trailing timing stamps the review
 #       pass wrote after the PR hook committed — `pr_opened`, with its URL, and `pass_end`
 #       — stamps `to`, commits exactly the cost files as `S: cost records`, pushes main,
-#       removes the worktree and the branch;
+#       removes the worktree and the branch, and prints one `pinned` line instead of
+#       telling the human to pin a delegate the manifest already pins
+#       (self/features/recovered-duration-lower-bound/README.md, item 2);
 #   C4. --keep-worktree --no-push keeps both, pushes nothing, and carries no line twice;
 #   C5. a close that matches nothing writes nothing, stamps nothing, rolls its timing
 #       carry back and so leaves the primary clean and re-runnable.
@@ -332,6 +334,11 @@ check "C3k. the output lists what it claimed, by id and by how" 'grep -q "$SESSI
 # only because the close carried it — and exactly once, since the carry matches whole lines.
 PRIMARY_TIMING="$AT/self/features/$SLUG/timing.jsonl"
 check "C3l. the trailing pr_opened stamp is on main, with its URL, exactly once" '[[ "$(grep -c "\"event\":\"pr_opened\"" "$PRIMARY_TIMING")" == "1" ]] && grep -q "example.invalid/pr/1" "$PRIMARY_TIMING"'
+# The delegate this close claimed was pinned in the manifest before the close ran, which
+# is the ordinary case and the shape all seven closes of 2026-09-07 had. The close used
+# to print it as unclaimed and then tell the human to pin what was already pinned.
+check "C3m. a delegate already pinned in the manifest is not printed as unclaimed, nor is the pin instruction" '! grep -q "Pin each in" <<<"$out"'
+check "C3n. ...it is one line saying how many are already pinned" 'grep -q "pinned    1 delegate(s) already pinned in the manifest" <<<"$out"'
 
 # ── C4. --keep-worktree --no-push ─────────────────────────────────────────────
 SLUG2="lifecycle-two"; WT2="$AT-$SLUG2"

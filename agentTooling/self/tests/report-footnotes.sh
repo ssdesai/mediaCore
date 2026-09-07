@@ -38,12 +38,23 @@ set -uo pipefail
 #      `{plan, queue, reason}` shape `cost.unpriced_plans[]` does — both reason
 #      branches, since a single return value must not satisfy them both;
 #   5. a feature whose plans carry durations has an unmarked Time table and an empty
-#      `missing_duration_plans[]`.
+#      `missing_duration_plans[]`;
+#   6. a plan whose `duration_ms` is null but whose attempt carries a
+#      `recovered_duration_s` contributes that span to its bucket and to the total,
+#      is listed under `time.recovered_duration_plans[]` with the `{plan, queue, reason}`
+#      shape plus `recovered_s`, is NOT also listed under `missing_duration_plans[]`,
+#      and is marked `‡` — a second mark, because `†` means "no figure" and this row has
+#      one — with a footnote naming the plan, the seconds and that it is a transcript
+#      span. `total_is_partial` stays true: a transcript span is not a wall clock
+#      (self/features/recovered-duration-lower-bound/README.md, item 1 points 3 and 4);
+#   7. a plan whose transcript is gone renders exactly as it did before item 1 — `†`,
+#      the missing-duration footnote, and no `‡` anywhere.
 #
 # RED until items 5 and 6 land: phase 1 finds a bare `| review | $0.0000 | 0.0% |` and
 # an **Unpriced plans** paragraph, phase 4 finds a bare `| review | 0.0 |` and a list of
-# stems where the dicts should be. A missing analysis script is tolerated rather than
-# fatal, the cost-recovery.sh convention.
+# stems where the dicts should be. Phase 6 was RED until recovered-duration-lower-bound
+# landed: the recovered span was on the attempt and no table read it. A missing analysis
+# script is tolerated rather than fatal, the cost-recovery.sh convention.
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/report-footnotes.XXXXXX")"
@@ -69,6 +80,15 @@ PRICED_MS="480000"          # eight minutes — the backlog entry's own example
 # The mark the two tables share. One glyph, asserted by value here so a change to it is
 # a visible change to both tables at once.
 MARK="†"
+# The Time table's second mark, and the reason there are two: `†` says the bucket has no
+# figure, `‡` says it has one and it is a lower bound. Asserted by value for the same
+# reason MARK is.
+RECOVERED_MARK="‡"
+# The recovered span one attempt below carries, in seconds and in the minutes the table
+# renders it as. Distinct from PRICED_MS's eight minutes, so 6c cannot pass by reading
+# the wrong fixture.
+RECOVERED_S="450.0"
+RECOVERED_MIN="7.5"
 
 # ── Fixture helpers ───────────────────────────────────────────────────────────
 
@@ -133,6 +153,40 @@ $event_line
   "attempts": [
     {"session_id": "sess-$(basename "$(dirname "$path")")", "outcome": "complete", "total_cost_usd": $cost, "num_turns": null, "duration_ms": $duration}
   ]
+}
+JSONEOF
+}
+
+# recovered_usage_json <path> <total_cost_usd|null> <recovered_duration_s> — the sidecar
+# `recover_attempts.py` leaves behind once it has priced an attempt AND bounded it from
+# the same transcript: `duration_ms` still null (the CLI never reported one and a
+# recovered figure never becomes a measured one), `recovered_duration_s` on the attempt
+# and summed at the top level. See analysis/README.md → usage.json.
+recovered_usage_json() {
+  local path="$1" cost="$2" recovered="$3"
+  local sid="sess-$(basename "$(dirname "$path")")"
+  cat > "$path" <<JSONEOF
+{
+  "plan": "01-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "$sid",
+  "result_event": "missing",
+  "subtype": null,
+  "is_error": null,
+  "num_turns": null,
+  "duration_ms": null,
+  "total_cost_usd": $cost,
+  "usage": {"input_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "output_tokens": 0},
+  "model_usage": {},
+  "permission_denials": 0,
+  "tool_counts": {},
+  "files_edited": [],
+  "edit_count": 0,
+  "attempts": [
+    {"session_id": "$sid", "outcome": "complete", "total_cost_usd": $cost, "num_turns": null, "duration_ms": null, "recovered_duration_s": $recovered, "recovered_from": "transcript"}
+  ],
+  "recovered_duration_s": $recovered
 }
 JSONEOF
 }
@@ -242,6 +296,43 @@ r5a="$(V field_equals "$D3/report.json" time.missing_duration_plans '[]')"
 check "5a. a priced, timed feature has an empty missing_duration_plans (got $r5a)" '[[ "$r5a" == "True" ]]'
 check "5b. ...and its Time table carries no mark" '! grep -qF "$MARK review: no duration" "$M3"'
 check "5c. ...its review minutes being the sidecar's own eight (got: $(grep -F "| review | " "$M3" | tail -1))" 'grep -qF "| review | 8.0 |" "$M3"'
+
+# ── 6: a recovered duration is a figure, and a lower bound ────────────────────
+# The plan is priced and its `duration_ms` is null, exactly like rf-noduration above —
+# the one difference is that recovery reached its transcript and wrote the span. The row
+# must therefore stop reading `0.0 †` and start reading `7.5 ‡`.
+D6="$(feature_dir rf-recovered)"
+mkdir -p "$D6/review/complete"
+plan_md "$D6/review/complete/01-review-opus.md"
+echo "review pass complete" > "$D6/review/complete/01-review-opus.progress.md"
+recovered_usage_json "$D6/review/complete/01-review-opus.usage.json" "$PRICED_COST" "$RECOVERED_S"
+report_for rf-recovered
+rc6=$?
+R6="$D6/report.json"
+M6="$D6/report.md"
+check "6a. a recovered-duration feature reports cleanly (report.py exit $rc6)" '(( rc6 == 0 ))'
+r6b="$(V field_equals "$R6" time.recovered_duration_plans '[{"plan": "01-review-opus", "queue": "review", "reason": "no result event", "recovered_s": 450.0}]')"
+check "6b. time.recovered_duration_plans carries {plan, queue, reason} plus recovered_s (got $r6b)" '[[ "$r6b" == "True" ]]'
+r6c="$(V field_equals "$R6" time.missing_duration_plans '[]')"
+check "6c. ...and the plan is NOT also listed as missing (got $r6c)" '[[ "$r6c" == "True" ]]'
+r6d="$(V field_equals "$R6" time.review_s '450.0')"
+check "6d. the recovered span is the review bucket's minutes (got $r6d)" '[[ "$r6d" == "True" ]]'
+check "6e. the Time table's review row carries the span and the recovered mark" 'grep -qF "| review | $RECOVERED_MIN $RECOVERED_MARK |" "$M6"'
+check "6f. ...and not the missing-figure mark, which means something else" '! grep -qF "| review | $RECOVERED_MIN $MARK" "$M6"'
+check "6g. ...with a footnote naming the plan, the seconds and the transcript span" 'grep -qF "$RECOVERED_MARK review: recovered 450.0s for 01-review-opus" "$M6" && grep -q "transcript span" "$M6"'
+r6h="$(V field_equals "$R6" time.total_is_partial 'true')"
+check "6h. the total stays partial — a transcript span is not the executor's wall clock (got $r6h)" '[[ "$r6h" == "True" ]]'
+check "6i. ...so the lower-bound line stays" 'grep -qF "**This total is a lower bound**" "$M6"'
+check "6j. the Cost table is untouched: priced, unmarked" 'grep -qF "| review | \$2.5000 | 100.0% |" "$M6"'
+
+# ── 7: a transcript that is gone renders as it did before ─────────────────────
+# rf-noduration from phase 4: same null duration_ms, no recovered span. Nothing about it
+# may change, which is the half of the assertion the feature is judged by that says an
+# attempt whose transcript is gone still renders as it does today.
+r7a="$(V field_equals "$R4" time.recovered_duration_plans '[]')"
+check "7a. a plan with no recovered span has an empty recovered_duration_plans (got $r7a)" '[[ "$r7a" == "True" ]]'
+check "7b. ...its row still carries the missing-figure mark and a bare 0.0" 'grep -qF "| review | 0.0 $MARK |" "$M4"'
+check "7c. ...and no recovered mark appears anywhere in its report" '! grep -qF "$RECOVERED_MARK" "$M4"'
 
 echo
 if (( fails > 0 )); then echo "report-footnotes: $fails assertion(s) FAILED"; exit 1; fi

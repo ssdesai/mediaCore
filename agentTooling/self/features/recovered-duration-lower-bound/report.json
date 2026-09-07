@@ -1,0 +1,108 @@
+{
+  "slug": "recovered-duration-lower-bound",
+  "generated_at": "2026-09-07T20:03:41.797466+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 69.39377875,
+    "build": 69.39377875,
+    "verify": 0.0,
+    "review": 3.1853444999999994,
+    "total": 72.57912325,
+    "planning_pct": 0.0,
+    "build_pct": 95.6112111067696,
+    "verify_pct": 0.0,
+    "review_pct": 4.388788893230395,
+    "cost_per_plan": 72.57912325,
+    "cost_per_file": 18.1447808125,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 78746,
+    "planning_subagents_s": 2694,
+    "planning_s": 0.0,
+    "implementer_s": 81440,
+    "build_s": 81440.0,
+    "verify_s": 0.0,
+    "review_s": 419.265,
+    "executor_s": 81859.265,
+    "total_s": 81859.265,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-07T16:18:18+00:00",
+      "last_at": "2026-09-07T19:49:07+00:00",
+      "batch_span_s": 12649.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 428.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 421.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-09-07T19:30:08+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/34"
+    },
+    "tests_s": 332.0,
+    "direct_build_s": 812.0,
+    "gate_s": 114.0
+  },
+  "planning_cost_split": {
+    "subagents": 18.68614575,
+    "sessions": 50.707632999999994
+  },
+  "cold_start_tax_tokens": 135231,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 44,
+      "total_cost_usd": 3.1853444999999994,
+      "total_duration_s": 419.265,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "88-review-opus",
+      "edit_count": 5,
+      "files_edited": 4,
+      "churn_ratio": 1.25
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "88-review-opus",
+      "plan_md_lines": 65,
+      "loc_changed": "not computed: streams unavailable"
+    }
+  ],
+  "re_hunting": "not computed: streams unavailable",
+  "plan_drift": [
+    {
+      "plan": "88-review-opus",
+      "edited_not_listed": [
+        "analysis/README.md",
+        "analysis/report.py",
+        "self/features/recovered-duration-lower-bound/NOTES.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": "not computed: streams unavailable",
+  "warnings": []
+}

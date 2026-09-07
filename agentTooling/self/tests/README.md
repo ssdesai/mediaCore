@@ -5,6 +5,13 @@ exits non-zero on a failed assertion and prints one `ok`/`FAIL` line per check; 
 calls a model or the network. `../PROJECT_FACTS.md` → Tests says there is no test
 *runner* here — that is still true; these are scripts the gate `record`s directly.
 
+**No test reads or writes the real `~/.claude`.** The seam is `$HOME`: every script here
+that touches a transcript or the claims ledger exports `HOME` to its own `mktemp -d`
+before calling a script under `analysis/`, and `Path.home()` — which resolves the
+`~/.claude/projects/` glob and `claims_ledger_path()` alike — follows it. There is no
+narrower override, deliberately: one that moved the ledger alone would let a test write
+the ledger under `mktemp -d` while still reading the machine's own transcripts.
+
 - `level-sentinel.sh` — copies the runner scripts into a `mktemp -d` checkout with a stub
   `claude` (exit code from `CLAUDE_STUB_RC`) and a stub `self/gate.sh` (verdict from
   `GATE_STUB_VERDICT`), then asserts the level-sentinel contract `run-batch.sh` depends
@@ -68,7 +75,9 @@ calls a model or the network. `../PROJECT_FACTS.md` → Tests says there is no t
   alike, carries the review pass's trailing timing stamps home — the `pr_opened` line
   with its URL, written after the PR hook had already committed, reaches `main` exactly
   once, and a second close over a kept worktree duplicates nothing — stamps `to`, commits
-  exactly the cost files as `S: cost records`, removes the
+  exactly the cost files as `S: cost records`, prints one
+  `pinned    N delegate(s) already pinned in the manifest` line instead of telling the
+  human to pin a delegate the manifest already pins, removes the
   worktree and branch (keeping both under `--keep-worktree --no-push`), and writes and
   stamps nothing when the capture matches nothing — rolling that carry back, so a refused
   close leaves the primary byte-identical and clean rather than dirty and refusing its own
@@ -201,6 +210,27 @@ calls a model or the network. `../PROJECT_FACTS.md` → Tests says there is no t
   `QUEUE_COST_BUCKETS` import guard, and `feature-close.sh`'s recovery step,
   `rollback_recovery`, `closed_feature_on_main` and `is_cost_usage_path`; RED until each
   landed.
+- `recover-duration.sh` — `recover-at-close.sh`'s phase-B scaffolding on its own:
+  `analysis/{pricing,roots,transcript,recover_attempts}.py` in a throwaway checkout, a
+  synthesized `self/features/` corpus of `usage.json` sidecars, and
+  `~/.claude/projects/*/<session_id>.jsonl` transcripts under a redirected `$HOME`.
+  Asserts the lower bound `recover_attempts.py` derives beside the dollars
+  (`self/features/recovered-duration-lower-bound/README.md`, item 1): an unpriced attempt
+  whose transcript survives gains `recovered_duration_s`, the seconds between the
+  transcript's **first and last timestamped lines** — the fixture's last line is a `user`
+  line later than any assistant response, so a span taken over
+  `iter_billable_messages`'s yields instead of over the transcript fails the assertion —
+  while `total_cost_usd` and `duration_ms` both stay null; the sidecar's top-level
+  `recovered_duration_s` is the sum over its recovered attempts, as the top-level
+  `recovered_cost_usd` beside it already was; a transcript with fewer than two
+  timestamped lines writes no duration at all rather than `0.0`, and no top-level key
+  either; an attempt whose transcript is gone is left byte-identical and reported
+  unrecoverable; an attempt carrying a recovered cost and no duration — every attempt
+  recovered before this existed — is skipped by an ordinary run and backfilled by
+  `--force`; and an attempt with a measured `duration_ms` is never visited. Depends on
+  `recover_attempts.py`'s `recover_attempt` returning the span in its field dict and on
+  its top-level merge writing the duration key only when some attempt carries one;
+  RED until both landed.
 - `capture-guard.sh` — copies `analysis/{pricing,roots,transcript,capture_planning}.py` into
   a throwaway checkout, synthesizes one feature manifest and, under a redirected `$HOME`,
   the `~/.claude/projects/*/<session_id>.jsonl` transcripts capture selects on, and asserts
@@ -270,6 +300,47 @@ calls a model or the network. `../PROJECT_FACTS.md` → Tests says there is no t
   `<repo>/<slug>` outruns the 26-character pin column is, the agent id prints untruncated
   for `feature-close.sh` to read, and `--for` without `--unclaimed` or not shaped
   `<repo>/<slug>` is a usage error. RED until the subagent walk landed.
+- `claims-ledger.sh` — `subagent-capture.sh`'s scaffolding, asserting what the ledger at
+  `$HOME/.claude/subagent-claims.json` counts as claimed
+  (`self/features/recovered-duration-lower-bound/README.md`, items 2 and 3, plus that
+  feature's two review escalations). Four parts.
+  **A**: `--list-subagents --unclaimed --for <repo>/<slug>` drops a delegate whose id is
+  already in that feature's manifest `subagents` — "unclaimed" used to mean "not claimed
+  through a branch", so every close printed its own pinned delegates and told the human
+  to pin them — while an unpinned sibling briefed for the same feature is still listed
+  with the `Pin each in` advice beside it, and with every delegate pinned the list is
+  empty and the advice is gone. A delegate already in the ledger is still dropped, read
+  from a **legacy flat** ledger file (agent id → claim, no section keys — the shape on
+  every machine today), which is how that half asserts an old ledger still loads. **B**:
+  two manifests pinning one session id — the coordinator that spans features. The second
+  capture is *not* refused the way a doubly-claimed subagent is, its `planning.json`
+  session entry gains `also_claimed_by: ["<repo>/<slug>"]`, the ledger holds both claims
+  under that session id as a **list** (a session may have many claimants, a subagent
+  exactly one), re-capturing the first feature annotates it symmetrically, and
+  `report.py` renders `cost.shared_sessions[{session_id, cost_usd, also_claimed_by}]`
+  with one footnote under the Cost table naming the session and the other feature.
+  **C**: the annotate-only path over a record that is already **frozen** — two features
+  each captured while the ledger held no claim on their shared coordinator, which is the
+  shape the seven closes of 2026-09-07 left behind. One plain `capture_planning.py --all`
+  (no `--recapture`, what `sweep.sh` runs) leaves each of them naming the other, and it
+  does so in a single run because every frozen record is registered in the ledger before
+  any is annotated — convergence must not depend on the order the corpus is walked in.
+  Everything else in both files is byte-identical (asserted over the whole record with
+  `also_claimed_by` stripped, not over a list of fields), the run reports them as
+  `annotated`, `report.py` then renders the footnote, and a second `--all` writes
+  nothing. The shared session's transcript is **deleted before the sweep**, which is what
+  asserts the path opens none — the reason a frozen record can take it at all. **D**: the
+  same-slug corpus preference — a `plans/features/<slug>` pinning a delegate and a
+  `self/features/<slug>` of the same name that does not. Under `--self` the delegate is
+  still listed as unclaimed (the self corpus owns the query), without `--self` it is not,
+  and a slug the queried corpus does not hold at all falls back to the slug alone across
+  both. Before it, the other corpus's pin silenced `feature-close.sh`'s stop-on-unpinned
+  guard and the delegate was never priced.
+  Depends on `capture_planning.py`'s `load_ledger`/`save_ledger` two-section shape,
+  `manifest_pinned_subagents`, `register_frozen_claims`/`annotate_frozen_record`, and
+  `report.py`'s `compute_shared_sessions`; RED until each landed. D writes into
+  `$TMP/plans/features`, the host repo's corpus, which `all_features_roots()` resolves
+  as the sibling of the throwaway agentTooling checkout.
 - `timestamps-are-utc.sh` — same scaffolding, asserting the UTC convention in
   `analysis/README.md` → "Every instant is UTC": `transcript.utc_date` dates an offset
   timestamp by its UTC day (`2026-07-01T23:00:00-04:00` → `2026-07-02`), a session's start
@@ -529,3 +600,15 @@ calls a model or the network. `../PROJECT_FACTS.md` → Tests says there is no t
   `MISSING_FIGURE_MARK`, `group_by_bucket`/`bucket_mark`/`bucket_footnote_lines`,
   `missing_duration_reason`, and `compute_time_rollup` returning dicts rather than
   stems — none of which is visible from an import line.
+  Two later phases pin the Time table's **second** mark
+  (`self/features/recovered-duration-lower-bound/README.md`, item 1): a plan whose
+  `duration_ms` is null but whose attempt carries a `recovered_duration_s` contributes
+  that span to its bucket, is listed under `time.recovered_duration_plans[]` in the
+  `{plan, queue, reason}` shape plus `recovered_s`, is **not** also listed under
+  `missing_duration_plans[]`, and its row reads `7.5 ‡` rather than `0.0 †` — two marks
+  because `†` says the bucket has no figure and `‡` says it has one and it is a lower
+  bound — with a footnote naming the plan, the seconds and the transcript span, while
+  `total_is_partial` and the lower-bound line both stay. The phase beside it re-reads the
+  transcript-is-gone fixture and pins that nothing about it changed: still `†`, still a
+  bare `0.0`, no `‡` anywhere. Both marks are asserted by glyph, so changing either is a
+  visible change to the tests.

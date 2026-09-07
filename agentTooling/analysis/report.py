@@ -557,6 +557,15 @@ def cost_bucket_cell(name, amount, pct, unpriced):
 # table did not, and which is why that paragraph is replaced by this rather than joined
 # by it (self/features/tooling-backlog-2026-09-06, items 5 and 6).
 MISSING_FIGURE_MARK = "†"
+# The Time table's second mark, and one mark per meaning is the whole point of there
+# being two: `†` says the bucket has NO figure — an input is missing and the minutes are
+# whatever survived — while `‡` says it HAS one and that figure is a lower bound, a
+# transcript span standing in for a wall clock (recover_attempts.py's
+# `recovered_duration_s`). Re-using `†` for both would mean a reader who has learned it
+# from the Cost table cannot tell which of the two a Time row means without reading the
+# footnote, and the mark exists so the cell can be quoted without one. A bucket can carry
+# both, one plan each; the cell then reads `| review | 8.0 † ‡ |`.
+RECOVERED_FIGURE_MARK = "‡"
 # The label an entry gets when find_queue_segment could not name its queue. It matches
 # no row, so nothing is marked — but the footnote still names the plan, which is the
 # whole point: a plan whose queue is unreadable must not vanish from the report along
@@ -575,17 +584,19 @@ def group_by_bucket(entries):
     return grouped
 
 
-def bucket_mark(label, grouped):
+def bucket_mark(label, grouped, mark=MISSING_FIGURE_MARK):
     """The mark a table row's figure cell carries, or "". Matched on the row's LABEL, so
     a direct feature's "build: implementer" row — whose minutes are a transcript span,
-    not a queue's plans — is never marked by an `auto` entry."""
-    return f" {MISSING_FIGURE_MARK}" if label in grouped else ""
+    not a queue's plans — is never marked by an `auto` entry. `mark` is an argument
+    rather than the constant because the Time table has two of them and one row can
+    carry both."""
+    return f" {mark}" if label in grouped else ""
 
 
-def bucket_footnote_lines(grouped, render_entry):
+def bucket_footnote_lines(grouped, render_entry, mark=MISSING_FIGURE_MARK):
     """One footnote line per marked row, naming the bucket and every entry in it."""
     return [
-        f"{MISSING_FIGURE_MARK} {bucket}: "
+        f"{mark} {bucket}: "
         + "; ".join(render_entry(entry) for entry in entries)
         for bucket, entries in grouped.items()
     ]
@@ -605,6 +616,19 @@ def missing_duration_footnote_entry(entry):
     and total_cost_usd come from the same result event, but recovery can refill one of
     them and not the other."""
     return f"no duration for {entry['plan']} — {entry['reason']}"
+
+
+def recovered_duration_footnote_entry(entry):
+    """One recovered plan in the Time table's `‡` footnote. Says the three things the
+    cell cannot: which plan the figure came from, what it is in seconds, and that it is a
+    transcript span rather than the executor's own clock — so nobody quotes it as a
+    measurement. `reason` is why the measured figure is absent, the same string
+    missing_duration_footnote_entry carries, because "recovered" is only half the story
+    without it."""
+    return (
+        f"recovered {entry['recovered_s']:.1f}s for {entry['plan']} — "
+        f"{entry['reason']}; transcript span, a lower bound"
+    )
 
 
 KNOWN_METHODS = ("plans", "direct", "hand")
@@ -776,6 +800,39 @@ def multi_sidecar_stems(loaded_plans, usage_index):
                 "count": count,
             })
     return stems
+
+
+def compute_shared_sessions(planning_data):
+    """`[{session_id, cost_usd, also_claimed_by}]` for every session in this feature's
+    `planning.json` that another feature also counts — `capture_planning.py` writes
+    `also_claimed_by` onto the entry, and this is what carries it into the report.
+
+    A coordinator that ran seven features is priced in full by each of their closes, so
+    seven reports sum its cost and, before this, none of them said so. There is no
+    apportionment and there will not be one: the transcript cannot say which feature a
+    message served, and a split by message count would be a number nobody measured. The
+    dollars are the session's own `priced[]` rows — its delegates are excluded, since a
+    subagent belongs to exactly one feature by the ledger's refusal.
+
+    Read with `.get(… ) or []` throughout: every `planning.json` frozen before this
+    existed has neither key, and `--all` ranks those beside new ones."""
+    shared = []
+    for entry in planning_data.get("sessions") or []:
+        also_claimed_by = entry.get("also_claimed_by") or []
+        if not also_claimed_by:
+            continue
+        session_id = entry.get("session_id")
+        cost_usd = sum(
+            (row.get("cost_usd") or 0.0)
+            for row in (planning_data.get("priced") or [])
+            if row.get("session_id") == session_id and not row.get("agent_id")
+        )
+        shared.append({
+            "session_id": session_id,
+            "cost_usd": cost_usd,
+            "also_claimed_by": list(also_claimed_by),
+        })
+    return shared
 
 
 def compute_cost_rollup(
@@ -993,6 +1050,7 @@ def compute_cost_rollup(
         "recovered": recovered_cost,
         "unrecoverable_attempts": unrecoverable_attempts,
         "partially_recovered_attempts": partially_recovered_attempts,
+        "shared_sessions": compute_shared_sessions(planning_data),
     }
 
 
@@ -1007,6 +1065,24 @@ def duration_from_usage(usage_data):
         return sum(per_attempt) / 1000.0
     top_level = usage_data.get("duration_ms")
     return None if top_level is None else top_level / 1000.0
+
+
+def recovered_duration_from_usage(usage_data):
+    """Seconds `recover_attempts.py` recovered from this plan's session transcripts,
+    summed over attempts[]. None when no attempt carries one — which is every plan whose
+    durations were measured, and every unmeasured one whose transcript is gone.
+
+    Read from `attempts[]` and never from the sidecar's top-level `recovered_duration_s`,
+    for the reason the dollars are: `write_usage_sidecar`'s fixed-key rebuild drops the
+    top-level key on a resumed plan's later write, and the attempt-level figures survive
+    it. A lower bound, never a measurement: the span includes the model's own waiting and
+    excludes whatever the runner did around the call."""
+    attempts = usage_data.get("attempts") or []
+    spans = [
+        a.get("recovered_duration_s") for a in attempts
+        if a.get("recovered_duration_s") is not None
+    ]
+    return sum(spans) if spans else None
 
 
 def load_timing_events(feature_dir, warnings):
@@ -1180,16 +1256,29 @@ def compute_time_rollup(planning_data, loaded_plans, events, warnings, method="p
     # that ran for eight minutes with nothing beside it while the dollars in the next
     # column explained themselves.
     missing = []
+    # The same shape plus `recovered_s`: a plan whose measured duration is missing but
+    # whose attempts carry a transcript span. It contributes that span to its bucket —
+    # a lower bound is worth more than the `0.0` it replaces — and is listed here rather
+    # than in `missing`, since the two say different things and one row can hold both.
+    recovered = []
     for stem, usage_data, usage_path in loaded_plans:
+        queue = find_queue_segment(usage_path)
         seconds = duration_from_usage(usage_data)
         if seconds is None:
-            missing.append({
+            # Only where the measured figure is absent altogether: a plan with one
+            # measured attempt keeps its measured sum, since blending a wall clock with
+            # a transcript span inside one cell produces a figure that is neither.
+            seconds = recovered_duration_from_usage(usage_data)
+            entry = {
                 "plan": stem,
-                "queue": find_queue_segment(usage_path),
+                "queue": queue,
                 "reason": missing_duration_reason(usage_data),
-            })
-            continue
-        queue = find_queue_segment(usage_path)
+            }
+            if seconds is None:
+                missing.append(entry)
+                continue
+            entry["recovered_s"] = seconds
+            recovered.append(entry)
         if queue == "auto":
             build_s += seconds
         elif queue == "verify":
@@ -1200,6 +1289,14 @@ def compute_time_rollup(planning_data, loaded_plans, events, warnings, method="p
         detail = ", ".join(f"{m['plan']} ({m['reason']})" for m in missing)
         warnings.append(
             f"no duration_ms for plan(s) {detail}; excluded from the time roll-up"
+        )
+    if recovered:
+        detail = ", ".join(
+            f"{r['plan']} ({r['recovered_s']:.1f}s)" for r in recovered
+        )
+        warnings.append(
+            f"no duration_ms for plan(s) {detail}; a transcript span stands in, and the "
+            "roll-up is a lower bound for it"
         )
     planning_total = (planning_sessions or 0) + (planning_subagents or 0)
     # Mirrors compute_cost_rollup: a direct feature's transcript spans are its build.
@@ -1225,8 +1322,13 @@ def compute_time_rollup(planning_data, loaded_plans, events, warnings, method="p
         "review_s": review_s,
         "executor_s": executor_total,
         "total_s": planning_total + executor_total,
-        "total_is_partial": bool(missing) or not planning_known,
+        # A recovered plan keeps the total partial: a transcript span is not the
+        # executor's wall clock — it includes the model's own waiting and excludes
+        # whatever the runner did around the call — so the sum is still a lower bound,
+        # and the `‡` footnote says why.
+        "total_is_partial": bool(missing) or bool(recovered) or not planning_known,
         "missing_duration_plans": missing,
+        "recovered_duration_plans": recovered,
         "wall_clock": compute_wall_clock(events),
     }
     # Added only when the feature stamped checkpoints, so a report that has none is
@@ -1621,10 +1723,19 @@ def render_time_section(lines, data):
         for m in (time.get("missing_duration_plans") or [])
     ]
     marked = group_by_bucket(missing_durations)
+    # Read with a [] default like every key added after the fact: a report.json written
+    # before recovered durations existed carries none, and re-rendering one must not
+    # raise. A row can be in both groups — one plan of its bucket unrecovered, another
+    # recovered — and then carries both marks, in this order.
+    recovered_marked = group_by_bucket(time.get("recovered_duration_plans") or [])
     for label, seconds, usd in rows:
         usd_cell = "" if usd is None else f"${usd:.4f}"
+        marks = (
+            bucket_mark(label, marked)
+            + bucket_mark(label, recovered_marked, RECOVERED_FIGURE_MARK)
+        )
         lines.append(
-            f"| {label} | {minutes_cell(seconds)}{bucket_mark(label, marked)} "
+            f"| {label} | {minutes_cell(seconds)}{marks} "
             f"| {usd_cell} | {per_minute_cell(usd, seconds)} |"
         )
     total_marker = " (partial)" if time.get("total_is_partial") else ""
@@ -1636,16 +1747,33 @@ def render_time_section(lines, data):
         f"| **${cost['total']:.4f}** | {total_rate} |"
     )
     footnotes = bucket_footnote_lines(marked, missing_duration_footnote_entry)
+    footnotes += bucket_footnote_lines(
+        recovered_marked, recovered_duration_footnote_entry, RECOVERED_FIGURE_MARK
+    )
     if footnotes:
         lines.append("")
         lines.extend(footnotes)
         lines.append("")
-        lines.append(
-            "A marked bucket's minutes are a lower bound: the plan named ran, and its "
-            "`duration_ms` is missing from the same `result` event its dollars come "
-            "from. Recovery cannot fill it — a transcript gives tokens, not the "
-            "executor's wall clock."
-        )
+        # One sentence per mark actually used. A report with no recovered plan must not
+        # mention `‡` at all: an explanation of a mark that is nowhere in the table reads
+        # as a mark the reader has missed.
+        notes = ["A marked bucket's minutes are a lower bound."]
+        if marked:
+            notes.append(
+                f"`{MISSING_FIGURE_MARK}`: the plan named ran and its `duration_ms` is "
+                "missing from the same `result` event its dollars come from, with no "
+                "transcript span to stand in for it — the transcript is gone, or holds "
+                "too few timestamped lines to bound anything."
+            )
+        if recovered_marked:
+            notes.append(
+                f"`{RECOVERED_FIGURE_MARK}`: the transcript survived, and "
+                "`recover_attempts.py` bounded the run with the span between its first "
+                "and last instants — a real figure, but not the executor's wall clock, "
+                "since it includes the model's own waiting and excludes whatever the "
+                "runner did around the call."
+            )
+        lines.append(" ".join(notes))
     lines.append("")
     if time.get("method") in BUILD_BY_TRANSCRIPT_METHODS:
         who = "The implementer's" if time["method"] == "direct" else "The build's"
@@ -1751,6 +1879,25 @@ def render_report_md(data):
             "sidecar's `result_event`, never from its `outcome`. Where recovery found "
             "no transcript the figure is gone for good; everywhere else, re-run "
             "`recover_attempts.py --for <slug>` and regenerate."
+        )
+    shared = cost.get("shared_sessions") or []
+    if shared:
+        # One line under the table rather than a mark on a row: the dollars are correct
+        # for this feature and the row is not a lower bound — what the reader needs to
+        # know is that the same figure appears in somebody else's report too, which is a
+        # fact about the corpus rather than about this cell. Absent entirely when no
+        # session is shared, so an ordinary feature's report is unchanged.
+        detail = "; ".join(
+            f"`{s['session_id']}` (${s['cost_usd']:.4f}), also counted by "
+            + ", ".join(s["also_claimed_by"])
+            for s in shared
+        )
+        lines.append("")
+        lines.append(
+            f"Sessions this feature does not count alone: {detail}. Each is priced here "
+            f"in full and in full there: a transcript cannot say which feature a message "
+            f"served, so nothing is apportioned, and summing these features' totals "
+            f"counts it once per feature."
         )
     multi = cost.get("multi_sidecar_stems") or []
     if multi:

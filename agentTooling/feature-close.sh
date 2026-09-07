@@ -19,9 +19,13 @@ set -uo pipefail
 #      for `<slug>-two` is not one of this feature's and a `<repo>/<slug>` too long for
 #      the table's pin column is still one — and STOPS if any of them is not already
 #      pinned: an unpinned delegate is cost the capture below would silently drop, and its
-#      transcript is expiring. The unclaimed top-level sessions are printed for the human
-#      and stop nothing — a session is claimed by the branch of the directory it was
-#      launched in, so the list is context, not a verdict;
+#      transcript is expiring. A delegate this manifest already pins is not in that list
+#      (the pin IS the claim), so the "Pin each in …" advice appears only when something
+#      is left to pin; where nothing is, this prints one `pinned` line counting what the
+#      manifest holds, because "no unclaimed delegates" alone reads as "this feature had
+#      none" for a feature whose whole build was one. The unclaimed top-level sessions are
+#      printed for the human and stop nothing — a session is claimed by the branch of the
+#      directory it was launched in, so the list is context, not a verdict;
 #   4. carries the worktree's trailing timing stamps home. Every runner pass stamps
 #      `pass_end` from its EXIT trap, and run-review.sh stamps `pr_opened` — carrying the
 #      PR URL that analysis/report.py's Time table reads — after the PR hook has already
@@ -289,6 +293,14 @@ if [[ -n "$STRAY_AGENTS" ]]; then
   echo "  these delegates name $REPO_NAME/$SLUG and no feature claims them:"
   printf '%s' "$STRAY_AGENTS"
   refuse "pin them in $FEATURE_REL/README.md as \"subagents\": [\"<agent-id>\", ...] and run this again — an unpinned delegate is never priced"
+fi
+# Nothing left to pin. Say what IS pinned instead of nothing: the list above has just
+# printed "no unclaimed subagent transcripts briefed for …", and on its own that reads
+# as "this feature had no delegates" for a feature whose whole build was one. Counting
+# the quoted ids in the JSON array needs no parser — an agent id contains no quote.
+PINNED_COUNT="$(tr ',' '\n' <<<"$PINNED_AGENTS" | grep -c '"')"
+if (( PINNED_COUNT > 0 )); then
+  echo "  pinned    $PINNED_COUNT delegate(s) already pinned in the manifest"
 fi
 
 echo ""
