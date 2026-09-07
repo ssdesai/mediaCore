@@ -1,0 +1,93 @@
+{
+  "slug": "stale-failed-sidecars",
+  "generated_at": "2026-09-06T15:28:10.685125+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 63.6691799,
+    "build": 63.6691799,
+    "verify": 0.0,
+    "review": 2.631601,
+    "total": 66.3007809,
+    "planning_pct": 0.0,
+    "build_pct": 96.03081447265427,
+    "verify_pct": 0.0,
+    "review_pct": 3.969185527345726,
+    "cost_per_plan": 66.3007809,
+    "cost_per_file": 0.0,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 2.631601,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 168027,
+    "planning_subagents_s": 1316,
+    "planning_s": 0.0,
+    "implementer_s": 169343,
+    "build_s": 169343.0,
+    "verify_s": 0.0,
+    "review_s": 0.0,
+    "executor_s": 169343.0,
+    "total_s": 169343.0,
+    "total_is_partial": true,
+    "missing_duration_plans": [
+      "84-review-opus"
+    ],
+    "wall_clock": {
+      "first_at": "2026-09-06T14:07:47+00:00",
+      "last_at": "2026-09-06T14:26:01+00:00",
+      "batch_span_s": 1094.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 395.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 387.0,
+      "plan_runs": 1,
+      "pr_opened_at": "2026-09-06T14:26:01+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/30"
+    },
+    "tests_s": 191.0,
+    "direct_build_s": 293.0,
+    "gate_s": 142.0
+  },
+  "planning_cost_split": {
+    "subagents": 7.69528065,
+    "sessions": 55.97389925
+  },
+  "cold_start_tax_tokens": 0,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 0,
+      "total_cost_usd": null,
+      "total_duration_s": null,
+      "flags": []
+    }
+  ],
+  "churn": [],
+  "plan_length_vs_loc": [
+    {
+      "plan": "84-review-opus",
+      "plan_md_lines": 117,
+      "loc_changed": "not computed: streams unavailable"
+    }
+  ],
+  "re_hunting": "not computed: streams unavailable",
+  "plan_drift": [],
+  "edit_overlap": "not computed: streams unavailable",
+  "warnings": [
+    "plan 84-review-opus has 1 attempt(s) priced from session transcripts rather than reported by the CLI (sessions: 2e9ce097-2707-4206-9b1b-448cd112f6f9)",
+    "no duration_ms for plan(s) 84-review-opus; excluded from the time roll-up",
+    "plan 84-review-opus has 0 files_edited; excluded from churn ratio"
+  ]
+}

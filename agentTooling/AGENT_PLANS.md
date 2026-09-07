@@ -156,6 +156,11 @@ table that drifted, an exclusion that turned out wrong — and never the fence.
 
 It holds what does not belong in every individual plan: the feature's goal, a table of
 every plan in the batch and what it does, and what was deliberately excluded and why.
+Anything the feature deliberately leaves unbuilt — an exclusion that is real work, a
+review escalation not taken, a defect found and not fixed — also gets an entry in
+`plans/BACKLOG.md` as part of that feature's work, because the manifest's exclusion
+paragraph is read while the feature is open and nobody reads it afterwards; a `NOTES.md`
+line is not a record either.
 Plans repeat only the one-line feature header (see item 1 above); the manifest is where
 the full picture lives. The plans themselves live in that feature's own `auto/`,
 `verify/`, `review/`, and `interactive/` subfolders —

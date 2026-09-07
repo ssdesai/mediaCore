@@ -1,7 +1,8 @@
 # self/tests/fixtures
 
 Shell helpers `self/tests/cost-recovery.sh`, `self/tests/capture-guard.sh`,
-`self/tests/timestamps-are-utc.sh` and `self/tests/subagent-capture.sh` source to build their throwaway corpora. These are function libraries, not data: the actual
+`self/tests/timestamps-are-utc.sh`, `self/tests/subagent-capture.sh` and
+`self/tests/recover-at-close.sh` source to build their throwaway corpora. These are function libraries, not data: the actual
 transcripts and sidecars are synthesized into a `mktemp -d` at test run time, never
 committed here as JSON blobs.
 
@@ -28,3 +29,8 @@ committed here as JSON blobs.
 - `usage/build-usage.sh` — `write_usage_json PATH ATTEMPT...` writes a minimal `usage.json`
   sidecar with one `attempts[]` entry per `"session_id:outcome:total_cost_usd"` argument
   (`total_cost_usd` may be the literal `null`), in the shape `analysis/README.md` documents.
+  `write_unpriced_usage_json PATH SESSION_ID [MODEL]` writes the other unpriced shape —
+  the sidecar a run that exited 0 with no `result` event in its stream leaves: `outcome:
+  "complete"` (the exit code's fact) beside `result_event: "missing"` (the pricing fact),
+  every CLI-reported figure null or zero, and one `complete`-outcome attempt with a null
+  `total_cost_usd`. MODEL defaults to `opus`, the model a review plan runs on.

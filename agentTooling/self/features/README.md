@@ -93,3 +93,24 @@ shared with consuming repos even though the rest of this tree is not.
   timing work landed and while three vinylCatalogue batches ran on the runners. None is large;
   together they are one direct one-shot, the first run of that method on this repo, with its own
   checkpoint doctrine applied to itself. Plan `71-review-opus`.
+- `stale-failed-sidecars` — a plan killed at a usage limit and retried by hand leaves a
+  `.progress.md` + `.usage.json` pair in `<queue>/failed/` with no `.md` beside it, which
+  crashed `analysis/report.py` reading a sibling plan file the retry had moved away. The
+  pair stays where the runner put it — it is the only surviving copy of the killed
+  attempt's session id — and the analysis absorbs it: `build_usage_index` ranks the two
+  sidecars claiming the stem and returns the loser as a prior attempt whose dollars are
+  rolled in once. Built direct (`method: "direct"`); plan `84-review-opus` is its review.
+  It also created `../BACKLOG.md` and its first four entries.
+- `stream-capture-file-first` — nine merged reviews were recorded at `$0.00` with 0-byte
+  progress logs although every one of them ran to completion: the runner captured the
+  event stream with a `tee` in the *middle* of a pipeline whose last stage wrote to the
+  caller's stdout, so a consumer that stopped reading killed the capture from the far end
+  backwards while `claude` ran on to a clean exit. `claude` now writes `.stream.jsonl`
+  itself and a follower feeds the progress FIFO and the display from that file, so nothing
+  downstream of the record can reach it; the runner survives a closed stdout instead of
+  dying on its next `echo`; and `rc == 0` with no `result` event in the stream — the one
+  combination that is never normal — is warned about by name. Built direct
+  (`method: "direct"`); plan `86-review-opus` is its review. It adds
+  `../tests/stream-capture.sh` and one `../BACKLOG.md` entry (`run-batch.sh` still dies of
+  SIGPIPE on a closed stdout), and deletes the entry `recover-cost-at-close` raised for
+  the defect this feature fixes.

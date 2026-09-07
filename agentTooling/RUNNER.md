@@ -151,6 +151,24 @@ runner promotes them between folders as it works. Each plan has a sidecar progre
   run budget (see below) — deliberately not `inprogress/`, since resuming would just buy
   the same brief another budget's worth of turns.
 
+**A retried plan leaves its failed attempt's sidecars behind, and that is the design.**
+`finalize_plan` files a plan's four files as a set, so a failed run puts
+`<plan>.progress.md`, `<plan>.stream.jsonl` and `<plan>.usage.json` into `failed/`
+alongside the `.md`. Retrying moves only the `.md` back to `incomplete/`, and the retry
+writes a fresh log and a fresh `usage.json` beside the plan's new home — so after a
+successful retry a `.progress.md` + `.usage.json` pair sits in `failed/` with no plan
+file next to it. **Leave it there.** It is the record of the attempt that failed, and
+its `usage.json` carries the `session_id` that `analysis/recover_attempts.py` needs to
+price that attempt from its session transcript — the one thing a killed run still
+yields. Deleting the pair to tidy up throws that away, and with it any chance of
+recovering what the attempt cost.
+
+Nothing downstream is confused by it. `analysis/report.py`'s `build_usage_index` ranks
+the two sidecars claiming the stem — the one whose sibling `.md` exists wins, then
+`complete` > `inprogress` > `incomplete` > `failed` — reads the tables off the live one
+and rolls the other's dollars in as a prior attempt, so the money is counted once and
+the pair costs nothing but disk. See `analysis/README.md` → `report.py`.
+
 **Level sentinels.** `NN-gate.md` moves `incomplete/ → complete/` directly with no
 sidecars; the runner runs the gate with `NN` as its label instead of calling `claude`;
 cost tooling never sees it because it has no `.usage.json`.
@@ -285,7 +303,10 @@ Every finished plan — complete or failed — lands with four files, not two:
 - `<plan>.stream.jsonl` — the raw stream-json event log: the full record of what the
   model did, including the tool inputs and results the terminal summary drops. Kept on
   both success and failure so any run can be analysed after the fact. Gitignore it —
-  useful locally, too large and too machine-specific to commit.
+  useful locally, too large and too machine-specific to commit. **Written by `claude`
+  itself**, not by anything in the pipeline that displays it, so it is complete whatever
+  happens to the terminal — see "Capturing the stream" below for why that matters and
+  what it costs when it is not true.
 - `<plan>.usage.json` — a small, committed extract of the final `result` event: cost,
   turns, duration, token counts, tool-call counts, and files edited. Exists because the
   stream it comes from is gitignored and too large to commit — this is what per-plan
@@ -351,11 +372,24 @@ opus pass and has not been measured yet — re-derive it from the first few real
 same way (median of the honest runs, doubled).
 
 `claude -p` exits 1 for a budget stop, a usage limit, *and* a genuine failure, so the three
-are told apart by the final `result` event: `subtype == "error_max_budget_usd"` (budget) is
-matched on that exact field, while the usage-limit check matches message text, and the two
-are deliberately disjoint — a mis-scoped brief must never be mistaken for a rate limit and
-silently re-queued. The progress log records `stopped: reached the run budget (spent $N)`.
+are told apart by the captured stream: `subtype == "error_max_budget_usd"` on the final
+`result` event (budget) is matched on that exact field, while the usage-limit check
+matches message text, and the two are deliberately disjoint — a mis-scoped brief must
+never be mistaken for a rate limit and silently re-queued. The progress log records
+`stopped: reached the run budget (spent $N)`.
 The cap is enforced after each API call, so a run overshoots by at most one turn's spend.
+
+The usage-limit check has **two** signals, and no others. The first is that final
+`result` event. The second is for the session the platform *kills* at a limit: it is cut
+off mid-turn and never emits a result event at all, so the plan used to be filed to
+`failed/` as an ordinary failure and the graceful `rc == 2` path — leave the plan in
+`inprogress/` for the next run to resume — was dead for the case it exists for. So a
+stream with **no** `result` event whose **last** parsed event is an `error` event naming
+HTTP 429 or a limit in the same terms routes as a usage limit too. All three conditions
+are required: a limit reported mid-stream and recovered from is not a kill, a stream
+ending mid-turn on an ordinary event is still an ordinary failure, and a stream that
+reached a result event is judged by that event alone — assistant text mentioning a rate
+limit is still not a limit. `self/tests/usage-limit-kill.sh` pins each boundary.
 
 ## How resume works
 
@@ -392,6 +426,55 @@ milestone is also stamped into `timing.jsonl` (`stamp-timing.sh <slug> checkpoin
 status=<status>`); that append is what survives the rewrite and what
 `analysis/report.py` reads. The review pass that follows is an ordinary `review/` queue
 and resumes as above.
+
+## Capturing the stream
+
+**`claude` writes `<plan>.stream.jsonl` itself.** Its stdout — with stderr merged into it,
+as before — is redirected straight to that file, and it runs as a background job whose pid
+the runner waits on; that `wait` is what `run_plan` returns as the plan's exit code.
+Everything else in the run is a *reader* of the file: a follower (`follow_stream`) tails
+it and forwards what appears to two places, the progress-log FIFO and `display_stream`.
+
+The point of that shape is that **nothing downstream of the file can truncate it**. It
+used to be one pipeline —
+
+    claude … | tee "$stream_file" | tee "$log_fifo" | display_stream
+
+— with the record written by a `tee` in the *middle*, so its liveness depended on every
+stage after it. `display_stream` inherits the runner's stdout, so a caller that stopped
+reading (a coordinator backgrounding the runner with its output piped onward) killed
+`display_stream` with SIGPIPE, then each `tee` on its next write, while `claude` — whose
+own stdout was only the pipe into the first `tee` — ran to completion and exited 0.
+`PIPESTATUS[0]` was 0, so the plan was filed as a success with a 689-byte stream, a 0-byte
+progress log and `total_cost_usd: null`. Nine merged reviews were recorded at `$0.00` that
+way before anyone noticed. See `self/features/stream-capture-file-first/`.
+
+Three consequences worth knowing:
+
+- **The follower's drain is deterministic, not timed.** After `wait` returns, the runner
+  touches a marker file in a `mktemp -d`; the follower samples that marker *before* each
+  measurement of the file and only stops on a measurement that found nothing new. The
+  poll interval sets how fresh the terminal output is and nothing else. Nothing is ever
+  written into the stream file itself — `write_usage_sidecar` and
+  `stream_shows_usage_limit` parse it. The follower also stops when `claude`'s pid is
+  gone, so a marker that never arrives costs a poll interval rather than a hang; and the
+  `mktemp -d` is checked, so a temp directory that cannot be created fails the plan (exit
+  70, filed to `failed/` with the reason in its progress log) instead of starting a
+  capture nothing can finish.
+- **A closed consumer no longer stops the runner.** `run_all` traps SIGPIPE, points its
+  own stdout at `/dev/null` on the first broken write and flushes bash's output buffer;
+  from there the run finishes silently and files its plan normally. Terminal output is
+  lost from that point — the consumer is gone — but the stream, the progress log and the
+  usage sidecar are complete.
+- **`rc == 0` with no `result` event in the stream is warned about.** It is the one
+  combination that is never normal: every ending `claude -p` has emits a `result` event,
+  so a clean exit without one means the end of the stream was lost. "Has a `result`
+  event" has exactly one definition, shared with the `result_event` field
+  `write_usage_sidecar` records, and it skips unparseable lines — `claude`'s stderr is
+  merged into the stream, so one runtime warning in it must not read as a lost capture. `finalize_plan` names
+  the plan and the stream file on stderr and leaves the file on disk (gitignored). The
+  plan is still filed by its exit code — work that finished and opened its PR must not be
+  re-run on the strength of a missing event — but the evidence is there.
 
 ## Idempotency
 

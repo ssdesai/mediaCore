@@ -1,0 +1,104 @@
+{
+  "slug": "recover-cost-at-close",
+  "generated_at": "2026-09-06T15:27:26.785096+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 86.7947283,
+    "build": 86.7947283,
+    "verify": 0.0,
+    "review": 2.6184329999999996,
+    "total": 89.4131613,
+    "planning_pct": 0.0,
+    "build_pct": 97.07153514993772,
+    "verify_pct": 0.0,
+    "review_pct": 2.928464850062291,
+    "cost_per_plan": 89.4131613,
+    "cost_per_file": 29.8043871,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 167934,
+    "planning_subagents_s": 5338,
+    "planning_s": 0.0,
+    "implementer_s": 173272,
+    "build_s": 173272.0,
+    "verify_s": 0.0,
+    "review_s": 393.83,
+    "executor_s": 173665.83,
+    "total_s": 173665.83,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-06T14:10:19+00:00",
+      "last_at": "2026-09-06T15:24:20+00:00",
+      "batch_span_s": 4441.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 402.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 395.0,
+      "plan_runs": 1,
+      "pr_opened_at": "2026-09-06T15:11:54+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/31"
+    },
+    "tests_s": 448.0,
+    "direct_build_s": 567.0,
+    "gate_s": 1962.0
+  },
+  "planning_cost_split": {
+    "subagents": 31.148251300000002,
+    "sessions": 55.646477000000004
+  },
+  "cold_start_tax_tokens": 108449,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 31,
+      "total_cost_usd": 2.6184329999999996,
+      "total_duration_s": 393.83,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "85-review-opus",
+      "edit_count": 3,
+      "files_edited": 3,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "85-review-opus",
+      "plan_md_lines": 140,
+      "loc_changed": "not computed: streams unavailable"
+    }
+  ],
+  "re_hunting": "not computed: streams unavailable",
+  "plan_drift": [
+    {
+      "plan": "85-review-opus",
+      "edited_not_listed": [
+        "analysis/report.py",
+        "feature-close.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": "not computed: streams unavailable",
+  "warnings": []
+}

@@ -35,7 +35,7 @@ unclaimed-delegate check, then `capture_planning.py`, then `report.py`, and only
 `session_window.to` — and shows what was claimed before the number is quoted. What
 follows is the weekly **sweep behind it**, over the whole corpus: it catches the feature
 whose delegate was pinned after it closed, the batch whose `.stream.jsonl` was never
-converted, and the killed attempt nobody recovered — each of which reads as a correct
+converted, and the unpriced attempt nobody recovered — each of which reads as a correct
 number until someone looks.
 
 Weekly, `../sweep.sh [--self]` runs the cadence in this order, then lists the unclaimed delegates and sessions. The order is a real dependency chain, not a suggestion — `report.py` reads the `planning.json` and `usage.json` files the two capture steps write, and reports nothing where they are missing rather than failing loudly.
@@ -58,10 +58,11 @@ python3 -c "import sys; sys.path.insert(0,'agentTooling/analysis'); import prici
 python3 agentTooling/analysis/backfill_usage.py
 ```
 
-**3. Recover killed-attempt costs** from session transcripts. Idempotent: an attempt that already carries `recovered_cost_usd` is skipped unless `--force`:
+**3. Recover unpriced-attempt costs** from session transcripts — a killed run, or a run that exited 0 while its stream lost its `result` event; neither is gated on `outcome`. Idempotent: an attempt that already carries `recovered_cost_usd` is skipped unless `--force`:
 
 ```bash
-python3 agentTooling/analysis/recover_attempts.py
+python3 agentTooling/analysis/recover_attempts.py            # the whole corpus, what sweep.sh runs
+python3 agentTooling/analysis/recover_attempts.py --for <slug>   # one feature, what feature-close.sh runs
 ```
 
 **4. Capture planning cost, then report.** `capture_planning.py --all` walks the corpus and captures the features that have no `planning.json` yet, **skipping the ones that already do**. It also skips any feature whose `session_window.to` is still `null` — in flight, its first capture is `feature-close.sh`'s, and a record frozen here would make that close skip and report a premature figure. That skip is what makes this step ordinary cadence work rather than something to be careful with: a frozen record is not rebuilt unless you ask for it, so the run cannot rewrite a figure it can no longer reproduce, and it costs almost nothing (a skipped feature is never scanned). The sweep reports each feature whose cost files changed, then `--all` for a cross-feature trend.
@@ -84,7 +85,7 @@ python3 agentTooling/analysis/report.py --self <slug>
 Both capture steps read sources that expire, which is what makes this a recurring job rather than something to run once when you happen to want a number:
 
 - `.stream.jsonl` is gitignored and lives only on the machine that ran the batch. It is the sole cost record for any plan predating runner-side usage capture, and `backfill_usage.py` is what converts it into a committed `usage.json` before it is lost.
-- Session transcripts under `~/.claude/projects/` are on a retention clock. `capture_planning.py` freezes each session's cost into `planning.json` as dollars; once a transcript ages out, an uncaptured feature's planning cost is unrecoverable. Similarly, a killed attempt's cost is recoverable from its session transcript by `recover_attempts.py` only while that transcript survives — once aged out, the cost is unrecoverable.
+- Session transcripts under `~/.claude/projects/` are on a retention clock. `capture_planning.py` freezes each session's cost into `planning.json` as dollars; once a transcript ages out, an uncaptured feature's planning cost is unrecoverable. Similarly, an unpriced attempt's cost — killed, or completed with no `result` event in its stream — is recoverable from its session transcript by `recover_attempts.py` only while that transcript survives; once aged out, the cost is unrecoverable. `feature-close.sh` runs it (`--for <slug>`) at close time for exactly that reason: waiting for the weekly sweep can be waiting too long.
 
 Both write into `plans/` — commit the results, or the next run has nothing to build a trend from.
 
@@ -123,8 +124,19 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   everywhere; the slice read the date in whatever zone the string carried, so an
   evening offset timestamp was dated a day early and could price against the wrong
   rate tier.
-- `recover_attempts.py` — recovers a killed attempt's cost from its own session
-  transcript. Walks every `usage.json` under `roots.features_root(self_mode)`; for each
+- `recover_attempts.py` — recovers an unpriced attempt's cost from its own session
+  transcript. **Two things leave an attempt unpriced**, and it handles both: a *killed*
+  run, which never reached the end of its stream, and a *completed* run — exit 0, work
+  done, PR opened — whose captured stream lost its `result` event anyway (`outcome:
+  "complete"` with `result_event: "missing"`; cause unknown, `self/BACKLOG.md`). Nothing
+  here is gated on `outcome`, deliberately: a null `total_cost_usd` with a `session_id`
+  beside it is the whole precondition. `--for <slug>` restricts the walk to one feature
+  directory and refuses a slug that names none — what `feature-close.sh` runs immediately
+  before its capture, so a feature is priced when it closes rather than at the next
+  weekly sweep, by which time the transcript may be gone. Without it the whole tree is
+  walked, which is what `sweep.sh` calls.
+  Walks every `usage.json` under `roots.features_root(self_mode)` (or that one feature);
+  for each
   `attempts[]` entry with `total_cost_usd: null` and a `session_id`, sums that session's
   tokens with `transcript.iter_billable_messages` + `add_usage`, prices them with
   `pricing.compute_cost` using the session's own earliest timestamp, and writes
@@ -162,6 +174,16 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   is field-for-field identical in shape to the runner's own `usage.json` (see
   `AGENT_PLANS.md` / the runner's `finalize_plan`) so downstream tooling never needs
   to distinguish the two.
+  **A stream with no `result` event gets a sidecar too**, and this is the case that
+  most needs one: `result_event: "missing"`, the session id from the first event, every
+  CLI-reported figure null, one attempt with a null `total_cost_usd` — the same shape
+  `write_usage_sidecar` writes for a live run that lost its result event, so
+  `recover_attempts.py` can price it from the transcript afterwards. It used to return
+  early with `WARN: no result event … skipping`, written when the result event was the
+  only source of any figure; the plan then had no `usage.json` at all and landed in
+  `report.py`'s `missing_usage_plans`, which reads as "this never ran". The only file
+  skipped now is one with no parseable event in it, and the summary line counts the
+  resultless sidecars separately because they are the ones worth acting on.
 - `capture_planning.py` — mines `~/.claude/projects/` session transcripts for a
   feature's branches, excludes runner-spawned sessions (any id already in a
   `usage.json`) and `exclude_sessions`, sums tokens per `(session, model,
@@ -419,6 +441,24 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   and the transcript was already gone; named in `cost.unrecoverable_attempts[]`). The
   partially-recovered and unrecoverable buckets both set `total_is_partial`; only a
   plan whose every killed attempt fully recovered reports a whole, non-partial total.
+  **A prior sidecar's attempts are classified the same way**, so a prior attempt with
+  neither a `total_cost_usd` nor a `recovered_cost_usd` sets `total_is_partial` and is
+  named in `cost.unrecoverable_attempts[]`, exactly as the same shape on the live
+  sidecar already did. That is a deliberate widening of `stale-failed-sidecars` ruling
+  4, which read the priors through their top-level total only and so let a killed
+  attempt that really did bill read as free until somebody ran `recover_attempts.py`.
+  It changes what `total_is_partial` means for every feature in both corpora, which is
+  the point. Attempts are deduplicated by `session_id` across the live sidecar and every
+  prior: an attempt reachable through two files — which needs a hand-copied sidecar to
+  occur, since `write_usage_sidecar` merges by `session_id` into the file at the plan's
+  current path — contributes its dollars once and is named once. **The copy those
+  dollars come from is whichever carries a figure**, best first: the live copy's
+  `total_cost_usd`, then its `recovered_cost_usd`, then the prior's `total_cost_usd`,
+  then the prior's `recovered_cost_usd` — so a session priced by ANY copy is priced, and
+  only a session null in every copy is unrecoverable. Where the live and prior copies
+  both carry a figure and disagree, the live one wins: it is the file the runner writes
+  to at the plan's current path, and the file every other figure in the report is read
+  from.
   `report.py` still never reprices a recovered figure — it only reads
   `recovered_cost_usd` and sums it in, exactly like `total_cost_usd`.
   A manifest with **no** `plans` key at all is a warning rather than a `KeyError`:
@@ -431,7 +471,51 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   Resolves each manifest stem to a `usage.json` **within that feature's own
   directory only**: plan numbers restart per feature, so stems like `05-tests-sonnet`
   exist in several features at once and a tree-wide scan would silently price the
-  wrong one. Nothing in the imports reveals that constraint. Its model-fit flags
+  wrong one. Nothing in the imports reveals that constraint.
+  **Two sidecars can claim one stem, and `build_usage_index` chooses between them
+  deterministically.** The runner files a plan's four sidecars as a set, so a run that
+  exited non-zero leaves `<stem>.progress.md` and `<stem>.usage.json` in
+  `<queue>/failed/`; a manual retry (`../RUNNER.md` → the `failed/` paragraph) moves only
+  the `.md` back and writes a fresh log and sidecar beside the plan's new home, leaving
+  the first pair behind with no plan file next to it. That pair stays there on purpose —
+  it is the record of the killed attempt and the only surviving copy of its session id,
+  which `recover_attempts.py` needs. So the index returns
+  `PlanUsage { live, priors }` per stem rather than one path: candidates are **sorted**,
+  never taken in `rglob`'s filesystem order, and ranked by whether the sibling
+  `<stem>.md` exists (the plan file travels with the current run), then by
+  `USAGE_STATE_PREFERENCE` — `complete` > `inprogress` > `incomplete` > `failed` — then
+  by path string, so the answer is the same on every machine. `live` is what every table
+  reads; `priors` is what `compute_cost_rollup` adds back, since a killed attempt the
+  sweep later recovers has its `recovered_cost_usd` written into exactly the file that
+  lost the ranking. A plan's cost is therefore the live sidecar's `total_cost_usd`, plus
+  its own `attempts[].recovered_cost_usd`, plus — **per prior attempt, merged by
+  `session_id` into the live sidecar's attempts and every prior already read** — that
+  attempt's own figure, taken once from the first copy that has one — the
+  `ATTEMPT_FIGURE_FIELDS` order within a copy, live before prior across them. A prior
+  copy of a session the live file already priced adds nothing; a prior copy of a session
+  the live file left null takes its place, and its figure counts. The two fields cannot overlap within one attempt, since
+  `recover_attempts.py` fills an attempt's recovered figure only where its
+  `total_cost_usd` is null. Summed over `attempts[]` rather than read off the prior's
+  top-level `total_cost_usd`, because that top-level figure IS that sum and cannot have
+  one member removed from it; a prior with no `attempts[]` at all — written before the
+  array existed — falls back to the top level and has no session id to deduplicate on
+  either way. Every attempt in that merged list is then classified alongside the live ones, so one
+  with no figure in any copy marks the total a lower bound instead of
+  contributing a silent zero — and one the prior copy priced no longer marks it at all. A plan is reported as priced
+  without cost only when the live file has null cost **and** no prior attempt
+  contributed anything.
+  **`cost.multi_sidecar_stems[]` says how many sidecars a stem has**, which nothing
+  else in the report did: the per-plan roll-in warning fires only when a prior holds
+  money, and `find_orphan_usage` is blind to a twin of a stem the manifest lists.
+  **A missing sibling `.md` is a warning, never a crash.** `read_plan_md` is the single
+  reader; `compute_plan_length_vs_loc` and `compute_plan_drift` skip a plan whose plan
+  file is absent, with one warning naming the path they looked for (deduplicated, since
+  two tables reading the same absent file is one fact). Before that guard, a feature
+  holding one retried plan could not be reported at all — the run ended in a
+  `FileNotFoundError` for a path the retry had moved away, which is what stopped
+  `feature-close.sh` on vinylCatalogue's `group-commit-all-adjudication`. Asserted by
+  `self/tests/stale-failed-sidecars.sh`.
+  Its model-fit flags
   also cover *scope* — a build-queue plan over `PLAN_HIGH_TURN_THRESHOLD` turns is
   flagged as one to split, not as one on the wrong model (`AGENT_PLANS.md`, "Sizing
   plans for executor cost"); verify- and review-queue plans are exempt, as the
@@ -500,7 +584,7 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   becomes `FEATURE_BASE` and the PR's base. `sessions` are session ids claimed outright,
   the top-level twin of `subagents`. `agentTooling/AGENT_PLANS.md` → "The feature
   manifest" is the authoring guide; this is the field list the scripts here depend on.
-- `usage.json` — `{ plan, model, outcome, session_id, subtype, is_error, num_turns,
+- `usage.json` — `{ plan, model, outcome, session_id, result_event, subtype, is_error, num_turns,
   duration_ms, total_cost_usd, usage{input_tokens,cache_creation_input_tokens,
   cache_read_input_tokens,output_tokens}, model_usage{<modelId>:{...}},
   permission_denials, tool_counts{<ToolName>:<int>}, files_edited[repo-relative
@@ -515,9 +599,25 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   plan has several, each with its own session id (see `RUNNER.md` → "How resume
   works"). `num_turns`, `duration_ms`, `total_cost_usd`, `usage{}`,
   `permission_denials`, `tool_counts`, `files_edited` and `edit_count` are **sums or
-  unions across every attempt**; `session_id`, `outcome`, `subtype`, `is_error` and
-  `model_usage` describe only the **latest**. An attempt with `total_cost_usd: null`
-  is one that was killed before writing a `result` event: the CLI never learned its
+  unions across every attempt**; `session_id`, `outcome`, `result_event`, `subtype`,
+  `is_error` and
+  `model_usage` describe only the **latest**.
+  **`result_event`** is `"seen"` or `"missing"`: whether that attempt's captured stream
+  carried a `type: "result"` event at all. Every CLI-reported figure above comes from
+  that event, so `"missing"` is what makes the nulls beside it mean *unmeasured* rather
+  than *free*. It is a separate fact from `outcome`, which is computed from the exit code
+  and says what the plan DID — a run can exit 0, finish its work and open its PR while
+  its stream loses the result event (cause unknown, `self/BACKLOG.md`), and that sidecar
+  reads `outcome: "complete"` with `result_event: "missing"`. **Anything deciding "is
+  this priced" reads `result_event` and the null cost, never `outcome`**: reading a $0
+  off `outcome: "complete"` is exactly how three merged reviews were recorded as free and
+  the zero committed. Absent on every sidecar written before the field existed, which is
+  not the same as `"missing"` — `report.py`'s `unpriced_reason` says "cause not recorded"
+  for those rather than guessing. Written by `write_usage_sidecar`
+  (`plan-runner-lib.sh`) and, always as `"seen"`, by `backfill_usage.py`, which returns
+  early on a stream that has no result event. An attempt with `total_cost_usd: null`
+  is one that reached no `result` event — killed before it could write one, or finished
+  while its stream lost it: the CLI never learned its
   cost, but `recover_attempts.py` can still price it from its session transcript and
   write `recovered_cost_usd` (plus `recovered_tokens`/`recovered_from`/`recovered_at`/
   `rates_applied`) onto the same attempt — `total_cost_usd` itself is left `null`
@@ -559,11 +659,13 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   `"parent"` or `"pinned"`, and no `cwd` — a delegate inherits its parent's.
 - `report.json` — `{ slug, generated_at, cost{method,planning,implementer,build,verify,review,total,
   planning_pct,build_pct,verify_pct,review_pct,cost_per_plan,cost_per_file,total_is_partial,
-  missing_usage_plans[],skipped_plans[],orphan_usage_plans[],recovered,unrecoverable_attempts[{plan,
+  missing_usage_plans[],unpriced_plans[{plan,queue,reason,recovery}],
+  multi_sidecar_stems[{plan,queue,count}],skipped_plans[],orphan_usage_plans[],recovered,
+  unrecoverable_attempts[{plan,
   session_id}],partially_recovered_attempts[{plan,session_id}]}, time{method,
   planning_sessions_s,planning_subagents_s,planning_s,implementer_s,tests_s?,
   direct_build_s?,gate_s?,build_s,verify_s,review_s,
-  executor_s,total_s,total_is_partial,missing_duration_plans[],wall_clock{first_at,
+  executor_s,total_s,total_is_partial,missing_duration_plans[{plan,queue,reason}],wall_clock{first_at,
   last_at,batch_span_s,batch_runs,batch_runs_s,passes_s{auto,verify,review},gates_s,
   gate_runs,plans_s,plan_runs,pr_opened_at,pr_url} | null}, planning_cost_split{
   sessions,subagents}, cold_start_tax_tokens,
@@ -575,7 +677,9 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   unavailable", warnings[] }` — a feature's cost roll-up and waste tripwires, written
   by `report.py`. Every figure comes from a `usage.json` or `planning.json` already on
   disk — summed or divided, never repriced. `total_is_partial` is set when any manifest
-  plan has no `usage.json`, any loaded plan has no `total_cost_usd`, or `planning.json`
+  plan has no `usage.json`, any loaded plan has no `total_cost_usd`, any attempt of one
+  — live or from a prior sidecar — has neither a reported nor a recovered cost, or
+  `planning.json`
   is itself partial; both renderings mark such a total `(partial)`, because a roll-up
   missing an input is still a number and otherwise reads as a complete one.
   `report.md` is the human-readable rendering of this same data, with no independent
@@ -587,6 +691,47 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   table's "build: implementer", carrying minutes and no dollars — the implementer's
   transcript is priced as one span and nothing divides its cost the way the instants
   divide its minutes.
+  `cost.unpriced_plans[]` names every manifest plan that RAN and carries no
+  `total_cost_usd` — `[{plan, queue, reason, recovery}]`, read with a `[]` default like
+  every key added after the fact. `queue` is the `auto`/`verify`/`review` segment, i.e.
+  which cost bucket the missing figure belongs to; `reason` is `no result event`,
+  `killed`, or `no cost reported, cause not recorded` for a sidecar written before
+  `result_event` existed, and comes from that field and never from `outcome`; `recovery`
+  is `recovered $X from transcript` or `transcript not found`, and since
+  `feature-close.sh` runs `recover_attempts.py --for <slug>` immediately before the
+  report, the latter means the transcript is gone rather than that recovery has yet to
+  run. It exists so **no bucket ever prints a bare `$0.0000` for work that happened**:
+  the cost line `feature-close.sh` shows before it commits renders a bucket holding one
+  of these as `review $0.0000 (0.0%, unpriced: 01-review-opus — no result event,
+  transcript not found)`, and `report.md` **marks the bucket's own cell** — the review
+  row reads `| review | $0.0000 † | 0.0% |` with a footnote directly under the table,
+  `† review: unpriced 01-review-opus — no result event, transcript not found`. The mark
+  goes in the cell rather than in a paragraph below the table because the figure a
+  reader quotes is the cell; the **Unpriced plans** paragraph that used to sit there is
+  replaced by the footnote, not joined by it. A bucket that genuinely cost nothing stays
+  unmarked, and an entry whose `queue` is unreadable gets a `no queue` footnote and
+  marks no row, so it is never lost with its row. Distinct
+  from `cost.unrecoverable_attempts[]`, which is one *attempt* of an otherwise priced
+  plan; a plan can appear in both. Every entry also sets `total_is_partial`, through
+  `priced_without_cost`.
+  `cost.multi_sidecar_stems[]` names every manifest plan with more than one
+  `usage.json` under this feature — `[{plan, queue, count}]`, the live sidecar plus the
+  priors the index outranked, `queue` being the LIVE one's since that is the file every
+  other figure is read from. `find_orphan_usage` cannot see a same-stem twin (the stem
+  IS listed, so it is not an orphan) and the roll-in warning is per plan rather than a
+  list, so a corpus with a hand-copied or mis-filed sidecar looked identical to a clean
+  one. `report.md` prints one line under the Cost table naming them, absent entirely
+  when every stem has exactly one sidecar.
+  `time.missing_duration_plans[]` is the Time table's counterpart, in the same
+  `{plan, queue, reason}` shape — it was a bare list of stems, which could say which
+  plan was missing but not which bucket's minutes to distrust or why. `reason` comes
+  from the same `result_event` field `cost.unpriced_plans[]`'s does and has the same
+  three branches, worded about the minutes: `no result event`, `killed`, or `no duration
+  reported, cause not recorded`. The Time table marks and footnotes a bucket exactly as
+  the Cost table does (`† review: no duration for 01-review-opus — no result event`), so
+  a review row that used to print a bare `0.0` beside real dollars now names the plan.
+  Recovery cannot fill a duration — a transcript gives tokens, not the executor's wall
+  clock — which is why the footnote carries no recovery clause.
   `cost.skipped_plans[]` names the manifest plans the runner filed **without running**
   (`skip_level_verify`, `plan-runner-lib.sh`: a level whose gate came back green does
   not owe its level-verify, so the plan goes to `verify/complete/` with a one-line

@@ -11,6 +11,7 @@ plans/features/README.md     generated
 plans/features/TEMPLATE.md   generated
 plans/.gitignore             generated
 plans/PROJECT_FACTS.md       repo-owned — seeded once from the skeleton, never overwritten
+plans/BACKLOG.md             repo-owned — seeded once, never overwritten
 plans/gate.sh                repo-owned — seeded once, never overwritten
 plans/pr.sh                  repo-owned — seeded once, never overwritten
 plans/worktree-setup.sh      repo-owned — seeded once, never overwritten
@@ -67,6 +68,14 @@ own header.
 
 `PROJECT_FACTS.md` is the opposite: it exists to hold what is specific to one
 codebase. `sync-plans.sh` creates it if missing and never touches it again.
+
+`BACKLOG.md` is seeded the same way and for the same reason — a repo writes its own
+entries into it — with one difference in how `--check` reports it: an *empty* backlog is
+the correct steady state for a repo that has closed everything it found, so a present
+file is `in-sync` and never `unfilled`. Only its absence is an item. The generated
+`plans/README.md` names it beside `PROJECT_FACTS.md`, which is what humanNetworkMap had
+added by hand and a sync overwrote (`../AGENT_PLANS.md` → "The feature manifest" and
+`../AGENT_DIRECT.md` → "The procedure" step 4 both say what belongs in it).
 
 Anything added here that a repo would need to customize belongs in `PROJECT_FACTS.md`
 instead, or the sync will destroy it.

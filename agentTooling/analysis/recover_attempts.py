@@ -1,13 +1,25 @@
-"""Recover a killed attempt's cost from its own session transcript.
+"""Recover an unpriced attempt's cost from its own session transcript.
 
-The runner takes cost from a run's final `result` event, and a killed run never
-emits one, so `attempts[].total_cost_usd` stays null forever — the CLI itself
-never learned the number. But the runner records `session_id` for every attempt,
-including a killed one, and that session's transcript survives under
-`~/.claude/projects/` with every token it actually spent. This script prices
-those tokens straight from the transcript and writes the result onto the attempt
-as `recovered_cost_usd` — never onto `total_cost_usd`, which must stay
-distinguishable as the CLI's own figure.
+The runner takes cost from a run's final `result` event. **Two different things
+leave an attempt without one**, and both end as `attempts[].total_cost_usd:
+null` — the CLI itself never learned the number:
+
+  * a **killed** run (Ctrl-C, SIGKILL, a machine that went away) never reaches
+    the end of its stream, so no result event was ever emitted; and
+  * a **completed** run — exit 0, work done, PR opened — whose captured stream
+    lost its result event anyway. Cause unknown and not reproducible
+    (`self/BACKLOG.md`); it is what recorded three merged reviews at $0. Its
+    sidecar says `outcome: "complete"` and `result_event: "missing"`.
+
+Nothing here is gated on `outcome`, and that is deliberate: a null
+`total_cost_usd` with a `session_id` beside it is the whole precondition, and
+the completed case needs recovery exactly as much as the killed one.
+
+The runner records `session_id` for every attempt either way, and that session's
+transcript survives under `~/.claude/projects/` with every token it actually
+spent. This script prices those tokens straight from the transcript and writes
+the result onto the attempt as `recovered_cost_usd` — never onto
+`total_cost_usd`, which must stay distinguishable as the CLI's own figure.
 
 Tokens are summed from the transcript's own `usage.cache_creation.ephemeral_
 {5m,1h}_input_tokens` split, not from a `usage.json`'s flat
@@ -18,7 +30,12 @@ Idempotent: an attempt that already carries `recovered_cost_usd` is skipped
 unless `--force`.
 
 Usage:
-    python3 agentTooling/analysis/recover_attempts.py [--self] [--force]
+    python3 agentTooling/analysis/recover_attempts.py [--self] [--force] [--for <slug>]
+
+`--for <slug>` restricts the walk to one feature directory — what
+`feature-close.sh` runs just before it captures, so a feature is priced at the
+moment it is closed rather than at the next weekly sweep. Without it the whole
+tree is walked, which is what `sweep.sh` calls and must stay unchanged.
 """
 
 from __future__ import annotations
@@ -26,6 +43,7 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -125,10 +143,33 @@ def main():
         action="store_true",
         help="re-recover an attempt that already carries recovered_cost_usd",
     )
+    # Named `--for`, not `--slug`, to read the way feature-close.sh calls it. It is a
+    # prefix of `--force`, so before this existed `--for <slug>` was silently parsed as
+    # `--force` plus a stray positional; an exact match wins in argparse, so adding it
+    # takes that spelling back. `--forc` still abbreviates `--force`; `--fo` is now
+    # ambiguous and rejected, which is the honest answer.
+    parser.add_argument(
+        "--for",
+        dest="feature",
+        metavar="SLUG",
+        help="restrict the walk to one feature directory (feature-close.sh passes this; "
+        "sweep.sh passes nothing and walks the whole tree)",
+    )
     add_self_flag(parser)
     args = parser.parse_args()
 
     features_dir = features_root(args.self_mode)
+    if args.feature:
+        features_dir = features_dir / args.feature
+        if not features_dir.is_dir():
+            # A refusal, not an empty walk: a typo would otherwise report "0 attempts
+            # recovered" — indistinguishable from a feature that had nothing to recover,
+            # and the close above would take it for a clean pass.
+            print(
+                f"no feature directory at {features_dir}; nothing recovered",
+                file=sys.stderr,
+            )
+            return 2
 
     recovered_count = 0
     recovered_dollars = 0.0
@@ -196,4 +237,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main() returns a non-zero code for a --for that names no feature; every other
+    # path returns None, which SystemExit reads as 0. An unrecoverable transcript is
+    # reported and still exits 0 — it is news, not a failure.
+    raise SystemExit(main())

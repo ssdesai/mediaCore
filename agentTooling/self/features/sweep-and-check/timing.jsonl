@@ -27,3 +27,5 @@
 {"at":"2026-09-04T05:36:57Z","event":"pass_start","queue":"review"}
 {"at":"2026-09-04T05:36:57Z","event":"plan_start","plan":"83-review-opus","queue":"review"}
 {"at":"2026-09-04T05:44:46Z","event":"plan_end","plan":"83-review-opus","queue":"review","rc":"0"}
+{"at":"2026-09-04T05:44:52Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/29"}
+{"at":"2026-09-04T05:44:52Z","event":"pass_end","queue":"review","reason":"all review plans complete"}

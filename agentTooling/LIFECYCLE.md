@@ -78,15 +78,26 @@ the feature cost has ended: a capture prices what a transcript holds at that mom
 a session still running is under-counted, and a window stamped shut drops any session
 that starts after it. It pulls `main`, carries home the trailing timing stamps the last
 pass wrote after its PR hook had already committed — `pr_opened`, with the PR URL, and
-`pass_end` — captures
+`pass_end` — recovers from their session transcripts the attempts the CLI never priced
+(`recover_attempts.py --for <slug>`, reported and never fatal — a plan that ran but
+whose stream carried no `result` event is otherwise committed at `$0`, and by the next
+weekly sweep its transcript may be gone), captures
 and reports the cost, prints every session and subagent the capture claimed — id, how it
 was selected, where it was launched, cost — so the number can be read before it is
 quoted, stamps `session_window.to`, commits the cost records, and removes the worktree
 and the branch. No model is involved.
 
+`--recapture` is the repair path for a feature already closed at the wrong number, and
+it does not need the branch: a successful close deletes the local one by design and a
+forge with delete-on-merge takes the remote one, so with both gone it proceeds on the
+ancestry the branch was only ever evidence *for* — the feature's manifest tracked on
+`main`, and its `<slug>: start` commit in `main`'s history. Both, never either. Without
+`--recapture`, and for a slug that was never started, the refusal is unchanged:
+`no branch '<slug>' locally or on origin — nothing to close`.
+
 ## 7. Sweep and propagate
 
-Weekly, `./agentTooling/sweep.sh` (and `./sweep.sh --self` here) runs the cadence in order — backfill the usage sidecars, recover killed attempts, `capture_planning.py
+Weekly, `./agentTooling/sweep.sh` (and `./sweep.sh --self` here) runs the cadence in order — backfill the usage sidecars, recover every attempt the CLI never priced, `capture_planning.py
 --all`, `report.py --all`. That pass is what catches the feature closed before a
 delegate was pinned and the batch whose event stream was never converted, both of which
 read as a correct number until someone looks. A feature whose window is still open is skipped as in flight — its close captures it. It prints the unclaimed delegates and sessions. Then propagate this directory's own changes: `./agentTooling/update.sh` in each consuming repo pulls this directory and runs `sync-plans.sh`, whose report names the repo-owned scripts that need a hand-merge (`README.md` → "Updating").

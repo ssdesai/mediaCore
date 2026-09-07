@@ -17,7 +17,9 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
   `AGENT_DIRECT.md`, `ORCHESTRATION.md`, `RUNNER.md`, `README.md`. `EXPERIMENTS.md` lives
   with its tool, under `harness/`.
 - `templates/` — the stubs `sync-plans.sh` writes into a *consuming* repo's `plans/`.
-  Never edited in the consuming repo.
+  Never edited in the consuming repo. Five are generated and overwritten every sync;
+  five are seeded once and then repo-owned (`PROJECT_FACTS.md`, `BACKLOG.md`, `gate.sh`,
+  `pr.sh`, `worktree-setup.sh`). Nothing repo-specific ever goes in here.
 - `analysis/` — stdlib-only Python 3 cost tooling.
 - `self/` — this corpus. Not generated from `templates/`. `self/tests/` holds the
   harness's own behavioural checks, run by `self/gate.sh`.
@@ -76,6 +78,33 @@ say to run by hand, along with what "passing" looks like.
   explicit exit codes (`finalize_plan`), so an `&&` short-circuit that leaves a non-zero
   status behind is a real hazard where `set -e` would have caught it. Use
   `if …; then …; fi` over `cond && cmd` for anything whose status is not being checked.
+- **Surviving SIGPIPE means redirecting *and* flushing.** The runners trap SIGPIPE so a
+  consumer that stops reading their stdout cannot fail a plan (`../RUNNER.md` →
+  "Capturing the stream"), and `run-batch.sh` installs the same handler above its own
+  first write — it is a separate process that sources only `plan-runner-roots.sh`, so
+  the trap in `run_all` never covered it and a closed consumer killed the batch (not the
+  plan) at its next banner. A trap alone is not enough: the bytes of the write that failed
+  stay in bash's stdio buffer, and every later `$(…)` that runs a function or a list, and
+  every `<(…)`, inherits the dirty buffer and flushes it into its own stdout — which is
+  that substitution's pipe. The observed result was `$(wc -c < f)` returning the byte
+  count plus the text of the failed echo, and `<(list_plans …)` handing `run_all` a
+  "=== Finished: … ===" line as the next plan to run. The handler is therefore
+  `exec >/dev/null; printf "\n"`: point stdout somewhere that cannot break, then make one
+  successful write to clear the buffer. A zero-byte write does not clear it. Use a
+  *handler*, never `trap '' PIPE` — an ignored disposition is inherited through `exec` and
+  would change SIGPIPE for `claude`, `jq`, `git`, `gh` and a consuming repo's own
+  `plans/gate.sh`, while a handled one is reset to default in children.
+- **`claude` writes `.stream.jsonl` itself** — its stdout is redirected to the file and it
+  runs as a background job, so nothing that reads the stream can truncate it. A plan that
+  needs the events live reads the file, it does not insert itself into a pipe in front of
+  it, and nothing writes a sentinel line into that file: `write_usage_sidecar` and
+  `stream_shows_usage_limit` parse it. Two things that file's readers must respect:
+  `claude`'s **stderr is merged into it** (`2>&1`), so anything asking "did this stream
+  reach a `result` event?" parses with `fromjson?` and skips the lines that are not JSON —
+  there is one copy of that expression (`STREAM_EVENTS_JQ`) and both readers splice it in;
+  and `mktemp -d` is always given an **explicit template under `$TMPDIR`**, because a bare
+  `mktemp -d` on macOS asks the OS for the per-user temp directory and ignores `$TMPDIR`
+  entirely, which makes anything built on it unconfigurable and untestable.
 - **`jq` and `claude` are hard dependencies**, verified by `require_tools` at startup
   (exit 127). Both `jq` call sites suppress stderr, which is exactly why the startup
   check exists: a missing `jq` would otherwise produce an empty progress log, no

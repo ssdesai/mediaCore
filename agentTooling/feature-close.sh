@@ -29,23 +29,35 @@ set -uo pipefail
 #      will ever carry them. timing.jsonl is append-only JSON lines: the lines the
 #      primary's copy does not already hold are appended to it, deduped by exact line, so
 #      a re-run, or a second close after a --keep-worktree one, never doubles them;
-#   5. captures, and stops on a refusal (nothing matched, a frozen prior record) with the
-#      manifest untouched and step 4's append rolled back, so the primary is exactly as
-#      this run found it and the refusal can be acted on and the close re-run — a refusal
-#      that left the carried lines behind made the primary dirty, which is what step 1
-#      then refuses on, so the first refusal caused a second one that named a record the
-#      human must not simply discard. The lines are still in the worktree; the re-run
-#      carries them again;
-#   6. writes the report — now over the complete timing record — then prints what
-#      planning.json claims: id, how it was selected, where it was launched, cost, so the
-#      number is read before it is quoted;
-#   7. only now stamps session_window.to. After the capture, never before: a `to` of now
+#   5. recovers what the CLI never priced, over THIS feature only
+#      (`analysis/recover_attempts.py --for <slug>`). An attempt whose stream carried no
+#      `result` event has a null total_cost_usd forever — a killed run, or a run that
+#      exited 0 while its stream lost the event — and recover_attempts.py can price it
+#      from the session transcript. It ran only in the weekly sweep before, so a feature
+#      closed the day it merged committed the zero and the transcript then aged out. It
+#      runs BEFORE the capture so the report below reads the recovered figures, and its
+#      failures are reported and never fatal: a plan whose transcript is gone is named
+#      here and again in the report, which is news to act on, not a reason to abandon a
+#      close whose PR has already merged. The sidecars it rewrites are the harness's own
+#      records (COST_FILES / is_cost_usage_path above), so the commit carries them;
+#   6. captures, and stops on a refusal (nothing matched, a frozen prior record) with the
+#      manifest untouched and step 4's append AND step 5's recovered sidecars rolled
+#      back, so the primary is exactly as this run found it and the refusal can be acted
+#      on and the close re-run — a refusal that left either behind made the primary
+#      dirty, which is what step 1 then refuses on, so the first refusal caused a second
+#      one that named a record the human must not simply discard. Nothing is lost: the
+#      timing lines are still in the worktree and the recovered dollars are still
+#      derivable from the transcripts, and the re-run does both again;
+#   7. writes the report — now over the complete timing record and the recovered costs —
+#      then prints what planning.json claims: id, how it was selected, where it was
+#      launched, cost, so the number is read before it is quoted;
+#   8. only now stamps session_window.to. After the capture, never before: a `to` of now
 #      excludes nothing that exists now, and a capture that refused must leave the window
 #      open for the next attempt;
-#   8. commits exactly the cost files as `<slug>: cost records` and pushes main (--no-push
+#   9. commits exactly the cost files as `<slug>: cost records` and pushes main (--no-push
 #      holds it back); anything else dirty is named and the run stops rather than sweeping
 #      a stranger's work into a cost commit;
-#   9. removes the worktree and the local branch, in that order (--keep-worktree keeps
+#  10. removes the worktree and the local branch, in that order (--keep-worktree keeps
 #      both). The worktree's own timing.jsonl is restored first: step 4 put its trailing
 #      lines on main, so the modification is now a duplicate of the record rather than the
 #      only copy of it, and discarding it is what lets a plain `git worktree remove` —
@@ -56,7 +68,7 @@ set -uo pipefail
 #      that its transcripts were read while the branch record was fresh.
 #
 # Every python here runs with -B: the interpreter must leave no analysis/__pycache__ in
-# the primary, or step 8 would find it dirty and refuse.
+# the primary, or step 9 would find it dirty and refuse.
 #
 # Exit codes: 2 usage; 1 any refusal.
 
@@ -69,6 +81,27 @@ MAIN_BRANCH="main"
 # dirty, in the primary or in the worktree, is somebody's work in progress and this
 # script neither commits nor deletes it.
 COST_FILES="README.md planning.json report.md report.json timing.jsonl"
+# The same list, for the per-plan cost sidecars, which are not flat names: a usage.json
+# sits at <queue>/<state>/<stem>.usage.json under the feature directory, and one level
+# deeper again for an archived batch. The recovery step below rewrites them in place, so
+# without this the cost commit would refuse its own run's output as a stranger's work.
+#
+# These are the runner's own two sets, not a guess: QUEUE is set to exactly one of the
+# three by run-plans.sh, run-verify.sh and run-review.sh, and the four state directories
+# are what finalize_plan routes a plan between (plan-runner-lib.sh, resolve_feature's
+# comment, spells the layout out). analysis/report.py holds the same two sets as
+# QUEUE_DIRS and STATE_DIRS, and its find_queue_segment reads the layout from the other
+# end — up from the sidecar to the nearest state directory, whose parent must be a queue
+# — which is why the archived-batch level is safe to allow below the state directory but
+# nothing is allowed above the queue.
+#
+# Matching on the names, rather than on any path ending in .usage.json, is what makes the
+# refusal mean something: this script's whole contract is that it does not sweep up a
+# stranger's work, and a .usage.json somewhere else under the feature directory has never
+# been anything the harness wrote. Every one of the 574 sidecars in the four corpora
+# today is <queue>/<state>/<stem>.usage.json exactly.
+COST_USAGE_QUEUES="auto verify review"
+COST_USAGE_STATES="incomplete inprogress complete failed"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/plan-runner-roots.sh"
@@ -89,6 +122,24 @@ refuse() { echo "  refused  $*" >&2; exit "$REFUSED_RC"; }
 # directory. Two callers with the same question: the cost commit, which refuses to sweep
 # up a stranger's work, and the teardown, which decides whether a worktree's leftovers
 # are the harness's own or somebody's.
+# is_cost_usage_path <feature-relative path>
+#
+# Whether a path is one of the per-plan cost sidecars above: <queue>/<state>/… ending in
+# .usage.json, with <queue> and <state> from the runner's own two sets. What follows the
+# state directory is left unconstrained, so an archived batch's extra branch-named level
+# still matches — the same rule find_queue_segment applies walking the other way.
+is_cost_usage_path() {
+  local name="$1" queue rest state
+  case "$name" in *.usage.json) ;; *) return 1 ;; esac
+  case "$name" in */*/*) ;; *) return 1 ;; esac      # needs a queue AND a state above it
+  queue="${name%%/*}"
+  rest="${name#*/}"
+  state="${rest%%/*}"
+  case " $COST_USAGE_QUEUES " in *" $queue "*) ;; *) return 1 ;; esac
+  case " $COST_USAGE_STATES " in *" $state "*) ;; *) return 1 ;; esac
+  return 0
+}
+
 stray_paths() {
   local line path name
   while IFS= read -r line; do
@@ -98,9 +149,10 @@ stray_paths() {
     case "$path" in "$FEATURE_REL"/*) name="${path#"$FEATURE_REL"/}" ;; esac
     if [[ -z "$name" ]]; then echo "$path"; continue; fi
     case " $COST_FILES " in
-      *" $name "*) ;;
-      *) echo "$path" ;;
+      *" $name "*) continue ;;
     esac
+    if is_cost_usage_path "$name"; then continue; fi
+    echo "$path"
   done <<<"$1"
 }
 
@@ -128,6 +180,11 @@ WORKTREE="$PRIMARY-$SLUG"
 FEATURE_DIR="$FEATURES_DIR/$SLUG"
 FEATURE_REL="${REL_REPO:+$REL_REPO/}$FEATURES_LABEL/$SLUG"           # as `git status` prints it
 MANIFEST="$FEATURE_DIR/README.md"
+MANIFEST_REL="$FEATURE_REL/README.md"                                # as `git cat-file <ref>:<path>` addresses it
+# The subject feature-start.sh gives a feature's first commit (LIFECYCLE.md → step 2).
+# Once both branch refs are gone this is the only thing left in history that says this
+# feature was ever started in this checkout.
+START_COMMIT_SUBJECT="$SLUG: start"
 TIMING_REL="$FEATURE_REL/timing.jsonl"                               # same path in both trees
 WT_TIMING="$WORKTREE/$TIMING_REL"
 REPO_NAME="$(basename "$PRIMARY")"
@@ -149,17 +206,41 @@ if git -C "$PRIMARY" remote get-url origin >/dev/null 2>&1; then
     MAIN_REF="origin/$MAIN_BRANCH"
   fi
 fi
+# closed_feature_on_main — the ancestry the branch refusal exists to check, read
+# without a branch: this feature's manifest is tracked on $MAIN_REF, and its
+# `<slug>: start` commit is in $MAIN_REF's history (which is what "is an ancestor of"
+# means, so finding it there IS the check). Both, never either: a manifest alone could
+# have been copied in by hand, and a matching subject alone could be somebody's commit
+# message.
+#
+# Only --recapture consults it. A successful close deletes the local branch by design
+# and a forge with delete-on-merge takes the remote one, so the repair path for an
+# already-closed feature worked only while the remote branch happened to survive — which
+# it did for all nine affected features by luck, not design (../self/BACKLOG.md). The
+# non-recapture path is unchanged: there is nothing to repair there, and no reason to
+# relax a refusal that catches a typo'd slug.
+closed_feature_on_main() {
+  git -C "$PRIMARY" cat-file -e "$MAIN_REF:$MANIFEST_REL" 2>/dev/null || return 1
+  [[ -n "$(git -C "$PRIMARY" rev-list --max-count=1 --fixed-strings \
+             --grep="$START_COMMIT_SUBJECT" "$MAIN_REF" 2>/dev/null)" ]]
+}
+
+MERGE_REF=""
 if git -C "$PRIMARY" show-ref --verify --quiet "refs/heads/$SLUG"; then
   MERGE_REF="$SLUG"
 elif git -C "$PRIMARY" show-ref --verify --quiet "refs/remotes/origin/$SLUG"; then
   MERGE_REF="origin/$SLUG"
+fi
+if [[ -n "$MERGE_REF" ]]; then
+  if ! git -C "$PRIMARY" merge-base --is-ancestor "$MERGE_REF" "$MAIN_REF"; then
+    refuse "'$SLUG' is not merged into $MAIN_REF — open its PR and merge it before closing"
+  fi
+  echo "  merged    $MERGE_REF is an ancestor of $MAIN_REF"
+elif (( RECAPTURE )) && closed_feature_on_main; then
+  echo "  merged    no branch left; $MANIFEST_REL and '$START_COMMIT_SUBJECT' are on $MAIN_REF"
 else
   refuse "no branch '$SLUG' locally or on origin — nothing to close"
 fi
-if ! git -C "$PRIMARY" merge-base --is-ancestor "$MERGE_REF" "$MAIN_REF"; then
-  refuse "'$SLUG' is not merged into $MAIN_REF — open its PR and merge it before closing"
-fi
-echo "  merged    $MERGE_REF is an ancestor of $MAIN_REF"
 if (( HAS_ORIGIN )) && [[ "$MAIN_REF" == "origin/$MAIN_BRANCH" ]]; then
   git -C "$PRIMARY" pull -q --ff-only origin "$MAIN_BRANCH" \
     || refuse "git pull --ff-only failed; reconcile $MAIN_BRANCH in $PRIMARY by hand, then run this again"
@@ -259,6 +340,52 @@ rollback_carry() {
   echo "  timing    rolled back the $CARRIED carried stamp(s); $TIMING_REL is as it was"
 }
 
+# ── Recover what the CLI never priced ─────────────────────────────────────────
+# An attempt whose stream carried no `result` event has `total_cost_usd: null` forever —
+# the CLI never learned the figure. recover_attempts.py prices it from the session
+# transcript instead, and its sidecar records WHY it was unpriced (`result_event`,
+# plan-runner-lib.sh). Two things bring an attempt here: a killed run, and a run that
+# exited 0 while its stream lost the event — the second is what recorded three merged
+# reviews at $0, and the close is the only moment that catches it, because the weekly
+# sweep may not run before the transcript ages out of ~/.claude/projects/.
+#
+# Scoped with --for: this close speaks for this feature, and a whole-tree walk here would
+# rewrite sidecars in features nobody asked about — which the commit below would then
+# either sweep up or refuse on. Never fatal, always reported: the PR has merged, and a
+# transcript that is gone is news for the report, not a reason to abandon the close.
+# Before the capture, so the report reads the recovered figures; rolled back if that
+# capture refuses, for the same reason the carry above is.
+echo ""
+echo "=== recover ==="
+if ! python3 -B "$SCRIPT_DIR/analysis/recover_attempts.py" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} --for "$SLUG"; then
+  echo "  warn      recovery reported a failure; continuing — the report below names any plan still unpriced"
+fi
+# The primary was verified clean above, so any usage.json dirty under the feature
+# directory now is one this step rewrote. That is what makes the rollback exact rather
+# than a guess, and recovery only ever rewrites files that already existed, so
+# `git checkout --` puts every one of them back.
+# `cut -c4-` is the pipeline twin of stray_paths' `${line:3}` — porcelain is `XY <path>`.
+# Deliberately not a `case` inside this command substitution: bash 3.2 mis-parses the
+# unbalanced `)` of a case pattern there, and the error goes to stderr while the
+# assignment quietly succeeds. `|| true` because grep exits 1 on no match, which is the
+# ordinary outcome and not a failure.
+RECOVERED_PATHS="$(git -C "$PRIMARY" status --porcelain -- "$FEATURE_REL" 2>/dev/null \
+  | cut -c4- | grep '\.usage\.json$' || true)"
+
+# rollback_recovery — undo the rewrite above, for a refusal path only, exactly as
+# rollback_carry undoes the timing append. Nothing is lost: every recovered figure is
+# derived from a session transcript that is still there, and the re-run derives it again.
+rollback_recovery() {
+  [[ -n "$RECOVERED_PATHS" ]] || return 0
+  local recovered_count=0
+  while IFS= read -r recovered_path; do
+    [[ -n "$recovered_path" ]] || continue
+    git -C "$PRIMARY" checkout -- "$recovered_path" 2>/dev/null
+    recovered_count=$(( recovered_count + 1 ))
+  done <<<"$RECOVERED_PATHS"
+  echo "  recover   rolled back the $recovered_count recovered sidecar(s); the feature directory is as it was"
+}
+
 # ── Capture, report, and what was claimed ─────────────────────────────────────
 echo ""
 echo "=== capture ==="
@@ -266,6 +393,7 @@ CAPTURE_ARGS=()
 if (( RECAPTURE )); then CAPTURE_ARGS=(--recapture); fi
 if ! "${CAPTURE_PY[@]}" "$SLUG" ${CAPTURE_ARGS[@]+"${CAPTURE_ARGS[@]}"}; then
   rollback_carry
+  rollback_recovery
   CARRY_NOTE=""
   if (( CARRIED )); then
     CARRY_NOTE=", and the $CARRIED timing stamp(s) carried above were rolled back — the worktree still holds them and the next run carries them again"

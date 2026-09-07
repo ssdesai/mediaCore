@@ -133,7 +133,7 @@ and the feature's real cost is the `usage.json` roll-up `report.py` prints.
   "plans": ["73-tests-check-plans-sonnet", "74-tests-sync-check-sonnet", "75-tests-sweep-sonnet", "76-check-plans-sonnet", "77-sync-check-and-update-sonnet", "78-sweep-sonnet", "79-zero-with-evidence-sonnet", "80-level-scripts-sonnet", "81-docs-haiku", "82-verify-sonnet", "83-review-opus"],
   "branches": ["sweep-and-check"],
   "base": "main",
-  "session_window": {"from": "2026-09-04T04:36:36Z", "to": null},
+  "session_window": {"from": "2026-09-04T04:36:36Z", "to": "2026-09-04T06:07:47Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],

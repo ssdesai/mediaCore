@@ -59,6 +59,32 @@ set -uo pipefail
 # argument may instead be --self, which selects agentTooling's own queue and its own
 # gate — see plan-runner-roots.sh.
 
+# Survive a consumer that stops reading this script's stdout — and stop writing to it.
+# Installed before the first write of any kind, which is why it is above the sourcing.
+#
+# `run_all` (plan-runner-lib.sh) does this for run-plans.sh, run-verify.sh and
+# run-review.sh, so a closed consumer can no longer fail a plan (self/features/
+# stream-capture-file-first, ruling 1). This script is a separate process that sources
+# only plan-runner-roots.sh, and every banner below goes to the same stdout — so the
+# exact launch shape that lost nine reviews' cost records, a coordinator backgrounding
+# the batch with its output piped onward, still killed the BATCH on its next banner. The
+# child runner survived and filed its plan, so no record was lost; what was lost was the
+# rest of the batch — the gate, the verify pass, the review pass and the PR — with no
+# summary saying why, and an exit code of 141 that tells a caller nothing.
+#
+# Both halves are load-bearing, and self/PROJECT_FACTS.md has the long form:
+#   exec >/dev/null   point this shell's output somewhere that cannot break, so it does
+#                     not take a SIGPIPE and print a `write error` per line from here on;
+#   printf '\n'       flush bash's stdio buffer now that flushing can succeed. The bytes
+#                     of the failed write are still in it, and every later `$(…)` and
+#                     `<(…)` inherits the dirty buffer and flushes it into its OWN
+#                     stdout — here, into `$(cat "$FEATURE_SLUG_FILE")` and friends. A
+#                     zero-byte write does not clear it.
+# A handler, never `trap '' PIPE`: an ignored disposition is inherited through exec and
+# would change SIGPIPE for claude, jq, git, gh and a consuming repo's plans/gate.sh,
+# while a handled one is reset to default in children.
+trap 'exec >/dev/null; printf "\n"' PIPE
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/plan-runner-roots.sh"
 resolve_roots "${1:-}"
