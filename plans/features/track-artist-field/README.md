@@ -72,7 +72,7 @@ implementer's.
   "plans": ["01-review-opus"],
   "branches": ["track-artist-field"],
   "base": "main",
-  "session_window": {"from": "2026-09-06T22:20:29Z", "to": null},
+  "session_window": {"from": "2026-09-06T22:20:29Z", "to": "2026-09-07T15:49:26Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": ["ed088063-7aea-498e-84b1-7503d4bd88e1"],

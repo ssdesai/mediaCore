@@ -1,0 +1,107 @@
+{
+  "slug": "track-artist-field",
+  "generated_at": "2026-09-07T15:49:26.471043+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 35.94624075,
+    "build": 35.94624075,
+    "verify": 0.0,
+    "review": 2.0128595,
+    "total": 37.95910025,
+    "planning_pct": 0.0,
+    "build_pct": 94.6972939644427,
+    "verify_pct": 0.0,
+    "review_pct": 5.30270603555731,
+    "cost_per_plan": 37.95910025,
+    "cost_per_file": 7.59182005,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 63416,
+    "planning_subagents_s": 1151,
+    "planning_s": 0.0,
+    "implementer_s": 64567,
+    "build_s": 64567.0,
+    "verify_s": 0.0,
+    "review_s": 291.0,
+    "executor_s": 64858.0,
+    "total_s": 64858.0,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-06T22:36:13+00:00",
+      "last_at": "2026-09-06T22:58:48+00:00",
+      "batch_span_s": 1355.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 298.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 292.0,
+      "plan_runs": 1,
+      "pr_opened_at": "2026-09-06T22:49:25+00:00",
+      "pr_url": "https://github.com/ssdesai/mediaCore/pull/13"
+    },
+    "tests_s": 126.0,
+    "direct_build_s": 214.0,
+    "gate_s": 60.0
+  },
+  "planning_cost_split": {
+    "subagents": 6.01200625,
+    "sessions": 29.934234500000002
+  },
+  "cold_start_tax_tokens": 79562,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 32,
+      "total_cost_usd": 2.0128595,
+      "total_duration_s": 291.0,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 6,
+      "files_edited": 5,
+      "churn_ratio": 1.2
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 60,
+      "loc_changed": "not computed: streams unavailable"
+    }
+  ],
+  "re_hunting": "not computed: streams unavailable",
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "INTEGRATION.md",
+        "plans/BACKLOG.md",
+        "plans/review-report.md",
+        "src/mediacore/README.md",
+        "tests/README.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": "not computed: streams unavailable",
+  "warnings": []
+}

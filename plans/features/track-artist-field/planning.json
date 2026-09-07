@@ -1,0 +1,153 @@
+{
+  "slug": "track-artist-field",
+  "captured_at": "2026-09-07T15:49:26.420929+00:00",
+  "manifest_branches": [
+    "track-artist-field"
+  ],
+  "manifest_subagents": [
+    "af2d221edb1f32f38",
+    "af53d0bdccf903f26"
+  ],
+  "sessions": [
+    {
+      "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+      "git_branch": "HEAD",
+      "selected_by": "pinned",
+      "cwd": "/Users/sahildesai/dev",
+      "date": "2026-09-06",
+      "started_at": "2026-09-06T22:11:08.565000+00:00",
+      "ended_at": "2026-09-07T15:48:04.701000+00:00",
+      "duration_s": 63416
+    }
+  ],
+  "subagents": [
+    {
+      "agent_id": "af2d221edb1f32f38",
+      "parent_session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+      "date": "2026-09-06",
+      "started_at": "2026-09-06T22:50:26.405000+00:00",
+      "ended_at": "2026-09-06T22:59:38.798000+00:00",
+      "duration_s": 552,
+      "selected_by": "pinned",
+      "cross_repo": true
+    },
+    {
+      "agent_id": "af53d0bdccf903f26",
+      "parent_session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+      "date": "2026-09-06",
+      "started_at": "2026-09-06T22:33:30.215000+00:00",
+      "ended_at": "2026-09-06T22:43:29.826000+00:00",
+      "duration_s": 599,
+      "selected_by": "pinned",
+      "cross_repo": true
+    }
+  ],
+  "excluded_session_ids": [
+    "2b2b10af-ab69-4dc8-98f1-f2b15d9ff519",
+    "32df1d5a-fbe4-40bd-88f2-321776723b02",
+    "4285b39b-e43b-432c-8816-401ea9a2d838",
+    "54374427-d353-400e-8413-20f0a4b976c6",
+    "60fffb9c-f1ce-49ab-8fbb-005d59803b18",
+    "68427583-5ea4-40ba-9969-e49e12950d7c",
+    "7b929042-1447-442e-b56a-cbbf2cfd8993",
+    "7d0fc5c6-7ca3-4bd5-be94-b205436a0a52",
+    "9034068b-08ef-4453-80c1-5e1eb2c16bd6",
+    "90a58789-b366-481a-a599-79e9c10a8e3e",
+    "cb19dfb7-7855-401d-a318-e895f3440d12",
+    "cbb3f5ca-4dcf-4211-9970-515b1d202b3c",
+    "d5408c53-6382-4419-9f2a-a3465394c547",
+    "dd4fc76c-92db-4a48-9de7-4c48c014233e"
+  ],
+  "excluded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+      "agent_id": null,
+      "model": "claude-fable-5-1",
+      "is_sidechain": false,
+      "date": "2026-09-06",
+      "duration_s": 63416,
+      "tokens": {
+        "input": 3112,
+        "output": 234071,
+        "cache_read": 19407138,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 667389
+      },
+      "cost_usd": 29.9342345,
+      "rates_applied": {
+        "model": "claude-fable-5-1",
+        "input": 10,
+        "output": 50,
+        "cache_read": 0.25,
+        "cache_creation_5m": 12.5,
+        "cache_creation_1h": 20.0,
+        "tier": "standard"
+      }
+    },
+    {
+      "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+      "agent_id": "af2d221edb1f32f38",
+      "model": "claude-opus-5",
+      "is_sidechain": true,
+      "date": "2026-09-06",
+      "duration_s": 552,
+      "tokens": {
+        "input": 94,
+        "output": 3848,
+        "cache_read": 4276609,
+        "cache_creation_5m": 107160,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 2.9047245,
+      "rates_applied": {
+        "model": "claude-opus-5",
+        "input": 5,
+        "output": 25,
+        "cache_read": 0.5,
+        "cache_creation_5m": 6.25,
+        "cache_creation_1h": 10.0,
+        "tier": "standard"
+      }
+    },
+    {
+      "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+      "agent_id": "af53d0bdccf903f26",
+      "model": "claude-opus-5",
+      "is_sidechain": true,
+      "date": "2026-09-06",
+      "duration_s": 599,
+      "tokens": {
+        "input": 90,
+        "output": 7001,
+        "cache_read": 4429001,
+        "cache_creation_5m": 114769,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 3.10728175,
+      "rates_applied": {
+        "model": "claude-opus-5",
+        "input": 5,
+        "output": 25,
+        "cache_read": 0.5,
+        "cache_creation_5m": 6.25,
+        "cache_creation_1h": 10.0,
+        "tier": "standard"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 29.9342345,
+    "sidechain": 6.01200625,
+    "subagents": 6.01200625,
+    "total": 35.94624075,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 63416,
+    "subagents": 1151,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/pricing.py RATES_VERIFIED=2026-09-04",
+  "warnings": []
+}
