@@ -30,10 +30,15 @@ subagents bypass the branch and window filters: the pin is the human's word.
 hold, with its cost and opening prompt, which is how to find an id to pin.
 
 Populates only what is not yet populated. A feature whose `planning.json` already
-carries a `captured_at` is skipped — nothing rewrites a frozen record without being
-asked, and the skip happens before the transcript scan, so a corpus-wide run costs
-almost nothing. `--recapture` rebuilds anyway; `--all` walks every feature, skipping any whose
-`session_window.to` is still null — in flight, and `feature-close.sh`'s to capture.
+carries a `captured_at` is not re-derived — nothing rewrites a frozen record's figures
+without being asked, and the transcript scan is skipped entirely, so a corpus-wide run
+costs almost nothing. Such a record does get one thing refreshed in place: its
+`sessions[].also_claimed_by`, from the claims ledger, which opens no transcript and
+changes no dollar, duration or `captured_at` (`annotate_frozen_record`). That run
+reports the feature as `annotated` rather than `skipped`, and is how a feature closed
+before another feature claimed its coordinator session ever comes to say so.
+`--recapture` rebuilds from transcripts anyway; `--all` walks every feature, skipping any
+whose `session_window.to` is still null — in flight, and `feature-close.sh`'s to capture.
 
 Usage: python3 agentTooling/analysis/capture_planning.py <slug>
        python3 agentTooling/analysis/capture_planning.py --all [--recapture]
@@ -368,11 +373,22 @@ def agent_id_of(path, lines):
     return path.stem[len("agent-"):] if path.stem.startswith("agent-") else path.stem
 
 
-# The claims ledger: every subagent transcript this tool has ever priced, keyed by agent
-# id, with the feature that claimed it. It lives beside the transcripts (under ~/.claude)
-# and is scoped like them — local to this machine, meaningless once they expire — so it
-# needs no knowledge of where the other repos are checked out.
+# The claims ledger: every subagent transcript and every top-level session this tool has
+# ever priced, with the feature that claimed it. It lives beside the transcripts (under
+# ~/.claude) and is scoped like them — local to this machine, meaningless once they
+# expire — so it needs no knowledge of where the other repos are checked out. There is no
+# override for its path other than $HOME itself, deliberately: `Path.home()` resolves the
+# transcript glob too, so a test that redirects $HOME moves both together and one that
+# moved only the ledger would still read the machine's own transcripts.
 CLAIMS_LEDGER_NAME = "subagent-claims.json"
+# Its two sections. Kept apart because the two kinds of claim have different arities: a
+# subagent transcript belongs to exactly one feature and a second claim is refused, while
+# a coordinator SESSION legitimately spans features — so a subagent id maps to one claim
+# and a session id to a LIST of them. A file carrying neither key is the original flat
+# `{<agent-id>: {…}}` shape, read as the subagents section (see `load_ledger`); an agent
+# id is a hex token and can never collide with either key.
+LEDGER_SUBAGENTS_KEY = "subagents"
+LEDGER_SESSIONS_KEY = "sessions"
 # The first line of a delegate's brief names the feature it is for (ORCHESTRATION.md):
 #   feature: <repo>/<slug>
 BRIEF_FEATURE_RE = re.compile(r"^\s*feature:\s*([\w.-]+)/([\w.-]+)\s*$", re.MULTILINE)
@@ -384,21 +400,49 @@ def claims_ledger_path():
     return Path.home() / ".claude" / CLAIMS_LEDGER_NAME
 
 
-def load_claims():
+def load_ledger():
+    """The whole ledger as `{"subagents": {…}, "sessions": {…}}`.
+
+    **An old ledger file loads unchanged.** Every one on disk today is the flat
+    `{<agent-id>: {repo, slug, …}}` map this started as, with no section keys at all;
+    such a file is read as the subagents section entire, nothing is migrated on read, and
+    the two-section shape is written by the next capture. A file that is missing,
+    unparseable, or not an object yields two empty sections rather than raising — the
+    ledger is a cache of what other captures did, and a corrupt one must not stop this
+    run from writing its own record."""
     path = claims_ledger_path()
     if not path.exists():
-        return {}
+        return {LEDGER_SUBAGENTS_KEY: {}, LEDGER_SESSIONS_KEY: {}}
     try:
-        claims = json.loads(path.read_text())
+        ledger = json.loads(path.read_text())
     except json.JSONDecodeError:
-        return {}
-    return claims if isinstance(claims, dict) else {}
+        return {LEDGER_SUBAGENTS_KEY: {}, LEDGER_SESSIONS_KEY: {}}
+    if not isinstance(ledger, dict):
+        return {LEDGER_SUBAGENTS_KEY: {}, LEDGER_SESSIONS_KEY: {}}
+    if LEDGER_SUBAGENTS_KEY in ledger or LEDGER_SESSIONS_KEY in ledger:
+        return {
+            LEDGER_SUBAGENTS_KEY: ledger.get(LEDGER_SUBAGENTS_KEY) or {},
+            LEDGER_SESSIONS_KEY: ledger.get(LEDGER_SESSIONS_KEY) or {},
+        }
+    return {LEDGER_SUBAGENTS_KEY: ledger, LEDGER_SESSIONS_KEY: {}}
 
 
-def save_claims(claims):
+def load_claims():
+    """The subagents section alone — what every caller that predates session claims
+    wants, and what `check_claims`, `record_claims` and `unclaimed_under` take."""
+    return load_ledger()[LEDGER_SUBAGENTS_KEY]
+
+
+def save_ledger(claims, session_claims):
+    """Write both sections. Always both: they share one file, so writing one alone would
+    drop the other."""
     path = claims_ledger_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(dict(sorted(claims.items())), indent=2) + "\n")
+    ledger = {
+        LEDGER_SUBAGENTS_KEY: dict(sorted(claims.items())),
+        LEDGER_SESSIONS_KEY: dict(sorted(session_claims.items())),
+    }
+    path.write_text(json.dumps(ledger, indent=2) + "\n")
 
 
 def repo_identity(sessions_dir):
@@ -485,6 +529,253 @@ def record_claims(claims, agent_costs, agent_selected_by, repo, repo_name, slug)
             "cost_usd": cost,
             "claimed_at": now,
         }
+
+
+def other_session_claimants(session_claims, session_id, repo, slug):
+    """`["<repo_name>/<slug>", …]` for every OTHER feature the ledger records as counting
+    this session, or `[]`. Not a refusal, unlike `check_claims`: a coordinator session
+    that ran seven features is claimed by all seven and priced in full by each, because
+    the transcript cannot say which feature a message served and a split by count would
+    be a number nobody measured. What it can say is that the figure is not this feature's
+    alone, which is what this annotation is for."""
+    others = []
+    for claim in session_claims.get(session_id) or []:
+        if (claim.get("repo"), claim.get("slug")) == (repo, slug):
+            continue
+        name = claim.get("repo_name") or claim.get("repo")
+        others.append(f"{name}/{claim.get('slug')}")
+    return sorted(set(others))
+
+
+def record_session_claims(session_claims, session_costs, session_selected_by, repo, repo_name, slug):
+    """Replace this (repo, slug)'s session claims with the sessions priced now, keeping
+    every other feature's. A session id maps to a LIST of claims — the difference from
+    `record_claims`, and the whole of item 3: two features may both legitimately count one
+    coordinator, so the ledger records both and neither is refused."""
+    for session_id in list(session_claims):
+        remaining = [
+            claim for claim in session_claims[session_id]
+            if (claim.get("repo"), claim.get("slug")) != (repo, slug)
+        ]
+        if remaining:
+            session_claims[session_id] = remaining
+        else:
+            del session_claims[session_id]
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    for session_id, cost in session_costs.items():
+        session_claims.setdefault(session_id, []).append({
+            "repo": repo,
+            "repo_name": repo_name,
+            "slug": slug,
+            "selected_by": session_selected_by.get(session_id, "branch"),
+            "cost_usd": cost,
+            "claimed_at": now,
+        })
+
+
+def add_session_claims(session_claims, session_costs, session_selected_by, repo, repo_name, slug):
+    """Add this (repo, slug)'s session claims where the ledger does not already hold them,
+    and change nothing it does. Returns True when it added any.
+
+    The difference from `record_session_claims`, which REPLACES this feature's claims
+    wholesale: that one is written by a capture that has just re-derived every figure
+    from transcripts, this one by the annotate-only path over a record it must not touch.
+    So an existing claim keeps its own `claimed_at` and its own dollars, and a second
+    sweep over an unchanged corpus writes nothing at all — the ledger file included.
+    """
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    added = False
+    for session_id, cost in session_costs.items():
+        claims = session_claims.get(session_id) or []
+        if any((claim.get("repo"), claim.get("slug")) == (repo, slug) for claim in claims):
+            continue
+        claims.append({
+            "repo": repo,
+            "repo_name": repo_name,
+            "slug": slug,
+            "selected_by": session_selected_by.get(session_id, "branch"),
+            "cost_usd": cost,
+            "claimed_at": now,
+        })
+        session_claims[session_id] = claims
+        added = True
+    return added
+
+
+def load_frozen_record(output_path):
+    """A frozen `planning.json` as a dict, or None when there is nothing to annotate — no
+    file, unreadable, not an object, or no `captured_at`. The same bar `prior_capture`
+    applies to the same file, for the same reason: a record that cannot be read holds
+    nothing worth keeping and nothing worth annotating."""
+    try:
+        record = json.loads(output_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(record, dict):
+        return None
+    captured_at = record.get("captured_at")
+    if not isinstance(captured_at, str) or not captured_at.strip():
+        return None
+    return record
+
+
+def frozen_session_costs(record):
+    """`({session_id: own dollars}, {session_id: selected_by})` read out of a frozen
+    record's own `sessions[]` and `priced[]`. No manifest, no transcript — the record
+    already says which sessions it counted and what it paid for them, which is the whole
+    of what the ledger records.
+
+    A session's OWN priced rows, its delegates' excluded, exactly as the capture computes
+    them: a subagent belongs to exactly one feature by the ledger's refusal, so rolling
+    its cost in here would report money that is not in fact counted twice."""
+    costs = {}
+    selected_by = {}
+    for entry in record.get("sessions") or []:
+        session_id = entry.get("session_id")
+        if not session_id:
+            continue
+        costs[session_id] = 0.0
+        selected_by[session_id] = entry.get("selected_by") or "branch"
+    for row in record.get("priced") or []:
+        session_id = row.get("session_id")
+        if row.get("agent_id") or session_id not in costs:
+            continue
+        costs[session_id] += row.get("cost_usd") or 0.0
+    return costs, selected_by
+
+
+def annotate_frozen_record(output_path, record, session_claims, repo, slug):
+    """Refresh a frozen record's `sessions[].also_claimed_by` from the claims ledger,
+    writing `planning.json` only when something changed. Returns the session ids that
+    carry the annotation after the write, or None when nothing changed and nothing was
+    written.
+
+    **It opens no transcript and changes no figure.** Every dollar, every duration,
+    `captured_at`, `rates_source`, `warnings`, every session and subagent entry is left
+    byte-identical; only this one key moves. That is the point rather than an
+    optimisation: the seven features closed on 2026-09-07 are frozen precisely because
+    their transcripts are expiring, and re-deriving their money to add an annotation is
+    the risk the freeze exists to prevent (`--recapture` is the path that accepts it).
+
+    `cost.shared_sessions[]` needs no separate write here. It is not a `planning.json`
+    field: `report.py`'s `compute_shared_sessions` derives it from exactly these entries,
+    so refreshing them is what puts the array and its footnote in the next report.
+
+    A refresh, not an append: a claimant that has left the ledger — its feature
+    re-captured without the pin — loses its mention, and an entry whose list would be
+    empty loses the key entirely, so an unshared feature's record stays identical to one
+    written before this path existed."""
+    changed = False
+    annotated = []
+    for entry in record.get("sessions") or []:
+        session_id = entry.get("session_id")
+        others = (
+            other_session_claimants(session_claims, session_id, repo, slug)
+            if session_id else []
+        )
+        if others:
+            annotated.append(session_id)
+            if entry.get("also_claimed_by") != others:
+                entry["also_claimed_by"] = others
+                changed = True
+        elif "also_claimed_by" in entry:
+            del entry["also_claimed_by"]
+            changed = True
+    if not changed:
+        return None
+    with open(output_path, "w") as f:
+        json.dump(record, f, indent=2)
+    return annotated
+
+
+def register_frozen_claims(slugs, features_dir, sessions_dir, skip_in_flight):
+    """Phase one of the annotate-only path: every frozen record this run will annotate
+    registers its own session claims in the ledger BEFORE any of them is annotated.
+
+    The two phases are the whole of the convergence rule, and the reason this is not
+    folded into `capture_feature`. The ledger is the only seam between features and
+    `capture_feature` annotates one at a time, so registering and annotating in the same
+    step would leave the first of N frozen features sharing one coordinator naming none
+    of the others and the last naming all of them — an artefact of the sweep's ordering
+    rather than a fact about the corpus. Registering all N first makes a single `--all`
+    converge, which is what item 3's motivating case needs: seven features closed on the
+    same day, each frozen before any of the others had claimed the session.
+
+    Convergence ACROSS repos still takes two sweeps and cannot take fewer: each repo
+    sweeps its own corpus and writes the one shared ledger, so a record can only name
+    the claimants whose repos have already registered. Sweep every repo once and the
+    ledger is complete; the second sweep is the one whose annotations are final. This is
+    stated in `analysis/README.md` where the cadence is.
+
+    Reads `planning.json`, and the manifest only for the in-flight test `--all` applies
+    below — never a transcript. `skip_in_flight` mirrors that loop exactly: a feature
+    whose window is still open is not annotated there, so its claims are not registered
+    here either, and a premature record does not put a premature claim in the ledger."""
+    repo = repo_identity(sessions_dir)
+    repo_name = repo_display_name(repo)
+    ledger = load_ledger()
+    session_claims = ledger[LEDGER_SESSIONS_KEY]
+    added = False
+    for slug in slugs:
+        record = load_frozen_record(Path(features_dir, slug, "planning.json"))
+        if record is None:
+            continue
+        if skip_in_flight:
+            try:
+                if window_is_open(features_dir, slug):
+                    continue
+            except (ValueError, OSError, json.JSONDecodeError):
+                # An unreadable manifest is counted and reported by the capture loop;
+                # here it only means this record is not registered, and one bad manifest
+                # must not end a corpus-wide run before it starts.
+                continue
+        costs, selected_by = frozen_session_costs(record)
+        added |= add_session_claims(
+            session_claims, costs, selected_by, repo, repo_name, slug
+        )
+    if added:
+        save_ledger(ledger[LEDGER_SUBAGENTS_KEY], session_claims)
+
+
+def manifest_pinned_subagents(features_dirs, slug, preferred_dir=None):
+    """The agent ids `<slug>`'s own manifest already pins. A delegate a feature pins is
+    claimed by that feature — the pin is what claims it — so `--unclaimed --for` must not
+    list it as unclaimed and tell the human to write the pin that is already there. The
+    ledger cannot answer this on its own: it is written by the capture, and the close
+    that asks the question runs BEFORE the capture, which is exactly when every one of
+    2026-09-07's seven closes printed the advice.
+
+    Looked up by slug rather than by the `<repo>/<slug>` pair: under a vendored subtree a
+    `--self` feature's brief says `agentTooling/<slug>` while the checkout's own repo
+    identity is the enclosing repo, so comparing the two would drop the pin in precisely
+    the case it matters. The pair is never compared here, and this does not change that.
+
+    What it does do is try the corpus the query is FOR first. `preferred_dir` is
+    `self/features` under `--self` and `plans/features` otherwise; when that tree holds a
+    manifest for the slug it is the only one read. Two features may share a slug across
+    the two corpora, and reading both would let the OTHER corpus's pin suppress a
+    genuinely unpinned delegate from `--unclaimed --for` — which silences
+    `feature-close.sh`'s stop-on-unpinned guard, whose entire job is to stop on exactly
+    that delegate, and loses its cost with nothing said. Low likelihood, and the failure
+    is silent.
+
+    When the preferred corpus holds no manifest for the slug the lookup falls back to
+    the slug alone across both corpora, which is the vendored-subtree case above and the
+    reason the fallback exists rather than a refusal. A slug that names no manifest in
+    either corpus yields no pins, which is the pre-existing behaviour."""
+    if preferred_dir is not None and Path(preferred_dir, slug, "README.md").is_file():
+        features_dirs = [preferred_dir]
+    pinned = set()
+    for features_dir in features_dirs:
+        readme_path = Path(features_dir) / slug / "README.md"
+        if not readme_path.is_file():
+            continue
+        try:
+            manifest = parse_manifest(readme_path)
+        except (OSError, ValueError):
+            continue
+        pinned.update(manifest.get("subagents") or [])
+    return pinned
 
 
 def unclaimed_under(transcript_dirs, claims):
@@ -654,7 +945,10 @@ def list_sessions(sessions_dir, since, unclaimed, features_dirs):
         print(f"{len(rows)} session(s).")
 
 
-def list_subagents(sessions_dir, since, everywhere=False, unclaimed=False, only_feature=None):
+def list_subagents(
+    sessions_dir, since, everywhere=False, unclaimed=False, only_feature=None,
+    features_dirs=(), preferred_features_dir=None,
+):
     """Print every subagent transcript reachable from this repo's project directories:
     start date, agent id, parent session, the parent's branch, the model, its priced
     cost and its opening prompt. `since` (a UTC date string) drops older ones. This is
@@ -670,9 +964,18 @@ def list_subagents(sessions_dir, since, everywhere=False, unclaimed=False, only_
     as the pair `brief_feature_of` returns. It exists because `feature-close.sh`'s
     stray-delegate guard reads this list: matching text in the printed table instead
     both over-fired on `<slug>-two` and under-fired on a `<repo>/<slug>` too long for
-    the pin column. For the same caller, the agent-id column is never truncated."""
+    the pin column. For the same caller, the agent-id column is never truncated. A
+    delegate that feature's own manifest already pins is not unclaimed and is dropped
+    from the list (`manifest_pinned_subagents`, read from `features_dirs`, preferring
+    `preferred_features_dir` — the corpus this run is for — when a same-slug feature
+    exists in both), so the advice line below — and `feature-close.sh`'s stray guard,
+    which reads these rows — speak only about pins still to write."""
     everywhere = everywhere or unclaimed
     claims = load_claims() if unclaimed else {}
+    pinned_already = (
+        manifest_pinned_subagents(features_dirs, only_feature[1], preferred_features_dir)
+        if only_feature else set()
+    )
     session_dir_str = str(sessions_dir)
     projects_root = Path.home() / ".claude" / "projects"
     transcript_dirs = (
@@ -689,7 +992,11 @@ def list_subagents(sessions_dir, since, everywhere=False, unclaimed=False, only_
                 if not lines:
                     continue
                 agent_id = agent_id_of(agent_path, lines)
-                if agent_id in listed or (unclaimed and agent_id in claims):
+                if (
+                    agent_id in listed
+                    or (unclaimed and agent_id in claims)
+                    or agent_id in pinned_already
+                ):
                     continue
                 listed.add(agent_id)
                 if not everywhere and not any(
@@ -1162,7 +1469,9 @@ def select_parent(
 
 def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, force, carry_lost=False):
     """Capture one feature, printing its own result line. Returns one of "captured",
-    "skipped" or "refused" — `main` counts these and picks the exit code from them.
+    "annotated", "skipped", "refused" or "conflict" — `main` counts these and picks the
+    exit code from them. "annotated" is the frozen-record path below: the record was left
+    alone except for its `sessions[].also_claimed_by`, which the claims ledger changed.
 
     A whole feature per call, including its own transcript scan: `--all` is a loop over
     this, not a shared walk. The scan is the expensive part, and the skip above it means
@@ -1195,10 +1504,38 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     # what made the documented cadence slow enough to be run rarely and in bulk.
     prior_at, prior_total = prior_capture(output_path)
     if prior_at and not recapture:
-        print(
-            f"{slug}: already captured {prior_at}, total ${prior_total:.4f} — skipping "
-            "(--recapture to rebuild it from transcripts)"
-        )
+        # Not simply "skipped" any more. A frozen record still has its shared-session
+        # annotation refreshed from the claims ledger — `annotate_frozen_record`, which
+        # opens no transcript and changes no figure. Without it item 3's motivating case
+        # is unreachable by any automated path at all: `sweep.sh` runs `--all` with no
+        # `--recapture`, so the seven features closed on 2026-09-07 would never name each
+        # other's share, and the only way to get it would be a `--recapture` that
+        # rebuilds their frozen dollars from transcripts that are expiring.
+        #
+        # `register_frozen_claims` (in `main`) has already put every frozen record in
+        # this run into the ledger, so what is read here is the whole run's claims and
+        # not just the ones swept before this feature.
+        record = load_frozen_record(output_path)
+        annotated = None
+        if record is not None:
+            annotated = annotate_frozen_record(
+                output_path, record, load_ledger()[LEDGER_SESSIONS_KEY],
+                repo_identity(sessions_dir), slug,
+            )
+        if annotated is None:
+            print(
+                f"{slug}: already captured {prior_at}, total ${prior_total:.4f} — skipping "
+                "(--recapture to rebuild it from transcripts)"
+            )
+        else:
+            note = (
+                f"annotated {len(annotated)} shared session(s)"
+                if annotated else "cleared a stale shared-session annotation"
+            )
+            print(
+                f"{slug}: already captured {prior_at}, total ${prior_total:.4f} — {note} "
+                "from the claims ledger; no transcript read and no figure changed"
+            )
         # The manifest checks still run and still print. They read READMEs, not
         # transcripts, so they cost nothing here, and they are the half of this script's
         # output that stays actionable after a feature is frozen — a `to` bound missing
@@ -1207,7 +1544,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         # absent by construction: its evidence is the scan that did not happen.
         for warning in warnings:
             print(f"WARN: {warning}")
-        return "skipped"
+        return "skipped" if annotated is None else "annotated"
 
     excluded_ids = collect_excluded_session_ids(both_corpora, manifest)
     # Runner-spawned exclusions (a usage.json already holds that session's cost, its
@@ -1456,10 +1793,18 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             "wins; drop one of them"
         )
 
+    # Read once, here, because both halves of the ledger are needed before the record is
+    # written: the sessions section annotates the entries below, and the subagents section
+    # is the refusal further down.
+    ledger = load_ledger()
+    claims = ledger[LEDGER_SUBAGENTS_KEY]
+    session_claims = ledger[LEDGER_SESSIONS_KEY]
+
     # `started_at`/`ended_at`/`duration_s` are the transcript's first and last instants
     # and the seconds between — a span, with the caveat `duration_seconds` states.
-    sessions = [
-        {
+    sessions = []
+    for sid in sorted(matched_session_ids):
+        entry = {
             "session_id": sid,
             "git_branch": session_branch[sid],
             "selected_by": session_selected_by.get(sid, "branch"),
@@ -1469,8 +1814,14 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             "ended_at": session_end[sid].isoformat(),
             "duration_s": duration_seconds(session_start[sid], session_end[sid]),
         }
-        for sid in sorted(matched_session_ids)
-    ]
+        # Present only when some other feature's capture already claimed this session —
+        # a coordinator that spans features, which is not refused (see
+        # `other_session_claimants`) but must not be quoted as this feature's cost alone.
+        # Absent otherwise, so an ordinary feature's planning.json is unchanged.
+        also_claimed_by = other_session_claimants(session_claims, sid, repo, slug)
+        if also_claimed_by:
+            entry["also_claimed_by"] = also_claimed_by
+        sessions.append(entry)
 
     subagents = [
         {
@@ -1664,7 +2015,6 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         warnings.append(note)
         print(f"{slug}: {note}; writing planning.json with cost $0.00")
 
-    claims = load_claims()
     conflicts = check_claims(agent_selected_by, repo, slug, claims)
     if conflicts:
         print(
@@ -1686,13 +2036,24 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         json.dump(data, f, indent=2)
 
     agent_costs = {}
+    session_costs = {}
     for entry in priced:
         if entry["agent_id"]:
             agent_costs[entry["agent_id"]] = (
                 agent_costs.get(entry["agent_id"], 0.0) + (entry["cost_usd"] or 0.0)
             )
+        else:
+            # A session's OWN dollars, its delegates' excluded: a subagent is claimed by
+            # exactly one feature, so rolling its cost in here would report money that is
+            # not in fact counted twice.
+            session_costs[entry["session_id"]] = (
+                session_costs.get(entry["session_id"], 0.0) + (entry["cost_usd"] or 0.0)
+            )
     record_claims(claims, agent_costs, agent_selected_by, repo, repo_name, slug)
-    save_claims(claims)
+    record_session_claims(
+        session_claims, session_costs, session_selected_by, repo, repo_name, slug
+    )
+    save_ledger(claims, session_claims)
 
     cost_str = "cost unavailable — see warnings" if total_is_partial else f"${total_cost:.4f}"
     print(
@@ -1800,7 +2161,10 @@ def main():
             parser.error("--list-subagents takes no slug and no --all")
         list_subagents(
             session_root(args.self_mode), args.since, args.everywhere, args.unclaimed,
-            only_feature=only_feature,
+            only_feature=only_feature, features_dirs=all_features_roots(),
+            # The corpus this query is for. Both are still read when it holds no
+            # manifest for the slug; see `manifest_pinned_subagents`.
+            preferred_features_dir=features_root(args.self_mode),
         )
         return
     if args.list_sessions:
@@ -1823,7 +2187,18 @@ def main():
 
     slugs = feature_slugs(features_dir) if args.all_features else [args.slug]
 
-    counts = {"captured": 0, "skipped": 0, "refused": 0, "conflict": 0, "unreadable": 0, "in_flight": 0}
+    # Phase one of the annotate-only path, before a single feature is looked at: every
+    # frozen record in this run registers its own session claims in the ledger, so the
+    # annotation each of them then reads is the whole run's and not just the part swept
+    # before it (`register_frozen_claims`). Skipped under --recapture, where every
+    # feature re-derives its claims from transcripts anyway.
+    if not recapture:
+        register_frozen_claims(slugs, features_dir, sessions_dir, args.all_features)
+
+    counts = {
+        "captured": 0, "annotated": 0, "skipped": 0, "refused": 0, "conflict": 0,
+        "unreadable": 0, "in_flight": 0,
+    }
     for slug in slugs:
         try:
             # A sweep must not freeze a feature that is still being built: its first
@@ -1856,6 +2231,7 @@ def main():
         print(
             f"{len(slugs)} features: {counts['captured']} captured, "
             f"{counts['skipped']} already captured, {counts['refused']} refused"
+            + (f", {counts['annotated']} annotated" if counts["annotated"] else "")
             + (f", {counts['in_flight']} in flight" if counts["in_flight"] else "")
             + (f", {counts['conflict']} in conflict" if counts["conflict"] else "")
             + (f", {counts['unreadable']} unreadable" if counts["unreadable"] else "")

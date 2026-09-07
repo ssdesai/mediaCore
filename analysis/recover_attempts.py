@@ -21,6 +21,14 @@ spent. This script prices those tokens straight from the transcript and writes
 the result onto the attempt as `recovered_cost_usd` — never onto
 `total_cost_usd`, which must stay distinguishable as the CLI's own figure.
 
+The same transcript bounds the run: an attempt with no `duration_ms` gets a
+`recovered_duration_s`, the seconds between the transcript's first and last
+timestamped lines. It is a **lower bound**, not a wall clock — it includes the
+model's own waiting and excludes whatever the runner did around the call — and
+`report.py` renders it as one, under its own mark, never in the column a
+measured figure would occupy. `duration_ms` itself is left null forever, for the
+reason `total_cost_usd` is.
+
 Tokens are summed from the transcript's own `usage.cache_creation.ephemeral_
 {5m,1h}_input_tokens` split, not from a `usage.json`'s flat
 `cache_creation_input_tokens` total, which cannot tell a 1.25x 5-minute cache
@@ -50,6 +58,11 @@ from pathlib import Path
 from pricing import compute_cost
 from roots import add_self_flag, features_root
 from transcript import add_usage, iter_billable_messages, to_utc
+
+# How many timestamped lines a transcript needs before its span means anything. One line
+# gives an instant, not a duration; the difference between "the run took no time" and
+# "there is nothing to measure" is exactly what a recovered figure must not blur.
+MIN_MOMENTS_FOR_SPAN = 2
 
 
 def load_transcript_lines(path):
@@ -82,8 +95,12 @@ def find_transcript(session_id):
 
 
 def recover_attempt(session_id):
-    """Price one session's transcript. Returns the fields to write onto the
-    attempt, or None if no transcript for this session survives."""
+    """Price one session's transcript and bound its run. Returns the fields to write
+    onto the attempt, or None if no transcript for this session survives.
+
+    `recovered_duration_s` is absent from the returned dict when the transcript holds
+    fewer than MIN_MOMENTS_FOR_SPAN timestamped lines, so an attempt never gains the key
+    with nothing behind it."""
     transcript_path = find_transcript(session_id)
     if transcript_path is None:
         return None
@@ -106,6 +123,21 @@ def recover_attempt(session_id):
     ]
     as_of = min(moments).date().isoformat() if moments else None
 
+    # The same instants, used a second way: their span is the lower bound on how long the
+    # run took, which is the one thing a transcript can say about a null `duration_ms`.
+    # Over every timestamped line, not only the ones iter_billable_messages yields — a
+    # session's last assistant response is not its last instant, and the span is meant to
+    # bound the run rather than the billing.
+    #
+    # Fewer than two instants is not a zero-length run, it is nothing to measure, and
+    # `0.0` beside a real dollar figure would read as "this took no time" — the same
+    # argument the sidecar's null duration_ms makes. Write nothing.
+    recovered_duration_s = (
+        (max(moments) - min(moments)).total_seconds()
+        if len(moments) >= MIN_MOMENTS_FOR_SPAN
+        else None
+    )
+
     recovered_tokens = {}
     rates_applied = {}
     unpriced_models = []
@@ -126,6 +158,8 @@ def recover_attempt(session_id):
         "recovered_at": datetime.now(timezone.utc).isoformat(),
         "rates_applied": rates_applied,
     }
+    if recovered_duration_s is not None:
+        result["recovered_duration_s"] = recovered_duration_s
     # A model missing from pricing.RATES must not silently drop out of the sum
     # (pricing.py: "a silent 0 reads as 'planning was cheap' when it means
     # 'unmeasured'") — mark the attempt partial and name what was skipped, same as
@@ -215,6 +249,20 @@ def main():
                 for a in attempts
                 if a.get("recovered_cost_usd") is not None
             )
+            # The same convenience sum for the spans, kept in step with attempts[] by the
+            # same walk — and written only when some attempt HAS one. A sum over an empty
+            # list is 0.0, and a top-level `recovered_duration_s: 0.0` beside a real
+            # recovered dollar figure reads as a run that took no time; every attempt's
+            # transcript being one line long is the ordinary way to reach that. Like the
+            # dollars, this is a convenience: report.py reads the durable attempts[]
+            # figures, because write_usage_sidecar's fixed-key rebuild drops the top level.
+            spans = [
+                a["recovered_duration_s"]
+                for a in attempts
+                if a.get("recovered_duration_s") is not None
+            ]
+            if spans:
+                data["recovered_duration_s"] = sum(spans)
             with open(usage_path, "w") as f:
                 json.dump(data, f, indent=2)
 

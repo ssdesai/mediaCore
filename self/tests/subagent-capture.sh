@@ -285,7 +285,11 @@ write_manifest "[\"$AGENT_3\"]"
 # ── 11. the claims ledger records every priced subagent ───────────────────────
 LEDGER="$FAKE_HOME/.claude/subagent-claims.json"
 REPO_NAME="$(basename "$AT")"   # the fixture copy has no .git, so identity falls back to the directory name
-claim() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); c=d.get(sys.argv[2]); print(c and (c['repo_name'], c['slug'], c['selected_by']))" "$LEDGER" "$1"; }
+# The ledger has two sections — `subagents` (one claimant per id) and `sessions` (a list,
+# since a coordinator spans features); this reads the first by name rather than tolerating
+# the legacy flat shape, so a regression to it fails here. claims-ledger.sh owns the
+# assertion that such a file still LOADS.
+claim() { python3 -c "import json,sys; d=json.load(open(sys.argv[1]))['subagents']; c=d.get(sys.argv[2]); print(c and (c['repo_name'], c['slug'], c['selected_by']))" "$LEDGER" "$1"; }
 capture > /dev/null   # manifest pins AGENT_3 only; AGENT_5 was pinned in phase 10
 check "11. the ledger names the feature for a parent-selected subagent" \
   "[ \"$(claim $AGENT_1)\" = \"('$REPO_NAME', '$SLUG', 'parent')\" ]"
@@ -297,7 +301,7 @@ check "11d. a never-priced subagent is not in it" "[ \"$(claim $AGENT_2)\" = Non
 python3 - "$LEDGER" "$AGENT_3" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
-d[sys.argv[2]] = {"repo": "git@elsewhere:other.git", "repo_name": "otherRepo", "slug": "other-feature",
+d["subagents"][sys.argv[2]] = {"repo": "git@elsewhere:other.git", "repo_name": "otherRepo", "slug": "other-feature",
                   "selected_by": "pinned", "cost_usd": 1.0, "claimed_at": "2026-07-01T00:00:00+00:00"}
 json.dump(d, open(sys.argv[1], "w"))
 PY
@@ -308,7 +312,7 @@ check "12. a cross-feature claim refuses the capture, naming the claimant" \
 check "12b. nothing is written and the exit code says so" "[ ! -e '$PLANNING' ] && [ $rc -ne 0 ]"
 python3 - "$LEDGER" "$AGENT_3" <<'PY'
 import json, sys
-d = json.load(open(sys.argv[1])); del d[sys.argv[2]]; json.dump(d, open(sys.argv[1], "w"))
+d = json.load(open(sys.argv[1])); del d["subagents"][sys.argv[2]]; json.dump(d, open(sys.argv[1], "w"))
 PY
 capture > /dev/null
 check "12c. once the other claim is gone the capture goes through and re-claims" \

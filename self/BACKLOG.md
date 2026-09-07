@@ -5,22 +5,22 @@ the assertion that would catch it, with the feature that raised it. Remove an en
 feature that closes it. Same shape as a consuming repo's `plans/BACKLOG.md`; this one is
 agentTooling's own, for the harness rather than for a product.
 
-- **A plan with a null `duration_ms` contributes nothing to its bucket's minutes, and
-  nobody derives the lower bound its transcript could give.** `recover_attempts.py`
-  prices a killed or resultless attempt from `~/.claude/projects/<…>/<session_id>.jsonl`,
-  and `report.py`'s Time table now marks such a bucket and names the plan
-  (`time.missing_duration_plans[]`, `† review: no duration for <stem> — <reason>`), so
-  the minutes at least say why they are missing. What nobody derives is a number: the
-  transcript's first and last instants bound the run, and `iter_billable_messages` walks
-  every one of those lines already. It was excluded from
-  `tooling-backlog-2026-09-06` deliberately and on the merits — a transcript span is not
-  the executor's wall clock (it includes the model's own waiting and excludes whatever
-  the runner did around the call), `recover_attempts.py` does not read timestamps today
-  and would have to carry them into the sidecar beside `recovered_cost_usd`, and a
-  derived figure sitting in the same column as a measured one needs a way to say which
-  it is. That is a design, not an edit. Assertion: an attempt with a null `duration_ms`
-  whose transcript survives carries a `recovered_duration_s` derived from that
-  transcript's first and last instants, the Time table renders it as a lower bound
-  visibly distinct from a measured figure, and an attempt whose transcript is gone still
-  renders as it does today.
-  Raised by `tooling-backlog-2026-09-06`.
+- **A plan's minutes come from the attempts that reported one, and nothing says which
+  attempts did not.** `report.py`'s `duration_from_usage` sums the live sidecar's
+  `attempts[].duration_ms` and stops there, so a resumed plan whose first attempt was
+  killed and whose second completed reports only the second's minutes, is in neither
+  `time.missing_duration_plans[]` nor `time.recovered_duration_plans[]`, and marks no
+  row — the total reads as whole when it is short by however long the killed attempt
+  ran. The dollars do not have this hole: `compute_cost_rollup` walks the attempts
+  individually and reads prior sidecars too, taking each session's figure from the first
+  copy that has one (`ATTEMPT_FIGURE_FIELDS`, live before prior). Closing it means giving
+  the time roll-up the same per-attempt, prior-aware walk — a recovered span for the
+  killed attempt beside the measured figure for the completed one, which then has to
+  decide what a cell holding both a wall clock and a transcript span means and how it is
+  marked. `recovered-duration-lower-bound` deliberately did not: it credits a recovered
+  span only where the plan has no measured duration at all, on the ground that blending
+  the two inside one cell produces a figure that is neither, and the mixed case is rarer
+  than the wholly-unmeasured one it was built for. Assertion: a plan with one measured
+  attempt and one attempt whose duration was recovered reports both, and its bucket says
+  which part of the figure is a lower bound.
+  Raised by `recovered-duration-lower-bound`.

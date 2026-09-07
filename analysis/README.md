@@ -67,6 +67,10 @@ python3 agentTooling/analysis/recover_attempts.py --for <slug>   # one feature, 
 
 **4. Capture planning cost, then report.** `capture_planning.py --all` walks the corpus and captures the features that have no `planning.json` yet, **skipping the ones that already do**. It also skips any feature whose `session_window.to` is still `null` — in flight, its first capture is `feature-close.sh`'s, and a record frozen here would make that close skip and report a premature figure. That skip is what makes this step ordinary cadence work rather than something to be careful with: a frozen record is not rebuilt unless you ask for it, so the run cannot rewrite a figure it can no longer reproduce, and it costs almost nothing (a skipped feature is never scanned). The sweep reports each feature whose cost files changed, then `--all` for a cross-feature trend.
 
+**A frozen record still gets its shared-session annotation refreshed, and only that.** The one thing `--all` writes to a feature it does not re-derive is `sessions[].also_claimed_by`, read from the claims ledger — no transcript is opened and no dollar, duration or `captured_at` changes (`annotate_frozen_record`). The run reports such a feature as `annotated` rather than `skipped`, `report.py` turns the field into `cost.shared_sessions[]` and the footnote under the Cost table, and `sweep.sh` regenerates the report on its own because `planning.json` shows up in `git status`. Without it a feature closed *before* another feature claimed its coordinator could never say so: the alternative is `--recapture`, which rebuilds its money from transcripts that are expiring — exactly what the freeze exists to prevent.
+
+**Cross-repo, the annotation converges on the second sweep, and cannot converge sooner.** Within one run all of a corpus's frozen records are registered in the ledger before any of them is annotated, so N features of the same repo sharing one coordinator all end up naming the other N−1 regardless of the order the corpus is walked in. Across repos there is no such ordering to fix: the ledger is the only seam, each repo sweeps its own corpus, and a record can only name the claimants whose repos have already registered. So sweep every repo once — that fills the ledger — and the annotations are final after the second pass over each. A repo swept once and never again keeps a partial list, which is a stale annotation rather than a wrong figure.
+
 `report.py` reads only what is already on disk, so re-run it for whatever changed — it is the capture step that has to be careful, not this one.
 
 **A full refresh is `--all --recapture`, and it is not cadence work.** It re-derives every `planning.json` from transcripts, so reach for it with a reason — a pricing correction, a manifest fix — and read the diff before committing. On a corpus older than transcript retention it does two different things: where a *priced* session is gone, `check_frozen_cost` refuses that feature, leaves it untouched, and the run carries on (exiting non-zero at the end) — `--carry-lost` instead keeps those entries verbatim (each marked `carried_from`, the file gaining a top-level `carried_from`) and adds what the scan reaches, which is how a subagent pin is added to a feature whose own sessions have expired; where only a *runner* session is gone, the feature re-captures **successfully** with fewer `excluded_session_ids` than before, which is a silent metadata loss no guard catches. Both are reasons the default is to skip.
@@ -149,6 +153,20 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   `recovered_is_partial: true` — its `rates_applied` entry for those models is `null` —
   and the run prints them under a `partial (unpriced models excluded from
   recovered_cost_usd):` heading.
+  **The same transcript bounds the run.** An attempt with a null `duration_ms` also gains
+  `recovered_duration_s` — the seconds between the transcript's **first and last
+  timestamped lines**, over every line rather than only the ones
+  `iter_billable_messages` yields, since a session's last assistant response is not its
+  last instant and the span is meant to bound the run rather than the billing. It reuses
+  the instants already parsed to date the session for its rate tier. A transcript with
+  fewer than `MIN_MOMENTS_FOR_SPAN` (2) timestamped lines writes **nothing**, not `0.0`:
+  one line gives an instant, not a duration, and a zero beside a real dollar figure reads
+  as a run that took no time. `duration_ms` itself is left null forever, exactly as
+  `total_cost_usd` is, so a measured figure and a recovered one stay distinguishable —
+  `report.py` renders the recovered one under its own mark and never in the column a
+  measurement would occupy. An attempt recovered before this field existed carries a
+  `recovered_cost_usd` and no span, and is skipped by the idempotence check like any
+  other recovered attempt; `--force` is what backfills it.
   Also sets the sidecar's top-level `recovered_cost_usd` to the sum over its recovered
   attempts, but only on a run that recovered something: a re-run that skips every
   already-recovered attempt rewrites nothing, so `--force` is what repairs a top-level
@@ -156,8 +174,12 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   out is left untouched, counted, and printed under an `unrecoverable:` heading; the run
   still exits 0. Idempotent, like
   `backfill_usage.py`: an attempt that already carries `recovered_cost_usd` is skipped
-  unless `--force`. Usage: `python3 agentTooling/analysis/recover_attempts.py [--self]
-  [--force]`.
+  unless `--force`. The top-level `recovered_duration_s` is kept in step by the same
+  walk, with one difference: it is written only when some attempt carries a span, since a
+  sum over none is `0.0` and a top-level zero beside real recovered dollars reads as a
+  run that took no time. Both top-level figures are conveniences — `report.py` reads the
+  durable `attempts[]` values. Usage:
+  `python3 agentTooling/analysis/recover_attempts.py [--self] [--force]`.
   Depends on two things not visible from its imports: it locates a transcript by
   globbing `~/.claude/projects/*/<session_id>.jsonl` directly, never via
   `roots.session_root` — session ids are unique, and a `--self` executor's cwd
@@ -194,6 +216,36 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   `… --all [--recapture]`, `… --list-subagents [--since YYYY-MM-DD]`,
   `… --list-subagents --unclaimed [--for <repo>/<slug>]`, or
   `… --list-sessions [--unclaimed] [--since YYYY-MM-DD]`.
+  **A session may belong to more than one feature, and the ledger says so.** Top-level
+  session claims are recorded in the same file under its `sessions` section, `{
+  <session-id>: [ { repo, repo_name, slug, selected_by, cost_usd, claimed_at }, … ] }` —
+  a **list**, because the two arities differ: a subagent transcript belongs to exactly one
+  feature and a second claim is refused, while a coordinator session legitimately spans
+  features. Such a session is therefore **not refused**. Instead its `planning.json`
+  entry gains `also_claimed_by: ["<repo>/<slug>", …]`, `report.py` carries that into
+  `cost.shared_sessions[]`, and `report.md` prints one line under the Cost table naming
+  the session, its dollars and the other features counting it. There is no
+  apportionment: the transcript cannot say which feature a message served, and a split by
+  message count would be a number nobody measured — the honest record is that each
+  feature counts it in full and each says so. Every session in `sessions[]` is recorded,
+  pinned or branch-selected, since two features sharing a branch can double-count as
+  quietly as a shared pin; the dollars recorded are the session's own `priced[]` rows,
+  its delegates excluded, because a subagent belongs to exactly one feature by the
+  refusal above. A ledger file carrying **neither** section key is the original flat
+  `{<agent-id>: …}` map and is read as the subagents section entire, so an old ledger
+  loads unchanged and the two-section shape is written by the next capture.
+  **A record frozen before the other feature existed is annotated in place, not
+  re-captured.** `capture_planning.py --all` — what `sweep.sh` runs, with no
+  `--recapture` — puts every frozen record in the run into the ledger first
+  (`register_frozen_claims`, adding a claim only where the ledger has none, so a second
+  sweep writes nothing), then refreshes each one's `also_claimed_by` from it
+  (`annotate_frozen_record`, writing `planning.json` only when the list changed and
+  removing the key when the list is empty). The feature is reported as `annotated`
+  instead of `skipped`. Registering all of them before annotating any is what makes N
+  frozen features sharing a coordinator converge in a single run rather than in sweep
+  order; across repos it takes a second sweep, because each repo writes the shared
+  ledger from its own corpus (see the cadence above). Nothing else about the record
+  moves — no transcript is read, and the figures are the ones the close froze.
   **Sessions are pinned the way subagents are.** A manifest's
   `"sessions": ["<session-id>"]` claims a top-level session outright — across every
   project directory, regardless of branch, window or `cwd`. That is how a planning
@@ -236,9 +288,14 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   directory — B's manifest pins it by id and it is priced from there (`cross_repo:
   true`); `--list-subagents --everywhere` is how B finds it.
   **The claims ledger enforces the pins.** Every subagent this tool prices is recorded
-  in `~/.claude/subagent-claims.json` — `{ <agent-id>: { repo, repo_name, slug,
-  selected_by, cost_usd, claimed_at } }`, `repo` being the origin URL so worktrees and
-  clones agree and `repo_name` its last segment (what a brief's `feature:` line says) — beside the transcripts and scoped like them. A capture whose subagent
+  in `~/.claude/subagent-claims.json` under its `subagents` section — `{ <agent-id>: {
+  repo, repo_name, slug, selected_by, cost_usd, claimed_at } }`, `repo` being the origin
+  URL so worktrees and clones agree and `repo_name` its last segment (what a brief's
+  `feature:` line says) — beside the transcripts and scoped like them. Its path derives
+  from `Path.home()` and has **no override but `$HOME` itself**, deliberately: the same
+  function resolves the transcript glob, so redirecting `$HOME` moves the ledger and the
+  transcripts together and no test can end up reading the machine's own transcripts
+  against a scratch ledger (`self/tests/README.md`). A capture whose subagent
   is already claimed by a *different* feature (in any repo) is refused outright, since
   neither manifest can see the other and two features cannot own one transcript's
   cost; re-capturing a feature replaces its own entries, so a dropped pin becomes
@@ -249,7 +306,25 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   feature, compared as the `(repo, slug)` pair rather than as text in the printed table —
   a `<slug>-two` delegate is somebody else's and a name too long for the 26-character pin
   column is still matched — which is what `feature-close.sh`'s stray-delegate guard reads,
-  and it is a usage error without `--unclaimed`. `--all` ends by counting the unclaimed
+  and it is a usage error without `--unclaimed`.
+  **A delegate the feature's own manifest pins is not unclaimed** and is dropped from
+  that list (`manifest_pinned_subagents`, looked up by slug — never by the `(repo, slug)`
+  pair, because under a vendored subtree a `--self` feature's brief says
+  `agentTooling/<slug>` while the checkout's own identity is the enclosing repo, so
+  comparing them would drop the pin in exactly the case that matters). The lookup does
+  prefer the corpus the query is *for* — `self/features` under `--self`,
+  `plans/features` otherwise — when that tree holds a manifest for the slug, falling
+  back to the slug alone across both when it does not. Two features may share a slug
+  across the two corpora, and reading both would let the other corpus's pin suppress a
+  genuinely unpinned delegate: `feature-close.sh`'s stop-on-unpinned guard would then
+  never fire on the one delegate it exists to stop on, and its cost would be lost with
+  nothing said. The pin IS the claim, and the ledger cannot say so on
+  its own: it is written by the capture, and the close that asks the question runs
+  before it. Without this, all seven closes of 2026-09-07 printed their own pinned
+  delegates under "unclaimed" and told the human to write pins that were already there;
+  `feature-close.sh` prints the `Pin each in …` advice only when something is left to
+  pin, and otherwise one line saying how many the manifest already pins.
+  `--all` ends by counting the unclaimed
   under this repo's directories. A pin
   whose brief names another feature is warned about — the pin is the human's word,
   the brief the coordinator's, and one is wrong. `exclude_subagents` is the pin's
@@ -300,6 +375,11 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   bound stays worth hearing about after the cost is frozen.
   `check_unmatched_branches` cannot run there — its evidence is the scan that did not
   happen.
+  The skip is not quite a no-op any more: `annotate_frozen_record` refreshes
+  `sessions[].also_claimed_by` from the claims ledger on the same path, which reads one
+  JSON file and writes `planning.json` only when that one key changed, so the run stays
+  near-instant and `capture_feature` returns `"annotated"` rather than `"skipped"` when
+  it wrote. Every other field, `captured_at` included, is left exactly as it was.
   `--all` walks `feature_slugs(features_root(self_mode))` — every directory holding a
   `README.md`, the same set `check_branch_overlap` scans — one full capture per feature,
   not a shared walk. It never aborts partway: a refusal, or a manifest that will not
@@ -461,6 +541,15 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   from.
   `report.py` still never reprices a recovered figure — it only reads
   `recovered_cost_usd` and sums it in, exactly like `total_cost_usd`.
+  **A session another feature also counts is named rather than apportioned.**
+  `compute_shared_sessions` reads `planning.json`'s `sessions[].also_claimed_by` (written
+  by `capture_planning.py` from the claims ledger) and returns
+  `cost.shared_sessions[{session_id, cost_usd, also_claimed_by}]`, the dollars being that
+  session's own `priced[]` rows with its delegates excluded; `report.md` prints one line
+  under the Cost table. The figure in the table is unchanged and unmarked — it is correct
+  for this feature — and what the line adds is that the same dollars are in somebody
+  else's report too, so summing several features' totals counts a coordinator once per
+  feature.
   A manifest with **no** `plans` key at all is a warning rather than a `KeyError`:
   `manifest_plan_stems` falls back to the stems that left a `usage.json`, sorted into
   batch order, and sets `total_is_partial` itself — the recovered list is built from the
@@ -528,7 +617,14 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   batch span, each pass, the gates, and when the PR opened. A feature with no
   `timing.jsonl` ran before stamping existed and says so. A missing duration input
   marks the time total `(partial)` and suppresses its rate, for the same reason a
-  partial cost total is marked. **The manifest's `method` decides what `planning.json`
+  partial cost total is marked. **A plan whose `duration_ms` is null but whose
+  attempts carry a `recovered_duration_s` contributes that span** to its bucket and to
+  the total instead of a `0.0`, is listed in `time.recovered_duration_plans[]` rather
+  than in `time.missing_duration_plans[]`, and its row is marked with a second glyph —
+  `†` says the bucket has no figure, `‡` says it has one and it is a lower bound. The
+  total stays partial either way: a transcript span includes the model's own waiting and
+  excludes whatever the runner did around the call, so it bounds the run without
+  measuring it. **The manifest's `method` decides what `planning.json`
   means:** absent or `"plans"`, its dollars and minutes are planning; `"direct"`
   (`AGENT_DIRECT.md`), they are the build — the implementer's transcript — and both
   tables say so (`cost.implementer`, `time.implementer_s`). A direct feature that
@@ -589,10 +685,10 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   cache_read_input_tokens,output_tokens}, model_usage{<modelId>:{...}},
   permission_denials, tool_counts{<ToolName>:<int>}, files_edited[repo-relative
   paths], edit_count, attempts[{session_id,outcome,total_cost_usd,num_turns,
-  duration_ms,recovered_cost_usd,recovered_tokens{<modelId>:{input,output,cache_read,
-  cache_creation_5m,cache_creation_1h}},recovered_from,recovered_at,rates_applied,
-  recovered_is_partial,unpriced_models[]}],
-  recovered_cost_usd }` — sidecar to a plan's `.md`, written by the runner
+  duration_ms,recovered_cost_usd,recovered_duration_s,recovered_tokens{<modelId>:{input,
+  output,cache_read,cache_creation_5m,cache_creation_1h}},recovered_from,recovered_at,
+  rates_applied,recovered_is_partial,unpriced_models[]}],
+  recovered_cost_usd, recovered_duration_s }` — sidecar to a plan's `.md`, written by the runner
   (`finalize_plan`) or backfilled by `backfill_usage.py`; both produce the identical
   shape.
   `attempts[]` holds one record per `claude -p` invocation, oldest first — a resumed
@@ -628,16 +724,24 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   instead carries `unpriced_models` (the excluded model ids) and
   `recovered_is_partial: true`, and `recover_attempts.py` prints the same information
   in its summary line so a partial figure isn't discoverable only by opening the JSON.
+  **`recovered_duration_s`** is the same recovery's answer to the null `duration_ms`
+  beside that null cost: the seconds between the transcript's first and last timestamped
+  lines. It is a **lower bound**, never a measurement — the span includes the model's own
+  waiting and excludes whatever the runner did around the call — and `duration_ms` stays
+  null forever so the two cannot be confused. A transcript with fewer than two
+  timestamped lines yields no key at all rather than `0.0`.
   The
   top-level `recovered_cost_usd` is the sum over the sidecar's recovered attempts and
   is absent until `recover_attempts.py` has run — and dropped again by
   `write_usage_sidecar`'s fixed-key rebuild on a resumed plan's later write, which is
   why `report.py` reads the durable `attempts[]` figures instead; see its entry above
-  for the three-bucket rule.
+  for the three-bucket rule. The top-level `recovered_duration_s` is the same sum for the
+  spans, with the same caveat, and is written only when some attempt has one.
   Sidecars written before attempt-tracking landed have no `attempts` key at all, so
   consumers read the top-level `session_id` as well.
 - `planning.json` — `{ slug, captured_at, manifest_branches[], sessions[{session_id,
-  git_branch,selected_by,cwd,date,started_at,ended_at,duration_s}], subagents[{agent_id,
+  git_branch,selected_by,cwd,date,started_at,ended_at,duration_s,also_claimed_by[]?}],
+  subagents[{agent_id,
   parent_session_id,date,started_at,ended_at,duration_s,selected_by,cross_repo}],
   excluded_session_ids[], priced[{session_id,agent_id,model,is_sidechain,date,
   duration_s,tokens{input,output,cache_read,cache_creation_5m,cache_creation_1h},
@@ -652,7 +756,15 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   `entries_without_duration`, so the sums are then lower bounds.
   A session entry's `selected_by` is `"branch"` or `"pinned"` — which of the two routes
   claimed it (the manifest's `branches` plus `session_window`, or its `sessions` pin) —
-  and `cwd` is the directory that session was launched in, the fact the whole naming
+  and `also_claimed_by` is `["<repo>/<slug>", …]` for the other features the claims
+  ledger records as counting this same session — present only when there are any, so an
+  ordinary feature's file is unchanged, and never a refusal: a coordinator legitimately
+  spans features and nothing here apportions its cost. It is also the one field a
+  *frozen* record can still gain: `--all` refreshes it from the ledger without opening a
+  transcript or touching another key, which is how a feature closed before the sharer
+  existed comes to say so (see the capture's entry above).
+  `cwd` is the directory that
+  session was launched in, the fact the whole naming
   rule turns on (`../LIFECYCLE.md`): it is what says whether a session is claimable from
   this checkout at all, and it is `null` only for an entry carried forward from a
   capture that predates the field. `subagents[]` carries its own `selected_by`,
@@ -662,10 +774,12 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   missing_usage_plans[],unpriced_plans[{plan,queue,reason,recovery}],
   multi_sidecar_stems[{plan,queue,count}],skipped_plans[],orphan_usage_plans[],recovered,
   unrecoverable_attempts[{plan,
-  session_id}],partially_recovered_attempts[{plan,session_id}]}, time{method,
+  session_id}],partially_recovered_attempts[{plan,session_id}],
+  shared_sessions[{session_id,cost_usd,also_claimed_by[]}]}, time{method,
   planning_sessions_s,planning_subagents_s,planning_s,implementer_s,tests_s?,
   direct_build_s?,gate_s?,build_s,verify_s,review_s,
-  executor_s,total_s,total_is_partial,missing_duration_plans[{plan,queue,reason}],wall_clock{first_at,
+  executor_s,total_s,total_is_partial,missing_duration_plans[{plan,queue,reason}],
+  recovered_duration_plans[{plan,queue,reason,recovered_s}],wall_clock{first_at,
   last_at,batch_span_s,batch_runs,batch_runs_s,passes_s{auto,verify,review},gates_s,
   gate_runs,plans_s,plan_runs,pr_opened_at,pr_url} | null}, planning_cost_split{
   sessions,subagents}, cold_start_tax_tokens,
@@ -730,8 +844,16 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   reported, cause not recorded`. The Time table marks and footnotes a bucket exactly as
   the Cost table does (`† review: no duration for 01-review-opus — no result event`), so
   a review row that used to print a bare `0.0` beside real dollars now names the plan.
-  Recovery cannot fill a duration — a transcript gives tokens, not the executor's wall
-  clock — which is why the footnote carries no recovery clause.
+  It holds only the plans nothing filled: where the session transcript survived **and
+  carries at least two timestamped lines**,
+  `recover_attempts.py` bounds the run and the plan moves to
+  `time.recovered_duration_plans[]` instead — the same `{plan, queue, reason}` shape plus
+  `recovered_s`, the seconds recovered, and it is never in both lists. That list marks
+  its bucket with `‡` rather than `†` and footnotes it as `‡ review: recovered 450.0s for
+  01-review-opus — no result event; transcript span, a lower bound`. One mark per
+  meaning: `†` is a bucket with no figure at all, `‡` a bucket whose figure is a lower
+  bound. A bucket holding one of each carries both marks and one footnote line each, and
+  the paragraph under the footnotes explains only the marks actually used.
   `cost.skipped_plans[]` names the manifest plans the runner filed **without running**
   (`skip_level_verify`, `plan-runner-lib.sh`: a level whose gate came back green does
   not owe its level-verify, so the plan goes to `verify/complete/` with a one-line
@@ -760,6 +882,18 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   unrecoverable buckets both set `total_is_partial`; `cost.unrecoverable_attempts[]` and
   `cost.partially_recovered_attempts[]` each name exactly those `{plan, session_id}`
   pairs.
+  `cost.shared_sessions[]` and `time.recovered_duration_plans[]` are read with a `[]`
+  default for the same reason as every key added after the fact — no `report.json`
+  written before them carries either, and a re-render of one must not raise.
+  `cost.shared_sessions[]` names each session another feature also counts
+  (`{session_id, cost_usd, also_claimed_by}`, the dollars being that session's own
+  `priced[]` rows, its delegates excluded) and marks no row: the figure is correct for
+  this feature, and what the line under the Cost table adds is that the same dollars are
+  in another feature's report too. `time.recovered_duration_plans[]` names each plan whose
+  minutes are a recovered transcript span (`{plan, queue, reason, recovered_s}`); its
+  bucket carries `‡` and its own footnote, it is never also in
+  `missing_duration_plans[]`, and it keeps `time.total_is_partial` true because a span is
+  a lower bound rather than the executor's wall clock.
 
 - `timing.jsonl` — one JSON object per line, `{ at, event, ...detail }`, appended by the
   runners (`stamp_timing`, `plan-runner-roots.sh`) as a batch runs: `batch_start`/
