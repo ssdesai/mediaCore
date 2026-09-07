@@ -1,0 +1,86 @@
+{
+  "slug": "sweep-and-check",
+  "captured_at": "2026-09-04T06:07:47.219005+00:00",
+  "manifest_branches": [
+    "sweep-and-check"
+  ],
+  "manifest_subagents": [
+    "aa0af908abb54f620"
+  ],
+  "sessions": [],
+  "subagents": [
+    {
+      "agent_id": "aa0af908abb54f620",
+      "parent_session_id": "48f81318-3e51-4559-a82c-37fe75be5308",
+      "date": "2026-09-04",
+      "started_at": "2026-09-04T05:46:24.512000+00:00",
+      "ended_at": "2026-09-04T05:59:34.568000+00:00",
+      "duration_s": 790,
+      "selected_by": "pinned",
+      "cross_repo": false
+    }
+  ],
+  "excluded_session_ids": [
+    "0745c8b1-3188-4741-a03e-217ff22d3ddb",
+    "0a1c9791-f948-417a-ac0f-4844d9f1c441",
+    "10e9bb82-a9f4-4fee-a4ea-9a980c514564",
+    "11675eec-5e12-4f16-9ab0-58faf6dd3d54",
+    "2370cfd4-0937-4ed6-ae85-aabf38c302a4",
+    "2a485894-7422-4e51-b22a-76fe525ceb4a",
+    "30ee40d4-0dca-4189-8eda-a60c9883daf7",
+    "371a6916-fdc4-428b-b68a-5bb73102629f",
+    "41faf82d-d46d-4e7c-8846-8c19c8cb059b",
+    "48ccc3a0-a6ab-45a0-8811-7c3f5e48fea4",
+    "63e4b311-5584-4004-91ce-5d9a964bb1d4",
+    "6be11f3a-e935-4823-a8d5-0deeee6b61bf",
+    "a36adceb-ed95-418e-81d3-63050a1a52f9",
+    "ab17a74a-0268-424a-bf25-420a62959b45",
+    "b4eb7ce2-e048-4b36-9ff1-58632118e540",
+    "bb605d58-6618-4206-920e-c3fbe33d5835",
+    "c8f61520-3899-45b0-b578-0aba685b28fd",
+    "ead9f6f1-0636-4692-a41b-99539d168a1a",
+    "f0deb6a9-97bc-4d36-93d0-670c5083975b"
+  ],
+  "excluded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "48f81318-3e51-4559-a82c-37fe75be5308",
+      "agent_id": "aa0af908abb54f620",
+      "model": "claude-opus-5",
+      "is_sidechain": true,
+      "date": "2026-09-04",
+      "duration_s": 790,
+      "tokens": {
+        "input": 174,
+        "output": 6411,
+        "cache_read": 10638721,
+        "cache_creation_5m": 166801,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 6.52301175,
+      "rates_applied": {
+        "model": "claude-opus-5",
+        "input": 5,
+        "output": 25,
+        "cache_read": 0.5,
+        "cache_creation_5m": 6.25,
+        "cache_creation_1h": 10.0,
+        "tier": "standard"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 0.0,
+    "sidechain": 6.52301175,
+    "subagents": 6.52301175,
+    "total": 6.52301175,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 0,
+    "subagents": 790,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/pricing.py RATES_VERIFIED=2026-09-04",
+  "warnings": []
+}

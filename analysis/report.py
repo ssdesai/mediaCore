@@ -29,6 +29,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import NamedTuple
 
 from pricing import RATES_VERIFIED, is_rates_stale
 from roots import add_self_flag, artifact_root, features_root
@@ -64,6 +65,34 @@ EDIT_OVERLAP_MIN_CHARS = 40
 STATE_DIRS = {"incomplete", "inprogress", "complete", "failed"}
 QUEUE_DIRS = {"auto", "verify", "review"}
 
+# Preference order for two usage.json files claiming one plan stem, best first. It is
+# the runner's own state machine read backwards: a plan reaches complete/ only by
+# finishing, sits in inprogress/ only while a run is live, waits in incomplete/ before
+# one, and lands in failed/ when a run exited non-zero. A stem present in two of them at
+# once means an earlier attempt's sidecars were left where finalize_plan filed them
+# while the plan itself moved on, so the furthest-along directory holds the current run.
+# A path whose state dir is unrecognizable ranks after all four (see usage_state_rank).
+USAGE_STATE_PREFERENCE = ("complete", "inprogress", "incomplete", "failed")
+
+# Dollar-figure precedence for one attempt reachable through more than one sidecar of
+# the same stem (prior_attempt_cost). Two orderings, and both are deliberate:
+#
+#   - Within one copy, best first: the CLI's own `total_cost_usd`, then the
+#     `recovered_cost_usd` recover_attempts.py derived from the transcript. A copy
+#     carrying neither field carries no figure at all, and any copy that does displaces
+#     it.
+#   - Across copies, the LIVE sidecar's copy outranks a prior's — it is the file the
+#     runner writes to at the plan's current path, and the file every other figure in
+#     the report is read from, so where the two disagree it is the one the reader will
+#     find. A prior that disagrees is an older record of the same session, not a second
+#     charge.
+#
+# The attempt's dollars are therefore taken ONCE, from the first copy that has a figure.
+ATTEMPT_FIGURE_FIELDS = ("total_cost_usd", "recovered_cost_usd")
+# Which of those two figures is recovered rather than measured, for the bucket a taken
+# figure is summed into.
+ATTEMPT_RECOVERED_FIELD = "recovered_cost_usd"
+
 
 # --------------------------------------------------------------------------
 # Shared loading helpers
@@ -81,29 +110,91 @@ def parse_manifest(readme_path):
     return json.loads(matches[-1])
 
 
+class PlanUsage(NamedTuple):
+    """One plan stem's sidecars: the `live` usage.json — the one the plan's current
+    run wrote — and `priors`, the same-stem sidecars earlier attempts left behind,
+    best-first. Unpacks as `(live, priors)`.
+
+    `priors` is normally empty. It is non-empty exactly when an attempt's sidecars
+    were filed somewhere the plan itself no longer is; see build_usage_index."""
+
+    live: Path
+    priors: tuple
+
+
+def usage_state_rank(usage_path):
+    """Index of a usage.json's state directory in USAGE_STATE_PREFERENCE, or one past
+    the end when the path has no recognizable state dir. Used only to order candidates
+    for one stem, so an unrecognizable path sorts last rather than raising."""
+    state = find_state_segment(usage_path)
+    if state in USAGE_STATE_PREFERENCE:
+        return USAGE_STATE_PREFERENCE.index(state)
+    return len(USAGE_STATE_PREFERENCE)
+
+
 def build_usage_index(feature_dir):
-    """{plan_stem: usage.json path}, keyed by each JSON's own "plan" field —
+    """{plan_stem: PlanUsage(live, priors)}, keyed by each JSON's own "plan" field —
     never by filename position — since a plan's usage.json may sit under any
     queue/state dir, and archived batches nest one level deeper again.
+
+    **Two sidecars can claim one stem, and the choice between them is not a
+    coin toss.** The runner files a plan's four sidecars as a set (finalize_plan,
+    plan-runner-lib.sh), so a run that exited non-zero leaves `<stem>.progress.md`
+    and `<stem>.usage.json` in `<queue>/failed/`. Retrying is manual — move the `.md`
+    back to `incomplete/` (RUNNER.md) — and the retry writes a *fresh* progress log and
+    sidecar beside the plan's new home, leaving the first pair in `failed/` with no
+    `.md` next to it. Nothing reconciles them, by design: that pair is the record of the
+    killed attempt and the only surviving copy of its session id, which is what
+    analysis/recover_attempts.py needs to price it from the transcript.
+
+    So the index picks deliberately. Candidates are sorted, never taken in rglob's
+    filesystem order, and ranked:
+
+      1. the sidecar whose sibling `<stem>.md` exists is live — the plan file travels
+         with the run that is current, and a sidecar with no plan beside it is by
+         definition one the plan has moved on from;
+      2. among several with a sibling (or none at all), USAGE_STATE_PREFERENCE decides:
+         complete > inprogress > incomplete > failed;
+      3. the path string breaks any remaining tie, so the answer is the same on every
+         run and every machine.
+
+    The losers are returned as `priors` rather than dropped: their dollars are real
+    (a killed attempt the sweep later recovers writes recovered_cost_usd into exactly
+    that file) and compute_cost_rollup adds them back. Before this, the dict simply
+    kept whichever file rglob reached last, which on vinylCatalogue's
+    group-commit-all-adjudication was the `failed/` twin — and compute_plan_length_vs_loc
+    then read a plan file beside it that the retry had moved away, ending the run in a
+    FileNotFoundError that stopped feature-close.sh.
 
     Scoped to a single feature, never the whole features/ tree. Plan numbers
     restart per feature (AGENT_PLANS.md: "Because numbers now repeat across
     features, qualify any cross-feature reference with the slug"), so stems
     like "05-tests-sonnet" and "06-verify-sonnet" recur in several features at
-    once. A tree-wide index collapses those to whichever file rglob reached
-    last, and every table downstream would then price another feature's plan
-    with no warning. Scoping makes the collision unreachable; a manifest plan
-    with no usage.json under its own feature dir is a visible warning from
-    load_manifest_plans instead."""
-    index = {}
-    for usage_path in feature_dir.rglob("*.usage.json"):
+    once. A tree-wide index would rank two unrelated features' plans against each
+    other, and every table downstream would then price the wrong one with no warning.
+    Scoping makes that collision unreachable; a manifest plan with no usage.json under
+    its own feature dir is a visible warning from load_manifest_plans instead."""
+    candidates = {}
+    for usage_path in sorted(feature_dir.rglob("*.usage.json")):
         try:
             data = json.loads(usage_path.read_text())
         except (OSError, json.JSONDecodeError):
             continue
         plan_stem = data.get("plan")
         if plan_stem:
-            index[plan_stem] = usage_path
+            candidates.setdefault(plan_stem, []).append(usage_path)
+
+    index = {}
+    for plan_stem, paths in candidates.items():
+        ranked = sorted(
+            paths,
+            key=lambda p: (
+                0 if p.with_name(f"{plan_stem}.md").exists() else 1,
+                usage_state_rank(p),
+                str(p),
+            ),
+        )
+        index[plan_stem] = PlanUsage(live=ranked[0], priors=tuple(ranked[1:]))
     return index
 
 
@@ -140,16 +231,32 @@ def build_skipped_index(feature_dir):
     return skipped
 
 
-def find_queue_segment(usage_path):
-    """The <queue> path segment (must be "auto", "verify" or "review") two levels above
-    the state dir, i.e. plans/features/<slug>/<queue>/<state>/<stem>.usage.json
-    — handles archived batches nested one level deeper under complete/<branch>/.
-    Returns None if the path doesn't match that shape."""
+def find_state_dir(usage_path):
+    """The nearest ancestor directory of a sidecar whose name is one of STATE_DIRS,
+    i.e. plans/features/<slug>/<queue>/<state>/<stem>.usage.json — walking up rather
+    than indexing, so archived batches nested one level deeper under complete/<branch>/
+    resolve to the same state. Returns None if there is no such ancestor."""
     state_dir = usage_path.parent
     while state_dir.name not in STATE_DIRS:
         if state_dir == state_dir.parent:
             return None
         state_dir = state_dir.parent
+    return state_dir
+
+
+def find_state_segment(usage_path):
+    """The <state> path segment ("incomplete", "inprogress", "complete" or "failed"),
+    or None. Read by usage_state_rank to order two sidecars claiming one plan."""
+    state_dir = find_state_dir(usage_path)
+    return state_dir.name if state_dir is not None else None
+
+
+def find_queue_segment(usage_path):
+    """The <queue> path segment (must be "auto", "verify" or "review") one level above
+    the state dir. Returns None if the path doesn't match that shape."""
+    state_dir = find_state_dir(usage_path)
+    if state_dir is None:
+        return None
     queue_dir = state_dir.parent
     return queue_dir.name if queue_dir.name in QUEUE_DIRS else None
 
@@ -168,6 +275,35 @@ def to_repo_relative(abs_path, repo_dir):
         return resolved.relative_to(repo_dir).as_posix()
     except ValueError:
         return abs_path
+
+
+def read_plan_md(stem, usage_path, warnings):
+    """The text of the plan file beside a usage.json, or None with one warning naming
+    the path that was looked for.
+
+    A sidecar normally travels with its plan, so `<stem>.md` sits next to it — but the
+    pairing is a convention of the runner's file moves, not something either file
+    records, and it can be broken. The case that broke it: a run killed by a usage limit
+    is filed to `failed/` with its progress log and sidecar, the retry moves only the
+    `.md` back to `incomplete/`, and the `failed/` pair is left with no plan beside it
+    (build_usage_index, RUNNER.md -> the `failed/` paragraph). Reading it unguarded ended
+    the whole report in a FileNotFoundError, so a feature with one such pair could not be
+    closed at all; skipping the plan from a table costs two derived metrics instead.
+
+    Callers deduplicate through `warnings`: two tables reading the same absent file is
+    one fact about the tree, not two."""
+    md_path = usage_path.with_name(f"{stem}.md")
+    try:
+        return md_path.read_text()
+    except OSError:
+        message = (
+            f"no plan file beside the usage.json for {stem}; looked for {md_path} — "
+            "skipping it in the plan-length and plan-drift tables. This is what a "
+            "retried plan leaves behind and is not a problem on its own"
+        )
+        if message not in warnings:
+            warnings.append(message)
+        return None
 
 
 def load_stream_events(stream_path):
@@ -249,10 +385,15 @@ def load_manifest_plans(repo_dir, plan_stems, usage_index, warnings, skipped_ste
     A stem in `skipped_stems` (build_skipped_index) is the one absence that is not a
     gap: the runner filed it without running it, so there is nothing to load and
     nothing missing. It gets a note rather than the missing-usage warning, and the
-    caller keeps it out of `missing_usage_plans` and the partial flag."""
+    caller keeps it out of `missing_usage_plans` and the partial flag.
+
+    The path loaded is the index entry's `live` one. An entry's `priors` are not loaded
+    here — they carry no plan file, no stream and no files_edited, so they belong in no
+    table but the cost roll-up, which reads them from the index itself."""
     loaded = []
     for stem in plan_stems:
-        usage_path = usage_index.get(stem)
+        entry = usage_index.get(stem)
+        usage_path = entry.live if entry is not None else None
         if usage_path is None:
             if stem in skipped_stems:
                 warnings.append(
@@ -302,6 +443,170 @@ def find_orphan_usage(plan_stems, usage_index, warnings):
 # --------------------------------------------------------------------------
 
 
+# The <queue> segment -> the cost bucket it rolls into, for the two places that REPORT a
+# bucket: render_report_md's Unpriced plans line and run_single_feature's printed cost
+# line. It is a second copy of the `if queue == "auto"` chains compute_cost_rollup and
+# compute_time_rollup sum by, not the source they read — those were deliberately left
+# alone. So the two CAN drift: a queue added to the summing chains and not to this dict
+# gets its dollars counted while an unpriced plan in it is silently dropped from the
+# printed line, which is the bare `$0.0000` this constant exists to prevent.
+QUEUE_COST_BUCKETS = {"auto": "build", "verify": "verify", "review": "review"}
+
+# The cheap half of the fix, taken now: the dict must cover exactly the queues
+# find_queue_segment can return. It cannot stop the summing chains and this dict
+# disagreeing about which BUCKET a queue rolls into — only reading the dict from the
+# chains would, and that refactor is somebody else's — but it does stop the failure that
+# has no symptom at all: a queue added to QUEUE_DIRS and to the chains, forgotten here,
+# whose unpriced plans then vanish from the printed line while its dollars are counted.
+# Raised at import rather than asserted, because `python3 -O` would drop an assert and
+# these scripts are run however a consuming repo's interpreter is configured.
+if set(QUEUE_COST_BUCKETS) != QUEUE_DIRS:
+    raise RuntimeError(
+        "QUEUE_COST_BUCKETS must cover exactly QUEUE_DIRS; "
+        f"missing {sorted(QUEUE_DIRS - set(QUEUE_COST_BUCKETS))}, "
+        f"extra {sorted(set(QUEUE_COST_BUCKETS) - QUEUE_DIRS)}"
+    )
+
+# Why a plan carries no CLI-reported cost, in the words the roll-up prints.
+UNPRICED_NO_RESULT_EVENT = "no result event"
+UNPRICED_KILLED = "killed"
+UNPRICED_CAUSE_UNRECORDED = "no cost reported, cause not recorded"
+# ... and what recovery made of it.
+RECOVERY_NOT_FOUND = "transcript not found"
+
+
+def unpriced_reason(usage_data, attempt=None):
+    """Why this plan — or one attempt of it — carries no `total_cost_usd`, read from the
+    sidecar's `result_event`, the field write_usage_sidecar writes for exactly this
+    question (plan-runner-lib.sh).
+
+    Never inferred from `outcome` alone. `outcome` says what the plan DID, from the exit
+    code: a run that exited 0 having done its work is `"complete"` whether or not
+    anything priced it, and reading a $0 off that field is how three merged reviews were
+    recorded as free. `outcome` is consulted only to separate the two unpriced cases once
+    a null cost has established that there is one — a killed run never reached a result
+    event, everything else lost one it should have had.
+
+    A sidecar written before the field existed says so rather than guessing, except for a
+    killed attempt, which its own `outcome` already names beyond doubt."""
+    outcome = (attempt or {}).get("outcome") or usage_data.get("outcome")
+    if outcome == "killed":
+        return UNPRICED_KILLED
+    if usage_data.get("result_event") is None:
+        return UNPRICED_CAUSE_UNRECORDED
+    return UNPRICED_NO_RESULT_EVENT
+
+
+# Why a plan carries no duration, in the words the time roll-up prints. The same three
+# branches unpriced_reason has, and read from the same field — `duration_ms` and
+# `total_cost_usd` come out of the one `result` event — but worded about the missing
+# MINUTES. Sharing unpriced_reason instead would print "no cost reported" beside a
+# bucket whose dollars are right there in the next column.
+MISSING_DURATION_CAUSE_UNRECORDED = "no duration reported, cause not recorded"
+
+
+def missing_duration_reason(usage_data):
+    """Why this plan carries no `duration_ms`, read from the sidecar's `result_event`.
+
+    Never inferred from `outcome` alone, for the reason unpriced_reason gives: `outcome`
+    is the exit code's fact and says what the plan DID. It is consulted only to separate
+    a killed run — which never reached a result event and whose own `outcome` names that
+    beyond doubt — from one that lost a result event it should have had."""
+    if usage_data.get("outcome") == "killed":
+        return UNPRICED_KILLED
+    if usage_data.get("result_event") is None:
+        return MISSING_DURATION_CAUSE_UNRECORDED
+    return UNPRICED_NO_RESULT_EVENT
+
+
+def recovery_note(attempts, unrecovered=0):
+    """What recover_attempts.py made of a plan's unpriced attempts. feature-close.sh runs
+    it immediately before this report, so an absent recovered figure means the session
+    transcript was gone — not that recovery has yet to run. `unrecovered` is how many
+    attempts it could not price, which is what keeps a partly-recovered plan from reading
+    as a whole one."""
+    recovered = [
+        a["recovered_cost_usd"] for a in attempts
+        if a.get("recovered_cost_usd") is not None
+    ]
+    if not recovered:
+        return RECOVERY_NOT_FOUND
+    note = f"recovered ${sum(recovered):.4f} from transcript"
+    if unrecovered:
+        note += f", {unrecovered} attempt(s) transcript not found"
+    return note
+
+
+def cost_bucket_cell(name, amount, pct, unpriced):
+    """One bucket of the cost line feature-close.sh prints. A bucket holding an unpriced
+    plan never prints a bare `$0.0000`: it names the plan, why no figure exists and what
+    recovery made of it. The number alone cannot tell "this cost nothing" from "nobody
+    recorded what this cost", and the close commits whichever it prints."""
+    cell = f"{name} ${amount:.4f} ({pct:.1f}%"
+    for entry in unpriced:
+        cell += f", unpriced: {entry['plan']} — {entry['reason']}, {entry['recovery']}"
+    return cell + ")"
+
+
+# ── Marking a bucket row whose figure is missing ─────────────────────────────
+# The Cost and Time tables both have the same problem and now the same answer: a bucket
+# holding work nobody measured printed a bare `$0.0000` / `0.0`, indistinguishable from
+# one that genuinely cost nothing or took no time. The mark goes in the cell and the
+# reason goes in a footnote directly under the table, so the figure a reader quotes out
+# of the table carries its own caveat — which the **Unpriced plans** paragraph below the
+# table did not, and which is why that paragraph is replaced by this rather than joined
+# by it (self/features/tooling-backlog-2026-09-06, items 5 and 6).
+MISSING_FIGURE_MARK = "†"
+# The label an entry gets when find_queue_segment could not name its queue. It matches
+# no row, so nothing is marked — but the footnote still names the plan, which is the
+# whole point: a plan whose queue is unreadable must not vanish from the report along
+# with its row.
+NO_QUEUE_BUCKET_LABEL = "no queue"
+
+
+def group_by_bucket(entries):
+    """`{bucket: [entry, …]}` over `[{plan, queue, …}]`, keyed by the cost bucket
+    QUEUE_COST_BUCKETS maps each entry's queue to. Insertion-ordered, so the footnotes
+    come out in the order the roll-up walked the manifest."""
+    grouped = {}
+    for entry in entries:
+        bucket = QUEUE_COST_BUCKETS.get(entry.get("queue"), NO_QUEUE_BUCKET_LABEL)
+        grouped.setdefault(bucket, []).append(entry)
+    return grouped
+
+
+def bucket_mark(label, grouped):
+    """The mark a table row's figure cell carries, or "". Matched on the row's LABEL, so
+    a direct feature's "build: implementer" row — whose minutes are a transcript span,
+    not a queue's plans — is never marked by an `auto` entry."""
+    return f" {MISSING_FIGURE_MARK}" if label in grouped else ""
+
+
+def bucket_footnote_lines(grouped, render_entry):
+    """One footnote line per marked row, naming the bucket and every entry in it."""
+    return [
+        f"{MISSING_FIGURE_MARK} {bucket}: "
+        + "; ".join(render_entry(entry) for entry in entries)
+        for bucket, entries in grouped.items()
+    ]
+
+
+def unpriced_footnote_entry(entry):
+    """One unpriced plan in the Cost table's footnote. Carries the recovery note as well
+    as the reason — the same clause order cost_bucket_cell prints — because the
+    paragraph this footnote replaces carried it, and it is the difference between
+    "re-run recover_attempts.py" and "the money is gone for good"."""
+    return f"unpriced {entry['plan']} — {entry['reason']}, {entry['recovery']}"
+
+
+def missing_duration_footnote_entry(entry):
+    """One untimed plan in the Time table's footnote. Deliberately not "unpriced": the
+    plan may be fully priced and merely untimed, which is the common case — duration_ms
+    and total_cost_usd come from the same result event, but recovery can refill one of
+    them and not the other."""
+    return f"no duration for {entry['plan']} — {entry['reason']}"
+
+
 KNOWN_METHODS = ("plans", "direct", "hand")
 # The methods whose planning.json IS the build: no architect, so every transcript it
 # holds is the implementer (direct) or the coordinator building it itself (hand).
@@ -325,15 +630,165 @@ def manifest_method(manifest, warnings):
     return method
 
 
+def attempt_figure(attempt):
+    """`(field, dollars)` for the first of `ATTEMPT_FIGURE_FIELDS` this copy of an
+    attempt carries, or `(None, None)` when it carries neither — which is what "carries
+    no figure" means everywhere below. The two fields cannot both be set in practice
+    (recover_attempts.py fills `recovered_cost_usd` only where `total_cost_usd` is
+    null), so the order between them decides nothing today; it is fixed anyway, so that
+    one attempt can never contribute two figures to one roll-up."""
+    for field in ATTEMPT_FIGURE_FIELDS:
+        dollars = attempt.get(field)
+        if dollars is not None:
+            return field, dollars
+    return None, None
+
+
+def prior_attempt_cost(stem, live_usage_data, usage_index, warnings):
+    """`(measured, recovered, attempts)` — what the sidecars an earlier attempt at
+    `stem` left behind add to the live file's own dollars, and this plan's attempts
+    deduplicated by `session_id` across every copy of them. The priors are
+    build_usage_index's: the files the live one outranked.
+
+    Their money is as real as the live file's and lands nowhere else: a plan killed by a
+    usage limit and retried by hand leaves a null-cost sidecar in `failed/`, and
+    recover_attempts.py — which walks the feature tree itself rather than through this
+    index — later writes `recovered_cost_usd` into exactly that file. Before this, the
+    file lost the index and its recovered dollars vanished from the report with it.
+
+    **Deduplicated by `session_id`, and merged rather than skipped.** An attempt
+    reachable through two files needs a hand-copied sidecar to occur at all:
+    write_usage_sidecar merges `attempts[]` by `session_id` into the file at the plan's
+    CURRENT path, and a plan moved back to `incomplete/` and re-run starts a fresh file
+    at its new home. But once it exists, the same `claude -p` run is reachable through
+    both, and adding both figures invents money nobody spent. The returned `attempts`
+    therefore hold one entry per session — the copy that wins ATTEMPT_FIGURE_FIELDS'
+    precedence, live before prior — and that copy's dollars are summed here exactly
+    once. Three things follow, and all three are deliberate:
+
+      - **A session priced by ANY copy is priced.** Where the live copy carries neither
+        figure and a prior copy carries one, the prior takes the seat and its dollars
+        are counted; the live null copy is not returned beside it, so a session the
+        sweep recovered into the file that lost the index cannot be called unrecoverable
+        at the same time. Skipping the prior unread lost that money twice over — it was
+        not summed, and the null copy then marked the total a lower bound for an attempt
+        that had in fact been priced (self/features/tooling-backlog-2026-09-06, the
+        review's escalation and the rework that closed it).
+      - **Only a session null in every copy is unrecoverable.** Such an attempt is
+        returned so the caller classifies it exactly as it classifies a live one —
+        marking the feature's total a lower bound and naming its session. Before this it
+        was simply absent from the sum, so a killed attempt that really did bill read as
+        free until somebody ran recover_attempts.py. Widening it changes what
+        `total_is_partial` means for every feature in both corpora at once, which is why
+        it was left out the first time and why it is a manifest decision now
+        (that feature's items 2 and 3).
+      - Dollars are summed over the prior's own `attempts[]` rather than read off its
+        top-level `total_cost_usd`, because the top-level figure IS that sum and cannot
+        have one member of it removed. A sidecar with no `attempts[]` at all — written
+        before the array existed — falls back to the top level, and has no session id to
+        deduplicate on either way.
+
+    Recovered and measured cannot overlap within one attempt: recover_attempts.py fills
+    `recovered_cost_usd` only where `total_cost_usd` is null.
+
+    A prior sidecar that will not parse is a warning, not a crash — it is by definition
+    not the file the report is built on."""
+    # The live sidecar's attempts, in order, are the seats every prior copy is
+    # deduplicated against. A copy with no session id matches nothing and is appended.
+    merged = list(live_usage_data.get("attempts") or [])
+    seat_of_session = {}
+    for seat, attempt in enumerate(merged):
+        session_id = attempt.get("session_id")
+        if session_id is not None:
+            seat_of_session.setdefault(session_id, seat)
+    measured = 0.0
+    recovered = 0.0
+    for prior_path in usage_index[stem].priors if stem in usage_index else ():
+        try:
+            data = json.loads(prior_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            warnings.append(
+                f"prior attempt sidecar for {stem} at {prior_path} could not be read; "
+                "any cost it holds is excluded from this roll-up"
+            )
+            continue
+        prior_attempts = data.get("attempts") or []
+        if not prior_attempts:
+            # Pre-attempts[] sidecar: the top-level figure is all there is, and there is
+            # no session id to deduplicate on. Counted whole, as it always was.
+            cost = data.get("total_cost_usd")
+            if cost is not None:
+                measured += cost
+            continue
+        for attempt in prior_attempts:
+            session_id = attempt.get("session_id")
+            seat = seat_of_session.get(session_id) if session_id is not None else None
+            field, dollars = attempt_figure(attempt)
+            if seat is not None:
+                if attempt_figure(merged[seat])[0] is not None:
+                    # The seated copy — the live sidecar's, or an earlier prior's —
+                    # already carries this session's dollars and outranks this one.
+                    continue
+                if field is None:
+                    # Neither copy carries a figure. The seated copy keeps its seat, so
+                    # the caller calls the session unrecoverable exactly once.
+                    continue
+                merged[seat] = attempt
+            else:
+                if session_id is not None:
+                    seat_of_session[session_id] = len(merged)
+                merged.append(attempt)
+            if field is None:
+                continue
+            if field == ATTEMPT_RECOVERED_FIELD:
+                recovered += dollars
+            else:
+                measured += dollars
+    return measured, recovered, merged
+
+
+def multi_sidecar_stems(loaded_plans, usage_index):
+    """`[{plan, queue, count}]` for every loaded plan with more than one `usage.json`
+    under this feature — the live one plus the priors the index outranked.
+
+    find_orphan_usage cannot see a same-stem twin: it reports stems with a `usage.json`
+    and no manifest entry, and a second sidecar for a stem the manifest DOES list
+    collapses into that stem's index entry. That is benign now — the twin is a ranked
+    prior attempt and its money is rolled in — but it meant the report never said how
+    many sidecars a stem had, and a corpus with a hand-copied or mis-filed sidecar
+    looked identical to a clean one. The per-plan roll-in warning stays; this is the
+    list a reader can count.
+
+    `queue` is the LIVE sidecar's queue, since that is the file every other figure in
+    the report is read from and the one a reader following the entry will find. Scoped
+    to the manifest's plans, like every other roll-up here: a twin of an unlisted stem
+    is find_orphan_usage's to report."""
+    stems = []
+    for stem, _, usage_path in loaded_plans:
+        entry = usage_index.get(stem)
+        if entry is None:
+            continue
+        count = 1 + len(entry.priors)
+        if count > 1:
+            stems.append({
+                "plan": stem,
+                "queue": find_queue_segment(usage_path),
+                "count": count,
+            })
+    return stems
+
+
 def compute_cost_rollup(
     plan_stems, plans_recovered, planning_data, loaded_plans, warnings, orphan_plans=(),
-    method="plans", skipped_plans=(),
+    method="plans", skipped_plans=(), usage_index=None,
 ):
     # For a planned feature, planning.json is what it says: the architect and the
     # sessions around it. For a direct feature there is no architect — the transcripts
     # it holds ARE the build (the implementer, a rework one-shot), so the whole figure
     # moves to the build bucket and planning proper (the coordinator's few minutes on
     # the brief) is not separated out. Same rule for time, in compute_time_rollup.
+    if usage_index is None:
+        usage_index = {}
     implementer_cost = 0.0
     planning_cost = planning_data["cost_usd"]["total"]
     if method in BUILD_BY_TRANSCRIPT_METHODS:
@@ -345,6 +800,10 @@ def compute_cost_rollup(
     review_cost = 0.0
     recovered_cost = 0.0
     priced_without_cost = []
+    # The same plans, with the two facts the printed line needs beside each: why it is
+    # unpriced and what recovery made of it. priced_without_cost stays a bare stem list
+    # because total_is_partial only asks whether it is empty.
+    unpriced_plans = []
     unrecoverable_attempts = []
     partially_recovered_attempts = []
     for stem, usage_data, usage_path in loaded_plans:
@@ -368,12 +827,38 @@ def compute_cost_rollup(
                 "transcripts; a plain re-run skips already-recovered attempts and leaves "
                 "the top-level figure stale"
             )
-        if cost is None and not plan_recovered:
+        # Sidecars an earlier attempt left behind, which the index outranked but did not
+        # discard. Read before the unpriced test below, because a plan whose live file
+        # has no cost is not unpriced if a prior attempt paid or was recovered.
+        # `all_attempts` is this plan's attempts deduplicated by `session_id` across the
+        # live file and every prior, each represented by the copy that carries its
+        # figure, and classified below beside the live ones — an attempt with no figure
+        # in ANY copy is a hole in the total wherever its sidecar happens to sit.
+        prior_measured, prior_recovered, all_attempts = prior_attempt_cost(
+            stem, usage_data, usage_index, warnings
+        )
+        prior_total = prior_measured + prior_recovered
+        if cost is None and not plan_recovered and not prior_total:
             priced_without_cost.append(stem)
+            reason = unpriced_reason(usage_data)
+            note = recovery_note(attempts)
+            unpriced_plans.append({
+                "plan": stem,
+                "queue": find_queue_segment(usage_path),
+                "reason": reason,
+                "recovery": note,
+            })
             warnings.append(
-                f"plan {stem} has no total_cost_usd; excluded from cost roll-up"
+                f"plan {stem} has no total_cost_usd ({reason}; {note}); excluded from "
+                "cost roll-up"
             )
             continue
+        if prior_total:
+            warnings.append(
+                f"plan {stem} has {len(usage_index[stem].priors)} sidecar(s) from an "
+                f"earlier attempt filed elsewhere in the tree, holding "
+                f"${prior_total:.4f}; rolled in beside the live sidecar's own figure"
+            )
         # `total_cost_usd` sums attempts[], so a resumed plan whose earlier attempt was
         # killed before writing a result event contributes real spend that no attempt
         # record priced. Each such attempt now falls into one of three buckets:
@@ -386,7 +871,7 @@ def compute_cost_rollup(
         recovered_sessions = []
         partially_recovered_sessions = []
         unrecoverable_sessions = []
-        for a in attempts:
+        for a in all_attempts:
             if a.get("total_cost_usd") is not None:
                 continue
             if a.get("recovered_cost_usd") is None:
@@ -397,6 +882,23 @@ def compute_cost_rollup(
                 recovered_sessions.append(a.get("session_id"))
         if unrecoverable_sessions:
             priced_without_cost.append(stem)
+            # The first attempt with no figure from either source: its own `outcome`
+            # separates a killed run from one that lost a result event it should have
+            # had, which the plan-level outcome (the LATEST attempt) cannot.
+            unpriced_attempt = next(
+                (
+                    a for a in all_attempts
+                    if a.get("total_cost_usd") is None
+                    and a.get("recovered_cost_usd") is None
+                ),
+                None,
+            )
+            unpriced_plans.append({
+                "plan": stem,
+                "queue": find_queue_segment(usage_path),
+                "reason": unpriced_reason(usage_data, unpriced_attempt),
+                "recovery": recovery_note(all_attempts, len(unrecoverable_sessions)),
+            })
             for session_id in unrecoverable_sessions:
                 unrecoverable_attempts.append({"plan": stem, "session_id": session_id})
             warnings.append(
@@ -421,14 +923,14 @@ def compute_cost_rollup(
                 f"{', '.join(str(s) for s in recovered_sessions)})"
             )
         queue = find_queue_segment(usage_path)
-        queue_total = (cost or 0.0) + plan_recovered
+        queue_total = (cost or 0.0) + plan_recovered + prior_measured + prior_recovered
         if queue == "auto":
             build_cost += queue_total
         elif queue == "verify":
             verify_cost += queue_total
         elif queue == "review":
             review_cost += queue_total
-        recovered_cost += plan_recovered
+        recovered_cost += plan_recovered + prior_recovered
 
     total_cost = planning_cost + build_cost + verify_cost + review_cost
 
@@ -484,6 +986,8 @@ def compute_cost_rollup(
         "cost_per_file": cost_per_file,
         "total_is_partial": total_is_partial,
         "missing_usage_plans": missing_usage,
+        "unpriced_plans": unpriced_plans,
+        "multi_sidecar_stems": multi_sidecar_stems(loaded_plans, usage_index),
         "skipped_plans": skipped_usage,
         "orphan_usage_plans": list(orphan_plans),
         "recovered": recovered_cost,
@@ -670,11 +1174,20 @@ def compute_time_rollup(planning_data, loaded_plans, events, warnings, method="p
             "survive to fill it in"
         )
     build_s = verify_s = review_s = 0.0
+    # `[{plan, queue, reason}]`, the same shape cost.unpriced_plans[] carries and for the
+    # same reason: a bare list of stems could say WHICH plan was missing but not which
+    # bucket's minutes to distrust or why, so the Time table printed `0.0` for a plan
+    # that ran for eight minutes with nothing beside it while the dollars in the next
+    # column explained themselves.
     missing = []
     for stem, usage_data, usage_path in loaded_plans:
         seconds = duration_from_usage(usage_data)
         if seconds is None:
-            missing.append(stem)
+            missing.append({
+                "plan": stem,
+                "queue": find_queue_segment(usage_path),
+                "reason": missing_duration_reason(usage_data),
+            })
             continue
         queue = find_queue_segment(usage_path)
         if queue == "auto":
@@ -684,8 +1197,9 @@ def compute_time_rollup(planning_data, loaded_plans, events, warnings, method="p
         elif queue == "review":
             review_s += seconds
     if missing:
+        detail = ", ".join(f"{m['plan']} ({m['reason']})" for m in missing)
         warnings.append(
-            f"no duration_ms for plan(s) {', '.join(missing)}; excluded from the time roll-up"
+            f"no duration_ms for plan(s) {detail}; excluded from the time roll-up"
         )
     planning_total = (planning_sessions or 0) + (planning_subagents or 0)
     # Mirrors compute_cost_rollup: a direct feature's transcript spans are its build.
@@ -841,11 +1355,13 @@ def compute_loc_changed(stream_path):
     return total
 
 
-def compute_plan_length_vs_loc(loaded_plans):
+def compute_plan_length_vs_loc(loaded_plans, warnings):
     rows = []
     for stem, usage_data, usage_path in loaded_plans:
-        md_path = usage_path.with_name(f"{stem}.md")
-        plan_md_lines = len(md_path.read_text().splitlines())
+        plan_md = read_plan_md(stem, usage_path, warnings)
+        if plan_md is None:
+            continue
+        plan_md_lines = len(plan_md.splitlines())
         stream_path = usage_path.with_name(f"{stem}.stream.jsonl")
         if stream_path.exists():
             loc_changed = compute_loc_changed(stream_path)
@@ -950,11 +1466,13 @@ def extract_listed_files(md_text):
     return listed
 
 
-def compute_plan_drift(loaded_plans):
+def compute_plan_drift(loaded_plans, warnings):
     drift = []
     for stem, usage_data, usage_path in loaded_plans:
-        md_path = usage_path.with_name(f"{stem}.md")
-        listed = extract_listed_files(md_path.read_text())
+        plan_md = read_plan_md(stem, usage_path, warnings)
+        if plan_md is None:
+            continue
+        listed = extract_listed_files(plan_md)
         edited = set(usage_data.get("files_edited", []))
         edited_not_listed = sorted(edited - listed)
         listed_not_edited = sorted(listed - edited)
@@ -1094,10 +1612,20 @@ def render_time_section(lines, data):
             ("verify", time.get("verify_s"), cost.get("verify")),
             ("review", time.get("review_s"), cost.get("review", 0.0)),
         ]
+    # Read with a [] default and tolerant of the old bare-stem list: a report.json
+    # written before the shape changed carries strings, and re-rendering one must not
+    # raise. Such an entry names no queue, so it marks no row and falls to the
+    # no-queue footnote, which is the honest rendering of what it knows.
+    missing_durations = [
+        m if isinstance(m, dict) else {"plan": m, "queue": None, "reason": "reason not recorded"}
+        for m in (time.get("missing_duration_plans") or [])
+    ]
+    marked = group_by_bucket(missing_durations)
     for label, seconds, usd in rows:
         usd_cell = "" if usd is None else f"${usd:.4f}"
         lines.append(
-            f"| {label} | {minutes_cell(seconds)} | {usd_cell} | {per_minute_cell(usd, seconds)} |"
+            f"| {label} | {minutes_cell(seconds)}{bucket_mark(label, marked)} "
+            f"| {usd_cell} | {per_minute_cell(usd, seconds)} |"
         )
     total_marker = " (partial)" if time.get("total_is_partial") else ""
     # No rate on a partial total: the dollars would be whole and the minutes not, and
@@ -1107,6 +1635,17 @@ def render_time_section(lines, data):
         f"| **total** | **{minutes_cell(time.get('total_s'))}**{total_marker} "
         f"| **${cost['total']:.4f}** | {total_rate} |"
     )
+    footnotes = bucket_footnote_lines(marked, missing_duration_footnote_entry)
+    if footnotes:
+        lines.append("")
+        lines.extend(footnotes)
+        lines.append("")
+        lines.append(
+            "A marked bucket's minutes are a lower bound: the plan named ran, and its "
+            "`duration_ms` is missing from the same `result` event its dollars come "
+            "from. Recovery cannot fill it — a transcript gives tokens, not the "
+            "executor's wall clock."
+        )
     lines.append("")
     if time.get("method") in BUILD_BY_TRANSCRIPT_METHODS:
         who = "The implementer's" if time["method"] == "direct" else "The build's"
@@ -1132,11 +1671,13 @@ def render_time_section(lines, data):
         )
     lines.append("")
     if time.get("total_is_partial"):
-        missing = time.get("missing_duration_plans") or []
-        detail = f" Missing durations for: {', '.join(missing)}." if missing else ""
+        # No list of stems here any more: the footnotes under the table name each one
+        # beside the bucket whose minutes it is missing from, which is where a reader
+        # looking at a `0.0` will be. This sentence still has work to do on its own —
+        # a planning.json with no duration_s makes the total partial with no plan to
+        # name at all.
         lines.append(
-            f"**This total is a lower bound** — at least one time input is unavailable."
-            f"{detail}"
+            "**This total is a lower bound** — at least one time input is unavailable."
         )
         lines.append("")
     wall = time.get("wall_clock")
@@ -1179,16 +1720,51 @@ def render_report_md(data):
     cost = data["cost"]
     lines.append("## Cost")
     lines.append("")
+    # Which bucket rows hold a plan that ran and carries no figure. `planning` can never
+    # be one: it has no plans, only transcripts, and planning.json marks its own total.
+    marked = group_by_bucket(cost.get("unpriced_plans") or [])
     lines.append("| bucket | usd | % of total |")
     lines.append("|---|---|---|")
-    lines.append(f"| planning | ${cost['planning']:.4f} | {cost['planning_pct']:.1f}% |")
-    lines.append(f"| build | ${cost['build']:.4f} | {cost['build_pct']:.1f}% |")
-    lines.append(f"| verify | ${cost['verify']:.4f} | {cost['verify_pct']:.1f}% |")
-    lines.append(
-        f"| review | ${cost.get('review', 0.0):.4f} | {cost.get('review_pct', 0.0):.1f}% |"
-    )
+    for name, amount, pct in (
+        ("planning", cost["planning"], cost["planning_pct"]),
+        ("build", cost["build"], cost["build_pct"]),
+        ("verify", cost["verify"], cost["verify_pct"]),
+        ("review", cost.get("review", 0.0), cost.get("review_pct", 0.0)),
+    ):
+        lines.append(
+            f"| {name} | ${amount:.4f}{bucket_mark(name, marked)} | {pct:.1f}% |"
+        )
     total_marker = " (partial)" if cost.get("total_is_partial") else ""
     lines.append(f"| **total** | **${cost['total']:.4f}**{total_marker} | 100.0% |")
+    footnotes = bucket_footnote_lines(marked, unpriced_footnote_entry)
+    if footnotes:
+        lines.append("")
+        lines.extend(footnotes)
+        lines.append("")
+        # What the replaced **Unpriced plans** paragraph said, minus the second copy of
+        # the list. Distinct from "Unpriced attempts" below, which is about a killed
+        # ATTEMPT of an otherwise priced plan; a marked row is a whole plan that ran and
+        # has a usage.json with no figure in either source.
+        lines.append(
+            "A marked bucket holds a plan that RAN and carries no figure, so it is a "
+            "lower bound rather than a measurement, and the reason comes from the "
+            "sidecar's `result_event`, never from its `outcome`. Where recovery found "
+            "no transcript the figure is gone for good; everywhere else, re-run "
+            "`recover_attempts.py --for <slug>` and regenerate."
+        )
+    multi = cost.get("multi_sidecar_stems") or []
+    if multi:
+        # find_orphan_usage cannot see a same-stem twin — the stem IS in the manifest,
+        # so it is not an orphan — and the roll-in warning below is per plan rather than
+        # a list. Absent entirely when every stem has one sidecar, so a clean corpus's
+        # report is unchanged.
+        detail = ", ".join(f"{m['plan']} ({m['count']})" for m in multi)
+        lines.append("")
+        lines.append(
+            f"Plans with more than one sidecar: {detail}. The extras are earlier "
+            f"attempts the index outranked and did not discard; their dollars are "
+            f"rolled into the figures above, deduplicated by `session_id`."
+        )
     lines.append("")
     if cost.get("method") in BUILD_BY_TRANSCRIPT_METHODS:
         if cost["method"] == "direct":
@@ -1222,6 +1798,11 @@ def render_report_md(data):
             f"{detail}"
         )
         lines.append("")
+        # The **Unpriced plans** paragraph that used to stand here is now the `†`
+        # footnotes under the table itself (see MISSING_FIGURE_MARK): the bucket cell a
+        # reader quotes carries its own caveat, which a paragraph below the table could
+        # not do, and repeating the list here would be the duplication that replacement
+        # exists to avoid.
         orphans = cost.get("orphan_usage_plans") or []
         if orphans:
             # Called out separately from `missing`: that one says an input is absent,
@@ -1237,15 +1818,16 @@ def render_report_md(data):
         unrecoverable = cost.get("unrecoverable_attempts") or []
         if unrecoverable:
             # These, not the orphans above, are what actually keeps this total a lower
-            # bound — a killed attempt that carries no cost from either source, so no
-            # figure exists for it anywhere in this report.
+            # bound — an attempt that carries no cost from either source, so no figure
+            # exists for it anywhere in this report. Killed or merely resultless: the
+            # difference is in each entry's reason, not in whether it counts.
             detail = ", ".join(f"{u['plan']} ({u['session_id']})" for u in unrecoverable)
             lines.append(
-                f"**Unpriced attempts:** {detail}. Each was killed before writing a "
-                f"result event and carries no recovered cost either. Run "
-                f"`recover_attempts.py` and regenerate: if the session transcript "
-                f"survives it will be priced, and only if it has aged out is the cost "
-                f"genuinely gone."
+                f"**Unpriced attempts:** {detail}. Each ended without a `result` event — "
+                f"killed before it could write one, or finished while its stream lost it "
+                f"— and carries no recovered cost either. Run `recover_attempts.py --for "
+                f"<slug>` and regenerate: if the session transcript survives it will be "
+                f"priced, and only if it has aged out is the cost genuinely gone."
             )
             lines.append("")
         partial = cost.get("partially_recovered_attempts") or []
@@ -1411,6 +1993,7 @@ def run_single_feature(repo_dir, features_dir, slug):
         orphan_plans=orphan_plans,
         method=method,
         skipped_plans=skipped_stems,
+        usage_index=usage_index,
     )
     timing_events = load_timing_events(feature_dir, warnings)
     time = compute_time_rollup(planning_data, loaded_plans, timing_events, warnings, method=method)
@@ -1429,9 +2012,9 @@ def run_single_feature(repo_dir, features_dir, slug):
     cold_start_tax_tokens = compute_cold_start_tax(loaded_plans)
     model_fit = compute_model_fit(loaded_plans)
     churn = compute_churn(loaded_plans, warnings)
-    plan_length_vs_loc = compute_plan_length_vs_loc(loaded_plans)
+    plan_length_vs_loc = compute_plan_length_vs_loc(loaded_plans, warnings)
     re_hunting = compute_re_hunting(loaded_plans, warnings)
-    plan_drift = compute_plan_drift(loaded_plans)
+    plan_drift = compute_plan_drift(loaded_plans, warnings)
     edit_overlap = compute_edit_overlap(loaded_plans, repo_dir, warnings)
 
     data = {
@@ -1455,12 +2038,27 @@ def run_single_feature(repo_dir, features_dir, slug):
 
     (feature_dir / "report.md").write_text(render_report_md(data))
 
+    # This one line is what feature-close.sh shows before it commits the cost records, so
+    # a bucket holding a plan nothing priced says so here rather than printing a zero the
+    # commit then makes permanent. A plan whose queue segment did not resolve is left out
+    # of the buckets — it is still named in the warnings and in report.md, and guessing a
+    # bucket for it would put a figure under a heading it may not belong to.
+    unpriced_by_bucket = {}
+    for entry in cost.get("unpriced_plans") or []:
+        bucket = QUEUE_COST_BUCKETS.get(entry.get("queue"))
+        if bucket:
+            unpriced_by_bucket.setdefault(bucket, []).append(entry)
+    buckets = ", ".join(
+        cost_bucket_cell(name, amount, pct, unpriced_by_bucket.get(name) or [])
+        for name, amount, pct in (
+            ("planning", cost["planning"], cost["planning_pct"]),
+            ("build", cost["build"], cost["build_pct"]),
+            ("verify", cost["verify"], cost["verify_pct"]),
+            ("review", cost.get("review", 0.0), cost.get("review_pct", 0.0)),
+        )
+    )
     print(
-        f"{slug}: total ${cost['total']:.4f} — "
-        f"planning ${cost['planning']:.4f} ({cost['planning_pct']:.1f}%), "
-        f"build ${cost['build']:.4f} ({cost['build_pct']:.1f}%), "
-        f"verify ${cost['verify']:.4f} ({cost['verify_pct']:.1f}%), "
-        f"review ${cost.get('review', 0.0):.4f} ({cost.get('review_pct', 0.0):.1f}%); "
+        f"{slug}: total ${cost['total']:.4f} — {buckets}; "
         f"time {minutes_cell(time['total_s'])} min"
         + (" (partial)" if time["total_is_partial"] else "")
     )

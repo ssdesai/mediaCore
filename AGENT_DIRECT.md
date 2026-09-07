@@ -90,7 +90,11 @@ paste the spec.
    find it — the README it affects, and `plans/features/<slug>/NOTES.md`, the same file
    an architect writes: rulings with a one-line rationale each, deviations from the
    spec and why, open questions. As each is made, not at the end: a ruling that lives
-   only in the implementer's head dies with it. Never stop to ask; nobody is
+   only in the implementer's head dies with it. Anything this build deliberately leaves
+   unbuilt — an exclusion that is real work, a review escalation not taken, a defect
+   found and not fixed — gets an entry in `plans/BACKLOG.md` as part of this feature's
+   work, because a `NOTES.md` line is filed under one feature and nobody reads it once
+   that feature has closed. Never stop to ask; nobody is
    listening, and a run that stalls on a question is a failed run.
 5. **Gate to green.** Run the repo's `plans/gate.sh` and read its report; fix; re-run
    only the checks that failed, then the whole gate once more at the end. A SKIPPED

@@ -41,6 +41,76 @@ current_plan=""
 exit_reason="all ${PLAN_KIND}s complete"
 route_failures=0
 
+# How long follow_stream waits between size checks on the stream file while `claude` is
+# still writing. It sets the display's latency and NOTHING else: the drain is ended by
+# `claude` having exited — observed through an on-disk marker, or through its pid being
+# gone — never by a sleep expiring, so a value ten minutes long would make the terminal
+# sluggish and still lose no events.
+FOLLOW_POLL_SECONDS=0.2
+
+# Set by run_plan for the lifetime of one `claude` invocation, and read by on_interrupt —
+# which is the only other place that has to know a capture is in flight. CAPTURE_TMPDIR
+# holds the exited-marker (see run_plan): a mktemp -d rather than a file beside the plan,
+# because every file in this directory ships to every consuming repo and a new artifact in
+# a feature's plan tree would need a .gitignore pattern there before the next `git subtree`
+# push, which refuses a dirty tree.
+CAPTURE_CLAUDE_PID=""
+CAPTURE_TMPDIR=""
+CAPTURE_EXITED_MARKER_NAME="claude-exited"
+CAPTURE_TMPDIR_TEMPLATE="plan-capture.XXXXXX"
+# run_plan's return code when the capture cannot be set up at all — distinct from any
+# `claude -p` status, from the usage-limit (2) and budget (3) codes, and from
+# LEVEL_PAUSE_RC (64), so finalize_plan files the plan to failed/ and the runner exits
+# with something a caller can tell apart from a model failure.
+CAPTURE_SETUP_RC=70
+
+# ── One definition of the events in a captured stream ────────────────────────
+# `claude`'s stderr is merged into the stream (`2>&1` in run_plan), so a runtime warning
+# or a crash trace can leave a non-JSON line in it, and a killed run can leave a truncated
+# last one. Every reader of "did this stream reach a `result` event?" parses it THIS way —
+# skipping unparseable lines rather than failing over the file — and there is exactly one
+# copy of the expression, because the two readers used to disagree: `stream_has_result`
+# ran an intolerant `jq -e`, which exits non-zero on a *parse* error just as it does on an
+# absent event, while write_usage_sidecar dropped bad lines and found the result. One
+# stray line was enough for finalize_plan to warn that the capture had been truncated
+# while the sidecar beside it recorded a real cost — a false alarm on the exact signal
+# this whole feature exists to make trustworthy.
+STREAM_EVENTS_JQ='split("\n") | map(select(length > 0) | fromjson?)'
+STREAM_LAST_RESULT_JQ='map(select(.type == "result")) | last'
+
+# The words a usage limit is reported in, matched case-insensitively. ONE copy, for the
+# same reason STREAM_EVENTS_JQ is one copy: stream_shows_usage_limit now has two signals
+# — the final `result` event and a hard-killed session's last `error` event — and two
+# vocabularies would route the same limit two ways depending on which event carried it.
+# Deliberately does NOT match "Reached maximum budget"; keeping this disjoint from
+# stream_shows_budget_exhausted is what stops a mis-scoped brief being re-queued as a
+# rate limit.
+STREAM_LIMIT_TEXT_RE='usage.?limit|rate.?limit|hit.{0,15}limit|limit.{0,20}reset|quota|exceeded|insufficient.?credits|\\b429\\b|\\b529\\b|overloaded'
+
+# The hard-kill signal: a session the platform cut off at a usage limit is killed
+# mid-turn and never emits a `result` event, so the final-result matcher below is blind
+# to exactly the case the graceful `rc == 2` path exists for (self/BACKLOG.md, raised by
+# `stale-failed-sidecars`; vinylCatalogue's group-commit-all-adjudication review, filed
+# as an ordinary failure on 2026-09-04).
+#
+# Three conditions, all required, and they are what keep this from becoming the
+# whole-stream scan the final-result matcher exists to avoid:
+#   1. no `result` event anywhere — a stream that reached one is judged by it alone;
+#   2. the LAST parsed event is `type: "error"` — how the stream ENDED, not something
+#      it recovered from and carried on past;
+#   3. that event names a limit in STREAM_LIMIT_TEXT_RE's terms.
+# Matched over the whole event, stringified, rather than a field chain: an `error`
+# event has no settled layout and the platform has put the status code in
+# `.error.status`, `.error.message` and `.error.type` at different times. The three
+# conditions above are the scope; the field the code lands in is not.
+STREAM_HARD_KILL_LIMIT_JQ="
+  ($STREAM_EVENTS_JQ) as \$events
+  | (\$events | last) as \$last
+  | ((\$events | $STREAM_LAST_RESULT_JQ) == null)
+    and (\$last.type? == \"error\")
+    and ((\$last | tostring) | test(\"$STREAM_LIMIT_TEXT_RE\"; \"i\"))
+"
+
 print_status() {
   # Runs from the EXIT trap, so every way out of a pass — clean, failed, interrupted,
   # paused at a sentinel — leaves the same closing stamp with the reason it stopped.
@@ -71,8 +141,33 @@ print_status() {
   echo "=================================================="
 }
 
+# Stop a capture that is still in flight. `claude` runs as a background job now (run_plan),
+# and a background job in a non-interactive shell has SIGINT and SIGQUIT set to ignore, so
+# a Ctrl-C that reaches this script no longer reaches it through the process group the way
+# it did when it was a foreground pipeline stage — it has to be signalled by pid. Touching
+# the exited-marker releases follow_stream, which would otherwise be left polling a file
+# nobody is going to write to again.
+#
+# The capture directory is removed here rather than left to the follower, because the
+# follower does not always outlive this shell: on a `kill -TERM -<pgid>` — a supervisor
+# tearing down a batch — it dies alongside the runner, and its own `rm -rf` never runs.
+# Removing it under the follower is safe because the marker is not the follower's only
+# way out: it also stops when `claude`'s pid is gone (see follow_stream), which the kill
+# above has just arranged.
+stop_capture() {
+  if [[ -n "$CAPTURE_CLAUDE_PID" ]]; then
+    kill "$CAPTURE_CLAUDE_PID" 2>/dev/null
+  fi
+  if [[ -n "$CAPTURE_TMPDIR" ]]; then
+    : > "$CAPTURE_TMPDIR/$CAPTURE_EXITED_MARKER_NAME" 2>/dev/null
+    rm -rf "$CAPTURE_TMPDIR"
+    CAPTURE_TMPDIR=""
+  fi
+}
+
 on_interrupt() {
   # Leave any in-progress plan + its log where they are; next run resumes them.
+  stop_capture
   exit_reason="interrupted by signal (in-progress plan left for next run)"
   exit 130
 }
@@ -361,6 +456,75 @@ log_stream_events() {
   ' 2>/dev/null >> "$log_path"
 }
 
+# Follow the stream file `claude` is writing, forwarding everything that appears in it to
+# the progress-log FIFO (fd 4, which the caller must have open) and, best-effort, to this
+# function's stdout for display_stream.
+#
+#   follow_stream <stream_file> <exited_marker>            4> <fifo>
+#
+# `claude` owns the file; this only reads it. That is the whole of ruling 1
+# (self/features/stream-capture-file-first): nothing downstream of the file — not this
+# follower, not the logger, not the display, not the terminal — can stop the record from
+# being written, because none of them is between `claude` and the file.
+#
+# Deterministic drain, not a timed one. <exited_marker> is created by the caller only
+# AFTER it has reaped `claude`, so its existence proves the file is final. The loop
+# samples the marker *before* it measures the file and only exits through a measurement
+# that found nothing new, so the last measurement always happens after the last write.
+# FOLLOW_POLL_SECONDS therefore sets latency, never correctness — which matters because
+# macOS `tail` polls and has no `--pid`, so a `tail -f` killed after a fixed wait (the
+# obvious implementation) would be exactly the race this avoids.
+#
+# Bytes, not lines. jq on the far end parses a JSON *stream*, so a chunk boundary in the
+# middle of an event is invisible to it and there is nothing to gain from splitting on
+# newlines — while `while read` over a growing file demonstrably loses that bet: a read
+# loop whose other write in the same iteration failed with EPIPE re-read and re-emitted a
+# line, reproducibly (NOTES.md). `tail -c`/`head -c` keep no such state, and both flags
+# are BSD as well as GNU.
+follow_stream() {
+  local stream_file="$1" exited_marker="$2" producer_pid="$3"
+  local off=0 size chunk producer_done=0 was_done=0 display=1
+
+  while :; do
+    was_done=$producer_done
+    size="$(wc -c < "$stream_file" 2>/dev/null || echo 0)"
+    size=$(( size ))
+    if (( size > off )); then
+      chunk=$(( size - off ))
+      # The FIFO first and unconditionally: the progress log is a record, the display is
+      # a convenience. Read twice rather than teeing once, so that a dead display is a
+      # flag this function sets rather than a `tee` behaviour it has to trust.
+      tail -c "+$(( off + 1 ))" "$stream_file" 2>/dev/null | head -c "$chunk" >&4 2>/dev/null
+      if (( display )); then
+        tail -c "+$(( off + 1 ))" "$stream_file" 2>/dev/null | head -c "$chunk" 2>/dev/null
+        # head's status, not the pipeline's. `claude` keeps writing while this reads, so
+        # `tail` usually has more to give than the $chunk bytes measured a moment ago and
+        # is killed by `head` closing the pipe — which under `pipefail` is a non-zero
+        # pipeline every time. Reading that as "the display is gone" cut the terminal
+        # output off a few hundred events in, silently, while the capture ran on.
+        if (( ${PIPESTATUS[1]} != 0 )); then display=0; fi
+      fi
+      off=$size
+      continue
+    fi
+    if (( was_done )); then break; fi
+    # Two ways to learn the producer has finished, and either is enough. The marker is
+    # the authoritative one — the runner writes it only after `wait` has reaped `claude`,
+    # so it cannot be seen a moment too early. The pid check is the one that means this
+    # loop can never outlive its producer: if the marker is missing for any reason (an
+    # interrupt handler that removed the capture directory, a `: >` that failed), a
+    # process that no longer exists has also finished writing, and the snapshot-then-
+    # measure order below still forces one more full read before the break. A hang here
+    # would have been silent and unbounded — no timeout anywhere in the path — so it is
+    # worth two conditions rather than one.
+    if [[ -e "$exited_marker" ]] || ! kill -0 "$producer_pid" 2>/dev/null; then
+      producer_done=1
+      continue
+    fi
+    sleep "$FOLLOW_POLL_SECONDS"
+  done
+}
+
 # Extract a one-line failure reason from the final `result` event, so a failed
 # plan is self-documenting even when it died before its first mutating tool call.
 stream_failure_reason() {
@@ -370,18 +534,50 @@ stream_failure_reason() {
      "$stream_file" 2>/dev/null | tail -1
 }
 
+# Did the captured stream reach `claude -p`'s final `result` event? Every normal ending
+# emits one — success, failure, budget cap alike — so a stream without one either belongs
+# to a session killed mid-turn or to a capture that lost the end of it. Paired with
+# `rc == 0` in finalize_plan, the second is the only reading left, which is what makes
+# that combination worth a warning.
+#
+# This is the single definition of that fact: write_usage_sidecar's `result_event` is
+# derived from the same two expressions over the same tolerant parse, so the sidecar and
+# the warning can never disagree about one file. See STREAM_EVENTS_JQ at the top.
+stream_has_result() {
+  local stream_file="$1"
+  [[ -f "$stream_file" ]] || return 1
+  jq -R -s -e "($STREAM_EVENTS_JQ) | ($STREAM_LAST_RESULT_JQ) | . != null" \
+    "$stream_file" >/dev/null 2>&1
+}
+
 # Inspect a captured stream-json file for usage/rate-limit indicators.
-# Returns 0 if a limit was hit, 1 otherwise. Only the final `result` event is
-# inspected — the authoritative signal from claude -p about why the run ended.
-# Scanning the whole stream would false-positive on any file or message that
-# merely contains a phrase like "rate limit".
+# Returns 0 if a limit was hit, 1 otherwise. Two signals, and no others:
+#
+#   1. the final `result` event says so — the authoritative statement from claude -p
+#      about why the run ended, and the only signal for any stream that reached one;
+#   2. the stream has NO `result` event and its last parsed event is an `error` event
+#      naming a limit (STREAM_HARD_KILL_LIMIT_JQ) — the hard kill, which never gets to
+#      emit a result event at all.
+#
+# Scanning the whole stream would false-positive on any file or message that merely
+# contains a phrase like "rate limit", which is why signal 2 is pinned to the stream's
+# ending rather than its body: a limit reported mid-stream and recovered from is not a
+# kill, and a `result` event that merely mentions one is still not a limit.
 stream_shows_usage_limit() {
   local stream_file="$1"
 
-  jq -e 'select(.type == "result" and .is_error == true) |
-         select((.result // .error // .subtype // "" | tostring)
-                | test("usage.?limit|rate.?limit|hit.{0,15}limit|limit.{0,20}reset|quota|exceeded|insufficient.?credits|\\b429\\b|\\b529\\b|overloaded"; "i"))' \
-     "$stream_file" >/dev/null 2>&1
+  if jq -e "select(.type == \"result\" and .is_error == true) |
+            select((.result // .error // .subtype // \"\" | tostring)
+                   | test(\"$STREAM_LIMIT_TEXT_RE\"; \"i\"))" \
+       "$stream_file" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  # -R -s and the shared tolerant parse, for the reason STREAM_EVENTS_JQ records:
+  # claude's stderr is merged into this file, so an intolerant slurp would reject the
+  # whole stream over one warning line and hide the error event under it.
+  [[ -f "$stream_file" ]] || return 1
+  jq -R -s -e "$STREAM_HARD_KILL_LIMIT_JQ" "$stream_file" >/dev/null 2>&1
 }
 
 # Inspect a captured stream-json file for budget exhaustion (`--max-budget-usd`).
@@ -428,6 +624,28 @@ run_plan() {
   harvest_orphan_attempt "$plan_path"
   : > "$stream_file"
 
+  # The capture directory holds the exited-marker follow_stream watches for. Created here,
+  # before anything has been started, and CHECKED: with an unwritable or missing $TMPDIR —
+  # a full disk, a sandbox with no temp of its own — mktemp writes nothing to stdout and
+  # exits non-zero, and an unchecked assignment would put the marker at `/claude-exited`,
+  # where `: >` fails silently and the follower waits for a file that will never appear.
+  # There is no timeout anywhere in that path, so the failure mode was a runner sitting
+  # silent forever with the plan never finalized. Failing the plan by its own code is the
+  # loud version: finalize_plan files it to failed/ with the reason in its progress log.
+  # A bare `mktemp -d` is not used because on macOS it ignores $TMPDIR entirely (it asks
+  # the OS for the per-user temp), which makes this both untestable and unconfigurable.
+  local tmp_root="${TMPDIR:-/tmp}"
+  tmp_root="${tmp_root%/}"
+  CAPTURE_TMPDIR="$(mktemp -d "$tmp_root/$CAPTURE_TMPDIR_TEMPLATE" 2>/dev/null)"
+  if [[ -z "$CAPTURE_TMPDIR" || ! -d "$CAPTURE_TMPDIR" ]]; then
+    CAPTURE_TMPDIR=""
+    echo "ERROR: could not create a capture directory under $tmp_root — not running $plan_name" >&2
+    printf 'failed (exit %s): could not create a capture directory under %s (mktemp -d failed); set TMPDIR to somewhere writable and re-run\n' \
+      "$CAPTURE_SETUP_RC" "$tmp_root" >> "$log_path"
+    return "$CAPTURE_SETUP_RC"
+  fi
+  local exited_marker="$CAPTURE_TMPDIR/$CAPTURE_EXITED_MARKER_NAME"
+
   # The progress log is fed through a FIFO with a tracked PID rather than
   # `tee >(...)`: bash does not wait for a process substitution, so on the
   # failure path — where finalize_plan calls exit immediately — its pending
@@ -447,10 +665,29 @@ run_plan() {
   # wrapper that does not define it keeps whatever CLAUDE_BUDGET_ARGS it set once.
   if declare -F budget_for_plan >/dev/null; then budget_for_plan "$plan_path"; fi
 
+  # ── The capture ────────────────────────────────────────────────────────────
+  # `claude` writes $stream_file ITSELF, and everything else reads it. This used to be a
+  # single pipeline — claude | tee $stream_file | tee $log_fifo | display_stream — with
+  # the file written by a `tee` in the middle of it, which meant the record's liveness
+  # depended on every stage after it. display_stream inherits this script's stdout, so a
+  # caller that stopped reading (a coordinator's backgrounded Bash command whose stdout
+  # was piped onward) killed display_stream with SIGPIPE, then each `tee` on its next
+  # write, while claude — whose own stdout was only the pipe into the first tee — ran to
+  # completion and exited 0. Nine merged reviews were filed as successes with a 689-byte
+  # stream, a 0-byte progress log and total_cost_usd: null. See
+  # self/features/stream-capture-file-first/, and RUNNER.md → "Capturing the stream".
+  #
+  # Now: claude is a background job whose stdout (and stderr, merged as before) is the
+  # file; follow_stream tails the file and feeds the FIFO and the display. Nothing
+  # downstream of the file can reach it. `wait` on claude's own pid is the exact
+  # replacement for the old ${PIPESTATUS[0]}, and the exited-marker written straight
+  # after is what lets follow_stream know the file is final — with claude's pid, handed
+  # to it below, as the second way of learning the same thing, so no path here can wait
+  # on a marker that never arrives (see that function).
+  #
   # CLAUDE_TOOL_ARGS is the one security-relevant difference between the runners:
   # run-plans.sh disables Bash, run-verify.sh enables it. build_prompt is the
   # other: each runner tells the executor what kind of pass this is.
-  # PIPESTATUS[0] preserves claude's exit code past both tee and display_stream.
   # CLAUDE_BUDGET_ARGS is optional and may be unset (run-plans.sh sets no cap), so it
   # gets the `${a[@]+"${a[@]}"}` form: under `set -u` on bash 3.2 — still the system
   # bash on macOS — expanding an empty array the naive way aborts the run.
@@ -458,16 +695,34 @@ run_plan() {
     "${CLAUDE_TOOL_ARGS[@]}" \
     ${CLAUDE_BUDGET_ARGS[@]+"${CLAUDE_BUDGET_ARGS[@]}"} \
     --output-format stream-json --verbose \
-    "$(build_prompt "$plan_path" "$log_path")" 2>&1 \
-    | tee "$stream_file" \
-    | tee "$log_fifo" \
-    | display_stream
-  local exit_code=${PIPESTATUS[0]}
+    "$(build_prompt "$plan_path" "$log_path")" \
+    > "$stream_file" 2>&1 &
+  CAPTURE_CLAUDE_PID=$!
 
-  # tee closed the FIFO when the pipeline ended; wait for the logger to drain it
-  # before anyone reads or moves the log.
+  # One subshell for the whole follower pipeline, so $! is something `wait` can hold to
+  # until BOTH halves have finished — waiting on display_stream alone would return early
+  # every time a closed consumer killed it. The `rm -rf` is the normal path's cleanup and
+  # a belt for the abnormal ones; stop_capture removes the directory too, because on a
+  # group SIGTERM this subshell dies with the runner and never gets here.
+  ( follow_stream "$stream_file" "$exited_marker" "$CAPTURE_CLAUDE_PID" 4> "$log_fifo" | display_stream
+    rm -rf "$CAPTURE_TMPDIR" ) &
+  local follow_pid=$!
+
+  wait "$CAPTURE_CLAUDE_PID"
+  local exit_code=$?
+  CAPTURE_CLAUDE_PID=""
+  # Only now: claude has been reaped, so every byte it wrote is in the file and this
+  # marker cannot be seen a moment too early.
+  : > "$exited_marker"
+
+  # In order: the follower drains the rest of the file and closes the FIFO, then the
+  # logger sees EOF and finishes. Both waits are what keep the log complete on the
+  # failure path, where finalize_plan exits immediately after this returns.
+  wait "$follow_pid" 2>/dev/null
   wait "$log_pid" 2>/dev/null
   rm -f "$log_fifo"
+  rm -rf "$CAPTURE_TMPDIR"
+  CAPTURE_TMPDIR=""
 
   if stream_shows_usage_limit "$stream_file"; then
     return 2
@@ -495,6 +750,15 @@ run_plan() {
 # Extract a small, committed cost/usage summary from the run's final `result` event, so
 # per-plan cost survives after the (gitignored) .stream.jsonl is gone. Called from the
 # top of finalize_plan, before any mv, while stream_path is still where run_plan left it.
+#
+# **`result_event` says whether that event existed.** A run can exit 0, do its work and
+# open its PR while its captured stream carries no `result` event at all — it has
+# happened, cause unknown (self/BACKLOG.md), and every figure here is then null or zero.
+# Without the field the sidecar is indistinguishable from a run that genuinely cost
+# nothing, and analysis/report.py prints a bare `$0.0000` for the bucket. `outcome` is
+# not the substitute: it is computed from the exit code and says what the plan DID.
+# Anything deciding "is this priced" reads `result_event` and the null cost, never
+# `outcome` — see analysis/README.md → usage.json.
 # Non-fatal: guarded on the stream file existing, jq's stderr is suppressed the same way
 # the other two call sites in this file suppress it, and a failed jq run leaves any
 # existing sidecar alone rather than replacing it with a truncated one.
@@ -535,13 +799,18 @@ write_usage_sidecar() {
   prev="$(jq -c '.' "$usage_path" 2>/dev/null || true)"
   [[ -n "$prev" ]] || prev="null"
 
+  # -R -s and fromjson? rather than a plain -s slurp: a killed run can leave a truncated
+  # final line, and claude's merged stderr can leave a non-JSON one, either of which
+  # would make a plain slurp reject the whole file. $events and $r are spliced in from
+  # the shared expressions at the top of this file rather than written out again here —
+  # stream_has_result derives the same $r, and the two disagreeing is the defect this
+  # sharing exists to prevent.
   local merged
   merged="$(jq -R -s --arg plan "$(basename "$plan_path" .md)" --arg model "$model" \
-    --arg outcome "$outcome" --arg repo "$REPO_DIR/" --argjson prev "$prev" '
-    # -R -s and fromjson? rather than a plain -s slurp: a killed run can leave a
-    # truncated final line, and slurping as JSON would reject the whole file over it.
-    (split("\n") | map(select(length > 0) | fromjson?)) as $events
-    | ($events | map(select(.type == "result")) | last) as $r
+    --arg outcome "$outcome" --arg repo "$REPO_DIR/" --argjson prev "$prev" "
+    ($STREAM_EVENTS_JQ) as \$events
+    | (\$events | $STREAM_LAST_RESULT_JQ) as \$r
+    "'
     | [ $events[] | select(.type == "assistant") | .message.content[]? | select(.type == "tool_use") ] as $tools
     | ($tools | map(select(.name == "Edit" or .name == "Write" or .name == "MultiEdit" or .name == "NotebookEdit"))) as $edits
     | ($prev // {}) as $p
@@ -562,6 +831,16 @@ write_usage_sidecar() {
     | {
         plan: $plan, model: $model, outcome: $outcome,
         session_id: $attempt.session_id,
+        # Whether the stream carried a result event at all — the fact every figure
+        # below depends on, kept separate from `outcome` because the two answer
+        # different questions. `outcome` says what the plan DID, from the exit code;
+        # this says whether anything measured what it cost. A run that exits 0 with no
+        # result event is `outcome: "complete"` AND `result_event: "missing"`, and the
+        # nulls beside it then mean "unmeasured", not "free" — the whole difference
+        # between a $0 that is a measurement and a $0 that is a hole in the record.
+        # Latest attempt only, like `subtype`, `is_error` and `model_usage`.
+        # No apostrophes in this block: the jq program is single-quoted in bash.
+        result_event: (if $r then "seen" else "missing" end),
         subtype: ($r.subtype // null),
         is_error: $r.is_error,
         # `add` over an empty array is null, which is the honest answer when no attempt
@@ -704,9 +983,25 @@ finalize_plan() {
     exit "$rc"
   fi
 
+  # rc == 0 with no `result` event in the stream is the one combination that is never
+  # normal: every ending claude -p has emits one, so a clean exit without it means the
+  # end of the stream was lost between claude and this file. That is what went unnoticed
+  # for nine features — each filed here, as a success, with a null cost and an empty
+  # progress log — so it gets a warning naming the plan and the file, and the file is
+  # kept (as it always was) for whoever reads it. Computed before the move so the stream
+  # is still where run_plan left it, printed after so it can name where it landed.
+  local capture_looks_truncated=0
+  if ! stream_has_result "$stream_path"; then capture_looks_truncated=1; fi
+
   # Keep the full event stream even on success: it is the complete record of what
   # the model did — tool inputs and results the terminal summary omits. Gitignored.
   route_plan_files "$COMPLETE_DIR" "$plan_path" "$log_path" "$stream_path" "$usage_path"
+
+  if (( capture_looks_truncated )); then
+    echo "WARN: $plan_name exited 0 but its captured stream holds no result event — the capture may have been truncated, and this plan's cost, turn count and progress log are incomplete" >&2
+    echo "      stream kept at $COMPLETE_DIR/$(basename "$stream_path") (gitignored, never committed)" >&2
+  fi
+
   # A stranded success is as bad as a stranded failure: the plan is still in inprogress/,
   # so the next run resumes a plan that is already done. Carry it into the summary.
   exit_reason="$exit_reason$(route_warning)"
@@ -736,6 +1031,40 @@ require_tools() {
 # Two-phase driver: resume anything in inprogress/, then drain incomplete/.
 run_all() {
   require_tools
+
+  # Survive a consumer that stops reading this script's stdout — and stop writing to it.
+  # Ruling 1 of self/features/stream-capture-file-first says a closed consumer must not
+  # fail the plan, and that is not only about the capture: every echo below goes to the
+  # same stdout, so without this the runner died of SIGPIPE at the third line of run_plan
+  # (`echo "    model: …"`), before claude had even started, whenever it was launched
+  # with its output piped onward and the reader went away.
+  #
+  # Both halves of the handler are load-bearing:
+  #
+  #   exec >/dev/null   Point this shell's own output somewhere that cannot break. A
+  #                     runner that keeps writing to a dead pipe takes a SIGPIPE per
+  #                     line and prints a `write error` for each.
+  #   printf '\n'       Flush bash's stdio buffer, now that flushing can succeed. This
+  #                     is NOT cosmetic. The bytes of the write that failed are still
+  #                     sitting in that buffer, and every fork from here on — every
+  #                     `$(…)` that runs a function or a list, every `<(…)` — inherits
+  #                     the dirty buffer and flushes it into its OWN stdout, which is
+  #                     the substitution's pipe. Observed while building this: with the
+  #                     redirect alone, `$(wc -c < "$stream")` came back as the byte
+  #                     count plus the text of the failed echo, `$(build_prompt …)` fed
+  #                     that text to claude, and `<(list_plans …)` handed run_all
+  #                     "=== Finished: <plan>.md ===" as the next plan to run — an
+  #                     infinite loop over garbage filenames. One successful write
+  #                     clears it; a zero-byte one (`printf ''`) does not.
+  #
+  # A HANDLER, deliberately not `trap '' PIPE`. Bash resets a handled signal to its
+  # default in exec'd children but propagates an *ignored* one through exec, so ignoring
+  # here would silently change the SIGPIPE disposition of claude, jq, git, gh — and of a
+  # consuming repo's own plans/gate.sh and plans/pr.sh, where a `foo | head -1` would
+  # stop dying quietly and start printing write errors instead. Both forms keep this
+  # shell alive; only this one has no blast radius.
+  trap 'exec >/dev/null; printf "\n"' PIPE
+
   cd "$REPO_DIR"
   # Before resolve_feature, not after: list_plans globs, and without nullglob an empty
   # queue directory expands to the literal pattern and reads as "has work queued".

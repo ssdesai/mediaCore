@@ -267,6 +267,7 @@ below before it is quoted.
   "base": "main",
   "session_window": {"from": "2026-09-03T17:44:00Z", "to": "2026-09-04T05:46:54Z"},
   "exclude_sessions": [],
+  "exclude_subagents": ["aa0af908abb54f620"],
   "sessions": ["48f81318-3e51-4559-a82c-37fe75be5308"],
   "subagents": ["a1193ae274db55efb", "a416e963b95bdf0a2", "abdd1b760eb2eb2f8", "ade1fd29da9eac1ad"]
 }

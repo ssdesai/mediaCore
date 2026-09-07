@@ -146,7 +146,13 @@ shell_scripts=(
   self/tests/timestamps-are-utc.sh
   self/tests/subagent-capture.sh
   self/tests/direct-timing.sh
+  self/tests/stale-failed-sidecars.sh
+  self/tests/stream-capture.sh
+  self/tests/usage-limit-kill.sh
+  self/tests/batch-sigpipe.sh
+  self/tests/report-footnotes.sh
   self/tests/feature-lifecycle.sh
+  self/tests/recover-at-close.sh
   self/tests/check-plans.sh
   self/tests/sync-check.sh
   self/tests/sweep.sh
@@ -180,7 +186,13 @@ record "capture guard self-test" bash self/tests/capture-guard.sh
 record "timestamps are utc self-test" bash self/tests/timestamps-are-utc.sh
 record "subagent capture self-test" bash self/tests/subagent-capture.sh
 record "direct timing self-test" bash self/tests/direct-timing.sh
+record "stale failed sidecars self-test" bash self/tests/stale-failed-sidecars.sh
+record "stream capture self-test" bash self/tests/stream-capture.sh
+record "usage limit kill self-test" bash self/tests/usage-limit-kill.sh
+record "batch sigpipe self-test" bash self/tests/batch-sigpipe.sh
+record "report footnotes self-test" bash self/tests/report-footnotes.sh
 record "feature lifecycle self-test" bash self/tests/feature-lifecycle.sh
+record "recover at close self-test" bash self/tests/recover-at-close.sh
 record "check plans self-test" bash self/tests/check-plans.sh
 record "sync check self-test" bash self/tests/sync-check.sh
 record "sweep self-test" bash self/tests/sweep.sh

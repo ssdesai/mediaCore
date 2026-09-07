@@ -1,0 +1,9 @@
+edit: /Users/sahildesai/dev/agentTooling-stream-capture-file-first/self/BACKLOG.md
+edit: /Users/sahildesai/dev/agentTooling-stream-capture-file-first/self/features/README.md
+edit: /Users/sahildesai/dev/agentTooling-stream-capture-file-first/self/features/stream-capture-file-first/NOTES.md
+edit: /Users/sahildesai/dev/agentTooling-stream-capture-file-first/self/features/stream-capture-file-first/NOTES.md
+edit: /Users/sahildesai/dev/agentTooling-stream-capture-file-first/README.md
+edit: /Users/sahildesai/dev/agentTooling-stream-capture-file-first/self/tests/stream-capture.sh
+edit: /Users/sahildesai/dev/agentTooling-stream-capture-file-first/self/tests/stream-capture.sh
+edit: /Users/sahildesai/dev/agentTooling-stream-capture-file-first/self/tests/stream-capture.sh
+write: /Users/sahildesai/dev/agentTooling-stream-capture-file-first/self/review-report.md

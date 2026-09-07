@@ -11,12 +11,13 @@ set -euo pipefail
 # Copying once solves nothing; syncing keeps one source of truth.
 #
 # Overwriting the generated stubs is safe because they carry no repo-specific content;
-# the four files that do — PROJECT_FACTS.md, gate.sh, pr.sh and worktree-setup.sh — are
-# seeded from the skeleton on first run and never overwritten again. `--check` reports
-# on both halves without writing anything: STALE or missing generated stubs, and
-# repo-owned scripts whose template-version line trails the template's, plus an
-# unfilled PROJECT_FACTS.md. The write path below is unchanged and ends with that same
-# repo-owned report, since the stubs it just wrote are always in sync.
+# the five files that do — PROJECT_FACTS.md, BACKLOG.md, gate.sh, pr.sh and
+# worktree-setup.sh — are seeded from the skeleton on first run and never overwritten
+# again. `--check` reports on both halves without writing anything: STALE or missing
+# generated stubs, and repo-owned scripts whose template-version line trails the
+# template's, plus an unfilled PROJECT_FACTS.md and a missing BACKLOG.md. The write path
+# below is unchanged and ends with that same repo-owned report, since the stubs it just
+# wrote are always in sync.
 #
 # Scope: this writes into the CONSUMING repo's plans/ only. agentTooling's own corpus
 # under self/ is hand-written and is never generated from templates/ — every stub here
@@ -44,6 +45,14 @@ GENERATED=(README.md interactive/README.md features/README.md features/TEMPLATE.
 # Checked by template-version rather than by content, since a repo customizes
 # everything below each script's REPO-SPECIFIC marker.
 REPO_OWNED_SCRIPTS=(gate.sh pr.sh worktree-setup.sh)
+
+# Repo-owned docs seeded once and then reported by PRESENCE alone. An entry written into
+# one is content, not drift, and an EMPTY one is the correct steady state — a repo that
+# has closed everything it found has an empty backlog — so a present file is `in-sync`
+# and never `unfilled`. PROJECT_FACTS.md is deliberately not in this list: it ships as a
+# list of prompts that a repo MUST replace, which is the opposite property, and it has
+# its own check below.
+SEEDED_DOCS=(BACKLOG.md)
 
 usage() {
   echo "usage: sync-plans.sh [--check]" >&2
@@ -86,7 +95,8 @@ check_stubs() {
 }
 
 # check_repo_owned — the three scripts by template-version, then PROJECT_FACTS.md by
-# content. Returns the count of items that need attention.
+# content, then SEEDED_DOCS by presence alone. Returns the count of items that need
+# attention.
 check_repo_owned() {
   local f tver cver count=0
   for f in "${REPO_OWNED_SCRIPTS[@]}"; do
@@ -114,6 +124,16 @@ check_repo_owned() {
   else
     printf "  %-${STATUS_COL_WIDTH}s%s\n" "in-sync" "plans/PROJECT_FACTS.md"
   fi
+
+  local doc
+  for doc in "${SEEDED_DOCS[@]}"; do
+    if [[ ! -f "$PLANS_DIR/$doc" ]]; then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "missing" "plans/$doc (never seeded; run sync-plans.sh)"
+      count=$((count + 1))
+    else
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "in-sync" "plans/$doc"
+    fi
+  done
   return "$count"
 }
 
@@ -165,6 +185,15 @@ else
   cp "$TEMPLATE_DIR/PROJECT_FACTS.md" "$PLANS_DIR/PROJECT_FACTS.md"
   printf "  %-${STATUS_COL_WIDTH}s%s\n" "created" "plans/PROJECT_FACTS.md — fill in the prompts before authoring plans"
 fi
+
+for doc in "${SEEDED_DOCS[@]}"; do
+  if [[ -f "$PLANS_DIR/$doc" ]]; then
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "kept" "plans/$doc (repo-owned — never overwritten)"
+  else
+    cp "$TEMPLATE_DIR/$doc" "$PLANS_DIR/$doc"
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "created" "plans/$doc — features write their deferrals here as they close"
+  fi
+done
 
 for f in "${REPO_OWNED_SCRIPTS[@]}"; do
   if [[ -f "$PLANS_DIR/$f" ]]; then

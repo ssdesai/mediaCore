@@ -1,21 +1,21 @@
 {
   "slug": "feature-lifecycle",
-  "generated_at": "2026-09-04T05:46:54.879466+00:00",
+  "generated_at": "2026-09-04T06:07:17.434686+00:00",
   "cost": {
     "method": "hand",
     "planning": 0.0,
-    "implementer": 25.533050199999998,
-    "build": 25.533050199999998,
+    "implementer": 73.8978693,
+    "build": 73.8978693,
     "verify": 0.0,
     "review": 3.3834834999999996,
-    "total": 28.9165337,
+    "total": 77.2813528,
     "planning_pct": 0.0,
-    "build_pct": 88.29913870347468,
+    "build_pct": 95.62186300134229,
     "verify_pct": 0.0,
-    "review_pct": 11.700861296525316,
-    "cost_per_plan": 28.9165337,
-    "cost_per_file": 14.45826685,
-    "total_is_partial": true,
+    "review_pct": 4.378136998657714,
+    "cost_per_plan": 77.2813528,
+    "cost_per_file": 38.6406764,
+    "total_is_partial": false,
     "missing_usage_plans": [],
     "skipped_plans": [],
     "orphan_usage_plans": [],
@@ -25,15 +25,15 @@
   },
   "time": {
     "method": "hand",
-    "planning_sessions_s": 43366,
-    "planning_subagents_s": 4151,
+    "planning_sessions_s": 44573,
+    "planning_subagents_s": 4124,
     "planning_s": 0.0,
-    "implementer_s": 47517,
-    "build_s": 47517.0,
+    "implementer_s": 48697,
+    "build_s": 48697.0,
     "verify_s": 0.0,
     "review_s": 406.131,
-    "executor_s": 47923.131,
-    "total_s": 47923.131,
+    "executor_s": 49103.131,
+    "total_s": 49103.131,
     "total_is_partial": false,
     "missing_duration_plans": [],
     "wall_clock": {
@@ -57,8 +57,8 @@
     "gate_s": 0.0
   },
   "planning_cost_split": {
-    "subagents": 25.533050199999998,
-    "sessions": 0.0
+    "subagents": 24.76354355,
+    "sessions": 49.134325749999995
   },
   "cold_start_tax_tokens": 137333,
   "model_fit": [

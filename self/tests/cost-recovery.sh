@@ -52,7 +52,13 @@ set -uo pipefail
 #  15. a level-verify the runner filed as SKIPPED (a .progress.md opening `skipped:` and
 #      no .usage.json, by design — AGENT_PLANS.md → Levels, D3) is not "missing usage"
 #      and does not make the feature's total a lower bound, while a plan with no sidecar
-#      and no skipped: line still is.
+#      and no skipped: line still is;
+#  16. backfill_usage.py over a .stream.jsonl holding an init event and assistant events
+#      but NO result event writes the sidecar write_usage_sidecar would — `result_event:
+#      "missing"`, the session id from the first event, null figures, one null attempt —
+#      rather than skipping the file and leaving the plan reading as "never ran". RED
+#      until item 8 of self/features/tooling-backlog-2026-09-06 lands; it runs last, so
+#      the sidecar it writes cannot disturb assertion 9's idempotency snapshot.
 #
 # Assertions 13-14 exercise report.py's reading of recovered_is_partial / unpriced_models
 # and the attempts[]-vs-top-level cross-check. They were authored RED against
@@ -70,7 +76,7 @@ for f in pricing.py roots.py report.py; do
 done
 # transcript.py / recover_attempts.py are plan 02/03's deliverables; a missing cp here is
 # expected pre-landing and must not abort the script (no `set -e`, and we don't check rc).
-for f in transcript.py recover_attempts.py; do
+for f in transcript.py recover_attempts.py backfill_usage.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f" 2>/dev/null || true
 done
 
@@ -150,6 +156,14 @@ def cmd_field_equals(args):
     expected = json.loads(expected_json)
     actual = attempt.get(field) if attempt is not None else None
     print(actual == expected)
+
+
+def cmd_top_field(args):
+    """One TOP-LEVEL field of a usage.json, printed as Python repr-ish text (`None` for
+    a JSON null). The sibling of cmd_field_equals, which is attempt-scoped: assertion 16
+    is about the fields write_usage_sidecar puts beside attempts[], not inside one."""
+    usage_path, field = args
+    print(load(usage_path).get(field))
 
 
 def cmd_has_nonnull(args):
@@ -241,6 +255,7 @@ COMMANDS = {
     "cost_ratio_check": cmd_cost_ratio_check,
     "recovered_cost_matches": cmd_recovered_cost_matches,
     "field_equals": cmd_field_equals,
+    "top_field": cmd_top_field,
     "has_nonnull": cmd_has_nonnull,
     "tokens_equal": cmd_tokens_equal,
     "top_equals_sum": cmd_top_equals_sum,
@@ -702,6 +717,60 @@ SNAPSHOT="$TMP/features-after-run1"
 cp -r "$AT/self/features" "$SNAPSHOT"
 python3 "$AT/analysis/recover_attempts.py" --self >/dev/null 2>&1
 check "9. running recovery twice is idempotent" 'diff -rq "$AT/self/features" "$SNAPSHOT" >/dev/null 2>&1'
+
+# ── 16: backfill_usage.py writes a sidecar for a stream with no result event ───
+# Run last, after assertion 9's idempotency snapshot, so a fresh sidecar in the corpus
+# cannot make that diff say something about recovery that it does not mean.
+#
+# The defect (self/BACKLOG.md, raised by `recover-cost-at-close`): the script returned
+# early with `WARN: no result event … skipping`, written when the result event was the
+# only source of any figure. That is no longer true — the stream still carries the
+# session id, and recover_attempts.py can price that session from its transcript — and
+# as it stood a pre-runner batch that lost a result event was not merely unpriced but
+# ABSENT: the plan landed in report.py's `missing_usage_plans`, which reads as "this
+# never ran".
+BF="$AT/self/features/bf-no-result"
+BFQ="$BF/auto/complete"
+mkdir -p "$BFQ"
+cat > "$BF/README.md" <<'MDEOF'
+# bf-no-result
+
+Test fixture only, for cost-recovery.sh assertion 16.
+
+```json
+{"plans": ["01-backfill-sonnet"]}
+```
+MDEOF
+cat > "$BF/planning.json" <<'JSONEOF'
+{"cost_usd": {"total": 0.0, "total_is_partial": false}}
+JSONEOF
+cat > "$BFQ/01-backfill-sonnet.md" <<'MDEOF'
+# 01-backfill-sonnet
+
+Test fixture plan for cost-recovery.sh assertion 16. Not a real plan.
+MDEOF
+# An init event carrying the session id and two assistant events, one of them a mutating
+# tool call — everything a real stream has except the ending that was lost.
+{
+  printf '{"type":"system","subtype":"init","session_id":"sess-backfill"}\n'
+  printf '{"type":"assistant","session_id":"sess-backfill","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"/repo/src/thing.py"}}]}}\n'
+  printf '{"type":"assistant","session_id":"sess-backfill","message":{"content":[{"type":"text","text":"done"}]}}\n'
+} > "$BFQ/01-backfill-sonnet.stream.jsonl"
+
+BF_USAGE="$BFQ/01-backfill-sonnet.usage.json"
+bf_out="$(cd "$AT" && python3 analysis/backfill_usage.py --self 2>&1)"
+check "16a. backfill writes a sidecar for a stream with no result event" '[[ -f "$BF_USAGE" ]]'
+bf_event="$(V top_field "$BF_USAGE" result_event)"
+check "16b. ...recording result_event: missing (got ${bf_event:-<none>})" '[[ "$bf_event" == "missing" ]]'
+bf_sid="$(V top_field "$BF_USAGE" session_id)"
+check "16c. ...with the session id from the stream's first event (got ${bf_sid:-<none>})" '[[ "$bf_sid" == "sess-backfill" ]]'
+bf_cost="$(V top_field "$BF_USAGE" total_cost_usd)"
+check "16d. ...and a null total_cost_usd, not a zero (got ${bf_cost:-<none>})" '[[ "$bf_cost" == "None" ]]'
+bf_attempt="$(V field_equals "$BF_USAGE" sess-backfill total_cost_usd null)"
+check "16e. ...and one attempt for that session, also null (got ${bf_attempt:-<none>})" '[[ "$bf_attempt" == "True" ]]'
+bf_outcome="$(V top_field "$BF_USAGE" outcome)"
+check "16f. ...whose outcome is still the state directory's fact (got ${bf_outcome:-<none>})" '[[ "$bf_outcome" == "complete" ]]'
+check "16g. ...and the run does not report it as skipped" '! grep -q "no result event in .*01-backfill-sonnet.*skipping" <<<"$bf_out"'
 
 if (( fails > 0 )); then echo "cost-recovery: $fails assertion(s) FAILED"; exit 1; fi
 echo "cost-recovery: all assertions passed"

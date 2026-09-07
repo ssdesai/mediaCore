@@ -44,7 +44,7 @@ queue — they open a feature, close it, and stamp a build that has no runner.
 | `feature-start.sh` | Opens a feature: `feature-start.sh [--self] <slug>`, plus `--method` (`direct`, `plans` or `hand`), `--base <branch>`, `--no-gate`, `--no-pin`, `--session <id>`. Run from the primary checkout, and the only sanctioned way to create a feature branch or worktree — branch `<slug>`, worktree `<repo>-<slug>` beside the primary. It then runs the repo-owned `plans/worktree-setup.sh` and the gate inside the new worktree, writes and commits the feature directory there (the manifest with its fence filled, and a review-brief stub carrying `@@TODO@@` that `run-review.sh` refuses to run), and pins the session that ran it. Refuses a slug that is not kebab-case, an existing branch or worktree, a base whose gate is not green, and being run from a worktree's copy. `LIFECYCLE.md` → step 2. |
 | `feature-close.sh` | Closes one: `feature-close.sh [--self] <slug> [--recapture] [--keep-worktree] [--no-push]`. Run by the human from the primary checkout after the PR merges and the feature's sessions have ended; no model is involved. It refuses an unmerged branch, a primary that is dirty or not on `main`, and a worktree's copy; pulls `main`, stops on an unclaimed delegate whose brief names this feature, carries the worktree's trailing timing stamps home before removing it, captures and reports the cost, prints every session and subagent the capture claimed, stamps `session_window.to` only once the capture succeeded, commits the cost records, and removes the worktree and the branch. `LIFECYCLE.md` → step 6. |
 | `stamp-timing.sh` | Appends one wall-clock line to a feature's `timing.jsonl` by hand: `stamp-timing.sh [--self] <slug> <event> [key=value ...]`. The runners stamp their own boundaries; this is for the one build that has no runner — a **direct** feature's implementer stamping `checkpoint status=<status>` at each checkpoint milestone (`AGENT_DIRECT.md`), which is what lets `analysis/report.py` split its single transcript span into tests, build and gate. An unknown feature, a missing event or a detail that is not `key=value` is an error, never a silently dropped stamp. |
-| `plan-runner-lib.sh` | The queue/resume/logging/routing machinery all three runners source. Single source of truth for the subtle parts — the FIFO-PID wait race, usage-limit detection, stream finalization, and the per-attempt accumulation that keeps a resumed plan's earlier runs from being re-billed as planning cost. Not run directly. `QUEUE` is only ever used to build paths, which is why a new queue costs a wrapper script and no change here. Also owns sentinel handling (`is_gate_sentinel`, `level_verify_queued`, `run_level_gate`) and the `PLAN_MAX_NN` bound on `list_plans`. |
+| `plan-runner-lib.sh` | The queue/resume/logging/routing machinery all three runners source. Single source of truth for the subtle parts — the file-first stream capture (`claude` writes `.stream.jsonl` itself; `follow_stream` feeds the FIFO and the display from it), the SIGPIPE trap that keeps a closed consumer from failing a plan, the FIFO-PID wait race, usage-limit detection, stream finalization, and the per-attempt accumulation that keeps a resumed plan's earlier runs from being re-billed as planning cost. Not run directly. `QUEUE` is only ever used to build paths, which is why a new queue costs a wrapper script and no change here. Also owns sentinel handling (`is_gate_sentinel`, `level_verify_queued`, `run_level_gate`) and the `PLAN_MAX_NN` bound on `list_plans`. |
 | `plan-runner-roots.sh` | Resolves normal vs `--self` roots (`REPO_DIR`, `FEATURES_DIR`, gate script, PR hook, review-report path) for all the runners. Sourced, never run directly. |
 
 ### Costing
@@ -66,9 +66,9 @@ queue — they open a feature, close it, and stamp a build that has no runner.
 | File | What it is |
 |---|---|
 | `CONVENTIONS.md` | Repo-agnostic working conventions — README traversal, file access, debugging discipline, named constants. Imported by each repo's root `CLAUDE.md`. |
-| `sync-plans.sh` | Writes the generated `plans/` stubs (`README.md`, `interactive/README.md`, `features/README.md`, `features/TEMPLATE.md`, `.gitignore`) from `templates/`, and seeds the four repo-owned files (`PROJECT_FACTS.md`, `gate.sh`, `pr.sh`, `worktree-setup.sh`) only when absent. Run at install and after every `subtree pull`. Never overwrites those four. `--check` reports without writing: stale stubs, repo-owned scripts behind the template's `template-version`, an unfilled `PROJECT_FACTS.md`. |
+| `sync-plans.sh` | Writes the generated `plans/` stubs (`README.md`, `interactive/README.md`, `features/README.md`, `features/TEMPLATE.md`, `.gitignore`) from `templates/`, and seeds the five repo-owned files (`PROJECT_FACTS.md`, `BACKLOG.md`, `gate.sh`, `pr.sh`, `worktree-setup.sh`) only when absent. Run at install and after every `subtree pull`. Never overwrites those five. `--check` reports without writing: stale stubs, repo-owned scripts behind the template's `template-version`, an unfilled `PROJECT_FACTS.md`, a missing `BACKLOG.md`. |
 | `update.sh` | From a consuming repo: refuse on a dirty tree, `git subtree pull --squash`, then the freshly pulled `sync-plans.sh`. |
-| `templates/` | Source for the generated `plans/` stubs, plus the `PROJECT_FACTS.md`, `gate.sh`, `pr.sh` and `worktree-setup.sh` skeletons. Edited here, never in the consuming repo. The last four are seeded once and then repo-owned. |
+| `templates/` | Source for the generated `plans/` stubs, plus the `PROJECT_FACTS.md`, `BACKLOG.md`, `gate.sh`, `pr.sh` and `worktree-setup.sh` skeletons. Edited here, never in the consuming repo. The last five are seeded once and then repo-owned. |
 
 ### Self-hosting
 
@@ -129,8 +129,11 @@ The first run ends `plans/ needs attention: 1 item(s).` and exits 1 — the fres
 failure; filling the file makes the run exit 0.
 
 That creates `features/`, `interactive/`, writes their README/template stubs, and seeds
-`plans/PROJECT_FACTS.md`, `plans/gate.sh`, `plans/pr.sh` and `plans/worktree-setup.sh`
-from the skeletons. `pr.sh` opens the PR after a clean review pass, from the feature's
+`plans/PROJECT_FACTS.md`, `plans/BACKLOG.md`, `plans/gate.sh`, `plans/pr.sh` and
+`plans/worktree-setup.sh` from the skeletons. `BACKLOG.md` ships empty and stays that
+way until a feature leaves something behind — an exclusion that is real work, a review
+escalation not taken, a defect found and not fixed (`AGENT_PLANS.md` → "The feature
+manifest"). `pr.sh` opens the PR after a clean review pass, from the feature's
 own branch against the base its manifest records (`main` unless the feature was stacked)
 — check its forge CLI (`gh` by default) before relying on it; it is repo-owned precisely
 so a non-GitHub repo can swap that out. `worktree-setup.sh` ships as a no-op skeleton and is
@@ -143,9 +146,10 @@ doesn't track empty directories, and the runners make them on first use.
 
 Sync rather than a one-time copy because the stubs are pointers *into this directory*.
 Rename the subtree prefix or restructure the queue, and every hand-copied stub in every
-repo silently goes stale. Re-running the script is the fix; it overwrites the four
+repo silently goes stale. Re-running the script is the fix; it overwrites the five
 generated stubs unconditionally, which is safe because none of them contain
-repo-specific content.
+repo-specific content — and never touches the five repo-owned files, which is why a
+`BACKLOG.md` entry or a filled `PROJECT_FACTS.md` survives every pull.
 
 **4. Fill in `plans/PROJECT_FACTS.md`.** It ships as a list of prompts. It holds the
 repo-specific facts that plans must pin — where generated types live, API route
@@ -161,7 +165,7 @@ You're ready: author plans per `AGENT_PLANS.md` into
 ## What stays in the consuming repo
 
 Everything under `plans/` — `features/`, `interactive/`, the plan corpus and
-its execution history, `PROJECT_FACTS.md`, and `plans/README.md`. Only the shared
+its execution history, `PROJECT_FACTS.md`, `BACKLOG.md`, and `plans/README.md`. Only the shared
 machinery and doctrine live here. There are two separate corpora: everything under the
 consuming repo's `plans/` is that repo's own, and everything under `agentTooling/self/`
 is the harness's own and ships with the subtree.

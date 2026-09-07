@@ -19,6 +19,10 @@ to the machinery is made once and pulled everywhere.
   `results.jsonl` to. See `../agentTooling/harness/EXPERIMENTS.md` → "Running one" and
   `../agentTooling/harness/README.md`. Absent until the repo runs one.
 - `PROJECT_FACTS.md` — repo-specific facts every plan must pin. Read this before authoring.
+- `BACKLOG.md` — escalations and decisions left open by finished batches, one entry per
+  item phrased as the assertion that would catch it. Deferrals go here, not in a
+  NOTES.md. *Seeded once by `sync-plans.sh` and never overwritten* — same treatment as
+  `PROJECT_FACTS.md`, so a repo's own entries survive every `subtree pull`.
 - `gate.sh` — *seeded once from the skeleton by `sync-plans.sh` on first run, then
   repo-owned and never overwritten again* — same treatment as `PROJECT_FACTS.md`. Runs this
   repo's deterministic checks (install, lint, tests, typecheck, build) between the build and

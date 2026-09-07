@@ -132,7 +132,13 @@ calls a model or the network. `../PROJECT_FACTS.md` → Tests says there is no t
   — `verify/complete/NN-level-*.md` with a `.progress.md` opening `skipped:` and no
   `.usage.json`, by design (`AGENT_PLANS.md` → Levels, D3) — is neither listed under
   `missing_usage_plans` nor allowed to mark the feature's total a lower bound, while a
-  plan with no sidecar and no `skipped:` line still is. Builds its fixtures with the shell helpers in
+  plan with no sidecar and no `skipped:` line still is; and `backfill_usage.py` over a
+  `.stream.jsonl` holding an `init` event and assistant events but **no** `result` event
+  writes the sidecar `write_usage_sidecar` would — `result_event: "missing"`, the
+  session id from the first event, null figures, one null attempt — rather than skipping
+  the file and leaving the plan in `missing_usage_plans`, which reads as "never ran".
+  That last phase runs after the idempotency snapshot, so the sidecar it writes cannot
+  disturb it. Builds its fixtures with the shell helpers in
   `fixtures/`. No model, no network. Depends on `analysis/pricing.py`'s
   `get_rates`/`compute_cost`, `analysis/report.py`'s `compute_cost_rollup` and
   `analysis/transcript.py` and `analysis/recover_attempts.py` — a missing copy of the
@@ -141,6 +147,60 @@ calls a model or the network. `../PROJECT_FACTS.md` → Tests says there is no t
   aborting; the `report.py`-level assertions (13-14) were likewise authored RED against
   `self/features/recovered-totals-stay-honest`'s plan 02, which has since landed.
   `record`ed by `../gate.sh` alongside the other two.
+- `recover-at-close.sh` — three throwaway checkouts under one `mktemp -d`, a stub `claude`
+  whose closing `result` event is suppressed by `CLAUDE_STUB_NO_RESULT`, a stub `gh`, and
+  synthesized transcripts under a redirected `$HOME`. Asserts the contract that a review
+  which ran to completion is never recorded at `$0` unexplained
+  (`self/features/recover-cost-at-close/README.md`): `write_usage_sidecar` writes
+  `result_event: "missing"` when the stream held no `result` event and `"seen"` when it
+  did — driven through the real `run-plans.sh`, since what is under test is the field a
+  real stream produces — while `outcome` still says `complete` (it is the exit code's
+  fact, not pricing's), `total_cost_usd` stays null, the plan is still filed to
+  `auto/complete/`, and the sidecar still carries the session id from the stream's first
+  event; `recover_attempts.py --for <slug>` recovers a **`complete`**-outcome null-cost
+  attempt (recovery was never gated on `outcome`, and this is the case its docstring used
+  to omit) while leaving every other feature's sidecar byte-identical, refuses an unknown
+  slug without writing, and leaves the flagless whole-tree walk `sweep.sh` calls
+  unchanged; and `feature-close.sh` recovers before it captures — with the transcript
+  present the review bucket carries real dollars and the rewritten `usage.json` is inside
+  the `<slug>: cost records` commit rather than named as a stray (which would refuse the
+  close), and with the transcript gone the close still exits 0, names the plan as
+  unrecoverable, and prints `review $0.0000 (0.0%, unpriced: <stem> — no result event,
+  transcript not found)` instead of the bare `review $0.0000 (0.0%)` the defect printed.
+  Its last phase is the repair path for the features whose zero is already committed:
+  `--recapture` over the feature the previous phase just closed — worktree removed, local
+  branch deleted, only `origin/<slug>` left — re-commits the cost records and leaves
+  `session_window.to` where the first close put it. That is why the fixture pushes each
+  branch the way `plans/pr.sh` does; without the remote ref the re-close refuses "nothing
+  to close", which is `../BACKLOG.md`'s delete-on-merge entry.
+  Three later phases came out of the review: **D** pins each of `report.py`'s three
+  `unpriced_reason` strings by exact text, from a sidecar of that shape — no
+  `result_event` at all (which every sidecar on disk still has, so it is the branch the
+  documented repair runs), `missing`, and a `killed` attempt the runner harvested — so no
+  single return value satisfies them all, and pins `set(QUEUE_COST_BUCKETS) ==
+  QUEUE_DIRS` by asserting a drifted copy of `report.py` refuses to import. **E** is the
+  mirror of `feature-lifecycle.sh`'s C5f for `rollback_recovery`: a capture that refuses
+  *after* recovery rewrote a sidecar leaves the primary clean and the sidecar as it was,
+  and the re-run refuses for the same reason rather than for dirt this run made. **F**
+  pins the narrowed sidecar match at the teardown — the other caller of `stray_paths`,
+  and the only one a fixture can reach, since an untracked file in the primary trips the
+  dirty refusal first: a worktree holding `notes/left-behind.usage.json` is kept with a
+  warning, while one holding `review/complete/99-extra-sonnet.usage.json` comes away.
+  The B4, C9 and D6 assertions carry their own anti-vacuity guards, since argparse reads
+  `--for` as an abbreviation of `--force`, the bare-zero line is a *substring* of the
+  annotated one, and a guard that is merely true today is not a guard. Builds its sidecars with `write_unpriced_usage_json` from `fixtures/` and
+  its transcripts with `transcript_line`/`session_line`. Its C phase runs on past that
+  repair to the state a forge with delete-on-merge really leaves — the remote branch
+  deleted from the bare origin AND its remote-tracking ref removed, since the close's
+  fetch does not prune — and pins that `--recapture` then proceeds on the manifest being
+  tracked on `main` and the `<slug>: start` commit being in `main`'s history, while a
+  plain close still refuses "nothing to close" and so does `--recapture` for a feature
+  that was never started. No model, no network. Depends on
+  `plan-runner-lib.sh`'s `write_usage_sidecar`, `analysis/recover_attempts.py`'s `--for`,
+  `analysis/report.py`'s `cost.unpriced_plans[]`, `unpriced_reason` and its
+  `QUEUE_COST_BUCKETS` import guard, and `feature-close.sh`'s recovery step,
+  `rollback_recovery`, `closed_feature_on_main` and `is_cost_usage_path`; RED until each
+  landed.
 - `capture-guard.sh` — copies `analysis/{pricing,roots,transcript,capture_planning}.py` into
   a throwaway checkout, synthesizes one feature manifest and, under a redirected `$HOME`,
   the `~/.claude/projects/*/<session_id>.jsonl` transcripts capture selects on, and asserts
@@ -238,13 +298,19 @@ calls a model or the network. `../PROJECT_FACTS.md` → Tests says there is no t
   `sync-plans.sh --check` contract: a fresh seed reports the five generated stubs and
   the three repo-owned scripts (`gate.sh`, `pr.sh`, `worktree-setup.sh`) in-sync with
   their `# template-version: <N>` line (2, 2, 1 in that order) and only
-  `PROJECT_FACTS.md` unfilled, exit 1, `needs attention: 1 item(s)`; filling
+  `PROJECT_FACTS.md` unfilled, exit 1, `needs attention: 1 item(s)`; that the seeded
+  `BACKLOG.md` is `in-sync` rather than a second unfilled item — an *empty* backlog is
+  the correct steady state for a repo that has closed everything it found, so only its
+  absence is an item — and that the generated `plans/README.md` names it, the line
+  humanNetworkMap had added by hand and a sync overwrote; filling
   `PROJECT_FACTS.md` brings it to exit 0 `is in sync`; a stale generated stub is
   reported `STALE` with `--check` writing nothing, and the plain sync repairs it; a
   repo-owned script stripped of its `template-version` line is reported `DRIFT` by both
   `--check` and the plain sync (which still keeps the file); a body-only edit below a
   script's `REPO-SPECIFIC` marker is not drift; a deleted repo-owned script is reported
-  `missing` and the plain sync recreates it; and an unknown flag is a usage error, exit
+  `missing` and the plain sync recreates it; a `BACKLOG.md` carrying the repo's own
+  entry survives a plain sync byte-identical as `kept` and is not drift, while a deleted
+  one is `missing` and is re-seeded; and an unknown flag is a usage error, exit
   2. It also reads — never writes — the real checkout, asserting `gate.sh`/`pr.sh`/
   `worktree-setup.sh` carry the same `template-version` in `templates/plans/` and in
   `self/`. Fixture B is a subtree cycle: a bare `$TMP/upstream.git`, a `$TMP/work` clone
@@ -309,3 +375,157 @@ calls a model or the network. `../PROJECT_FACTS.md` → Tests says there is no t
   Depends on `stamp_timing` (`plan-runner-roots.sh`) writing through `jq`, and on
   `report.py`'s `compute_time_rollup` / `render_time_section` reading
   `event: "checkpoint"` with a `status`.
+- `stale-failed-sidecars.sh` — copies `analysis/{pricing,roots,transcript,report}.py`
+  into a throwaway checkout and synthesizes a `self/features/` corpus of hand-written
+  manifests, `planning.json` files, plan `.md` files and `usage.json` sidecars. No
+  transcripts, no model, no network: every dollar is a literal in a sidecar, which is
+  what `report.py`'s no-recompute contract says it reads. The layout under test is what
+  a usage-limit kill plus a manual retry leaves behind (`../../RUNNER.md` → the
+  `failed/` paragraph): the runner files a plan's four sidecars as a set, so the killed
+  run's `.progress.md` and `.usage.json` sit in `<queue>/failed/` while the retry's
+  four sit in `complete/` — two sidecars claiming one stem, and a `failed/` pair with
+  no `.md` beside it, which is exactly what crashed `feature-close.sh` on
+  vinylCatalogue's `group-commit-all-adjudication`. Every fixture creates `failed/` (or
+  `inprogress/`) **before** `complete/`, so a filesystem-ordered walk offers the wrong
+  file first — that ordering is the assertion, since the defect was
+  `build_usage_index` keeping whichever file `rglob` reached last. Asserts: the stale
+  pair does not crash the report and the plan prices at the `complete/` sidecar's
+  figure, whole rather than a lower bound; the live sidecar really is `complete/`'s,
+  read off the plan-length table, which can only have found the `.md` that exists
+  there; the stem is neither missing usage nor an orphan; a `recovered_cost_usd`
+  planted in the `failed/` sidecar's `attempts[]` is added to the live figure exactly
+  once and reported as recovered dollars, so money the sweep recovers into a file that
+  lost the index is not dropped with it; directory rank breaks a tie when **both**
+  candidates have a sibling `.md` (`complete` > `inprogress`, whichever the filesystem
+  offers first — the sibling rule cannot decide there, so this is the only assertion
+  that pins the rank); and a missing sibling `.md` is a warning naming the path rather
+  than a crash, the plan dropped from the plan-length table but still priced. Three later phases are
+  the 2026-09-06 backlog items: a prior attempt with **neither** a cost nor a recovered
+  figure now marks the total a lower bound and names its `session_id` under
+  `cost.unrecoverable_attempts[]`, exactly as the same shape on the live sidecar already
+  did — which REVERSES what assertion 2c asserted before, since ruling 4 deliberately
+  let such a prior read as free and widening it changes what `total_is_partial` means
+  for every feature in both corpora; an attempt reachable through both sidecars (a
+  hand-copied file: `write_usage_sidecar` merges by `session_id` into the file at the
+  plan's current path) contributes its dollars once and is named once; and
+  `cost.multi_sidecar_stems[]` plus one line under the Cost table report a stem with
+  more than one sidecar, absent when every stem has exactly one. The recovered-twin
+  phase is the contrast that keeps the first of those precise: a prior that WAS
+  recovered leaves the total whole. Three further phases are that batch's review
+  escalation, closed by its rework: WHICH copy of a deduplicated attempt the dollars
+  come from. A live copy null on both figures beside a prior carrying
+  `recovered_cost_usd` contributes that figure once, leaves the total whole and names
+  the session in neither `cost.unrecoverable_attempts[]` nor `cost.unpriced_plans[]` —
+  asserted both where the shared attempt is the plan's only one (the whole-plan unpriced
+  path) and where the live sidecar prices an attempt of its own beside it (the
+  per-attempt path the escalation described); the same fixture with the prior's figure
+  removed is still unpriced, so a merge rule cannot credit a copy that carries nothing;
+  and where both copies carry a figure and disagree, the LIVE one is counted, once. The
+  last two are green before the rework as well as after — they are what keeps the first
+  from being satisfiable by a rule that simply prefers the prior. RED until
+  the deterministic index landed — the pre-fix run dies inside
+  `compute_plan_length_vs_loc` with a `FileNotFoundError` for the `failed/` `.md` the
+  retry moved away. A missing `analysis/` script is tolerated rather than fatal, the
+  `cost-recovery.sh` convention. Depends on `report.py`'s `build_usage_index` returning
+  a live path plus prior attempts, on `prior_attempt_cost` returning the merged
+  `attempts` list `compute_cost_rollup` classifies and on its `ATTEMPT_FIGURE_FIELDS`
+  precedence, and on the sibling-`.md`
+  readers (`compute_plan_length_vs_loc`, `compute_plan_drift`) warning instead of
+  raising — none of which is visible from an import line.
+- `stream-capture.sh` — copies the runner scripts into a `mktemp -d` checkout with a stub
+  `claude` that **ignores SIGPIPE** and emits an init event, 1500 `assistant`/`tool_use`
+  pairs and a priced `result` event (ending chosen by `CLAUDE_STUB_MODE`:
+  `normal` | `no-result` | `usage-limit`), and drives it through a real `run-plans.sh
+  --self`. The stub's SIGPIPE disposition is the fixture: one that dies with the pipeline
+  cannot tell the fix from the defect it was written against — a `tee` in the *middle* of
+  the capture pipeline, whose last stage wrote to the caller's stdout, so a consumer that
+  stopped reading truncated the record while `claude` ran on to a clean exit (nine merged
+  reviews filed as successes with a 689-byte `.stream.jsonl`, a 0-byte `.progress.md` and
+  `total_cost_usd: null`). Asserts, for a healthy consumer and again for one that exits
+  after two lines — before `claude` is started — and again for one that exits mid-stream:
+  the plan is filed to `complete/`, the runner exits 0, `.stream.jsonl` holds all 3002
+  lines and ends with the `result` event, the sidecar is priced, and `.progress.md`
+  carries one `edit: <path>` line per mutating `tool_use`. Also: a stub emitting no
+  `result` event and exiting 0 is still filed by its exit code but warns, naming the plan
+  and the stream file, which survives; and the usage-limit routing is unchanged — plan
+  left in `inprogress/`, exit 1, reason naming the limit — with the consumer present and
+  with it gone. The pre-fix run failed 14 of 31: phase 3 captured 94 of 3002 stream lines
+  and 39 of 1500 progress lines, ending on an `assistant` event.
+  Four later phases came from the review. **6** feeds in a stream carrying one non-JSON
+  line — `claude`'s stderr is merged into it, so a runtime warning lands there — and
+  pins that the sidecar and the truncation warning agree about it (priced,
+  `result_event: "seen"`, no warning); they used to disagree, one `jq` tolerating bad
+  lines and the other not. **7** points `$TMPDIR` at a directory that does not exist so
+  `mktemp -d` fails, and asserts the plan is filed to `failed/` naming that directory
+  rather than the runner hanging on a marker it can never write — the assertion is the
+  watchdog, so a hang is reported instead of stalling the gate. **8** sends SIGTERM to
+  the runner alone and **9** to its whole process group (`set -m` gives it one of its
+  own), asserting for both that the plan stays in `inprogress/`, the runner exits 130,
+  the stream holds what was captured, no `claude`/follower/`tail` is left behind, and the
+  capture directory is gone — the orphan check is deliberately budgeted well under the
+  `slow` stub's remaining runtime, or an unkilled `claude` finishing by itself would
+  satisfy it. Verified by mutation: dropping `stop_capture`'s `kill` fails 8f, dropping
+  its `rm -rf` fails 9g, and dropping `follow_stream`'s pid stop condition fails 8f
+  and 9f. No model, no network.
+  Depends on `plan-runner-lib.sh`'s `run_plan` capturing the stream where nothing
+  downstream can truncate it, on `finalize_plan` warning on `rc == 0` with no `result`
+  event, on `run_all` leaving the runner alive when its own stdout is closed, and — for
+  phases 7 to 9 — on `mktemp -d` being given an explicit template under `$TMPDIR` (a bare
+  `mktemp -d` ignores it on macOS, which would make every capture-directory assertion
+  here pass vacuously) — none of which is visible from an import line.
+- `usage-limit-kill.sh` — the runner scripts in a `mktemp -d` checkout with a stub
+  `claude` that `cat`s a canned `.stream.jsonl` (`CLAUDE_STUB_STREAM`) and exits with
+  `CLAUDE_STUB_RC`, driven through the real `run-plans.sh --self`. The canned stream is
+  the whole fixture, which is why this is not a mode of `stream-capture.sh`: that stub
+  emits 3002 lines to test capture throughput and every phase here is three events.
+  Asserts the hard-killed-session half of `stream_shows_usage_limit`: a stream with no
+  `result` event whose last parsed event is an `error` naming HTTP 429 — or naming a
+  limit in words — leaves the plan in `auto/inprogress/` and stops the runner with a
+  reason naming the limit, while the boundary cases keep routing exactly as before. No
+  result and no error event is still an ordinary failure to `auto/failed/`; so is an
+  `error` event naming no limit; so is a 429 error followed by more events, since the
+  signal is how the stream ENDED and not a scan of its body. A trailing non-JSON line —
+  `claude`'s merged stderr — does not hide the error event, since both readers parse
+  with `STREAM_EVENTS_JQ`. A stream that DID reach a result event is judged by that
+  event alone: a success result after a 429 error is filed complete, and assistant text
+  mentioning a rate limit is still not a limit. The original signal is asserted last,
+  unchanged. No model, no network. Depends on `plan-runner-lib.sh`'s
+  `STREAM_HARD_KILL_LIMIT_JQ` and the shared `STREAM_LIMIT_TEXT_RE`, and on
+  `finalize_plan`'s `rc == 2` branch leaving the plan queued.
+- `batch-sigpipe.sh` — `level-sentinel.sh`'s scaffolding (the runner scripts, a stub
+  `claude` emitting one priced `result` event, a stub green `self/gate.sh`), with
+  `run-batch.sh --self` driven into `head -2` so the pipe closes while the batch is
+  still inside its build pass. `check-plans.sh` is deliberately NOT copied in, so that
+  script's `-x` guard skips the lint and the batch's first stdout line is always its own
+  `BATCH 1/3` banner — copying it in would move the "two lines" boundary. Asserts that
+  the batch survives its own closed stdout: it exits with its own code rather than 141,
+  the build AND verify passes both run and file their plans with sidecars (the verify
+  pass is only reachable past the gate banner that used to kill it), and a failing build
+  under the same closed stdout exits 1 rather than 141. A healthy-consumer control runs
+  first, so a phase-2 failure can only be the closed stdout, and it also pins that the
+  batch really does print more than two lines. `${PIPESTATUS[0]}` is read inside the
+  subshell that ran the pipeline; the caller's `$?` is the substitution's. Depends on
+  `run-batch.sh` installing `trap 'exec >/dev/null; printf "\n"' PIPE` above its first
+  write — a handler, never `trap '' PIPE`, for the reason `../PROJECT_FACTS.md` records.
+- `report-footnotes.sh` — `stale-failed-sidecars.sh`'s report-only scaffolding
+  (`analysis/{pricing,roots,transcript,report}.py` in a throwaway checkout, a
+  synthesized `self/features/` corpus of hand-written manifests, `planning.json` files,
+  plan `.md` files and sidecars; no transcripts, every dollar a literal). Its own file
+  rather than a phase of that one because the subject differs: that file is about which
+  sidecar the index picks, this one about what the two tables say when a figure is
+  missing. Asserts the `†` mark and its footnote on both: a review plan that RAN and
+  carries no `total_cost_usd` makes the Cost table's review cell something other than a
+  bare `$0.0000`, with a footnote directly under the table naming the bucket, the stem,
+  the reason and what recovery made of it, and with the separate **Unpriced plans**
+  paragraph gone rather than duplicated — while the build and verify rows, genuinely
+  empty, stay unmarked, so the mark means "unpriced" and not "zero". A fully priced
+  feature carries no mark and no footnote anywhere. A review plan with a null
+  `duration_ms` gets the same treatment in the Time table, and
+  `time.missing_duration_plans[]` carries the `{plan, queue, reason}` shape
+  `cost.unpriced_plans[]` does — both reason branches pinned by exact text (`no result
+  event` from `result_event: "missing"`, `no duration reported, cause not recorded` from
+  a sidecar with no such field, the shape every sidecar committed before the field
+  existed still has), so no single return value satisfies both. Depends on `report.py`'s
+  `MISSING_FIGURE_MARK`, `group_by_bucket`/`bucket_mark`/`bucket_footnote_lines`,
+  `missing_duration_reason`, and `compute_time_rollup` returning dicts rather than
+  stems — none of which is visible from an import line.

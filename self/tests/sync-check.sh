@@ -13,13 +13,17 @@ set -uo pipefail
 # copies of sync-plans.sh, update.sh and templates/ under agentTooling/. Asserts the
 # --check contract: a fresh seed reports the five generated stubs and the three
 # repo-owned scripts in-sync (template-version 2, 2, 1 in that order) with only
-# PROJECT_FACTS.md unfilled, rc 1, "needs attention: 1 item(s)"; filling
+# PROJECT_FACTS.md unfilled, rc 1, "needs attention: 1 item(s)"; the seeded BACKLOG.md
+# is in-sync rather than a second unfilled item, since an empty backlog is a correct
+# steady state, and the generated plans/README.md names it; filling
 # PROJECT_FACTS.md brings it to rc 0 "is in sync"; a stub edited out from under the
 # template reports STALE and --check writes nothing, while the plain sync repairs it;
 # deleting a script's template-version line reports DRIFT (both under --check and the
 # plain sync, which still keeps the file); a body-only edit below a script's
 # REPO-SPECIFIC marker is not drift; a deleted repo-owned script reports missing and
-# the plain sync recreates it; and an unknown flag is a usage error, exit 2. It also
+# the plain sync recreates it; BACKLOG.md with a repo's own entry in it survives a sync
+# byte-identical and is re-seeded when deleted; and an unknown flag is a usage error,
+# exit 2. It also
 # reads (never writes) the real checkout, asserting gate.sh/pr.sh/worktree-setup.sh
 # carry the same template-version in templates/plans/ and in self/.
 #
@@ -80,6 +84,17 @@ check "1f. gate.sh, pr.sh, worktree-setup.sh lines appear in that order" \
   '[[ "$out" == *"plans/gate.sh (template-version 2)"*"plans/pr.sh (template-version 2)"*"plans/worktree-setup.sh (template-version 1)"* ]]'
 check "1g. unfilled PROJECT_FACTS.md" 'grep -qF "  unfilled   plans/PROJECT_FACTS.md" <<<"$out"'
 check "1h. last line: needs attention 1 item(s)" '[[ "$(tail -1 <<<"$out")" == "plans/ needs attention: 1 item(s) above." ]]'
+# BACKLOG.md, seeded beside PROJECT_FACTS.md. An EMPTY backlog is the correct steady
+# state for a repo that has closed everything it found, so a present one is in-sync
+# rather than "unfilled" — 1h is the assertion that says so, since a second unfilled
+# item would have made it 2.
+check "1i. in-sync plans/BACKLOG.md" 'grep -qF "  in-sync    plans/BACKLOG.md" <<<"$out"'
+check "1j. the seeded BACKLOG.md is the skeleton header and no entries" \
+  '[[ -f "$CONSUMER/plans/BACKLOG.md" ]] && head -1 "$CONSUMER/plans/BACKLOG.md" | grep -qF "# Backlog" && ! grep -q "^- " "$CONSUMER/plans/BACKLOG.md"'
+# The other half of item 10: humanNetworkMap added this line to its generated
+# plans/README.md by hand and the next sync overwrote it, because the stub is GENERATED
+# and the template had no such entry.
+check "1k. the generated plans/README.md names BACKLOG.md" 'grep -qF "BACKLOG.md" "$CONSUMER/plans/README.md"'
 
 # ── 2. filling PROJECT_FACTS.md clears the only item ────────────────────────────
 echo "extra fact" >> "$CONSUMER/plans/PROJECT_FACTS.md"
@@ -129,6 +144,27 @@ out2="$("$S" 2>&1)"
 check "6c. plain sync recreates it" 'grep -qF "  created    plans/worktree-setup.sh" <<<"$out2"'
 out3="$("$S" --check 2>&1)"; rc3=$?
 check "6d. --check rc 0 after recreate (got $rc3)" '[[ $rc3 -eq 0 ]]'
+
+# ── 6b. BACKLOG.md is seeded once and never overwritten ─────────────────────────
+# The whole point of the stub: a repo writes entries into it, and the next
+# `subtree pull` must not take them away — which is exactly what happened to
+# humanNetworkMap's hand-added plans/README.md line and is why the entry now ships in
+# the template instead.
+printf '\n- **A real entry somebody wrote.** Assertion 6e.\n' >> "$CONSUMER/plans/BACKLOG.md"
+cp "$CONSUMER/plans/BACKLOG.md" "$TMP/BACKLOG.md.before"
+out2="$("$S" 2>&1)"
+check "6e. plain sync keeps BACKLOG.md" 'grep -qF "  kept       plans/BACKLOG.md" <<<"$out2"'
+check "6f. ...byte-identical, with the repo's own entry still in it" 'cmp -s "$CONSUMER/plans/BACKLOG.md" "$TMP/BACKLOG.md.before"'
+out="$("$S" --check 2>&1)"; rc=$?
+check "6g. --check rc 0 — an entry is content, not drift (got $rc)" '[[ $rc -eq 0 ]]'
+rm -f "$CONSUMER/plans/BACKLOG.md"
+out="$("$S" --check 2>&1)"; rc=$?
+check "6h. --check rc 1 with BACKLOG.md deleted (got $rc)" '[[ $rc -eq 1 ]]'
+check "6i. missing line for BACKLOG.md" 'grep -qF "  missing    plans/BACKLOG.md (never seeded; run sync-plans.sh)" <<<"$out"'
+out2="$("$S" 2>&1)"
+check "6j. plain sync re-seeds it" 'grep -qF "  created    plans/BACKLOG.md" <<<"$out2"'
+out3="$("$S" --check 2>&1)"; rc3=$?
+check "6k. --check rc 0 after re-seed (got $rc3)" '[[ $rc3 -eq 0 ]]'
 
 # ── 7. usage ──────────────────────────────────────────────────────────────────
 "$S" --bogus >/dev/null 2>&1; rc=$?
