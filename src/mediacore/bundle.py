@@ -5,7 +5,11 @@ It is written wholesale and never edited: exporting again replaces the directory
 `write_bundle` stages into a sibling temporary directory and swaps it into place, so an
 interrupted export leaves either the previous bundle intact or nothing at all — never a
 half-written directory that the "is this a bundle?" guard would then refuse to
-overwrite."""
+overwrite.
+
+It also **stamps** `schema_version`: whatever version the `Release` was read with, what
+reaches disk is this install's shape, so the label always describes the bytes beside it
+(§12, §13 2026-09-06)."""
 
 from __future__ import annotations
 
@@ -16,12 +20,17 @@ import shutil
 import tempfile
 from collections.abc import Iterator, Mapping
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError
 
 from mediacore.release import BUNDLE_MEDIA_DIRNAME, SCHEMA_VERSION, Release
 
 BUNDLE_RELEASE_FILENAME = "release.json"
+# The on-disk key `write_bundle` stamps and `store.list` reads back without validating.
+# Defined here, where the payload is serialised, and imported by `store.py` so the two
+# never spell it differently.
+SCHEMA_VERSION_FIELD = "schema_version"
 # release.json is committed in the fixture and read by humans; indent it and end with
 # a newline so a diff of a regenerated bundle is readable.
 BUNDLE_JSON_INDENT = 2
@@ -120,6 +129,24 @@ def read_bundle(path: Path | str, *, verify: bool = True) -> Release:
     return release
 
 
+def release_payload(release: Release) -> dict[str, Any]:
+    """The mapping `write_bundle` serialises: the release dumped whole, with
+    `schema_version` stamped to this install's `SCHEMA_VERSION`.
+
+    Reading preserves the file's own version on the model (`read_bundle`), so a
+    schema-1 bundle read by 0.3.0 and written again is labelled **2** — which is what
+    the bytes now are, since the writer dumps today's model and every track carries
+    `artist`. Left at 1 the label would lie: a 0.2.0 reader would fail the file on
+    `extra="forbid"` instead of being told to upgrade, and a store would list a version
+    only a newer `mediacore` can parse (§12, §13 2026-09-06). The `Release` handed in is
+    never mutated — only the payload is stamped, so the in-memory object still says what
+    it was read with.
+    """
+    payload = release.model_dump(mode="json")
+    payload[SCHEMA_VERSION_FIELD] = SCHEMA_VERSION
+    return payload
+
+
 def write_bundle(release: Release, dest: Path | str, files: Mapping[str, Path]) -> Path:
     root = Path(dest)
 
@@ -178,7 +205,7 @@ def _populate(
 
     release_json = (
         json.dumps(
-            release.model_dump(mode="json"), indent=BUNDLE_JSON_INDENT, ensure_ascii=False
+            release_payload(release), indent=BUNDLE_JSON_INDENT, ensure_ascii=False
         )
         + "\n"
     )

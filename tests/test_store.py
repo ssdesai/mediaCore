@@ -134,6 +134,8 @@ ESCAPED_FILENAME = "escaped.txt"
 RELATIVE_KEY_SEGMENT = ".."
 # Deep enough to leave the store root from an entry key three segments down.
 ESCAPING_URI_SUFFIX = "/../../../../escaped"
+# The version a bundle written by mediacore 0.2.0 carries, and the one `put` relabels.
+PREVIOUS_SCHEMA_VERSION = 1
 # A field only a newer mediacore would write; this install's models forbid it.
 FUTURE_FIELD_NAME = "a_field_from_the_future"
 FUTURE_FIELD_VALUE = "written by a newer mediacore"
@@ -600,6 +602,24 @@ def test_open_refuses_a_newer_schema_version_with_the_upgrade_message(
     assert [item.schema_version for item in listed] == [SCHEMA_VERSION + 1]
     with pytest.raises(BundleError, match="upgrade"):
         harness.store.open(entry)
+
+
+def test_put_stamps_the_current_schema_version_on_a_schema_1_release(
+    harness: StoreHarness, tmp_path: Path
+) -> None:
+    """`put` writes through `write_bundle`, which stamps (§13 2026-09-06), so a release
+    that came out of a schema-1 bundle is stored — and listed, and read back — as the
+    shape it was written in. Listing it as 1 would advertise a bundle only a 0.3.0
+    reader can parse as one an 0.2.0 consumer may import."""
+    release, files = make_bundle(tmp_path)
+    stale = release.model_copy(update={SCHEMA_VERSION_FIELD: PREVIOUS_SCHEMA_VERSION})
+
+    entry = harness.store.put(stale, files)
+
+    assert stale.schema_version == PREVIOUS_SCHEMA_VERSION
+    assert entry.schema_version == SCHEMA_VERSION
+    assert [item.schema_version for item in harness.store.list()] == [SCHEMA_VERSION]
+    assert harness.store.open(entry).schema_version == SCHEMA_VERSION
 
 
 # ── open verifies like read_bundle ────────────────────────────────────────────

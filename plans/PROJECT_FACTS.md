@@ -24,6 +24,15 @@ executors share no context, so repeating a fact across plans in a batch is corre
   `from mediacore import Release, ...`.
 - Models are `extra="forbid"` and round-trip through `model_dump(mode="json")` /
   `model_validate` without loss.
+- `SCHEMA_VERSION` is **2** and the package is **0.3.0** (`INTEGRATION.md` §12, §13
+  2026-09-06). `Track { position, title, artist, duration, credits }`: `artist` is the
+  track-level artist a compilation prints, optional and defaulting to `None`, and `None`
+  is absence — never "same as the release artist". Because extras are forbidden, adding
+  a field is an on-disk shape change and not an additive one, which is why the schema
+  and the minor version both moved; a schema-1 bundle still reads, and `read_bundle`
+  still refuses anything newer than this install's `SCHEMA_VERSION`. No plan may
+  reintroduce a vinyl-specific field alongside it: `artist` is neutral, and
+  vinylCatalogue's `tracklist[].artist` is only its source.
 - Every `refs` field is **evidence recorded by an external source**, never identity
   (`INTEGRATION.md` §4). All are optional and default to `{}`; no plan may make one
   required, privilege a source, or add uniqueness semantics anywhere.
@@ -43,7 +52,12 @@ executors share no context, so repeating a fact across plans in a batch is corre
   (equal passes) — a forward-compatibility guard for a consumer running an older
   `mediacore` than the bundle was written with.
 - `write_bundle` is atomic: it stages into a sibling temp directory and swaps it into
-  place. A failed write leaves the previous `dest` intact, or nothing at all.
+  place. A failed write leaves the previous `dest` intact, or nothing at all. It also
+  **stamps** `schema_version` with this install's (`INTEGRATION.md` §12, §13
+  2026-09-06): whatever version the `Release` carries, the file — and so
+  `BundleStore.put`'s entry — is labelled with the shape it was written in, while
+  reading still preserves the file's own version on the model. No plan may make the
+  writer emit a version it did not write.
 - `mediacore.store` (§5.1) adds `open_store(uri)` → `BundleStore` with exactly
   `list` / `open` / `put` and no delete, over `file://` and `s3://`. Key layout
   `<root>/<record ULID>/<exported_at, ISO basic>/<slug>/<bundle>`; `BundleEntry

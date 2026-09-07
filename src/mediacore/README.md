@@ -18,7 +18,13 @@ Release, read_bundle, normalize_text` — never from a submodule.
     media, audio, links }` — the on-disk `release.json` shape.
   - `ArtistRef { name, sort_name, refs }`
   - `LabelRef { name, catalogue_number, refs }`
-  - `Track { position, title, duration, credits }`
+  - `Track { position, title, artist, duration, credits }` — `artist` is the artist
+    the release prints against *that track* (compilations, splits, various-artists
+    releases), optional and defaulting to `None`. `None` is **absence**, not "same as
+    the release artist": a consumer that wants a display artist falls back to
+    `Release.artists` itself. It is not a role credit — `credits` keeps the authority's
+    roles. Added at `SCHEMA_VERSION` 2 / package 0.3.0 (`INTEGRATION.md` §12, §13
+    2026-09-06); a bundle written without it reads with `artist` `None`.
   - `Credit { role, name, refs }`
   - `MediaFile { kind, role, sha256, file, mime, source_url, refs }` — `kind` is
     `"photo" | "external_photo"`; `sha256` is a lowercase 64-character hex digest
@@ -37,7 +43,10 @@ Release, read_bundle, normalize_text` — never from a submodule.
   - `Provenance { kind, id, label, exported_at }` — where this copy came from:
     evidence of a different kind, carrying no more authority than any other ref.
   - `Medium` = `"vinyl" | "cd" | "cassette" | "digital" | "other"`; `MediaKind` =
-    `"photo" | "external_photo"`; `SCHEMA_VERSION` = 1; `ContractModel` is the shared
+    `"photo" | "external_photo"`; `SCHEMA_VERSION` = 2 (bumped by `Track.artist`:
+    extras are forbidden, so a 0.2.0 reader *refuses* a bundle carrying the new key,
+    which makes an added field a shape change rather than an additive one);
+    `ContractModel` is the shared
     `extra="forbid"` base; `MIN_ARTISTS` = 1. Also `BUNDLE_MEDIA_DIRNAME` (`"media"` —
     defined here and imported by `bundle.py`, so the directory name has one
     definition), `SHA256_HEX_PATTERN`, `BUNDLE_FILE_EXTENSION_PATTERN`,
@@ -87,13 +96,21 @@ Release, read_bundle, normalize_text` — never from a submodule.
   one case the contract cannot cover: a hand-edited `release.json` arriving as an
   untrusted upload.
   `write_bundle(release, dest, files) -> Path` takes a `{sha256: source path}` mapping,
-  validates the whole mapping before touching `dest`, then **stages into a sibling
-  temporary directory and swaps it into place**, so an interrupted export leaves either
+  validates the whole mapping before touching `dest`, **stamps `schema_version` with
+  this install's** (`release_payload(release)` — whatever version the `Release` was read
+  with, the file is labelled with the shape it is written in, so a re-written schema-1
+  bundle comes out as 2 and the label never lies about the bytes; the model itself is
+  not mutated, and `read_bundle` still preserves the file's own version — §12, §13
+  2026-09-06), then **stages into a sibling temporary directory and swaps it into
+  place**, so an interrupted export leaves either
   the previous bundle intact or nothing — never a half-written directory that the
   bundle guard would then refuse to overwrite. It refuses a non-empty destination
   holding no `release.json` without mutating it, so a mistyped path is never deleted.
   Also `sha256_file(path)`, `bundle_entries(release)` (the single walk both directions
-  share), `BUNDLE_RELEASE_FILENAME`, `BUNDLE_MEDIA_DIRNAME` (re-exported from
+  share), `release_payload(release)` (the exact mapping the writer serialises, imported
+  by `store.py` so `put`'s entry and the file on disk cannot disagree),
+  `BUNDLE_RELEASE_FILENAME`, `SCHEMA_VERSION_FIELD` (the on-disk key name, defined here
+  and imported by `store.py`), `BUNDLE_MEDIA_DIRNAME` (re-exported from
   `release.py`), and `BundleError`.
 - `store.py` — the bundle store (§5.1): where bundles sit between the source and its
   consumers, addressed by a URI so the local→hosted move is configuration, not code.
@@ -126,7 +143,10 @@ Release, read_bundle, normalize_text` — never from a submodule.
     — hashes, audio sizes, and a refusal naming the upgrade when `schema_version` is
     newer — and with `dest` materialises the whole bundle into that (absent or empty)
     directory. `put(release, files)` writes a new entry through `write_bundle` and returns
-    it. There is no delete: nothing here overwrites or removes an entry.
+    it — and because the writer stamps `schema_version`, the entry it returns (and every
+    later `list` of it) reports the version the bundle was *written* at, not the one a
+    stale `Release` was read with. There is no delete: nothing here overwrites or
+    removes an entry.
   - **`list` never fails on one entry's account.** A store root that does not exist is `[]`
     on both backends (a missing directory, a missing bucket), and an entry whose
     `release.json` cannot be read is logged to the `mediacore.store` logger at WARNING with

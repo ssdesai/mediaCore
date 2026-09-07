@@ -67,7 +67,9 @@ EXPECTED_PHOTO_MIME = "image/png"
 EXPECTED_MEDIA_COUNT = len(EXPECTED_PHOTO_ROLES) + EXPECTED_EXTERNAL_PHOTO_COUNT
 EXPECTED_AUDIO_COUNT = len(EXPECTED_TRACKS)
 EXPECTED_AUDIO_FORMAT = "wav"
-EXPECTED_SCHEMA_VERSION = 1
+# The fixture is written by this install, so it carries the current on-disk shape:
+# schema 2, since `Track.artist` (INTEGRATION.md §12, decision 2026-09-06).
+EXPECTED_SCHEMA_VERSION = 2
 EXPECTED_PROVENANCE_KIND = "vinylcat"
 EXPECTED_COLLECTION_LABEL = "Test"
 EXPECTED_LINKS = [
@@ -192,6 +194,13 @@ def test_tracks_match_integration_md(release: Release) -> None:
         assert credit.role == role
         assert credit.name == name
         assert credit.refs["discogs:artist"] == artist_id
+
+
+def test_no_track_carries_a_track_level_artist(release: Release) -> None:
+    """§11 records one release artist and no per-track artists — IT'S SAXY is not a
+    compilation — so every `Track.artist` is `None`. `None` is absence, not "same as
+    the release artist" (decision 2026-09-06)."""
+    assert all(track.artist is None for track in release.tracks)
 
 
 def test_media_matches_integration_md(release: Release) -> None:
