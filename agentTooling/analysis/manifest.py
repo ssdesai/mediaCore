@@ -6,7 +6,7 @@ planning.json claimed — the JSON edits the lifecycle scripts need, kept out of
         --base BASE --from TS [--session ID]... [--plan STEM]...
     python3 agentTooling/analysis/manifest.py [--self] <slug> get <key>
     python3 agentTooling/analysis/manifest.py [--self] <slug> set-plans <stem>...
-    python3 agentTooling/analysis/manifest.py [--self] <slug> set-window-to [TS]
+    python3 agentTooling/analysis/manifest.py [--self] <slug> set-window-to [TS] [--tighten]
     python3 agentTooling/analysis/manifest.py [--self] <slug> claimed
 
 `init` writes `<features>/<slug>/README.md` from `templates/plans/features/TEMPLATE.md`
@@ -15,7 +15,15 @@ with the template's fence replaced by a filled one, and refuses if the file exis
 JSON array) from the LAST ```json fence, the one `capture_planning.py` reads. `set-window-to`
 replaces a `null` `to` bound with TS (default: now, UTC, `Z`) and touches nothing else in
 the file; a bound already set is left alone and reported, since a second stamp would move
-a boundary another manifest may chain to. `set-plans` replaces `plans[]` with the stems given, in that order — how the
+a boundary another manifest may chain to. `--tighten` is the one exception and only ever
+inwards: it replaces a bound already set with an EARLIER instant, printing `old -> new`,
+treats the same instant as a no-op, and refuses a later one — a widened `to` re-admits
+sessions the neighbouring feature's window may already have chained onto, and the share
+split then pays this feature for work it did not do. Inwards has an end too: a bound at or
+before the fence's `from` is an EMPTY window, which owns nothing and is dropped from every
+other feature's split, and is refused as well. It is what
+`feature-close.sh --recapture` runs to repair a `to` stamped at close time.
+`set-plans` replaces `plans[]` with the stems given, in that order — how the
 architect records the batch after `feature-start.sh` wrote the fence with only the review
 stub in it — and refuses a stem that is not `NN-name-MODEL` (a sentinel is never a plan).
 `claimed` prints the sessions and subagents
@@ -25,6 +33,10 @@ total — what `feature-close.sh` shows the human before the number is quoted.
 Formatting is preserved: the fence is written one key per line with compact values,
 the shape every hand-written manifest in both corpora already has, so a diff after
 `init` or `set-window-to` shows the change and nothing else.
+
+Exit codes: 0 success, a no-op included; 3 the widen refusal ALONE (`WIDEN_REFUSED_EXIT`
+— `feature-close.sh` continues past that one and stops on every other); 1 any other
+refusal; 2 argparse's usage error.
 """
 
 import argparse
@@ -47,6 +59,14 @@ KNOWN_METHODS = ("plans", "direct", "hand")
 # A plan stem: number, kebab name, model — the filename without `.md`. `NN-gate` is a
 # sentinel, not a plan, and never belongs in `plans[]`; the model alternation excludes it.
 PLAN_STEM_RE = re.compile(r"^[0-9]+-[a-z0-9-]+-(haiku|sonnet|opus)$")
+# The exit code `set-window-to --tighten` gives the WIDEN refusal and nothing else, so
+# that `feature-close.sh` can continue past that one refusal — the bound it declined to
+# widen is the one already published — and stop on every other. Deliberately not 2:
+# argparse exits 2 on a usage error, and a close that read a malformed invocation as a
+# declined widen would stamp nothing, warn about a cause that did not happen, and then
+# capture, commit, push and delete the branch, leaving a CLOSED feature with a permanently
+# open window. Every other refusal in this module is a plain 1.
+WIDEN_REFUSED_EXIT = 3
 
 
 def now_z():
@@ -119,22 +139,94 @@ def cmd_get(args):
     return 0
 
 
+def to_instant(value):
+    """One `session_window` bound as an aware UTC instant, or None when it does not parse.
+
+    The same reading `analysis/transcript.to_utc` gives it — `Z` normalized to `+00:00`,
+    an offset-less value read as UTC — spelled out here because this module imports
+    nothing from `transcript`, and because comparing two bounds as STRINGS is exactly the
+    bug `analysis/README.md` -> "Every instant is UTC" exists to prevent: a `to` of
+    `2026-07-17T18:00:00-04:00` sorts below `2026-07-17T22:00:00Z` and is the same
+    instant.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        moment = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
 def cmd_set_window_to(args):
     path = manifest_path(args)
     text = path.read_text()
     match, obj = last_fence(text)
     current = (obj.get("session_window") or {}).get("to")
-    if current is not None:
-        print(f"session_window.to already set to {current}; left alone")
-        return 0
     stamp = args.timestamp or now_z()
+    replacing = "null"
+    if current is not None:
+        # A bound already set is left alone by default: a second stamp would move a
+        # boundary another manifest may chain onto, and `in_window` is half-open so that
+        # they can. `--tighten` is the one exception, and only ever inwards.
+        if not args.tighten:
+            print(f"session_window.to already set to {current}; left alone")
+            return 0
+        old, new = to_instant(current), to_instant(stamp)
+        if old is None or new is None:
+            print(
+                f"refusing: cannot compare session_window.to {current!r} with {stamp!r} — "
+                "one of them is not an ISO 8601 instant",
+                file=sys.stderr,
+            )
+            return 1
+        if new > old:
+            # Never outwards, by any path. A widened bound re-admits sessions the
+            # neighbouring feature's window may already have chained onto, and the share
+            # split then pays this feature for work it did not do. Its own exit code, and
+            # the ONLY one `feature-close.sh` continues past: see WIDEN_REFUSED_EXIT.
+            print(
+                f"refusing: session_window.to is {current} and {stamp} is later — a bound "
+                "is only ever tightened, never widened; leave it as it is, or edit the "
+                "manifest by hand if the recorded bound is genuinely wrong",
+                file=sys.stderr,
+            )
+            return WIDEN_REFUSED_EXIT
+        if new == old:
+            print(f"session_window.to is already {current}; left alone")
+            return 0
+        # Inwards has an end: a `to` at or before `from` is an EMPTY window, which
+        # `capture_planning.is_empty_window` drops from every other feature's claim set
+        # outright — the feature would then own nothing at all, and only a WARN at its next
+        # capture would say so. Compared as instants, the same reading the widen check
+        # above uses; a fence with no `from` (or one that will not parse) is left unchecked
+        # rather than guessed at. A plain 1, not the widen code: the close must stop on it.
+        # Unreachable from evidence — a branch-selected session starts at or after `from`,
+        # so a bound one second past its last instant is strictly later than `from` — which
+        # makes this a guard on the hand invocation the repair path invites.
+        frm = to_instant((obj.get("session_window") or {}).get("from"))
+        if frm is not None and new <= frm:
+            print(
+                f"refusing: session_window.from is {(obj.get('session_window') or {}).get('from')} "
+                f"and {stamp} is not after it — a `to` at or before `from` is an empty "
+                "window, which owns nothing and is dropped from every other feature's "
+                "split; tighten to an instant inside the window, or fix `from` by hand",
+                file=sys.stderr,
+            )
+            return 1
+        replacing = '"[^"]*"'
     fence_text = match.group(1)
-    new_fence, n = re.subn(r'("to"\s*:\s*)null', lambda m: m.group(1) + json.dumps(stamp), fence_text, count=1)
+    new_fence, n = re.subn(
+        r'("to"\s*:\s*)' + replacing, lambda m: m.group(1) + json.dumps(stamp), fence_text, count=1
+    )
     if n != 1:
-        print("refusing: could not find a null `to` bound in the fence", file=sys.stderr)
+        print("refusing: could not find a `to` bound in the fence", file=sys.stderr)
         return 1
     path.write_text(text[: match.start(1)] + new_fence + text[match.end(1):])
-    print(f"session_window.to = {stamp}")
+    if current is None:
+        print(f"session_window.to = {stamp}")
+    else:
+        print(f"session_window.to tightened: {current} -> {stamp}")
     return 0
 
 
@@ -210,6 +302,14 @@ def main():
 
     p_to = sub.add_parser("set-window-to", help="stamp a null `to` bound")
     p_to.add_argument("timestamp", nargs="?")
+    p_to.add_argument(
+        "--tighten",
+        action="store_true",
+        help="also replace a bound already set, but only with an EARLIER instant — the "
+        "repair path for a `to` stamped at close time. A later one is refused (exit "
+        f"{WIDEN_REFUSED_EXIT}); one at or before `from` is refused too, as an empty "
+        "window (exit 1); the same one is a no-op",
+    )
     p_to.set_defaults(func=cmd_set_window_to)
 
     p_plans = sub.add_parser("set-plans", help="replace plans[] with these stems, in order")

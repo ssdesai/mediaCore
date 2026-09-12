@@ -44,25 +44,46 @@ set -uo pipefail
 #      here and again in the report, which is news to act on, not a reason to abandon a
 #      close whose PR has already merged. The sidecars it rewrites are the harness's own
 #      records (COST_FILES / is_cost_usage_path above), so the commit carries them;
-#   6. captures, and stops on a refusal (nothing matched, a frozen prior record) with the
-#      manifest untouched and step 4's append AND step 5's recovered sidecars rolled
-#      back, so the primary is exactly as this run found it and the refusal can be acted
-#      on and the close re-run — a refusal that left either behind made the primary
-#      dirty, which is what step 1 then refuses on, so the first refusal caused a second
-#      one that named a record the human must not simply discard. Nothing is lost: the
-#      timing lines are still in the worktree and the recovered dollars are still
-#      derivable from the transcripts, and the re-run does both again;
-#   7. writes the report — now over the complete timing record and the recovered costs —
+#   6. stamps session_window.to from EVIDENCE, and before the capture. The evidence is
+#      `capture_planning.py --last-branch-instant <slug>`: one second past the last
+#      instant of the sessions this feature's `branches` and `session_window` select and
+#      of their subagents, pins deliberately not consulted. Before the capture because the
+#      capture's share split divides a multiply-claimed session by the windows its
+#      claimants hold — stamping afterwards freezes this feature's own record against a
+#      window that is still open, and a `to` of now hands it an equal share of the
+#      coordinator for every hour since its work actually stopped. With no branch session
+#      the bound falls back to this run's clock, as it always did, and says so in one
+#      line. Under --recapture the stamp is `--tighten`: a bound already written is
+#      replaced only by an EARLIER one, which is the repair path for every `to` this
+#      script stamped at close time before, and never widened — a wider bound re-admits
+#      sessions a neighbouring window may already have chained onto. That widen refusal,
+#      identified by manifest.py's exit code for it and by nothing else, warns and
+#      continues: the bound it declined to widen is the one already published. EVERY other
+#      stamp failure is fatal — a fence with no `to` key, a bound that will not parse, a
+#      tighten that would empty the window — because carrying on would capture, commit,
+#      push and delete the branch of a feature whose window is still open, which is the
+#      permanent double-count. The refusal quotes what set-window-to printed and rolls
+#      step 4's append and step 5's sidecars back, exactly as step 7's does;
+#   7. captures, and stops on a refusal (nothing matched, a frozen prior record) with
+#      step 6's stamp, step 4's append AND step 5's recovered sidecars all rolled back,
+#      so the primary is exactly as this run found it and the refusal can be acted on and
+#      the close re-run — a refusal that left any of them behind made the primary dirty,
+#      which is what step 1 then refuses on, so the first refusal caused a second one that
+#      named a record the human must not simply discard. Nothing is lost: the timing lines
+#      are still in the worktree, the recovered dollars are still derivable from the
+#      transcripts, and the evidence is still in the transcripts too, so the re-run does
+#      all three again;
+#   8. writes the report — now over the complete timing record and the recovered costs —
 #      then prints what planning.json claims: id, how it was selected, where it was
 #      launched, cost, so the number is read before it is quoted;
-#   8. only now stamps session_window.to. After the capture, never before: a `to` of now
-#      excludes nothing that exists now, and a capture that refused must leave the window
-#      open for the next attempt;
 #   9. commits exactly the cost files as `<slug>: cost records` and pushes main (--no-push
 #      holds it back); anything else dirty is named and the run stops rather than sweeping
 #      a stranger's work into a cost commit;
 #  10. removes the worktree and the local branch, in that order (--keep-worktree keeps
-#      both). The worktree's own timing.jsonl is restored first: step 4 put its trailing
+#      both). The worktree is whichever one holds the branch — R/.worktrees/<slug>, or
+#      the sibling R-<slug> a feature started before that layout still has — so a legacy
+#      feature closes with no flag (step 4's carry reads the same one). The worktree's
+#      own timing.jsonl is restored first: step 4 put its trailing
 #      lines on main, so the modification is now a duplicate of the record rather than the
 #      only copy of it, and discarding it is what lets a plain `git worktree remove` —
 #      which must go on refusing a modified file — succeed. A worktree holding anything
@@ -79,6 +100,10 @@ set -uo pipefail
 USAGE_RC=2
 REFUSED_RC=1
 MAIN_BRANCH="main"
+# The directory under the primary checkout that holds every feature worktree
+# (LIFECYCLE.md); feature-start.sh and analysis/capture_planning.py each hold the same
+# name in one constant of their own, and the three move together.
+WORKTREES_DIR_NAME=".worktrees"
 # The harness's own records, relative to the feature directory: everything the capture,
 # the report, the window stamp and the runners' timing write there. It is what the cost
 # commit may carry and what the teardown treats as its own to discard; anything else
@@ -173,14 +198,32 @@ done
 
 # ── Where ─────────────────────────────────────────────────────────────────────
 # The same resolution feature-start.sh does: REPO_DIR is this script's repo root in the
-# two modes, the git toplevel above it is the primary checkout, and the worktree path is
-# derived from the slug and nothing else.
+# two modes, and the git toplevel above it is the primary checkout. The worktree is found
+# below, after the refusal that needs only these.
 PRIMARY="$(git -C "$REPO_DIR" rev-parse --show-toplevel 2>/dev/null)" || refuse "$REPO_DIR is not inside a git repository"
 if [[ "$(git -C "$PRIMARY" rev-parse --git-dir)" != "$(git -C "$PRIMARY" rev-parse --git-common-dir)" ]]; then
   refuse "this copy is inside a worktree ($PRIMARY); run the primary checkout's feature-close.sh — it is $(dirname "$(git -C "$PRIMARY" rev-parse --git-common-dir)")/${SCRIPT_DIR#"$PRIMARY"/}"
 fi
 REL_REPO="${REPO_DIR#"$PRIMARY"}"; REL_REPO="${REL_REPO#/}"          # "" or agentTooling
-WORKTREE="$PRIMARY-$SLUG"
+# Where this feature's worktree is. git is the record of that — the worktree holding
+# refs/heads/<slug> — and asking it finds the legacy sibling R-<slug> of a feature started
+# before worktrees moved inside the primary as readily as R/.worktrees/<slug>, with no
+# flag and no guess. With no worktree holding the branch (removed by hand, or the branch
+# already deleted) the path is derived instead: the nested one if it exists, else the
+# legacy one if that does, else the nested one, for the teardown's "already gone" line.
+NESTED_WORKTREE="$PRIMARY/$WORKTREES_DIR_NAME/$SLUG"
+LEGACY_WORKTREE="$PRIMARY-$SLUG"
+WORKTREE="$(git -C "$PRIMARY" worktree list --porcelain 2>/dev/null \
+  | awk -v ref="branch refs/heads/$SLUG" '/^worktree /{wt=substr($0,10)} $0==ref{print wt; exit}')"
+if [[ -z "$WORKTREE" ]]; then
+  if [[ -d "$NESTED_WORKTREE" ]]; then
+    WORKTREE="$NESTED_WORKTREE"
+  elif [[ -d "$LEGACY_WORKTREE" ]]; then
+    WORKTREE="$LEGACY_WORKTREE"
+  else
+    WORKTREE="$NESTED_WORKTREE"
+  fi
+fi
 FEATURE_DIR="$FEATURES_DIR/$SLUG"
 FEATURE_REL="${REL_REPO:+$REL_REPO/}$FEATURES_LABEL/$SLUG"           # as `git status` prints it
 MANIFEST="$FEATURE_DIR/README.md"
@@ -398,6 +441,78 @@ rollback_recovery() {
   echo "  recover   rolled back the $recovered_count recovered sidecar(s); the feature directory is as it was"
 }
 
+# ── Close the window, from evidence, BEFORE the capture ───────────────────────
+# The bound the capture is about to split a shared session by. Reading it off the
+# transcripts rather than off the wall clock is what stops four features started from one
+# coordinator from all closing at the same instant, their windows nesting inside each
+# other while each draws an equal share of that coordinator for hours after its own work
+# stopped (../self/BACKLOG.md, the entry this closes). The CLI writes nothing, opens no
+# ledger and runs no git command — --recapture reaches here with the branch long deleted.
+#
+# Stderr is dropped and an empty answer is the documented no-evidence case, so a feature
+# with no branch session falls back to this run's clock exactly as before — announced,
+# because a bound taken from the clock and one taken from evidence mean different things
+# and nothing else in the output distinguishes them.
+echo ""
+echo "=== window ==="
+EVIDENCE="$("${CAPTURE_PY[@]}" --last-branch-instant "$SLUG" 2>/dev/null)"
+if [[ -n "$EVIDENCE" ]]; then
+  echo "  window    evidence: last branch instant + 1s = $EVIDENCE"
+else
+  EVIDENCE="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  echo "  window    no branch session — to stamped at close time ($EVIDENCE)"
+fi
+# --tighten only under --recapture. A plain close stamps a null bound and leaves a set one
+# alone, which is what it has always done; the repair path is the one that may move a
+# bound, and only ever inwards. The WIDEN refusal, and only that one, is not this close's
+# business to fail on: the bound it declined to widen is the one already published, the
+# capture below is what the repair run came for, and stopping would leave the feature with
+# no way forward but a hand edit. Every other refusal IS fatal — set-window-to also
+# refuses a fence with no `to` key at all, a bound that will not parse as an instant, and
+# a tighten that would empty the window, and each of those leaves the window OPEN on a
+# feature this run is about to capture, commit, push and delete the branch of. That is the
+# permanent double-count AGENT_PLANS.md warns about, so the run stops and says what
+# set-window-to actually printed rather than naming a widen that never happened.
+#
+# Matched on the exit code, which manifest.py gives the widen refusal alone
+# (WIDEN_REFUSED_EXIT). Not on the message, and not on "non-zero": argparse exits 2 on a
+# usage error — a flag this script passed wrongly — and reading that as a declined widen
+# would close the feature with an open window and no clue why.
+WIDEN_REFUSED_RC=3
+TIGHTEN_ARGS=()
+if (( RECAPTURE )); then TIGHTEN_ARGS=(--tighten); fi
+# Captured rather than streamed, so the refusal below can quote it; echoed either way, so
+# the ordinary `old -> new` and `already set` lines still reach the human.
+STAMP_OUT="$("${MANIFEST_PY[@]}" set-window-to ${TIGHTEN_ARGS[@]+"${TIGHTEN_ARGS[@]}"} "$EVIDENCE" 2>&1)"
+STAMP_RC=$?
+if [[ -n "$STAMP_OUT" ]]; then echo "$STAMP_OUT"; fi
+if (( STAMP_RC == WIDEN_REFUSED_RC )); then
+  echo "  warn      session_window.to was left as it is — a bound is never widened"
+elif (( STAMP_RC != 0 )); then
+  # Before the capture, so nothing of this run's is on disk but the carry and the
+  # recovery — rolled back here exactly as the capture refusal rolls them back. The stamp
+  # itself needs no rollback: set-window-to writes the file only on a path that exits 0.
+  rollback_carry
+  rollback_recovery
+  refuse "could not stamp session_window.to (set-window-to exited $STAMP_RC): ${STAMP_OUT:-no output} — the window would have stayed open on a feature this run was about to close, so nothing was captured; fix the manifest's fence and run this again"
+fi
+# The primary was verified clean above and nothing before this step touches the manifest,
+# so a dirty manifest here is this stamp and nothing else. That is what makes the rollback
+# exact rather than a guess about what the file held.
+STAMPED=0
+if [[ -n "$(git -C "$PRIMARY" status --porcelain -- "$MANIFEST_REL")" ]]; then STAMPED=1; fi
+
+# rollback_stamp — undo the stamp above, for a refusal path only, exactly as
+# rollback_carry undoes the timing append and rollback_recovery the recovered sidecars.
+# Nothing is lost: the evidence is derived from transcripts that are still there, and the
+# re-run derives it again. `git checkout --` restores a tracked file this script modified
+# in a checkout it proved clean at entry.
+rollback_stamp() {
+  (( STAMPED )) || return 0
+  git -C "$PRIMARY" checkout -- "$MANIFEST_REL" 2>/dev/null
+  echo "  window    rolled back the session_window.to stamp; $MANIFEST_REL is as it was"
+}
+
 # ── Capture, report, and what was claimed ─────────────────────────────────────
 echo ""
 echo "=== capture ==="
@@ -406,11 +521,16 @@ if (( RECAPTURE )); then CAPTURE_ARGS=(--recapture); fi
 if ! "${CAPTURE_PY[@]}" "$SLUG" ${CAPTURE_ARGS[@]+"${CAPTURE_ARGS[@]}"}; then
   rollback_carry
   rollback_recovery
+  rollback_stamp
   CARRY_NOTE=""
   if (( CARRIED )); then
     CARRY_NOTE=", and the $CARRIED timing stamp(s) carried above were rolled back — the worktree still holds them and the next run carries them again"
   fi
-  refuse "capture refused — no planning.json was written, session_window.to is still null$CARRY_NOTE; $PRIMARY is exactly as this run found it, so act on the refusal above and run this again"
+  STAMP_NOTE="session_window.to is as this run found it"
+  if (( STAMPED )); then
+    STAMP_NOTE="the session_window.to stamped above was rolled back — the evidence is still in the transcripts and the next run derives it again"
+  fi
+  refuse "capture refused — no planning.json was written and $STAMP_NOTE$CARRY_NOTE; $PRIMARY is exactly as this run found it, so act on the refusal above and run this again"
 fi
 
 echo ""
@@ -422,12 +542,6 @@ fi
 echo ""
 echo "=== what planning.json claims ==="
 "${MANIFEST_PY[@]}" claimed || refuse "could not read what planning.json claims"
-
-# ── Close the window ──────────────────────────────────────────────────────────
-echo ""
-if ! "${MANIFEST_PY[@]}" set-window-to; then
-  refuse "could not stamp session_window.to in $MANIFEST"
-fi
 
 # ── Commit, push ──────────────────────────────────────────────────────────────
 DIRTY="$(git -C "$PRIMARY" status --porcelain)"

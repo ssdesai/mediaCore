@@ -27,8 +27,10 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
 ## Commands
 
 - Start a feature: `./feature-start.sh --self <slug> [--method direct|plans|hand]`, from
-  the primary checkout — it makes branch `<slug>` and worktree `<repo>-<slug>` and writes
-  `self/features/<slug>/` there. Close it after the PR merges:
+  the primary checkout — it makes branch `<slug>` and worktree `<repo>/.worktrees/<slug>`
+  (inside the primary, ignored through the common git dir's `info/exclude`) and writes
+  `self/features/<slug>/` there. A feature started before that layout has the sibling
+  `<repo>-<slug>` instead, and closes and captures the same way. Close it after the PR merges:
   `./feature-close.sh --self <slug>`, which captures, reports, stamps the window shut,
   commits the cost records and removes the worktree. Both refuse to run from a worktree.
   See `../LIFECYCLE.md`.
@@ -121,6 +123,19 @@ say to run by hand, along with what "passing" looks like.
   are recorded against the enclosing git toplevel. Anything reading
   `~/.claude/projects/` needs the session root; anything writing a feature artifact
   needs the artifact root. See `analysis/README.md` → "Where to run them".
+  **The third fact is corpus identity, and it is declared, not derived**:
+  `roots.SELF_CORPUS_IDENTITY` (`https://github.com/ssdesai/agentTooling.git`, the same
+  string as `update.sh`'s `DEFAULT_REMOTE`) is who `self/features` belongs to, and
+  `capture_planning.corpus_identity(features_dir)` is the one rule that answers it —
+  the declared constant for this corpus, `repo_identity(features_dir.parents[1])` for a
+  consuming repo's. Neither root can be asked: a vendored `agentTooling/` has no `.git`,
+  so `git` there answers with the consumer's origin and files agentTooling's features
+  under the consumer. Which repo a *checkout* is — the origin of a directory on disk,
+  which is what `repo_identity` answers and what its `checkout_dir` parameter is named
+  for — is a different question from which corpus a *feature* belongs to, and
+  `corpus_identity` is the only thing that asks it: a `--self` session in a vendored
+  checkout really did run in the consumer's repo while the feature it was building
+  belongs to agentTooling.
 - **Manifest `branches` are the enclosing repo's branch names** when agentTooling is
   vendored as a subtree, because that is what a session's `gitBranch` reports. A self
   feature's manifest naming `browseImages` is correct, not a mistake.

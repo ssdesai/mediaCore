@@ -98,6 +98,8 @@ go wrong quietly:
   and window would also select is priced once, and every entry in `planning.json`
   records how it was selected (`selected_by`: `"pinned"` or `"branch"`) and the `cwd` it
   was launched in. A pin that is also in `exclude_sessions` warns, and the pin wins.
+  A session claimed by more than one feature is **split** between them by the windows
+  they claim it with, so the bounds on a pinned session decide dollars.
   Find an id with `python3 agentTooling/analysis/capture_planning.py --list-sessions
   [--unclaimed] [--since <date>]`, which prints every session launched in this repo's
   primary checkout or one of its feature worktrees with its branch, `cwd`, cost and
@@ -124,8 +126,14 @@ go wrong quietly:
   the run) lists the architect it spawned, which the arm's own manifest pins. Without it
   the parent route claims the architect here too and the ledger refuses the other
   capture as a double claim.
-- **`session_window.to`** — `null` means "still open", and open is the right value only
-  while the feature is still being planned. Set a real bound as soon as it is done. Two
+- **`session_window.to`** — `null` means "still in flight", and open is the right value
+  until the feature closes. `agentTooling/feature-close.sh` sets it, from evidence: one
+  second past the last instant of the sessions this feature's `branches` and
+  `session_window` select and of their subagents, stamped before the capture so the
+  shared-session split runs against the real bound (`agentTooling/LIFECYCLE.md` → step 6).
+  Do not hand-write one, and never widen one already set — `analysis/manifest.py
+  set-window-to --tighten` is the only path that may move it, and only inwards. A window
+  left open after the work is done is what goes wrong: two
   open-ended windows on a shared branch claim each other's sessions and price the same
   planning cost twice; `analysis/capture_planning.py` warns when two manifests' branches
   *and* windows both overlap, and a `to` bound is how you answer it.

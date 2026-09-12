@@ -1,0 +1,64 @@
+{
+  "plan": "95-verify-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "239d99e7-969f-4b3f-aadc-f6c428fb0d56",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 57,
+  "duration_ms": 749550,
+  "total_cost_usd": 2.5574564,
+  "usage": {
+    "input_tokens": 108,
+    "cache_creation_input_tokens": 151840,
+    "cache_read_input_tokens": 6304662,
+    "output_tokens": 68620
+  },
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 2678,
+      "outputTokens": 14,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.002748,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 108,
+      "outputTokens": 68620,
+      "cacheReadInputTokens": 6304662,
+      "cacheCreationInputTokens": 151840,
+      "webSearchRequests": 0,
+      "costUSD": 2.5547084,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 51880,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 46,
+    "Read": 10
+  },
+  "files_edited": [],
+  "edit_count": 0,
+  "attempts": [
+    {
+      "session_id": "239d99e7-969f-4b3f-aadc-f6c428fb0d56",
+      "outcome": "complete",
+      "total_cost_usd": 2.5574564,
+      "num_turns": 57,
+      "duration_ms": 749550
+    }
+  ]
+}

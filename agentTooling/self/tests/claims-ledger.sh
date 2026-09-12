@@ -105,11 +105,12 @@ jf() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(eval(s
 echo "claims ledger"
 
 FAKE_HOME="$TMP/home"
-PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$AT" | tr '/' '-')"
+PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$AT" | tr '/.' '--')"
 mkdir -p "$PROJECTS"
 export HOME="$FAKE_HOME"
-# repo_identity falls back to the directory name when there is no origin, so the repo
-# half of every `feature: <repo>/<slug>` line below is the checkout's own name.
+# The self corpus's identity is declared (roots.SELF_CORPUS_IDENTITY), and its
+# repo_display_name is `agentTooling` — so the repo half of every `feature: <repo>/<slug>`
+# line below is that, whatever this fixture's directories happen to be called.
 REPO="agentTooling"
 LEDGER="$FAKE_HOME/.claude/subagent-claims.json"
 
@@ -248,11 +249,83 @@ report_for two
 R_TWO="$AT/self/features/two/report.json"
 M_TWO="$AT/self/features/two/report.md"
 shared_keys="$(jf "$R_TWO" 'sorted(d["cost"]["shared_sessions"][0].keys())')"
-check "B9. cost.shared_sessions carries {session_id, cost_usd, also_claimed_by} (got ${shared_keys:-<absent>})" '[[ "$shared_keys" == "['"'"'also_claimed_by'"'"', '"'"'cost_usd'"'"', '"'"'session_id'"'"']" ]]'
+check "B9. cost.shared_sessions carries {session_id, cost_usd, session_cost_usd, also_claimed_by} (got ${shared_keys:-<absent>})" '[[ "$shared_keys" == "['"'"'also_claimed_by'"'"', '"'"'cost_usd'"'"', '"'"'session_cost_usd'"'"', '"'"'session_id'"'"']" ]]'
 shared_id="$(jf "$R_TWO" 'd["cost"]["shared_sessions"][0]["session_id"]')"
 shared_cost="$(jf "$R_TWO" 'd["cost"]["shared_sessions"][0]["cost_usd"] > 0')"
 check "B10. ...naming the session and its dollars (got ${shared_id:-<absent>}, positive: ${shared_cost:-<absent>})" '[[ "$shared_id" == "$SHARED" && "$shared_cost" == "True" ]]'
-check "B11. report.md prints one footnote naming the session and the other feature" 'grep -q "$SHARED" "$M_TWO" && grep -q "$REPO/one" "$M_TWO"'
+check "B11. report.md prints one footnote naming the session and the other feature, without saying it is counted in full — that sentence was the whole disclosure before the split existed, and beside a divided figure it would describe the opposite of what happened" \
+  'grep -q "$SHARED" "$M_TWO" && grep -q "$REPO/one" "$M_TWO" && ! grep -q "in full" "$M_TWO"'
+
+shared_cost_usd="$(jf "$R_TWO" 'd["cost"]["shared_sessions"][0]["cost_usd"]')"
+shared_session_cost_usd="$(jf "$R_TWO" 'd["cost"]["shared_sessions"][0]["session_cost_usd"]')"
+check "B12. cost_usd is this feature's share, half of session_cost_usd — two claimants splitting an unbounded window evenly (got $shared_cost_usd of $shared_session_cost_usd)" \
+  'python3 -c "import sys; a=float(sys.argv[1]); b=float(sys.argv[2]); sys.exit(0 if abs(a - b / 2) < 1e-9 else 1)" "$shared_cost_usd" "$shared_session_cost_usd"'
+
+# B13 needs `one`'s own record to be a shared one too — B7 only annotated it (added
+# also_claimed_by without recomputing the share), so it is re-captured with --recapture
+# here before report_for reads it.
+capture one > /dev/null
+report_for one
+R_ONE="$AT/self/features/one/report.json"
+one_shared_cost_usd="$(jf "$R_ONE" 'd["cost"]["shared_sessions"][0]["cost_usd"]')"
+check "B13. the two features' shares sum to the session's own cost — the report-side statement of session-share.sh phase 1's invariant, catching a footnote that renders one figure while the table sums another (got $one_shared_cost_usd + $shared_cost_usd vs $shared_session_cost_usd)" \
+  'python3 -c "import sys; a=float(sys.argv[1]); b=float(sys.argv[2]); c=float(sys.argv[3]); sys.exit(0 if abs((a + b) - c) < 1e-9 else 1)" "$one_shared_cost_usd" "$shared_cost_usd" "$shared_session_cost_usd"'
+
+# B14 — a planning.json frozen before the share rule existed carries also_claimed_by but
+# none of share_basis/session_cost_usd/session_duration_s. Every consuming repo's corpus
+# is full of such records and they must still be reported the old, undivided way.
+python3 - "$P_TWO" "$SHARED" <<'PYEOF'
+import json, sys
+path, session_id = sys.argv[1], sys.argv[2]
+data = json.load(open(path))
+for entry in data.get("sessions") or []:
+    if entry.get("session_id") == session_id:
+        entry.pop("share_basis", None)
+        entry.pop("session_cost_usd", None)
+        entry.pop("session_duration_s", None)
+json.dump(data, open(path, "w"), indent=2)
+PYEOF
+report_for two
+legacy_keys="$(jf "$R_TWO" 'sorted(d["cost"]["shared_sessions"][0].keys())')"
+check "B14. a planning.json frozen before the share rule reports the old way: shared_sessions[0] carries no session_cost_usd, and the footnote falls back to saying the session is counted in full (got ${legacy_keys:-<absent>})" \
+  '! grep -q session_cost_usd <<<"$legacy_keys" && grep -q "in full" "$M_TWO"'
+
+# B15 — the in-flight co-claimant. A feature that captures while another feature pinning
+# the same session has not captured yet gets a DIVIDED cost_usd (share_basis found the
+# co-claimant through its manifest) and an EMPTY also_claimed_by (the ledger only holds
+# claims from features that have already captured). Keying the disclosure off the ledger
+# alone prints a halved figure with no footnote — a silent under-count, strictly worse
+# than the disclosed over-count this whole feature exists to remove. This is the corpus's
+# normal case, not a corner: feature-start.sh pins the running session into every manifest
+# it starts, so the co-claimant that has not closed yet is exactly the one with no ledger
+# claim. Simulated by stripping also_claimed_by while leaving share_basis in place, on a
+# copy restored immediately after: part C asserts an exact "2 annotated" count over an
+# --all sweep of the whole corpus, and a record left missing its annotation here would be
+# re-annotated there and make that count 3.
+cp "$P_ONE" "$TMP/one-planning.bak"
+python3 - "$P_ONE" "$SHARED" <<'PYEOF'
+import json, sys
+path, session_id = sys.argv[1], sys.argv[2]
+data = json.load(open(path))
+for entry in data.get("sessions") or []:
+    if entry.get("session_id") == session_id:
+        entry.pop("also_claimed_by", None)
+json.dump(data, open(path, "w"), indent=2)
+PYEOF
+report_for one
+M_ONE="$AT/self/features/one/report.md"
+inflight_n="$(jf "$R_ONE" 'len(d["cost"]["shared_sessions"])')"
+check "B15. a record whose also_claimed_by is empty but whose share_basis names another feature still produces a shared_sessions[] entry — the divided figure is never printed without saying what divided it (got ${inflight_n:-<absent>})" \
+  '[[ "$inflight_n" == "1" ]]'
+inflight_also="$(jf "$R_ONE" 'd["cost"]["shared_sessions"][0]["also_claimed_by"]')"
+check "B16. ...naming the co-claimant recovered from share_basis, not from the ledger (got ${inflight_also:-<absent>})" \
+  '[[ "$inflight_also" == "['"'"'$REPO/two'"'"']" ]]'
+check "B17. ...and report.md carries the footnote for it, still not claiming the session is counted in full" \
+  'grep -q "$SHARED" "$M_ONE" && grep -q "$REPO/two" "$M_ONE" && ! grep -q "in full" "$M_ONE"'
+
+# Put `one` back the way B13 left it, so part C sweeps the corpus B14/B15 found it with.
+cp "$TMP/one-planning.bak" "$P_ONE"
+report_for one
 
 # ── C. a frozen record is annotated, and nothing else about it moves ──────────
 # `three` and `four` both pin one coordinator, and each is captured with the ledger
