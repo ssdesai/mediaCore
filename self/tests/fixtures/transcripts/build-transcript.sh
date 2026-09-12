@@ -20,7 +20,7 @@ transcript_line() {
     "$timestamp" "$sidechain" "$message_id" "$model" "$input" "$output" "$cache_read" "$cache_5m" "$cache_1h"
 }
 
-# session_line SESSION_ID CWD BRANCH MESSAGE_ID MODEL TIMESTAMP INPUT OUTPUT CACHE_READ CACHE_5M CACHE_1H
+# session_line SESSION_ID CWD BRANCH MESSAGE_ID MODEL TIMESTAMP INPUT OUTPUT CACHE_READ CACHE_5M CACHE_1H [IS_SIDECHAIN]
 # Prints one JSON transcript line carrying the session-identifying fields
 # `analysis/capture_planning.py` selects on — `sessionId`, `cwd`, `gitBranch` —
 # alongside the same `message.usage` block `transcript_line` emits.
@@ -30,11 +30,15 @@ transcript_line() {
 # `capture_planning.py` scans every transcript and decides membership from these three
 # fields (cwd under the session root, gitBranch in the manifest's `branches`). A line
 # without them is invisible to capture, which is why its fixtures need this helper.
+# IS_SIDECHAIN defaults to false, like `transcript_line`'s `sidechain` argument: a parent
+# transcript's own sidechain lines are priced into `cost_usd.sidechain` and must be
+# shareable like any other line.
 session_line() {
   local session_id="$1" cwd="$2" branch="$3" message_id="$4" model="$5" timestamp="$6"
   local input="$7" output="$8" cache_read="$9" cache_5m="${10}" cache_1h="${11}"
-  printf '{"type":"assistant","sessionId":"%s","cwd":"%s","gitBranch":"%s","timestamp":"%s","isSidechain":false,"message":{"id":"%s","model":"%s","usage":{"input_tokens":%s,"output_tokens":%s,"cache_read_input_tokens":%s,"cache_creation":{"ephemeral_5m_input_tokens":%s,"ephemeral_1h_input_tokens":%s}}}}\n' \
-    "$session_id" "$cwd" "$branch" "$timestamp" "$message_id" "$model" "$input" "$output" "$cache_read" "$cache_5m" "$cache_1h"
+  local sidechain="${12:-false}"
+  printf '{"type":"assistant","sessionId":"%s","cwd":"%s","gitBranch":"%s","timestamp":"%s","isSidechain":%s,"message":{"id":"%s","model":"%s","usage":{"input_tokens":%s,"output_tokens":%s,"cache_read_input_tokens":%s,"cache_creation":{"ephemeral_5m_input_tokens":%s,"ephemeral_1h_input_tokens":%s}}}}\n' \
+    "$session_id" "$cwd" "$branch" "$timestamp" "$sidechain" "$message_id" "$model" "$input" "$output" "$cache_read" "$cache_5m" "$cache_1h"
 }
 
 # synthetic_line TIMESTAMP [INPUT] [OUTPUT]
@@ -59,6 +63,22 @@ subagent_line() {
   local input="$8" output="$9" cache_read="${10}" cache_5m="${11}" cache_1h="${12}"
   printf '{"type":"assistant","sessionId":"%s","agentId":"%s","cwd":"%s","gitBranch":"%s","timestamp":"%s","isSidechain":true,"message":{"id":"%s","model":"%s","usage":{"input_tokens":%s,"output_tokens":%s,"cache_read_input_tokens":%s,"cache_creation":{"ephemeral_5m_input_tokens":%s,"ephemeral_1h_input_tokens":%s}}}}\n' \
     "$session_id" "$agent_id" "$cwd" "$branch" "$timestamp" "$message_id" "$model" "$input" "$output" "$cache_read" "$cache_5m" "$cache_1h"
+}
+
+# user_line TIMESTAMP
+# One `user` line — the human's turn, or a tool result. Carries a timestamp and NO usage
+# block, so it moves a transcript's first/last instant without being billable. That gap is
+# the point of the helper: `recover-duration.sh` uses it to give a session a span longer
+# than its priced responses, and `session-share.sh` phase 14 to give one a last line past
+# its window's `to` with no billable response out there — the case where quantifying what
+# lies outside the window would print a measurement of nothing.
+#
+# No `sessionId`/`cwd`/`gitBranch`: a real user line carries them, but capture reads all
+# three from the first line of the file that has them, so a fixture only needs them on the
+# `session_line` beside this one.
+user_line() {
+  local timestamp="$1"
+  printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":"ok"}}\n' "$timestamp"
 }
 
 # subagent_prompt_line SESSION_ID AGENT_ID CWD BRANCH TIMESTAMP TEXT

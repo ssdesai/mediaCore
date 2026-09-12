@@ -118,7 +118,7 @@ and confirmed red before the fix.
   "plans": ["84-review-opus"],
   "branches": ["stale-failed-sidecars"],
   "base": "main",
-  "session_window": {"from": "2026-09-06T14:00:51Z", "to": "2026-09-06T14:27:21Z"},
+  "session_window": {"from": "2026-09-06T14:00:51Z", "to": "2026-09-06T14:25:53Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": ["2d8b1236-3e77-450f-bc9e-8165c0cf9f9c"],

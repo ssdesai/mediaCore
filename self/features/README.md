@@ -9,6 +9,7 @@ Every agentTooling feature gets one directory here, named by its slug:
       review/{incomplete,inprogress,complete,failed}/   post-verify diff review (Bash enabled)
       interactive/       bash-heavy steps run by hand, belonging to THIS feature
       escalations/NN.md  written by a level's tier-1/tier-2 pass, never by hand
+      brief.md, NOTES.md, CHECKPOINT.md   a DIRECT feature's own record (../../AGENT_DIRECT.md)
       planning.json      written later by analysis/capture_planning.py --self
       report.md / report.json
 
@@ -114,3 +115,19 @@ shared with consuming repos even though the rest of this tree is not.
   `../tests/stream-capture.sh` and one `../BACKLOG.md` entry (`run-batch.sh` still dies of
   SIGPIPE on a closed stdout), and deletes the entry `recover-cost-at-close` raised for
   the defect this feature fixes.
+- `claim-window-precision` — the four entries `shared-session-share` left in
+  `../BACKLOG.md`, closed together. `feature-close.sh` stamps `session_window.to` from
+  evidence (one second past the last instant of the sessions the feature's branches and
+  window select, and of their subagents) and stamps it **before** the capture, so the
+  share split runs against the real bound instead of against the close's own clock —
+  which is what made four features started from one coordinator nest inside each other
+  and keep drawing an equal share of it for hours; `--recapture` re-derives the evidence
+  and may only *tighten* an existing bound. Beside that: the `may span the window
+  boundary` warning now says how many dollars and seconds lie outside and whether they
+  were counted, the `predates the share rule` repair warning fires on every sweep rather
+  than only on the one that changed something, and the claimant scan is indexed once per
+  capture instead of once per selected session. Built direct (`method: "direct"`); plan
+  `97-review-opus` is its review. It removes four `../BACKLOG.md` entries and adds one
+  (an in-flight co-claimant's `to` is still unbounded in this feature's split), and adds
+  no test file — every assertion lands in `../tests/feature-lifecycle.sh` (W),
+  `../tests/session-share.sh` (12-13) and `../tests/session-claims.sh` (7d-7f, 9).

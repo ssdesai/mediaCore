@@ -1,20 +1,20 @@
 {
   "slug": "tooling-backlog-2026-09-06",
-  "generated_at": "2026-09-07T15:42:50.746710+00:00",
+  "generated_at": "2026-09-09T22:37:00.511575+00:00",
   "cost": {
     "method": "direct",
     "planning": 0.0,
-    "implementer": 55.82422575,
-    "build": 55.82422575,
+    "implementer": 31.60413379166667,
+    "build": 31.60413379166667,
     "verify": 0.0,
     "review": 3.7493055,
-    "total": 59.573531249999995,
+    "total": 35.35343929166667,
     "planning_pct": 0.0,
-    "build_pct": 93.70642394142114,
+    "build_pct": 89.39479276947246,
     "verify_pct": 0.0,
-    "review_pct": 6.293576058578869,
-    "cost_per_plan": 59.573531249999995,
-    "cost_per_file": 19.857843749999997,
+    "review_pct": 10.605207230527547,
+    "cost_per_plan": 35.35343929166667,
+    "cost_per_file": 11.78447976388889,
     "total_is_partial": false,
     "missing_usage_plans": [],
     "unpriced_plans": [],
@@ -23,21 +23,45 @@
     "orphan_usage_plans": [],
     "recovered": 0.0,
     "unrecoverable_attempts": [],
-    "partially_recovered_attempts": []
+    "partially_recovered_attempts": [],
+    "shared_sessions": [
+      {
+        "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+        "cost_usd": 4.355188041666667,
+        "also_claimed_by": [
+          "agentTooling/recovered-duration-lower-bound",
+          "humanNetworkMap/delete-error-surface",
+          "humanNetworkMap/error-surface-completion",
+          "humanNetworkMap/mediacore-0-3-0",
+          "humanNetworkMap/validation-and-fetch-error-surface",
+          "musicMap/integration-test-database",
+          "musicMap/mediacore-0-3-0",
+          "musicMap/ruff-format-gate",
+          "vinylCatalogue/backlog-assertions-2026-09",
+          "vinylCatalogue/bundle-track-artist",
+          "vinylCatalogue/fold-duplicated-rows",
+          "vinylCatalogue/keyed-promotion-pairing",
+          "vinylCatalogue/show-selected-and-refetch-flake",
+          "vinylCatalogue/staged-commit-journal"
+        ],
+        "session_cost_usd": 70.49682075
+      }
+    ]
   },
   "time": {
     "method": "direct",
-    "planning_sessions_s": 63083,
+    "planning_sessions_s": 10483,
     "planning_subagents_s": 3382,
     "planning_s": 0.0,
-    "implementer_s": 66465,
-    "build_s": 66465.0,
+    "implementer_s": 13865,
+    "build_s": 13865.0,
     "verify_s": 0.0,
     "review_s": 435.316,
-    "executor_s": 66900.316,
-    "total_s": 66900.316,
+    "executor_s": 14300.316,
+    "total_s": 14300.316,
     "total_is_partial": false,
     "missing_duration_plans": [],
+    "recovered_duration_plans": [],
     "wall_clock": {
       "first_at": "2026-09-06T22:32:55+00:00",
       "last_at": "2026-09-07T04:42:23+00:00",
@@ -60,7 +84,7 @@
   },
   "planning_cost_split": {
     "subagents": 27.24894575,
-    "sessions": 28.575279999999996
+    "sessions": 4.355188041666668
   },
   "cold_start_tax_tokens": 141720,
   "model_fit": [

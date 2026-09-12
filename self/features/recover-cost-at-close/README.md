@@ -50,11 +50,11 @@ acceptance tests first, then the review pass below.
   "plans": ["85-review-opus"],
   "branches": ["recover-cost-at-close"],
   "base": "main",
-  "session_window": {"from": "2026-09-06T14:01:40Z", "to": "2026-09-06T15:27:26Z"},
+  "session_window": {"from": "2026-09-06T14:01:40Z", "to": "2026-09-06T15:11:48Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": ["2d8b1236-3e77-450f-bc9e-8165c0cf9f9c"],
-  "subagents": ["aafc1ca6b6fa70fd0", "afe8e7432e489837b"]
+  "subagents": ["aafc1ca6b6fa70fd0", "afe8e7432e489837b", "a4846ef93f589deac"]
 }
 ```
 
