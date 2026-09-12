@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/agentTooling/hooks/allow-repo-commands.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "deny": [
+      "Edit(/.git/**)",
+      "Edit(**/.git/**)",
+      "Edit(**/.git)",
+      "Edit(/.claude/**)",
+      "Edit(**/.claude/**)",
+      "Edit(**/.venv/**)",
+      "Edit(**/venv/**)",
+      "Edit(**/node_modules/**)",
+      "Edit(**/agentTooling/hooks/**)"
+    ]
+  }
+}

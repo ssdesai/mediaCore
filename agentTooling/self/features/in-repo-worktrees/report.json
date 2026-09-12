@@ -1,0 +1,106 @@
+{
+  "slug": "in-repo-worktrees",
+  "generated_at": "2026-09-11T15:14:43.940061+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 23.387190500000003,
+    "build": 23.387190500000003,
+    "verify": 0.0,
+    "review": 1.3052845,
+    "total": 24.692475,
+    "planning_pct": 0.0,
+    "build_pct": 94.71383690780289,
+    "verify_pct": 0.0,
+    "review_pct": 5.286163092197116,
+    "cost_per_plan": 24.692475,
+    "cost_per_file": 12.3462375,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 3852,
+    "planning_subagents_s": 1188,
+    "planning_s": 0.0,
+    "implementer_s": 5040,
+    "build_s": 5040.0,
+    "verify_s": 0.0,
+    "review_s": 167.595,
+    "executor_s": 5207.595,
+    "total_s": 5207.595,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-11T14:40:17+00:00",
+      "last_at": "2026-09-11T15:00:03+00:00",
+      "batch_span_s": 1186.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 177.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 169.0,
+      "plan_runs": 1,
+      "pr_opened_at": "2026-09-11T15:00:03+00:00",
+      "pr_url": "https://github.com/ssdesai/vinylCatalogue/pull/123"
+    },
+    "tests_s": 314.0,
+    "direct_build_s": 497.0,
+    "gate_s": 135.0
+  },
+  "planning_cost_split": {
+    "subagents": 6.1931745,
+    "sessions": 17.194016000000005
+  },
+  "cold_start_tax_tokens": 70188,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 23,
+      "total_cost_usd": 1.3052845,
+      "total_duration_s": 167.595,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "100-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "100-review-opus",
+      "plan_md_lines": 121,
+      "loc_changed": "not computed: streams unavailable"
+    }
+  ],
+  "re_hunting": "not computed: streams unavailable",
+  "plan_drift": [
+    {
+      "plan": "100-review-opus",
+      "edited_not_listed": [
+        "analysis/README.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": "not computed: streams unavailable",
+  "warnings": []
+}

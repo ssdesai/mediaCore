@@ -1,6 +1,6 @@
 {
   "slug": "tooling-backlog-2026-09-06",
-  "captured_at": "2026-09-07T15:42:50.700359+00:00",
+  "captured_at": "2026-09-09T22:37:00.456199+00:00",
   "manifest_branches": [
     "tooling-backlog-2026-09-06"
   ],
@@ -17,8 +17,120 @@
       "cwd": "/Users/sahildesai/dev",
       "date": "2026-09-06",
       "started_at": "2026-09-06T22:11:08.565000+00:00",
-      "ended_at": "2026-09-07T15:42:32.034000+00:00",
-      "duration_s": 63083
+      "ended_at": "2026-09-08T03:48:25.851000+00:00",
+      "duration_s": 10483,
+      "also_claimed_by": [
+        "agentTooling/recovered-duration-lower-bound",
+        "humanNetworkMap/delete-error-surface",
+        "humanNetworkMap/error-surface-completion",
+        "humanNetworkMap/mediacore-0-3-0",
+        "humanNetworkMap/validation-and-fetch-error-surface",
+        "musicMap/integration-test-database",
+        "musicMap/mediacore-0-3-0",
+        "musicMap/ruff-format-gate",
+        "vinylCatalogue/backlog-assertions-2026-09",
+        "vinylCatalogue/bundle-track-artist",
+        "vinylCatalogue/fold-duplicated-rows",
+        "vinylCatalogue/keyed-promotion-pairing",
+        "vinylCatalogue/show-selected-and-refetch-flake",
+        "vinylCatalogue/staged-commit-journal"
+      ],
+      "share_basis": [
+        {
+          "feature": "agentTooling/tooling-backlog-2026-09-06",
+          "from": "2026-09-06T22:18:44Z",
+          "to": "2026-09-07T15:42:50Z",
+          "source": "self"
+        },
+        {
+          "feature": "musicMap/integration-test-database",
+          "from": "2026-09-06T22:17:40Z",
+          "to": "2026-09-07T15:47:32Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "humanNetworkMap/delete-error-surface",
+          "from": "2026-09-06T22:18:24Z",
+          "to": "2026-09-07T15:47:14Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "vinylCatalogue/show-selected-and-refetch-flake",
+          "from": "2026-09-06T22:22:56Z",
+          "to": "2026-09-07T15:49:42Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "vinylCatalogue/backlog-assertions-2026-09",
+          "from": "2026-09-06T22:22:57Z",
+          "to": "2026-09-07T15:53:48Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "vinylCatalogue/staged-commit-journal",
+          "from": "2026-09-06T22:23:01Z",
+          "to": "2026-09-07T15:47:58Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "musicMap/mediacore-0-3-0",
+          "from": "2026-09-07T15:54:31Z",
+          "to": "2026-09-07T20:03:03Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "agentTooling/recovered-duration-lower-bound",
+          "from": "2026-09-07T15:54:34Z",
+          "to": "2026-09-07T20:03:41Z",
+          "source": "manifest"
+        },
+        {
+          "feature": "humanNetworkMap/validation-and-fetch-error-surface",
+          "from": "2026-09-07T15:58:55Z",
+          "to": "2026-09-07T20:10:54Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "humanNetworkMap/mediacore-0-3-0",
+          "from": "2026-09-07T15:59:54Z",
+          "to": "2026-09-07T20:04:11Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "vinylCatalogue/bundle-track-artist",
+          "from": "2026-09-07T16:11:37Z",
+          "to": "2026-09-07T20:01:41Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "vinylCatalogue/keyed-promotion-pairing",
+          "from": "2026-09-07T16:13:17Z",
+          "to": "2026-09-08T03:44:35Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "vinylCatalogue/fold-duplicated-rows",
+          "from": "2026-09-07T19:34:39Z",
+          "to": "2026-09-08T03:44:10Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "humanNetworkMap/error-surface-completion",
+          "from": "2026-09-07T19:37:11Z",
+          "to": "2026-09-07T20:28:34Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "musicMap/ruff-format-gate",
+          "from": "2026-09-07T20:24:10Z",
+          "to": "2026-09-08T03:36:50Z",
+          "source": "ledger"
+        }
+      ],
+      "session_cost_usd": 70.49682075,
+      "session_duration_s": 106637,
+      "unclaimed_usd": 0.2822945,
+      "unclaimed_duration_s": 273
     }
   ],
   "subagents": [
@@ -59,24 +171,36 @@
     "0a1c9791-f948-417a-ac0f-4844d9f1c441",
     "10e9bb82-a9f4-4fee-a4ea-9a980c514564",
     "11675eec-5e12-4f16-9ab0-58faf6dd3d54",
+    "11eb5f09-0014-41bb-b553-7438697b6cb0",
     "2370cfd4-0937-4ed6-ae85-aabf38c302a4",
+    "239d99e7-969f-4b3f-aadc-f6c428fb0d56",
     "2a485894-7422-4e51-b22a-76fe525ceb4a",
     "2e9ce097-2707-4206-9b1b-448cd112f6f9",
     "30ee40d4-0dca-4189-8eda-a60c9883daf7",
     "371a6916-fdc4-428b-b68a-5bb73102629f",
     "41faf82d-d46d-4e7c-8846-8c19c8cb059b",
+    "480d21a8-62fd-4069-9ceb-ca6782615b2d",
     "48ccc3a0-a6ab-45a0-8811-7c3f5e48fea4",
+    "4dbfb81c-d588-4b8a-ae6c-585db1231fba",
     "63e4b311-5584-4004-91ce-5d9a964bb1d4",
     "6be11f3a-e935-4823-a8d5-0deeee6b61bf",
+    "7513e2cf-3e85-4ce9-98e6-bfface6cd02d",
+    "9163e37a-f68c-46e1-9da3-0608b83a305b",
     "a36adceb-ed95-418e-81d3-63050a1a52f9",
     "ab17a74a-0268-424a-bf25-420a62959b45",
+    "b1c73a95-043e-4634-9d73-b75a0e6297d2",
     "b4eb7ce2-e048-4b36-9ff1-58632118e540",
+    "b5e1415e-ecc1-4046-a7c5-720317045ada",
     "bb605d58-6618-4206-920e-c3fbe33d5835",
+    "c5730b1b-a26d-4085-8fb9-afbcab384477",
     "c8f61520-3899-45b0-b578-0aba685b28fd",
+    "d5dc1fae-5dce-4873-b473-f467c7f1afd4",
+    "deb4f210-5325-4dd3-957b-c1d989ef9010",
     "e10f23f4-25bc-4e37-92ed-713a18b33cb3",
     "e306171f-5858-4264-b6f0-055739e0d199",
     "ead9f6f1-0636-4692-a41b-99539d168a1a",
-    "f0deb6a9-97bc-4d36-93d0-670c5083975b"
+    "f0deb6a9-97bc-4d36-93d0-670c5083975b",
+    "f7179479-64b8-494b-8c86-386adad50a65"
   ],
   "excluded_agent_ids": [],
   "priced": [
@@ -86,15 +210,15 @@
       "model": "claude-fable-5-1",
       "is_sidechain": false,
       "date": "2026-09-06",
-      "duration_s": 63083,
+      "duration_s": 106637,
       "tokens": {
-        "input": 2918,
-        "output": 220746,
-        "cache_read": 18475280,
+        "input": 36,
+        "output": 17906,
+        "cache_read": 460835,
         "cache_creation_5m": 0,
-        "cache_creation_1h": 644499
+        "cache_creation_1h": 19186
       },
-      "cost_usd": 28.57528,
+      "cost_usd": 0.4648629166666667,
       "rates_applied": {
         "model": "claude-fable-5-1",
         "input": 10,
@@ -103,7 +227,47 @@
         "cache_creation_5m": 12.5,
         "cache_creation_1h": 20.0,
         "tier": "standard"
-      }
+      },
+      "full_cost_usd": 1.39458875,
+      "share": 0.3333333333333333,
+      "shared_with": [
+        "humanNetworkMap/delete-error-surface",
+        "musicMap/integration-test-database"
+      ]
+    },
+    {
+      "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+      "agent_id": null,
+      "model": "claude-fable-5-1",
+      "is_sidechain": false,
+      "date": "2026-09-06",
+      "duration_s": 106637,
+      "tokens": {
+        "input": 2620,
+        "output": 177865,
+        "cache_read": 17277923,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 505151
+      },
+      "cost_usd": 3.890325125,
+      "rates_applied": {
+        "model": "claude-fable-5-1",
+        "input": 10,
+        "output": 50,
+        "cache_read": 0.25,
+        "cache_creation_5m": 12.5,
+        "cache_creation_1h": 20.0,
+        "tier": "standard"
+      },
+      "full_cost_usd": 23.34195075,
+      "share": 0.16666666666666666,
+      "shared_with": [
+        "humanNetworkMap/delete-error-surface",
+        "musicMap/integration-test-database",
+        "vinylCatalogue/backlog-assertions-2026-09",
+        "vinylCatalogue/show-selected-and-refetch-flake",
+        "vinylCatalogue/staged-commit-journal"
+      ]
     },
     {
       "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
@@ -182,17 +346,21 @@
     }
   ],
   "cost_usd": {
-    "main": 28.57528,
+    "main": 4.355188041666667,
     "sidechain": 27.24894575,
     "subagents": 27.24894575,
-    "total": 55.82422575,
+    "total": 31.60413379166667,
     "total_is_partial": false
   },
   "duration_s": {
-    "sessions": 63083,
+    "sessions": 10483,
     "subagents": 3382,
     "entries_without_duration": []
   },
   "rates_source": "agentTooling/analysis/pricing.py RATES_VERIFIED=2026-09-04",
-  "warnings": []
+  "warnings": [
+    "session ed088063-7aea-498e-84b1-7503d4bd88e1 may span the window boundary (window 2026-09-06T22:18:44+00:00..2026-09-07T15:42:50+00:00 UTC, session ends 2026-09-08T03:48:25.851000+00:00); $41.9215 and 43535s of it fall at or after `to`, not counted here (the split gives each response to the claimants whose window still covers it, and only what is past every claimant's `to` to nobody, as the unclaimed remainder)",
+    "session ed088063-7aea-498e-84b1-7503d4bd88e1 is shared by 15 claimant(s); this feature's share is $4.3552 of the session's own $70.4968, the rest going to agentTooling/recovered-duration-lower-bound, humanNetworkMap/delete-error-surface, humanNetworkMap/error-surface-completion, humanNetworkMap/mediacore-0-3-0, humanNetworkMap/validation-and-fetch-error-surface, musicMap/integration-test-database, musicMap/mediacore-0-3-0, musicMap/ruff-format-gate, vinylCatalogue/backlog-assertions-2026-09, vinylCatalogue/bundle-track-artist, vinylCatalogue/fold-duplicated-rows, vinylCatalogue/keyed-promotion-pairing, vinylCatalogue/show-selected-and-refetch-flake, vinylCatalogue/staged-commit-journal",
+    "session ed088063-7aea-498e-84b1-7503d4bd88e1 has $0.2823 (274s) unclaimed by any feature \u2014 widen a claimant's `to` bound, or pin the session to the feature it belongs to, to have it counted"
+  ]
 }

@@ -66,7 +66,7 @@ mkdir -p "$FAKE_HOME/.claude/projects"
 
 # project_dir <cwd> — the directory under $FAKE_HOME/.claude/projects/ a transcript for
 # a session launched in <cwd> lives in. Copied from feature-lifecycle.sh, not sourced.
-project_dir() { echo "$FAKE_HOME/.claude/projects/$(echo "$1" | tr '/' '-')"; }
+project_dir() { echo "$FAKE_HOME/.claude/projects/$(echo "$1" | tr '/.' '--')"; }
 
 # session_line SESSION_ID CWD BRANCH MESSAGE_ID MODEL TIMESTAMP INPUT OUTPUT CACHE_READ
 #              CACHE_5M CACHE_1H — one transcript line. Copied from

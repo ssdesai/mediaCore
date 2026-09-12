@@ -1,42 +1,55 @@
 {
   "slug": "stream-capture-file-first",
-  "generated_at": "2026-09-06T16:27:35.334586+00:00",
+  "generated_at": "2026-09-10T14:11:13.142989+00:00",
   "cost": {
     "method": "direct",
     "planning": 0.0,
-    "implementer": 84.20691115,
-    "build": 84.20691115,
+    "implementer": 28.804049024999998,
+    "build": 28.804049024999998,
     "verify": 0.0,
     "review": 3.489637,
-    "total": 87.69654815,
+    "total": 32.293686025,
     "planning_pct": 0.0,
-    "build_pct": 96.02078180542388,
+    "build_pct": 89.19405794278636,
     "verify_pct": 0.0,
-    "review_pct": 3.979218194576111,
-    "cost_per_plan": 87.69654815,
-    "cost_per_file": 14.616091358333334,
+    "review_pct": 10.805942057213644,
+    "cost_per_plan": 32.293686025,
+    "cost_per_file": 5.382281004166667,
     "total_is_partial": false,
     "missing_usage_plans": [],
     "unpriced_plans": [],
+    "multi_sidecar_stems": [],
     "skipped_plans": [],
     "orphan_usage_plans": [],
     "recovered": 0.0,
     "unrecoverable_attempts": [],
-    "partially_recovered_attempts": []
+    "partially_recovered_attempts": [],
+    "shared_sessions": [
+      {
+        "session_id": "2d8b1236-3e77-450f-bc9e-8165c0cf9f9c",
+        "cost_usd": 2.726337875,
+        "also_claimed_by": [
+          "agentTooling/recover-cost-at-close",
+          "agentTooling/stale-failed-sidecars"
+        ],
+        "session_cost_usd": 58.4731905
+      }
+    ]
   },
   "time": {
     "method": "direct",
-    "planning_sessions_s": 171534,
+    "planning_sessions_s": 3357,
     "planning_subagents_s": 5471,
     "planning_s": 0.0,
-    "implementer_s": 177005,
-    "build_s": 177005.0,
+    "implementer_s": 8828,
+    "build_s": 8828.0,
     "verify_s": 0.0,
     "review_s": 613.061,
-    "executor_s": 177618.061,
-    "total_s": 177618.061,
+    "executor_s": 9441.061,
+    "total_s": 9441.061,
     "total_is_partial": false,
     "missing_duration_plans": [],
+    "recovered_duration_plans": [],
     "wall_clock": {
       "first_at": "2026-09-06T15:24:03+00:00",
       "last_at": "2026-09-06T16:05:16+00:00",
@@ -59,7 +72,7 @@
   },
   "planning_cost_split": {
     "subagents": 26.07771115,
-    "sessions": 58.1292
+    "sessions": 2.7263378749999987
   },
   "cold_start_tax_tokens": 118458,
   "model_fit": [

@@ -12,7 +12,11 @@ Without `--self`, the artifact root is the consuming repo (`roots.AGENT_TOOLING_
 
 A standalone `agentTooling` clone works too, with both roots landing on the clone itself — that is why the session-root rule is "nearest ancestor holding `.git`" rather than "the parent directory": one rule covers both a vendored subtree and a standalone checkout.
 
-**A feature worktree's copy is the wrong copy for an ordinary capture.** A worktree holds a `.git` of its own (a file rather than a directory, which is why the rule tests `.exists()`), so both roots resolve to the worktree: a capture invoked from `R-<slug>` scans transcripts under `R-<slug>` and the worktree it would derive from *that*, `R-<slug>-<slug>`, and writes its `planning.json` into the worktree's own tree. The primary checkout's sessions are outside both. Run `R`'s copy, which reaches the primary and the feature worktree `R-<slug>` alike (`../LIFECYCLE.md`); the worktree path is derived from the slug rather than looked up, so it stays matchable after `feature-close.sh` removes the worktree. `feature-start.sh` and `feature-close.sh` refuse to run from a worktree for the same reason.
+**A feature worktree's copy is the wrong copy for an ordinary capture.** A worktree holds a `.git` of its own (a file rather than a directory, which is why the rule tests `.exists()`), so both roots resolve to the worktree: a capture invoked from `R/.worktrees/<slug>` scans transcripts under that worktree and the worktrees it would derive from *it*, and writes its `planning.json` into the worktree's own tree. The primary checkout's sessions are outside both. Run `R`'s copy (`../LIFECYCLE.md`).
+
+**Which launch directories a feature claims from.** For slug `<slug>`, `capture_planning.claim_roots` names three roots — the primary `R`, the feature's worktree `R/.worktrees/<slug>`, and the legacy sibling `R-<slug>` a feature started before worktrees moved inside the primary still has, kept claimable for good so that a `--recapture` of such a feature finds every session it found before — and one fence, `R/.worktrees`. The fence is needed because every other feature's worktree is under `R` too, and a prefix test on `R` would hand each feature's sessions to all the others. A cwd is claimable when the longest of the roots and the fence that it equals or sits under is a root (`cwd_claimable`), so `R/.worktrees/<other>` falls to the fence while `R/.worktrees/<slug>` is claimed by its own, longer root. Capture, `--last-branch-instant` and the `launched_elsewhere` warning all use that one rule; `--list-sessions` and `--list-subagents` are discovery across every feature, and apply no fence. Both worktree paths are derived from the slug rather than looked up, so they stay matchable after `feature-close.sh` removes the worktree. **The project directory** Claude Code files a session under is the launch cwd with every `/` and `.` turned into `-` (`transcript_dir_name`, `TRANSCRIPT_DIR_MANGLED_CHARS`), so a nested worktree's transcripts are under `…-R--worktrees-<slug>`, which contains `R`'s own mangled name and is found by the same substring scan as every other (`find_transcript_dirs`). Mangling `/` alone, as it once did, left a `.` in `R`'s own path unmangled and matched no directory at all.
+
+`feature-start.sh` and `feature-close.sh` refuse to run from a worktree's copy for the reason in the first paragraph.
 
 The scripts never take a repo path, so there is no way to point one repo's checkout at another repo's plans. That is deliberate: the subtree is shared across repos, and a `--repo` flag would make it possible to write one repo's costs into another's `plans/` tree. `--self` does not weaken this — it selects between two fixed roots derived from the script's own location, not an arbitrary path.
 
@@ -31,8 +35,15 @@ Asserted by `self/tests/timestamps-are-utc.sh`.
 
 **One feature is closed by `../feature-close.sh <slug>`, not by hand** (`../LIFECYCLE.md`
 → step 6). It runs step 4 below for that slug in the order that makes it safe — the
-unclaimed-delegate check, then `capture_planning.py`, then `report.py`, and only then
-`session_window.to` — and shows what was claimed before the number is quoted. What
+unclaimed-delegate check, then `session_window.to` stamped from evidence, then
+`capture_planning.py`, then `report.py` — and shows what was claimed before the number is
+quoted. **The stamp comes before the capture, not after**: the capture's share split
+divides a multiply-claimed session by the windows its claimants hold, so a bound written
+afterwards freezes this feature's own record against a window that is still open, and a
+`to` taken from the wall clock hands it an equal share of the coordinator for every hour
+since its work actually stopped. The bound is
+`capture_planning.py --last-branch-instant <slug>` (below), and a capture that refuses
+rolls the stamp back with the rest. What
 follows is the weekly **sweep behind it**, over the whole corpus: it catches the feature
 whose delegate was pinned after it closed, the batch whose `.stream.jsonl` was never
 converted, and the unpriced attempt nobody recovered — each of which reads as a correct
@@ -67,7 +78,7 @@ python3 agentTooling/analysis/recover_attempts.py --for <slug>   # one feature, 
 
 **4. Capture planning cost, then report.** `capture_planning.py --all` walks the corpus and captures the features that have no `planning.json` yet, **skipping the ones that already do**. It also skips any feature whose `session_window.to` is still `null` — in flight, its first capture is `feature-close.sh`'s, and a record frozen here would make that close skip and report a premature figure. That skip is what makes this step ordinary cadence work rather than something to be careful with: a frozen record is not rebuilt unless you ask for it, so the run cannot rewrite a figure it can no longer reproduce, and it costs almost nothing (a skipped feature is never scanned). The sweep reports each feature whose cost files changed, then `--all` for a cross-feature trend.
 
-**A frozen record still gets its shared-session annotation refreshed, and only that.** The one thing `--all` writes to a feature it does not re-derive is `sessions[].also_claimed_by`, read from the claims ledger — no transcript is opened and no dollar, duration or `captured_at` changes (`annotate_frozen_record`). The run reports such a feature as `annotated` rather than `skipped`, `report.py` turns the field into `cost.shared_sessions[]` and the footnote under the Cost table, and `sweep.sh` regenerates the report on its own because `planning.json` shows up in `git status`. Without it a feature closed *before* another feature claimed its coordinator could never say so: the alternative is `--recapture`, which rebuilds its money from transcripts that are expiring — exactly what the freeze exists to prevent.
+**A frozen record still gets its shared-session annotation refreshed, and only that.** The one thing `--all` writes to a feature it does not re-derive is `sessions[].also_claimed_by`, read from the claims ledger — no transcript is opened and no dollar, duration or `captured_at` changes (`annotate_frozen_record`). The run reports such a feature as `annotated` rather than `skipped`, `report.py` turns the field into `cost.shared_sessions[]` and the footnote under the Cost table, and `sweep.sh` regenerates the report on its own because `planning.json` shows up in `git status`. Without it a feature closed *before* another feature claimed its coordinator could never say so: the alternative is `--recapture`, which rebuilds its money from transcripts that are expiring — exactly what the freeze exists to prevent. **An annotated session with no `share_basis` predates the share rule**, and the run prints a `WARN` saying so on **every** sweep, whether or not that sweep changed anything: that entry's figure still counts the session in full rather than by concurrent share, the annotation only adds who else claims it, and `--recapture` is named as the repair — while the transcript still exists to rebuild it from. The annotation converges on the first `--all` and the stale figure does not, so a warning tied to "this run wrote something" would ask for the repair once and then go quiet for as long as the transcript had left; `annotate_frozen_record` returns `(annotated_ids, changed)` for exactly that reason, and `annotated` versus `skipped` in the run's own summary still means "did this run write".
 
 **Cross-repo, the annotation converges on the second sweep, and cannot converge sooner.** Within one run all of a corpus's frozen records are registered in the ledger before any of them is annotated, so N features of the same repo sharing one coordinator all end up naming the other N−1 regardless of the order the corpus is walked in. Across repos there is no such ordering to fix: the ledger is the only seam, each repo sweeps its own corpus, and a record can only name the claimants whose repos have already registered. So sweep every repo once — that fills the ledger — and the annotations are final after the second pass over each. A repo swept once and never again keeps a partial list, which is a stale annotation rather than a wrong figure.
 
@@ -97,7 +108,8 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
 
 - `roots.py` — root resolution shared by the other scripts below (`transcript.py`
   imports neither `roots` nor any of them — it is pure transcript parsing). Exposes
-  `AGENT_TOOLING_DIR`, `add_self_flag(parser)`, `artifact_root(self_mode)`,
+  `AGENT_TOOLING_DIR`, `SELF_CORPUS_IDENTITY`, `add_self_flag(parser)`,
+  `artifact_root(self_mode)`,
   `features_root(self_mode)`, `all_features_roots()`, `session_root(self_mode)`. Every
   script resolves its roots through this module rather than computing `parents[N]`
   itself, so the ordinary and `--self` modes cannot drift apart.
@@ -105,6 +117,14 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   the two trees share one branch namespace, so anything scanning for "every session a
   runner spawned" must span both. Everything that *writes* uses
   `features_root(self_mode)`.
+  **`SELF_CORPUS_IDENTITY` is the third root-like fact, and the only one that is declared
+  rather than derived**: `https://github.com/ssdesai/agentTooling.git`, who
+  `self/features` belongs to. Neither root can answer it — `self/features` can only ever
+  belong to agentTooling, and a copy vendored into a consumer has no `.git` of its own, so
+  `git -C <consumer>/agentTooling remote get-url origin` walks up and answers with the
+  **consumer's** origin. The same URL is `update.sh`'s `DEFAULT_REMOTE` and what the root
+  `README.md` → "Updating" passes to `git subtree`; all three move together, and each
+  names the others. `capture_planning.corpus_identity` is its only reader.
 - `pricing.py` — rate table and cost calculator. Exposes `utc_today()` (today's UTC date — the wall-clock source for everything here, since `date.today()` is the machine's *local* date and would disagree with every transcript-derived date for part of each day), `RATES_VERIFIED` (date the table was last checked), `STALENESS_THRESHOLD_DAYS`, `RATES` (per-model USD/Mtok `{input, output}`, optional `intro{input, output, starts, expires}`), `CACHE_READ_MULTIPLIER` / `CACHE_WRITE_5M_MULTIPLIER` / `CACHE_WRITE_1H_MULTIPLIER`, `normalize_model_id(model_id)`, `get_rates(model_id, as_of) -> RatesApplied | None`, `compute_cost(model_id, tokens, as_of) -> (cost_usd | None, rates_applied | None)`, `is_rates_stale(today=None) -> bool`. Any script that prices tokens imports `compute_cost` / `get_rates` / `is_rates_stale` from here rather than hardcoding rates — the table lives in exactly one place.
 - `transcript.py` — session-transcript parsing shared by `capture_planning.py` and
   `recover_attempts.py`. Exposes `to_utc(timestamp) -> aware datetime | None`,
@@ -214,8 +234,29 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   Cost is computed once here; nothing downstream recomputes it. Usage:
   `python3 agentTooling/analysis/capture_planning.py <slug>`,
   `… --all [--recapture]`, `… --list-subagents [--since YYYY-MM-DD]`,
-  `… --list-subagents --unclaimed [--for <repo>/<slug>]`, or
-  `… --list-sessions [--unclaimed] [--since YYYY-MM-DD]`.
+  `… --list-subagents --unclaimed [--for <repo>/<slug>]`,
+  `… --list-sessions [--unclaimed] [--since YYYY-MM-DD]`, or
+  `… --last-branch-instant <slug>`.
+  **`--last-branch-instant <slug>` is the bound `feature-close.sh` stamps**, and the one
+  mode here that writes nothing at all: it prints, as ISO 8601 UTC with a `Z`, one second
+  past the last instant of every session this feature's `branches` and `session_window`
+  select and of those sessions' own subagents — or nothing, exit 0, when the feature has
+  no such session, which is the close's cue to fall back to its own clock and say so in
+  one line. One second because `session_window.to` is exclusive and the share split is
+  half-open on it too, so a bound at the last instant itself would drop the very response
+  it came from; truncated to whole seconds first, so the bound is written at the
+  resolution every other bound in both corpora has. **Pins are not consulted**: a
+  manifest's `sessions` entry claims a session regardless of branch, window or `cwd`, and
+  the one `feature-start.sh` pins is the coordinator that started N features and outlives
+  every one of them — a pinned session the branch route would select anyway still counts,
+  since it is on the branch and in the window. **A runner session does count**, which is
+  the one term that differs from what the capture itself selects: its dollars are in a
+  `usage.json` and it is never priced here, but a `claude -p` executor draining a plan in
+  the feature's own worktree is the plainest evidence of when work on the branch stopped,
+  and dropping it finds a bound for one of agentTooling's sixteen features instead of
+  nine. The manifest's own `exclude_sessions` is honoured — a session the author disowned
+  is not this feature's work by the author's own word. It opens no ledger and runs no git
+  command, because `--recapture` calls it with the branch long deleted.
   **A session may belong to more than one feature, and the ledger says so.** Top-level
   session claims are recorded in the same file under its `sessions` section, `{
   <session-id>: [ { repo, repo_name, slug, selected_by, cost_usd, claimed_at }, … ] }` —
@@ -224,10 +265,128 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   features. Such a session is therefore **not refused**. Instead its `planning.json`
   entry gains `also_claimed_by: ["<repo>/<slug>", …]`, `report.py` carries that into
   `cost.shared_sessions[]`, and `report.md` prints one line under the Cost table naming
-  the session, its dollars and the other features counting it. There is no
-  apportionment: the transcript cannot say which feature a message served, and a split by
-  message count would be a number nobody measured — the honest record is that each
-  feature counts it in full and each says so. Every session in `sessions[]` is recorded,
+  the session, its dollars and the other features counting it. A session with one
+  claimant is priced whole, exactly as before — **and the warning that says so now says
+  how much**: `may span the window boundary` fires for any selected session whose last
+  instant is at or after its window's `to`, and carries the dollars and the seconds that
+  fall outside it (`boundary_warning` / `outside_window_cost`, dated by each response's
+  FIRST line and priced exactly as the unclaimed remainder is, `at least` when a model in
+  that stretch has no rate). It also says whether they were counted: `counted in full` on
+  the unshared path, where the session is priced over its whole transcript, and
+  `not counted here` on the share path, where the split has already given each of those
+  responses to whichever claimants' windows still cover it — a later-bounded claimant
+  owns the part of that stretch it covers, and only what is past *every* claimant's `to`
+  is the unclaimed remainder, which with chained windows is the smaller stretch of the
+  two. When there is nothing out there to measure the sentence goes back to the
+  qualitative one it replaced, ``no billable response of it falls at or after `to` `` —
+  because the warning fires on the last LINE past `to` while the quantity counts billable
+  RESPONSES at or after it, and a transcript ending in a `user` line or a `<synthetic>`
+  notice, or overrunning by under a second, would otherwise disclose `$0.0000 and 0s`
+  (`NO_OUTSIDE_COST_USD` and `MIN_REPORTED_OUTSIDE_SECONDS`, and both are required: an
+  unbilled ten-minute tail is a real overrun, and a sub-second one that cost money is real
+  money). Prose only — no figure in `planning.json` moves, which is what
+  keeps the single-claimant path a disclosed over-count rather than a silent under-count.
+  A session with more is split by
+  concurrent claim: each response goes to every claimant whose window covers it,
+  divided equally among them; the opening stretch before any window opens goes to the
+  earliest claimant alone, but only as far back as that claimant's own window is long
+  (`head_bound`); the tail past every claimant's `to` goes to nobody, and is
+  reported rather than dropped — as both dollars (`unclaimed_usd`) and seconds
+  (`unclaimed_duration_s`), each written whenever its own quantity is non-zero rather than
+  both keyed off the dollars: a session whose trailing lines past every `to` are
+  non-billable has unclaimed time and no unclaimed cost, and gating the pair on cost alone
+  let the claimants' `duration_s` fail to sum to `session_duration_s` with no field to
+  read the difference from. **Another feature's empty claim is dropped from the claim set
+  entirely**, with a warning naming it, rather than merely refused a share:
+  `select_parent` branches on `len(intervals) <= 1`, so counting one would flip a
+  genuinely single-claimant session onto the share path and cost its one real owner
+  everything past its own `to` — a single malformed manifest anywhere in either corpus
+  would do that to any feature. The capturing feature's own claim is never dropped, since
+  it is `intervals[0]` by contract, which is why a claim whose *own* window is empty is
+  also excluded from the opening-stretch ranking (`earliest_dated_claim`, the ranking both `share_owners` and
+  `head_bound` order with, calls `is_empty_window`, the same predicate
+  `check_empty_window` warns from — the rule is written once so the warning and the
+  arithmetic cannot disagree). Filtering it in the ranking is not redundant with the
+  `in_window` test: a feature that pins a session by id is admitted past window matching
+  entirely, so a backwards window reaches the split intact, and the ranking orders on
+  `from` alone. Left in, it breaks the opening stretch two ways — paid it outright when
+  its `from` sorts first and still follows the session's start, or, when its `from`
+  precedes the session, stranding the stretch in the unclaimed remainder because no
+  instant is "before every `from`" any more and the legitimate earliest claimant is
+  quietly underpaid. The split is exact by construction — the claims
+  partition the transcript, so the claimants' shares plus the unclaimed remainder equal
+  the session's own cost — but it is an *estimator* where claims overlap, not a
+  measurement: concurrent features genuinely interleave, and an even split is the
+  least-wrong reading available. That is why every `sessions[]` entry for a shared
+  session carries `share_basis`, naming every claim the split used, so the number can be
+  re-derived rather than taken on faith. **The claimant set is indexed once per capture**
+  (`build_claimant_index`, called where `share_ctx` is built): one pass over both corpora
+  reducing every manifest to `{features_dir, repo, repo_name, slug, window, pins,
+  branches, excluded}`, with `corpus_identity` run once per features dir, after which
+  `session_claim_intervals` filters that list in memory and touches no file.
+  `select_parent` calls it once per selected session, and before the index each of those
+  calls re-globbed and re-parsed every `README.md` under both features roots and ran two
+  `git remote get-url` subprocesses — roughly 1200 parses and 60 subprocesses for one
+  capture of a 40-feature corpus, all answering the same question.
+  **The opening stretch is bounded by the earliest claimant's own window length**
+  (`head_bound`, `from - (to - from)`): an instant before every dated claimant's `from` is
+  that claimant's planning only when it lies no further before its `from` than its window
+  is long, and earlier than that nobody owns it — `share_owners` returns `[]` and the
+  response or span joins the unclaimed remainder exactly as the tail does. The unbounded
+  rule was true of minutes and false of days. Session `2d8b1236` ran 45 hours coordinating
+  fifteen features in three other repos before the first of its three agentTooling
+  claimants opened; the earliest of those, ahead by 49 seconds with a 25-minute window,
+  was paid **$50.12** of its $50.92 share for a head it planned none of, and no rule can
+  attribute that head correctly — each of those fifteen features selects its sessions by
+  branch and never claims this one. The bound is *relative* and not a fixed grace period
+  because the head is planning for the feature that follows and that scales with the
+  feature: a fixed hour pays a two-minute feature an hour it did not plan for. An earliest
+  claimant whose `to` is still `null` keeps the unbounded head — a window with no end has
+  no length to bound by, and a feature in flight is the case where the opening stretch
+  really is its own planning; `feature-close.sh` stamps `to` and the recapture that
+  follows applies the bound. `head_bound` is consulted by `share_owners` for the dollars
+  and added to `partition_seconds`' cut points for the seconds — the `is_empty_window`
+  pattern, one rule written once, and without that edge the whole `[start, min_from)` span
+  would be judged at `start` and the paid part of the head lost from `duration_s`. No new
+  `planning.json` field: the head nobody owns is in `unclaimed_usd` and
+  `unclaimed_duration_s` with the sum invariants unchanged. What changes is the
+  disclosure — whenever any of the remainder lies before every claimant's `from`, the
+  "unclaimed by any feature" warning names that head's dollars and seconds apart from the
+  rest and names the remedies that can reach it: pin the session into the feature the work
+  belongs to, or move the earliest claimant's `from` back by hand. Both are needed because
+  neither of the tail's remedies works on a head — no `to` bound widened forwards reaches
+  behind the earliest `from`, and `manifest.py set-window-to` moves `to` only, and only
+  inwards, so there is no `from` equivalent to point at. When the remainder is all tail
+  the warning is the sentence it always was, and when it is all **head** — two claimants
+  chaining windows over everything after the earliest `from`, or the commoner single
+  claimant whose window covers the session's last instant — the "and $… is the rest"
+  clause and its "For the rest" sentence are dropped rather than printing `$0.0000 (0s)`
+  and offering the one remedy that provably reaches nothing; with no rest to contrast it
+  against, the head's own remedy stops being introduced as "For the head".
+  **The `repo` half of the key comes from `corpus_identity(features_dir)`, not from
+  `repo_identity` on the directory two levels up**, and that is one rule for the whole
+  script: `capture_feature`, `register_frozen_claims` and the `--all` loop's
+  `annotate_frozen_record` call all ask it too, so a feature cannot enter the ledger under
+  one identity and be looked for under another. It returns `roots.SELF_CORPUS_IDENTITY`
+  for `features_root(True)` and `repo_identity(features_dir.parents[1])` for every other
+  corpus, so a `--self` operation asks `git` who it is at no point. It had to: for the
+  self corpus vendored into a consumer, `features_dir.parents[1]` is the vendored
+  `agentTooling/`, which has no `.git`, so `git` answered with the **consumer's** origin
+  and every self-corpus manifest entered that repo's claim set as `(<consumer origin>,
+  <slug>)` while the ledger held the same feature as
+  `(https://github.com/ssdesai/agentTooling.git, <slug>)` — two keys for one feature, both
+  surviving the `(repo, slug)` dedupe, the feature counted twice and `share_basis` naming
+  a `<consumer>/<slug>` that exists nowhere. Session `ed088063` from vinylCatalogue
+  yielded 13 intervals for 11 real claimants. The standalone checkout was unaffected only
+  because `session_root(True)` there happens to be the agentTooling checkout itself.
+  *Indexing* changed no answer — that was a pure optimisation, and assertion 9 of
+  `self/tests/session-claims.sh` counts the parses; *identity* changed the answer for the
+  vendored self corpus deliberately, which is what phase 10 of that file and
+  `session-share.sh` pin.
+  Measured cases: session `3571cc77`, at $47.18 of
+  real cost, was being booked as $188.71 by four features counting it in full; session
+  `ed088063`, at $70.50, as $563.97 by eight features across two repos. Every session in
+  `sessions[]` is recorded,
   pinned or branch-selected, since two features sharing a branch can double-count as
   quietly as a shared pin; the dollars recorded are the session's own `priced[]` rows,
   its delegates excluded, because a subagent belongs to exactly one feature by the
@@ -256,7 +415,8 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   select is priced once, every `sessions[]` entry records `selected_by`
   (`"pinned"`/`"branch"`) and the `cwd` it was launched in, and a pin also listed in
   `exclude_sessions` warns and wins. `--list-sessions` is the discovery step: every
-  top-level session launched in the primary checkout or one of its sibling worktrees,
+  top-level session launched in the primary checkout — every feature worktree under
+  `.worktrees/` included — or in a legacy sibling worktree `<primary>-*`,
   with date, id, branch, `cwd`, model, cost, minutes and opening prompt. `--unclaimed`
   keeps the ones no manifest pins, no `planning.json` in either corpus lists as selected
   or excluded, and no `usage.json` already holds as runner cost — sessions that belong to
@@ -309,9 +469,13 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   and it is a usage error without `--unclaimed`.
   **A delegate the feature's own manifest pins is not unclaimed** and is dropped from
   that list (`manifest_pinned_subagents`, looked up by slug — never by the `(repo, slug)`
-  pair, because under a vendored subtree a `--self` feature's brief says
-  `agentTooling/<slug>` while the checkout's own identity is the enclosing repo, so
-  comparing them would drop the pin in exactly the case that matters). The lookup does
+  pair. Not for want of an identity to compare against: `corpus_identity` declares the
+  self corpus's, so a `--self` feature's `repo` reads as `agentTooling` wherever the
+  lookup runs. It is the other half that cannot be trusted — the pair is what a human
+  typed after `--for`, matched against what a coordinator wrote into a brief's `feature:`
+  line, both free text, and a brief that names the slug with the enclosing repo in front
+  of it, the shape every vendored coordinator wrote before the identity was declared,
+  would drop the pin in exactly the case that matters). The lookup does
   prefer the corpus the query is *for* — `self/features` under `--self`,
   `plans/features` otherwise — when that tree holds a manifest for the slug, falling
   back to the slug alone across both when it does not. Two features may share a slug
@@ -414,7 +578,10 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   by a route that warning cannot see. Unlike the overlap warning this is *proven* from
   the manifest alone rather than over-approximated, so the message says the feature will
   capture as zero rather than hedging. It compares the normalized instants, not the raw
-  strings, so `19:00:00-04:00` against `23:00:00Z` reads as the empty window it is.
+  strings, so `19:00:00-04:00` against `23:00:00Z` reads as the empty window it is. The
+  comparison itself lives in `is_empty_window`, which `earliest_dated_claim` shares — and
+  through it `share_owners` and `head_bound` — so that a
+  window this check calls "proven to match nothing" is never handed a share of one.
   Two features in `self/features/` shipped with `from == to` and held **$38.76** of real
   planning cost at zero until this check was added.
   `check_branch_overlap` warns when two manifests share a branch **and** their windows
@@ -541,15 +708,30 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   from.
   `report.py` still never reprices a recovered figure — it only reads
   `recovered_cost_usd` and sums it in, exactly like `total_cost_usd`.
-  **A session another feature also counts is named rather than apportioned.**
-  `compute_shared_sessions` reads `planning.json`'s `sessions[].also_claimed_by` (written
-  by `capture_planning.py` from the claims ledger) and returns
-  `cost.shared_sessions[{session_id, cost_usd, also_claimed_by}]`, the dollars being that
-  session's own `priced[]` rows with its delegates excluded; `report.md` prints one line
-  under the Cost table. The figure in the table is unchanged and unmarked — it is correct
-  for this feature — and what the line adds is that the same dollars are in somebody
-  else's report too, so summing several features' totals counts a coordinator once per
-  feature.
+  **A session another feature also counts is named, and its dollars are that feature's
+  share.** `compute_shared_sessions` reads the **union** of `planning.json`'s
+  `sessions[].also_claimed_by` (written by `capture_planning.py` from the claims ledger,
+  so it names only features that have already captured) and the non-`"self"` features in
+  that entry's `share_basis` (the claim set the split itself used, which reaches a
+  co-claimant still in flight through its manifest alone), and returns
+  `cost.shared_sessions[{session_id, cost_usd, session_cost_usd, also_claimed_by}]`, the
+  dollars being that session's own `priced[]` rows with its delegates excluded — this
+  feature's *share* of them on a split session — and `session_cost_usd` the entry's
+  recorded `session_cost_usd`, the session's own **undivided** cost, omitted on a record
+  frozen before the split (see the `capture_planning.py` entry above for the split rule
+  itself). The union is what keeps a divided figure from ever being printed without a
+  footnote saying what divided it: `feature-start.sh` pins the running session into every
+  manifest it starts, so a feature that closes while a co-claimant is still in flight is
+  the corpus's normal case, and that co-claimant has no ledger claim yet. Keyed off
+  `also_claimed_by` alone such a feature reported half its money with nothing saying
+  where the other half went — a silent under-count, strictly worse than the disclosed
+  over-count the split removed;
+  `report.md` prints one line under the Cost table. The figure in the table is unchanged
+  and unmarked — it is correct for this feature — and what the line adds is that the
+  session is shared: for a split session, that the claimants' shares sum to the session's
+  own cost, so summing several features' totals now counts a coordinator once, not once
+  per feature; for a record with no `session_cost_usd`, the old full-count sentence, since
+  that figure predates the split.
   A manifest with **no** `plans` key at all is a warning rather than a `KeyError`:
   `manifest_plan_stems` falls back to the stems that left a `usage.json`, sorted into
   batch order, and sets `total_is_partial` itself — the recovered list is built from the
@@ -648,9 +830,29 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   worktree. `get <key>` prints one scalar or JSON array from the **last** fenced JSON block,
   the one `capture_planning.py` reads — the same fence `plan-runner-roots.sh`'s
   `manifest_field` reads on the shell side with awk and `jq`, which is how
-  `run-review.sh` gets `base` for `FEATURE_BASE` without a Python call. `set-window-to [TS]` replaces a `null` `to` bound with TS (default: now,
+  `run-review.sh` gets `base` for `FEATURE_BASE` without a Python call. `set-window-to [TS] [--tighten]` replaces a `null` `to` bound with TS (default: now,
   UTC, `Z`) and touches nothing else in the file; a bound already set is left alone and
   reported, since a second stamp would move a boundary another manifest may chain to.
+  `--tighten` is the one exception and only ever inwards: it replaces a bound already set
+  with an **earlier** instant, printing `session_window.to tightened: old -> new`, treats
+  the same instant as a no-op (exit 0, nothing written) and **refuses a later one**,
+  naming both bounds, with **exit 3** (`WIDEN_REFUSED_EXIT`). That code is the widen
+  refusal's alone, and it is a contract with `feature-close.sh`, which continues past
+  exactly that one — the bound it declined to widen is the one already published — and
+  refuses on every other non-zero, quoting what this printed. Deliberately not 2: argparse
+  exits 2 on a usage error, and a close reading a malformed invocation as a declined widen
+  would capture, commit and push a feature whose window was still open. Tightening also
+  **refuses a bound at or before the fence's `from`** — an empty window, which
+  `capture_planning.is_empty_window` drops from every other feature's claim set, leaving
+  the feature owning nothing with only a WARN at the next capture to say so — as a plain
+  exit 1, naming both, and skips the check when the fence carries no parseable `from`. It
+  is unreachable from evidence (a branch-selected session starts at or after `from`, so a
+  bound one second past its last instant is later than `from`) and guards the hand
+  invocation the repair path invites. Instants, never strings — `to_instant` gives a bound the
+  same reading `transcript.to_utc` does, since `18:00:00-04:00` sorts below `22:00:00Z`
+  and is the same moment. `feature-close.sh --recapture` is what passes it: it is the
+  repair path for every `to` this script stamped at close time, and a widened bound would
+  re-admit sessions a neighbouring feature's window may already have chained onto.
   `set-plans <stem>...` replaces the manifest's `plans[]` with the given stems, in the order given, and refuses a stem that is not `NN-name-MODEL` — a sentinel is never a plan.
   `claimed` prints the sessions and subagents `planning.json` holds, each with how it was
   selected and where it was launched, plus the total — what `feature-close.sh` shows the
@@ -671,7 +873,9 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   `{ slug, method, plans[], branches[], base, session_window{from,to},
   exclude_sessions[], exclude_subagents[], sessions[], subagents[] }`. Written by
   `manifest.py` on behalf of `feature-start.sh` (`init`) and `feature-close.sh`
-  (`set-window-to`); read by `capture_planning.py` (`branches`, `session_window`,
+  (`set-window-to`, `--tighten` under `--recapture`; the bound comes from
+  `capture_planning.py --last-branch-instant`, not from the wall clock); read by
+  `capture_planning.py` (`branches`, `session_window`,
   `exclude_sessions`, `exclude_subagents`, `sessions`, `subagents`),
   by `report.py` (`method`, `plans`) and by `run-review.sh` (`base`, through
   `plan-runner-roots.sh`'s `manifest_field`). `method` is `"plans"` (or absent),
@@ -740,12 +944,15 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   Sidecars written before attempt-tracking landed have no `attempts` key at all, so
   consumers read the top-level `session_id` as well.
 - `planning.json` — `{ slug, captured_at, manifest_branches[], sessions[{session_id,
-  git_branch,selected_by,cwd,date,started_at,ended_at,duration_s,also_claimed_by[]?}],
+  git_branch,selected_by,cwd,date,started_at,ended_at,duration_s,also_claimed_by[]?,
+  share_basis[]?,session_cost_usd?,session_duration_s?,unclaimed_usd?,
+  unclaimed_duration_s?}],
   subagents[{agent_id,
   parent_session_id,date,started_at,ended_at,duration_s,selected_by,cross_repo}],
   excluded_session_ids[], priced[{session_id,agent_id,model,is_sidechain,date,
   duration_s,tokens{input,output,cache_read,cache_creation_5m,cache_creation_1h},
-  cost_usd,rates_applied}], cost_usd{main,sidechain,subagents,total,total_is_partial},
+  cost_usd,rates_applied,share?,full_cost_usd?,shared_with[]?}],
+  cost_usd{main,sidechain,subagents,total,total_is_partial},
   duration_s{sessions,subagents,entries_without_duration[]}, rates_source,
   warnings[] }` — a feature's frozen planning-phase cost and time, written by
   `capture_planning.py`. `cost_usd` and `rates_applied` are computed once at capture
@@ -759,10 +966,30 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   and `also_claimed_by` is `["<repo>/<slug>", …]` for the other features the claims
   ledger records as counting this same session — present only when there are any, so an
   ordinary feature's file is unchanged, and never a refusal: a coordinator legitimately
-  spans features and nothing here apportions its cost. It is also the one field a
+  spans features, and it is `share_basis` (below), not `also_claimed_by` itself, that
+  apportions its cost. It is also the one field a
   *frozen* record can still gain: `--all` refreshes it from the ledger without opening a
   transcript or touching another key, which is how a feature closed before the sharer
   existed comes to say so (see the capture's entry above).
+  **A shared session's entry carries the split too.** `share_basis` is the claims the
+  split used — `{feature, from, to, source}` per claim, `source` one of
+  `"self"|"manifest"|"ledger"` — so the number can be re-derived rather than taken on
+  faith. `session_cost_usd` and `session_duration_s` are the session's own undivided
+  cost and span; `unclaimed_usd` and `unclaimed_duration_s` are what no claimant owns —
+  the tail past every claimant's `to`, any gap between two windows, and the opening
+  stretch further before the earliest `from` than `head_bound` allows — each present only
+  when its own quantity is non-zero. The head is not broken out into a field of its own;
+  the "unclaimed by any feature" warning is where the two are told apart, because their
+  remedies differ. `duration_s` on such an entry is this feature's own
+  share of the span, from the same split `share_basis` records — not the whole
+  session — while `started_at`/`ended_at` stay the transcript's own first and last
+  instants regardless, since only `duration_s` is apportioned. On `priced[]`, a row
+  split across more than one claimant carries `share` (one over the claimant count) and
+  `shared_with` (the other claimants), with `full_cost_usd` the row's own undivided cost
+  before the split — `cost_usd` is already this feature's divided share, so every
+  existing sum downstream needs no adjustment. All four session-level fields and all
+  three `priced[]` fields are absent together on a session with one claimant, which is
+  priced and timed exactly as it always was.
   `cwd` is the directory that
   session was launched in, the fact the whole naming
   rule turns on (`../LIFECYCLE.md`): it is what says whether a session is claimable from
@@ -775,7 +1002,7 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   multi_sidecar_stems[{plan,queue,count}],skipped_plans[],orphan_usage_plans[],recovered,
   unrecoverable_attempts[{plan,
   session_id}],partially_recovered_attempts[{plan,session_id}],
-  shared_sessions[{session_id,cost_usd,also_claimed_by[]}]}, time{method,
+  shared_sessions[{session_id,cost_usd,session_cost_usd?,also_claimed_by[]}]}, time{method,
   planning_sessions_s,planning_subagents_s,planning_s,implementer_s,tests_s?,
   direct_build_s?,gate_s?,build_s,verify_s,review_s,
   executor_s,total_s,total_is_partial,missing_duration_plans[{plan,queue,reason}],
@@ -886,10 +1113,15 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   default for the same reason as every key added after the fact — no `report.json`
   written before them carries either, and a re-render of one must not raise.
   `cost.shared_sessions[]` names each session another feature also counts
-  (`{session_id, cost_usd, also_claimed_by}`, the dollars being that session's own
-  `priced[]` rows, its delegates excluded) and marks no row: the figure is correct for
-  this feature, and what the line under the Cost table adds is that the same dollars are
-  in another feature's report too. `time.recovered_duration_plans[]` names each plan whose
+  (`{session_id, cost_usd, session_cost_usd?, also_claimed_by}`, the dollars being that
+  session's own `priced[]` rows — this feature's share of them on a split session — its
+  delegates excluded, and `session_cost_usd` the session's own **undivided** cost read
+  off the entry, absent on a record frozen before the split) and marks no
+  row: the figure is correct for this feature, and what the line under the Cost table
+  adds is the session's split — the claimants' shares sum to its own cost, so summing
+  several features' totals now counts it once, not once per feature; a record with no
+  `session_cost_usd` is still counted in full there too, as before.
+  `time.recovered_duration_plans[]` names each plan whose
   minutes are a recovered transcript span (`{plan, queue, reason, recovered_s}`); its
   bucket carries `‡` and its own footnote, it is never also in
   `missing_duration_plans[]`, and it keeps `time.total_is_partial` true because a span is

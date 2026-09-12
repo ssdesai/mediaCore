@@ -47,8 +47,9 @@ paste the spec.
 
 1. **`feature: <repo>/<slug>`** on the first line, before anything else
    (`ORCHESTRATION.md`) — what cost capture reads.
-2. **Where.** The worktree `feature-start.sh` made for this feature — `<repo>-<slug>`,
-   on branch `<slug>`, off the base its manifest records (`LIFECYCLE.md`). Name it by
+2. **Where.** The worktree `feature-start.sh` made for this feature —
+   `<repo>/.worktrees/<slug>`, inside the primary checkout (a feature started before that
+   layout has the sibling `<repo>-<slug>`), on branch `<slug>`, off the base its manifest records (`LIFECYCLE.md`). Name it by
    absolute path, and every command in absolute paths under it; the primary checkout is
    not it.
 3. **Read, in this order.** The spec sections (or the triage decisions) this feature

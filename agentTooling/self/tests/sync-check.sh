@@ -5,14 +5,17 @@ set -uo pipefail
 # (self/features/sweep-and-check/README.md). Run by self/gate.sh, or by hand:
 # bash self/tests/sync-check.sh
 #
-# Copies the real sync-plans.sh, update.sh and templates/ (a missing update.sh is
+# Copies the real sync-plans.sh, update.sh, templates/ and hooks/ (a missing update.sh is
 # tolerated — RED until plan 77 lands, the cost-recovery.sh convention) into two
-# throwaway fixtures. No model, no network.
+# throwaway fixtures. hooks/ rides along because sync-plans.sh calls
+# hooks/wire-settings.py to wire .claude/settings.json; without it every --check would
+# carry a SKIPPED line and never reach rc 0. No model, no network.
 #
 # Fixture A — a consuming repo at $TMP/consumer, git initted with one commit, holding
-# copies of sync-plans.sh, update.sh and templates/ under agentTooling/. Asserts the
-# --check contract: a fresh seed reports the five generated stubs and the three
-# repo-owned scripts in-sync (template-version 2, 2, 1 in that order) with only
+# copies of sync-plans.sh, update.sh, templates/ and hooks/ under agentTooling/. Asserts
+# the --check contract: a fresh seed reports the five generated stubs, the three
+# repo-owned scripts in-sync (template-version 2, 2, 1 in that order) and the hook
+# wiring it just wrote in-sync, with only
 # PROJECT_FACTS.md unfilled, rc 1, "needs attention: 1 item(s)"; the seeded BACKLOG.md
 # is in-sync rather than a second unfilled item, since an empty backlog is a correct
 # steady state, and the generated plans/README.md names it; filling
@@ -25,7 +28,10 @@ set -uo pipefail
 # byte-identical and is re-seeded when deleted; and an unknown flag is a usage error,
 # exit 2. It also
 # reads (never writes) the real checkout, asserting gate.sh/pr.sh/worktree-setup.sh
-# carry the same template-version in templates/plans/ and in self/.
+# carry the same template-version in templates/plans/ and in self/, and that the upstream
+# URL is ONE string across the three places that mirror it by hand — analysis/roots.py's
+# SELF_CORPUS_IDENTITY, update.sh's DEFAULT_REMOTE and the root README.md's git subtree
+# commands (section 8b).
 #
 # Fixture B — a subtree cycle: a bare $TMP/upstream.git, a $TMP/work clone that commits
 # the same three copies as main, and $TMP/consumer2, which `git subtree add`s it at
@@ -60,6 +66,7 @@ mkdir -p "$CONSUMER/agentTooling"
 cp "$AT/sync-plans.sh" "$CONSUMER/agentTooling/sync-plans.sh" 2>/dev/null || true
 cp "$AT/update.sh" "$CONSUMER/agentTooling/update.sh" 2>/dev/null || true
 cp -r "$AT/templates" "$CONSUMER/agentTooling/templates" 2>/dev/null || true
+cp -r "$AT/hooks" "$CONSUMER/agentTooling/hooks" 2>/dev/null || true
 chmod +x "$CONSUMER/agentTooling/sync-plans.sh" "$CONSUMER/agentTooling/update.sh" 2>/dev/null || true
 S="$CONSUMER/agentTooling/sync-plans.sh"
 
@@ -83,7 +90,7 @@ check "1e. worktree-setup.sh in-sync (template-version 1)" 'grep -qF "  in-sync 
 check "1f. gate.sh, pr.sh, worktree-setup.sh lines appear in that order" \
   '[[ "$out" == *"plans/gate.sh (template-version 2)"*"plans/pr.sh (template-version 2)"*"plans/worktree-setup.sh (template-version 1)"* ]]'
 check "1g. unfilled PROJECT_FACTS.md" 'grep -qF "  unfilled   plans/PROJECT_FACTS.md" <<<"$out"'
-check "1h. last line: needs attention 1 item(s)" '[[ "$(tail -1 <<<"$out")" == "plans/ needs attention: 1 item(s) above." ]]'
+check "1h. last line: needs attention 1 item(s)" '[[ "$(tail -1 <<<"$out")" == "needs attention: 1 item(s) above." ]]'
 # BACKLOG.md, seeded beside PROJECT_FACTS.md. An EMPTY backlog is the correct steady
 # state for a repo that has closed everything it found, so a present one is in-sync
 # rather than "unfilled" — 1h is the assertion that says so, since a second unfilled
@@ -100,7 +107,7 @@ check "1k. the generated plans/README.md names BACKLOG.md" 'grep -qF "BACKLOG.md
 echo "extra fact" >> "$CONSUMER/plans/PROJECT_FACTS.md"
 out="$("$S" --check 2>&1)"; rc=$?
 check "2a. --check rc 0 after filling PROJECT_FACTS.md (got $rc)" '[[ $rc -eq 0 ]]'
-check "2b. last line: in sync" '[[ "$(tail -1 <<<"$out")" == "plans/ is in sync with agentTooling/templates/." ]]'
+check "2b. last line: in sync" '[[ "$(tail -1 <<<"$out")" == "plans/ and the hook wiring are in sync with agentTooling/." ]]'
 
 # ── 3. a stale generated stub, --check writes nothing, plain sync repairs it ────
 echo "extra readme line" >> "$CONSUMER/plans/README.md"
@@ -178,6 +185,24 @@ for f in gate.sh pr.sh worktree-setup.sh; do
     '[[ "$tver" =~ ^[0-9]+$ ]] && [[ "$tver" == "$sver" ]]'
 done
 
+# ── 8b. one upstream URL across roots.py, update.sh and README.md (read-only) ────────
+# The same string is written by hand in three places and all three comments say they move
+# together; this is what enforces it. The failure mode is silent and is the one
+# self-corpus-identity exists to stop: move the remote in update.sh and not in roots.py
+# and every new --self ledger claim carries a `repo` matching none of the historical rows,
+# so one feature deduplicates against nothing and is counted twice. Three literal sources,
+# one check, no model and no network — the parse is a literal read of each file, never an
+# import of the repo's own configuration through some other layer.
+identity_expr='import sys; sys.path.insert(0, sys.argv[1]); import roots; print(roots.SELF_CORPUS_IDENTITY)'
+roots_identity="$(python3 -c "$identity_expr" "$AT/analysis" 2>/dev/null)"
+update_remote="$(sed -n 's/^DEFAULT_REMOTE="\(.*\)"$/\1/p' "$AT/update.sh" | head -n 1)"
+check "8b. analysis/roots.py declares a non-empty SELF_CORPUS_IDENTITY (got '$roots_identity')" \
+  '[[ -n "$roots_identity" ]]'
+check "8c. update.sh's DEFAULT_REMOTE is the same string (got '$update_remote')" \
+  '[[ -n "$update_remote" && "$update_remote" == "$roots_identity" ]]'
+check "8d. the root README.md's git subtree commands name it too" \
+  'grep -F "git subtree" "$AT/README.md" | grep -qF "$roots_identity"'
+
 # ── Fixture B: a subtree cycle ───────────────────────────────────────────────────
 UPSTREAM="$TMP/upstream.git"
 WORK="$TMP/work"
@@ -191,6 +216,7 @@ git -C "$WORK" config user.name "sync-check test"
 cp "$AT/sync-plans.sh" "$WORK/sync-plans.sh" 2>/dev/null || true
 cp "$AT/update.sh" "$WORK/update.sh" 2>/dev/null || true
 cp -r "$AT/templates" "$WORK/templates" 2>/dev/null || true
+cp -r "$AT/hooks" "$WORK/hooks" 2>/dev/null || true
 chmod +x "$WORK/sync-plans.sh" "$WORK/update.sh" 2>/dev/null || true
 git -C "$WORK" add -A && git -C "$WORK" commit -q -m "upstream: sync-plans, update, templates"
 git -C "$WORK" push -q origin main
