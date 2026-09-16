@@ -27,9 +27,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TEMPLATE_DIR="$HERE/templates/plans"
 VERSIONS_TABLE="$TEMPLATE_DIR/TEMPLATE_VERSIONS"
 VERSION_LINE_RE='^# template-version:[[:space:]]*\([0-9][0-9]*\).*'
-# The three seeded, repo-owned scripts — templates/README.md's list. The generated stubs
+# The four seeded, repo-owned scripts — templates/README.md's list. The generated stubs
 # are overwritten on every sync and carry no version line.
-TEMPLATES=(gate.sh pr.sh worktree-setup.sh)
+TEMPLATES=(gate.sh pr.sh worktree-setup.sh open-session.sh)
 BUMP_HINT="bump template-version and re-record the hash in templates/plans/TEMPLATE_VERSIONS"
 
 fails=0

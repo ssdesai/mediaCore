@@ -8,7 +8,15 @@ calls a model or the network. `../PROJECT_FACTS.md` → Tests says there is no t
 **No test reads or writes the real `~/.claude`.** The seam is `$HOME`: every script here
 that touches a transcript or the claims ledger exports `HOME` to its own `mktemp -d`
 before calling a script under `analysis/`, and `Path.home()` — which resolves the
-`~/.claude/projects/` glob and `claims_ledger_path()` alike — follows it. There is no
+`~/.claude/projects/` glob, `routing.find_transcript` and `claims_ledger_path()` alike —
+follows it. That now includes every script that runs `feature-start.sh`
+(`feature-lifecycle.sh`, `plan-numbering.sh`), because a start derives its routing record
+from the running session's transcript.
+
+**Every sandbox that copies `capture_planning.py` or `report.py` copies `routing.py`
+too.** Both import it — the first for the router predicate, the second for the Routing
+table — and a missing copy is an `ImportError` in every capture rather than one failed
+assertion. There is no
 narrower override, deliberately: one that moved the ledger alone would let a test write
 the ledger under `mktemp -d` while still reading the machine's own transcripts.
 
@@ -68,10 +76,32 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   common git dir's `info/exclude` now carries `/.worktrees/` exactly once, still exactly
   once after seven more starts, every entry it already held (an unterminated last line
   included) intact, and nothing tracked touched — writes the manifest (`branches [S]`, `base main`, a `Z`
-  `from`, `to` null, the running session pinned from `$CLAUDE_CODE_SESSION_ID`) and a
-  `@@TODO@@` review stub numbered next in the global sequence, commits `S: start`, and
+  `from`, `to` null, and **no pin**: the session that runs a start is a router, never a
+  claimant) and a
+  `@@TODO@@` review stub numbered next in the global sequence, commits `S: start` with
+  the routing record for that router (`self/routing/<session-id>.json`, naming S in
+  `features_started`) inside it, names the worktree in its "Next" block without teaching
+  a chained `cd`, and
   refuses a bad slug, an existing branch, a worktree path already taken and a worktree's
-  copy while creating nothing;
+  copy while creating nothing; that `--pin` restores the pin, `--no-pin` is an accepted
+  no-op and `--session` names the router with or without it; that a start **prunes** every
+  worktree under `.worktrees/` whose branch is an ancestor of `origin/main` and whose tree
+  is clean, deleting that branch with `git branch -D`, while a dirty merged one and an
+  unmerged one survive and the bare remote's refs are untouched — including the case a
+  second clone builds, where the merge happened on `origin/main` and this checkout's own
+  `main` still lags, which is where `git branch -d` refuses and leaves a removed worktree
+  whose branch the output claimed was gone; that `--open` runs the repo's
+  `open-session.sh` with the worktree path as its only argument (a recording stub — the
+  seeded script talks to Terminal.app and no test runs its body) and that both copies of
+  that script quote the path inside the string they hand to Terminal.app; and that a
+  `--self` start from an agentTooling **vendored** one directory inside the primary
+  commits `agentTooling/self/routing/<id>.json` along with the feature directory — a
+  second, smaller scaffold built from `$AT`'s first commit with `git archive`, since the
+  main one is a standalone checkout by construction. Its prune fixture starts
+  its two candidates with no session id on purpose: two branches cut from one `main` that
+  each *add* the same `self/routing/<id>.json` are an add/add conflict, resolved by taking
+  the side with the later `captured_at`, which is the record's own accepted cost
+  (design §3.4) and not what that phase is about;
   that `run-review.sh` files a brief still carrying `@@TODO@@` to `failed/` without
   calling `claude`, and that a real one reaches the PR hook, which pushes `S` itself and
   calls `pr create --base main --head S`, honours `FEATURE_BASE`, and refuses on the base
@@ -146,6 +176,31 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   capture, rolling the stamp back with `rollback_stamp` and tolerating exactly
   `manifest.py`'s widen exit code at the stamp, and on `analysis/manifest.py`'s `init`,
   `get`, `claimed` and `set-window-to [--tighten]`.
+- `routing-record.sh` — `session-share.sh`'s scaffolding (copies of
+  `analysis/{pricing,roots,transcript,capture_planning,report,routing}.py` in a throwaway
+  agentTooling checkout with a bare `mkdir .git`, transcripts under a redirected `$HOME`)
+  asserting the routing record (`self/DESIGN-2026-09-16-lifecycle-restructure.md` §3.4).
+  A router transcript carrying two `feature-start.sh <slug>` Bash tool calls — built with
+  `bash_tool_line` from `fixtures/transcripts/build-transcript.sh` — yields both slugs
+  with the instants of their own calls, unioned with the slug being started now (whose
+  `at` is null, its call not yet flushed), plus `launched_in`/`git_branch` from the
+  transcript's `cwd`/`gitBranch`, its first and last instants, their span, and its cost
+  through `pricing.compute_cost`; `captured_at` equals `ended_at`, because it is the
+  content's as-of instant rather than the wall clock, which is what makes a second write
+  **byte-identical** — the assertion the two-branch refresh rests on. A session with no
+  transcript still writes a record (current slug, null figures, a warning on stderr) and
+  never refuses. Router detection is pinned from all three sides: `--list-sessions
+  --unclaimed` drops the two routers and keeps a `main` session with no such call, a
+  session on a feature branch that has one, one launched in a worktree, and one whose only
+  mention of the script is `grep -n x feature-start.sh hooks` — naming the file is not
+  running it, though `hooks` would pass the slug pattern — while a call at command position
+  behind `&&` and `bash` still counts as a router, and a plain
+  `--list-sessions` keeps them all. And `report.py --all` renders the Routing table with
+  each started slug beside its frozen total and the routing fraction, while
+  `report.py <slug>` prints `routed by` with the other slugs for a routed feature and
+  nothing extra for an unrouted one. Depends on `analysis/routing.py` and on
+  `capture_planning.py` importing `is_router_lines` from it; RED until both landed.
+  No model, no network.
 - `worktree-claims.sh` — `capture-guard.sh`'s scaffolding (copies of
   `analysis/{pricing,roots,transcript,capture_planning}.py` in a throwaway checkout, a
   bare `mkdir .git`, transcripts under a redirected `$HOME`), asserting which launch
@@ -719,27 +774,72 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   naive bound is not — that last one is what keeps the warning actionable rather than a
   standing complaint about every other feature in both corpora.
 - `allow-repo-commands.sh` — builds a throwaway project root with a venv symlink, an
-  in-repo worktree and two symlinks that escape the tree, then feeds the real
-  `hooks/allow-repo-commands.sh` the payload Claude Code sends, one command at a time.
-  Asserts the four `cd X && cmd` shapes that motivated the hook are approved along with
-  ordinary reads and runs; that every bypass the audit found is refused (variable
-  expansion, `--flag=value` paths, attached and combined short flags, sed's `w`,
-  `git branch` mutation, exec-through flags, brace expansion, `|&`, relative paths and
-  globs through symlinks, symlink-following recursion, redirects, a NUL byte); that
-  single-quoted shell characters are literal while double-quoted ones are not; that a
-  worktree session cannot reach the main repo; and that a payload without `cwd`, with
-  `cwd` outside the root, for another tool, or without `CLAUDE_PROJECT_DIR` approves
-  nothing. `~` and `/etc/hosts` are symlink targets and command text only — nothing is
-  read from either. The list of bypasses is `hooks/README.md` → What the audit found.
-- `hook-wiring.sh` — thirteen throwaway repos, one per starting state of
+  in-repo worktree, the harness's own entry points in both spellings (a consuming repo's
+  `plans/gate.sh`, `agentTooling/check-plans.sh`, `agentTooling/analysis/*.py` and this
+  checkout's `self/gate.sh`, `./check-plans.sh`, `analysis/*.py` — empty files, since the
+  hook judges paths and arguments, not contents) and three symlinks that escape the tree,
+  then feeds the real `hooks/allow-repo-commands.sh` the payload Claude Code sends, one
+  command at a time.
+  Asserts that ordinary reads and runs are approved; that each entry point is approved by
+  basename when its path resolves inside the root, and prompts outside it, through an
+  escaping symlink, or in a writing form (`capture_planning.py --recapture`/`--all`,
+  `manifest.py init`/`set-*`/`get init`, `python3 -c`, `bash` without `-n`,
+  `feature-start.sh` and the rest of the scripts that move refs or freeze cost) — so
+  basename matching never widens `python3`; that every ref-moving git shape is **denied**
+  wherever it sits on the line (after a separator, in a `(…)` subshell or a `$(…)`
+  substitution, behind `-C`, `--git-dir=` or `-c k=v`) with a reason naming LIFECYCLE
+  rule 2 and both lifecycle scripts, while `git branch --show-current`, `git worktree
+  list`, a plain `git push`, `git checkout -- <file>`, `git reset <file>`, a quoted
+  `'git rebase'`, a heredoc, a `#`, a braced word and an unbalanced quote are not; that
+  both denies fire with no `CLAUDE_PROJECT_DIR` and no `cwd`; that any command chaining `cd` or
+  `pushd` with another command is **denied** (separators `&&`, `||`, `;`, `|`, `&`, a
+  line break, a `(` subshell) with a reason naming the rewrite, while `cd`
+  as an argument, in quotes, as a redirect target, in a heredoc body (including one
+  behind a mid-word `#`), inside a `$(…)` substitution quoted or not (nested ones too,
+  with a word after the `)` not read as a command) or on its own is not; that the four
+  motivating shapes are approved once rewritten as a standalone `cd` and the command;
+  and that simple brace lists are approved when every expansion passes; that every
+  bypass the audit found is refused (variable expansion, `--flag=value` paths, attached
+  and combined short flags, sed's `w`, `git branch` mutation, exec-through flags,
+  brace expansion to a path outside, a forbidden flag, `~`, or through nested, quoted
+  or escaped braces, `|&`, a command hidden behind a mid-word `#` that shlex would read
+  as a comment, relative paths and globs through symlinks,
+  symlink-following recursion, redirects, a NUL byte); that single-quoted shell
+  characters are literal while double-quoted ones are not; that a worktree session
+  cannot reach the main repo; and that a payload without `cwd`, with `cwd` outside the
+  root, for another tool, or without `CLAUDE_PROJECT_DIR` approves nothing. `~` and
+  `/etc/hosts` are symlink targets and command text only — nothing is read from
+  either. The list of bypasses is `hooks/README.md` → What the audit found.
+- `hook-wiring.sh` — fourteen throwaway repos, one per starting state of
   `.claude/settings.json` (absent, unrelated content, hook only, deny rules only, a
-  partial deny list with a repo's own rule in it, complete, a different hook, six
-  malformed shapes). Asserts `hooks/wire-settings.py --check` and `--write` report the
+  partial deny list with a repo's own rule in it, the hook and the `Edit` rules but no
+  `Bash` rules, complete, a different hook, six malformed shapes), plus two more for the
+  two modes. Asserts `hooks/wire-settings.py --check` and `--write` report the
   documented status and exit code and agree; that after a write every deny rule is
   present and exactly one hook entry names the script; that nothing the repo had is
-  removed or changed, including a hand-customized hook path; that a second write is
-  `kept` with the file byte-identical and `--check` then says `in-sync`; and that
-  malformed files are `INVALID` in both modes and untouched.
+  removed or changed, including a hand-customized hook path and whatever it had under
+  `allow` — which stays exactly as it was in every case, absent included; that a second
+  write is `kept` with the file byte-identical and `--check` then says `in-sync`; that
+  malformed files are `INVALID` in both modes and untouched; that a file carrying the
+  hook and the `Edit` rules and no `Bash` rules reports `UNWIRED` naming the count of
+  missing `Bash` rules and no other gap, and that the write then appends exactly those,
+  in order; and that `--self` writes `${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh`
+  and `Edit(/hooks/**)` and differs from an ordinary run in nothing else — the two files
+  are compared with those two strings swapped — while `--self --check` over a
+  vendored-spelling file reports `UNWIRED`.
+- `plan-numbering.sh` — a minimal throwaway agentTooling checkout (a real git repo with a
+  bare `origin`, the real `feature-start.sh`, `plan-runner-roots.sh`,
+  `analysis/{roots,manifest}.py` and the manifest template) with `feature-start.sh --self
+  <slug> --no-gate` run once per corpus state, reading the number off the review stub it
+  writes. The corpus a start sees is whatever `main` holds — the worktree is cut from
+  `origin/<base>` — so each phase rewrites `self/features/` on `main` and pushes before
+  starting. Asserts that with `104-…md` present the next stem is `105` (the two-digit
+  `find`/`sed` this replaced saw nothing past 99 and handed `100` out twice), that with
+  only `08-…md` present it is `09` — the `10#` guard, without which bash reads the
+  leading zero as octal and the start aborts — that the highest is taken numerically
+  rather than lexically (`104` beats `99`), and that an empty corpus starts at `01`.
+  Depends on `feature-start.sh`'s `--self` branch being the only thing that hands out a
+  plan number (`../PROJECT_FACTS.md` → "Plan numbers run as one sequence").
 - `sync-check.sh` — copies the real `sync-plans.sh`, `update.sh` and `templates/` (a
   missing `update.sh` is tolerated — RED until plan 77 lands, the `cost-recovery.sh`
   convention) into two throwaway fixtures. Fixture A is a consuming repo at

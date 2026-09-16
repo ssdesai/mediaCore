@@ -71,7 +71,7 @@ trap 'rm -rf "$TMP"' EXIT
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
 
-for f in pricing.py roots.py report.py; do
+for f in pricing.py roots.py report.py routing.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f"
 done
 # transcript.py / recover_attempts.py are plan 02/03's deliverables; a missing cp here is

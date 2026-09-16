@@ -273,7 +273,7 @@ mkdir -p "$LA/analysis" "$LA/self/features" "$LA/templates/plans/features"
 for f in feature-start.sh feature-close.sh plan-runner-roots.sh plan-runner-lib.sh stamp-timing.sh; do
   cp "$HERE/$f" "$LA/$f" 2>/dev/null || true
 done
-for f in pricing.py roots.py transcript.py capture_planning.py report.py manifest.py recover_attempts.py; do
+for f in pricing.py roots.py transcript.py capture_planning.py report.py manifest.py recover_attempts.py routing.py; do
   cp "$HERE/analysis/$f" "$LA/analysis/$f" 2>/dev/null || true
 done
 cp "$HERE/templates/plans/features/TEMPLATE.md" "$LA/templates/plans/features/TEMPLATE.md" 2>/dev/null || true

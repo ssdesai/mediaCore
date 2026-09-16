@@ -60,6 +60,10 @@ from pricing import RATES_VERIFIED, compute_cost, is_rates_stale
 from roots import (
     SELF_CORPUS_IDENTITY, add_self_flag, all_features_roots, features_root, session_root,
 )
+# One-way, and it has to stay that way: `routing` imports nothing from here (it locates a
+# transcript by globbing the project directories, as `recover_attempts.py` does), so the
+# router predicate can live beside the record it explains.
+from routing import is_router_lines
 from transcript import add_usage, iter_billable_messages, iter_billable_messages_at, to_utc
 
 # Feature worktree layout (LIFECYCLE.md): the directory under the primary checkout that
@@ -1089,6 +1093,14 @@ def list_sessions(sessions_dir, since, unclaimed, features_dirs):
                 or cwd.startswith(session_dir_str + "/")
                 or cwd.startswith(session_dir_str + "-")
             ):
+                continue
+            # A ROUTER is not unclaimed, it is a category of its own: its spend is
+            # routing overhead, reported per repo by `report.py --all` from the routing
+            # records `feature-start.sh` commits, and no manifest will ever pin it
+            # (`routing.py`; design 2026-09-16 §3.4). Listing it under "cost that belongs
+            # to somebody and is counted by nobody" would ask for a pin the rule forbids.
+            # Only under `--unclaimed`: a plain listing is discovery and hides nothing.
+            if unclaimed and is_router_lines(lines, sessions_dir):
                 continue
             timestamps = [
                 moment for moment in (to_utc(line.get("timestamp")) for line in lines)

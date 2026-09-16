@@ -94,7 +94,7 @@ TMP="$(cd "$TMP" && pwd -P)"
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
 
-for f in pricing.py roots.py transcript.py capture_planning.py; do
+for f in pricing.py roots.py transcript.py capture_planning.py routing.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f"
 done
 

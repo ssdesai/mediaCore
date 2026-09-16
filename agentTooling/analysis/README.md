@@ -125,6 +125,60 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   **consumer's** origin. The same URL is `update.sh`'s `DEFAULT_REMOTE` and what the root
   `README.md` → "Updating" passes to `git subtree`; all three move together, and each
   names the others. `capture_planning.corpus_identity` is its only reader.
+- `routing.py` — the **routing record**: who started which feature, and what that cost.
+  A *router* is the session that ran `feature-start.sh`. Under the rule in
+  `../self/DESIGN-2026-09-16-lifecycle-restructure.md` §2 it is never pinned into a
+  feature's manifest — one coordinator session per feature, launched in that feature's
+  worktree — so its spend belongs to no feature's buckets and would go unreported
+  without a category of its own. `feature-start.sh` writes one record per router into
+  `plans/routing/<session-id>.json` (`self/routing/` under `--self`, the directory
+  beside the features root) and commits it in the `<slug>: start` commit, so the link
+  from router to feature is in git before the transcript it is derived from can expire.
+  Usage: `python3 agentTooling/analysis/routing.py [--self] --session ID --slug SLUG
+  [--primary DIR]`.
+  The record, every field derived from the router's own transcript:
+  `{ captured_at, cost_usd, duration_s, ended_at, features_started[{slug, at}],
+  git_branch, launched_in, model, session_id, started_at }` — `launched_in` and
+  `git_branch` are the transcript's `cwd` and `gitBranch`; `started_at`/`ended_at` its
+  first and last timestamped instants and `duration_s` their whole-second span;
+  `cost_usd` the whole transcript priced per model through `pricing.compute_cost` on the
+  session's own date, and `model` those models `/`-joined (a session that switched models
+  has no single one); `features_started` the `feature-start.sh <slug>` Bash tool calls in
+  the transcript, in order, first occurrence of each slug kept, **unioned with the slug
+  being started now** — that one carries a null `at` until the current tool call reaches
+  the transcript; `captured_at` the instant the content is current *as of*.
+  **`captured_at` is derived, not the wall clock**, and that is load-bearing: the output
+  is byte-identical for identical input (sorted keys, floats rounded to
+  `COST_DECIMALS`, instants truncated to the second) so that two feature branches each
+  refreshing one router's record write the same bytes. Two branches cut from the same
+  `main` that each *add* the file with a different `features_started` are still an add/add
+  conflict, and **the side with the later `captured_at` wins** (design §3.4): a router only
+  ever grows, so the later capture's `features_started` is a superset of the earlier one's.
+  Taking the older side instead drops the newer slug out of the record, and with it that
+  feature's "routed by" line and its row in the Routing table — and nothing restores them
+  unless the same router happens to start another feature.
+  A missing transcript is never a refusal: the record is written with the current slug,
+  null figures and one warning on stderr, because a start must not fail on a transcript
+  that has not flushed or has aged out.
+  Two things are not visible from its imports. It **deliberately imports nothing from
+  `capture_planning.py`** — that module imports *this* one, for the router predicate, so
+  the dependency can only run one way; a session's transcript is found by globbing
+  `~/.claude/projects/*/<session-id>.jsonl`, the way `recover_attempts.py` does and for
+  the same reason (ids are unique), and `cwd`/`gitBranch` are read off the lines rather
+  than off a project-directory name. There are **two predicates, one reader each**, and
+  neither is re-implemented at its call site: `is_router_lines(lines, primary)` decides
+  whether a *session* is a router — launched in the primary checkout itself, not in one of
+  its worktrees, on `main`, with at least one `feature-start.sh` call at **command
+  position** — and is called only by `capture_planning.list_sessions`, for the
+  `--unclaimed` exclusion; `routers_of(features_dir, slug)` decides which *records* name a
+  slug and is called only by `report.render_routed_by`, for the "routed by" line. Command
+  position (`COMMAND_POSITION_RE`) is the first word of a simple command — start of line,
+  or after `&&`, `||`, `;`, `|`, `&` — optionally preceded by `bash` and with any directory
+  prefix, so `grep -n foo feature-start.sh hooks` is not a start and the maintenance
+  session that ran it keeps its place in the unclaimed listing. Exposes
+  `routing_dir`, `record_path`, `find_transcript`, `load_lines`, `feature_start_slugs`,
+  `is_router_lines`, `build_record`, `serialize`, `write_record`, `load_records`,
+  `started_slugs`, `routers_of`. Asserted by `self/tests/routing-record.sh`.
 - `pricing.py` — rate table and cost calculator. Exposes `utc_today()` (today's UTC date — the wall-clock source for everything here, since `date.today()` is the machine's *local* date and would disagree with every transcript-derived date for part of each day), `RATES_VERIFIED` (date the table was last checked), `STALENESS_THRESHOLD_DAYS`, `RATES` (per-model USD/Mtok `{input, output}`, optional `intro{input, output, starts, expires}`), `CACHE_READ_MULTIPLIER` / `CACHE_WRITE_5M_MULTIPLIER` / `CACHE_WRITE_1H_MULTIPLIER`, `normalize_model_id(model_id)`, `get_rates(model_id, as_of) -> RatesApplied | None`, `compute_cost(model_id, tokens, as_of) -> (cost_usd | None, rates_applied | None)`, `is_rates_stale(today=None) -> bool`. Any script that prices tokens imports `compute_cost` / `get_rates` / `is_rates_stale` from here rather than hardcoding rates — the table lives in exactly one place.
 - `transcript.py` — session-transcript parsing shared by `capture_planning.py` and
   `recover_attempts.py`. Exposes `to_utc(timestamp) -> aware datetime | None`,
@@ -422,6 +476,15 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   or excluded, and no `usage.json` already holds as runner cost — sessions that belong to
   somebody and are counted by nobody, which is the pin still to write and what
   `feature-close.sh` prints before it captures.
+  **`--unclaimed` also drops the routers** (`routing.is_router_lines`): a session
+  launched in the primary checkout, on `main`, whose transcript **runs**
+  `feature-start.sh` has a category of its own — routing overhead, reported from
+  the routing records — and no manifest will ever pin it, so listing it as cost nobody
+  counts would ask for a pin the rule forbids. Everything else on `main` stays listed,
+  including a session on a feature branch that ran a start, one launched in a
+  worktree, and one that only *names* the script (`grep -n foo feature-start.sh hooks`
+  is not a start — `routing.COMMAND_POSITION_RE` matches at command position only).
+  A plain `--list-sessions` is discovery and hides nothing.
   **Time is frozen beside cost.** Every session and subagent entry carries
   `started_at`/`ended_at`/`duration_s` (the transcript's first and last instants), every
   `priced[]` entry the `duration_s` of what it prices, and `duration_s{sessions,
@@ -646,7 +709,21 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   for a session the scan can never select again — which re-zeroed two features on
   musicMap with exit 0 and no `--force`.
   Asserted by `self/tests/capture-guard.sh`.
-- `report.py` — reads a feature's manifest, `planning.json`, and every
+- `report.py` — **also reports routing overhead.** `--all` prints a **Routing** table
+  under the trend table, one row per routing record (`routing.load_records`): the router
+  session's id, its cost, its minutes, and every feature it started with that feature's
+  own frozen total from its `report.json` beside it — two records compared, never a
+  record against an estimate — then routing spend as a fraction of the trend rows' total
+  feature spend. A figure neither record carries prints `n/a` and never `0`, since a
+  zero in a spend table reads as "free". `report.py <slug>` prints one
+  `routed by <session-id>, alongside <slugs>` line under its summary when a routing
+  record names that slug, and nothing at all when none does — the "names that slug"
+  predicate is `routing.routers_of`, called rather than repeated here. Both are a **sum**, never a
+  split: the router's dollars stay the router's, which is the arithmetic the no-pin rule
+  exists to remove. Nothing of this is written into `report.json` — the routing record is
+  the one copy of the link, so a second copy inside a frozen feature report could only
+  disagree with it.
+  It reads a feature's manifest, `planning.json`, and every
   manifest plan's `usage.json` and `.md`, and writes `plans/features/<slug>/report.md`
   / `.report.json` (cost roll-up, re-hunting, churn ratio, cold-start tax, model fit,
   plan-length-vs-LoC, plan-drift and edit-overlap tripwires). Never recomputes a
