@@ -1,0 +1,9 @@
+write: /Users/sahildesai/dev/agentTooling/.worktrees/hook-cd-deny-braces/hooks/allow-repo-commands.sh
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/hook-cd-deny-braces/hooks/README.md
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/hook-cd-deny-braces/hooks/README.md
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/hook-cd-deny-braces/hooks/README.md
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/hook-cd-deny-braces/hooks/README.md
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/hook-cd-deny-braces/hooks/README.md
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/hook-cd-deny-braces/README.md
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/hook-cd-deny-braces/CONVENTIONS.md
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/hook-cd-deny-braces/sync-plans.sh

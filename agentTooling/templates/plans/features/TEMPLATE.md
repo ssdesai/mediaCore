@@ -53,7 +53,7 @@ Delete this section when the batch has a single level.
 ```
 
 **`agentTooling/feature-start.sh` writes this fence** — the slug, the method, the
-branch, the base, `from`, and a pin for the session that ran it — and
+branch, the base and `from`, with the id lists empty — and
 `feature-close.sh` stamps `to` when the feature is closed
 (`agentTooling/LIFECYCLE.md`). Do not hand-copy it. Only `slug`, `plans` and `branches`
 are required: `method` reads as `"plans"` when absent, `base` as `main`,
@@ -91,9 +91,16 @@ go wrong quietly:
   feature. Write local time only with its offset spelled out (`2026-07-17T18:00:00-04:00`);
   `analysis/capture_planning.py` warns on any bound that states no zone.
 - **`sessions`** — session ids claimed outright, across every project directory,
-  regardless of branch, window or `cwd` — the top-level twin of `subagents`.
-  `feature-start.sh` pins the session that ran it, which is what claims a planning
-  session that began on `main` before the branch existed; widening `branches` to `main`
+  regardless of branch, window or `cwd` — the top-level twin of `subagents`. **A pin is
+  the exception now, not the rule.** `feature-start.sh` pins nothing unless given
+  `--pin`: the session that starts a feature is a *router*, it opens several features and
+  belongs to none of them, and its spend is routing overhead reported from
+  `plans/routing/<session-id>.json` rather than billed to any feature
+  (`agentTooling/LIFECYCLE.md` → step 2). The coordinator belongs inside the worktree,
+  where rule 1 claims it by branch with no pin at all. What is left for this field is the
+  case it was written for — a session that genuinely worked on this feature from
+  somewhere else, typically one that began on `main` before the branch existed; widening
+  `branches` to `main`
   instead sweeps in every later session in that checkout. A pinned session that branch
   and window would also select is priced once, and every entry in `planning.json`
   records how it was selected (`selected_by`: `"pinned"` or `"branch"`) and the `cwd` it

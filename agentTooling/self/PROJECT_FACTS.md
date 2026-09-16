@@ -18,18 +18,30 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
   with its tool, under `harness/`.
 - `templates/` — the stubs `sync-plans.sh` writes into a *consuming* repo's `plans/`.
   Never edited in the consuming repo. Five are generated and overwritten every sync;
-  five are seeded once and then repo-owned (`PROJECT_FACTS.md`, `BACKLOG.md`, `gate.sh`,
-  `pr.sh`, `worktree-setup.sh`). Nothing repo-specific ever goes in here.
+  six are seeded once and then repo-owned (`PROJECT_FACTS.md`, `BACKLOG.md`, `gate.sh`,
+  `pr.sh`, `worktree-setup.sh`, `open-session.sh`). Nothing repo-specific ever goes in here.
 - `analysis/` — stdlib-only Python 3 cost tooling.
+- `hooks/` — the permission policy: the `PreToolUse` hook and the helper that wires it.
+  This checkout has its own committed `.claude/settings.json` at the top level, written
+  by `python3 -B hooks/wire-settings.py --self --repo <root> --write` and never by hand;
+  `self/gate.sh` records the matching `--check` as a blocking check, so editing the
+  constants without re-running the write fails the gate. It carries no allow rules, and
+  its `Edit(/.claude/**)` deny rule means the file cannot be changed with the Edit tool.
 - `self/` — this corpus. Not generated from `templates/`. `self/tests/` holds the
   harness's own behavioural checks, run by `self/gate.sh`.
 
 ## Commands
 
-- Start a feature: `./feature-start.sh --self <slug> [--method direct|plans|hand]`, from
+- Start a feature: `./feature-start.sh --self <slug> [--method direct|plans|hand] [--open]`,
+  from
   the primary checkout — it makes branch `<slug>` and worktree `<repo>/.worktrees/<slug>`
   (inside the primary, ignored through the common git dir's `info/exclude`) and writes
-  `self/features/<slug>/` there. A feature started before that layout has the sibling
+  `self/features/<slug>/` there, plus the routing record `self/routing/<session-id>.json`
+  for the session that ran it. That session is a **router** and is never pinned: coordinate
+  the feature from a session launched inside the worktree, which `--open` does for you
+  through `self/open-session.sh`. `--pin` is the opt-in for the rare case where the
+  starting session really is the feature's coordinator. Each start also prunes the feature
+  worktrees whose branches have merged into `origin/main`. A feature started before that layout has the sibling
   `<repo>-<slug>` instead, and closes and captures the same way. Close it after the PR merges:
   `./feature-close.sh --self <slug>`, which captures, reports, stamps the window shut,
   commits the cost records and removes the worktree. Both refuse to run from a worktree.
@@ -57,6 +69,8 @@ with. What `self/gate.sh` runs is:
 - `shellcheck` if it happens to be installed; it is not a dependency and `self/gate.sh`
   skips it when absent.
 - `python3 -m py_compile analysis/*.py`.
+- `python3 -B hooks/wire-settings.py --self --repo <root> --check` — the committed
+  `.claude/settings.json` still matches the constants that generate it.
 - `self/tests/*.sh` — plain bash scripts the gate `record`s directly, each exiting
   non-zero on a failed assertion. They stand up a throwaway checkout in a `mktemp -d`
   with a stub `claude` and a stub gate, so they assert runner *behaviour* without calling

@@ -36,14 +36,29 @@ or the build.
 
 ## 2. Start
 
-    ./agentTooling/feature-start.sh [--self] <slug> [--method direct|plans|hand] [--base <branch>]
+    ./agentTooling/feature-start.sh [--self] <slug> [--method direct|plans|hand] [--base <branch>] [--open]
 
-From the primary checkout, once per feature. It creates branch `S` and worktree
+From the primary checkout, once per feature. It prunes the feature worktrees whose
+branches have merged into `origin/main` — the whole of post-merge teardown, and nothing
+is committed or pushed by it — creates branch `S` and worktree
 `R/.worktrees/S`, runs `plans/worktree-setup.sh` and the repo's gate inside the new worktree, writes the
 feature directory — the manifest with its fence filled, and a review-brief stub carrying
-`@@TODO@@` — commits it as `S: start`, and pins the session that ran it. `--base` is for
-a feature stacked on one that has not merged; `--no-gate`, `--no-pin` and
-`--session <id>` are for the cases that need them. Read the "Next" lines it prints:
+`@@TODO@@` — and commits it as `S: start`.
+
+**The session that runs it is a router, and a router is never pinned.** Its spend is
+routing overhead, a category of its own: it opens several features and belongs to none of
+them, so pinning it would bill one transcript to every feature it started. What goes into
+the `S: start` commit instead is the **routing record**, `plans/routing/<session-id>.json`
+(`self/routing/` under `--self`), derived from that session's own transcript by
+`analysis/routing.py` — the link from router to feature, in git before the transcript can
+expire, and what `report.py --all` reports the overhead from. Coordinate the feature from
+a session launched **inside the worktree**, where rule 1 claims it by branch with no pin:
+`--open` launches one through the repo-owned `plans/open-session.sh`.
+
+`--base` is for a feature stacked on one that has not merged; `--no-gate`, `--pin` (the
+opt-in for the rare case where the starting session really is this feature's coordinator)
+and `--session <id>` are for the cases that need them, and `--no-pin` is still accepted
+and does nothing. Read the "Next" lines it prints:
 they are steps 3 and 6 below with the paths filled in.
 
 ## 3. Brief
@@ -141,16 +156,23 @@ read as a correct number until someone looks. A feature whose window is still op
    is on branch `S` and is claimed by it, with no pin. One launched anywhere else — the
    primary checkout, on `main`, which reaches the worktree because the worktree sits
    inside it, or wherever a session began before the feature existed — is claimed only
-   by pinning its id in the manifest's `sessions`, which `feature-start.sh` does for the
-   session that ran it, and its delegates only by pinning theirs in `subagents`. Never by
-   widening `branches`.
+   by pinning its id in the manifest's `sessions`, and its delegates only by pinning
+   theirs in `subagents`. Never by widening `branches`. **A pin is now the exception**:
+   `feature-start.sh` pins nothing unless asked (`--pin`), because the session that
+   starts a feature is a router whose spend is its own category (step 2), and the
+   coordinator belongs in the worktree where no pin is needed.
 2. **Agents never create branches or worktrees.** No `git worktree add`, no
    `git checkout -b`, no `git branch`. `feature-start.sh` is the only way in — run from
    the primary checkout by the human, or by the planning session that will then be
    pinned as the feature's — and `feature-close.sh` the only way out, run by the human
-   from the primary checkout with no model involved.
+   from the primary checkout with no model involved. Where `hooks/allow-repo-commands.sh`
+   is wired, those commands are **denied** rather than prompted for — along with
+   `push --force`, `reset --hard`, `clean`, `stash`, `rebase`, `switch -c` and the rest
+   of the ref-moving set — and the denial's reason is this rule (`hooks/README.md` →
+   "The git shape").
 3. **The manifest's fence is written by the scripts, its prose by whoever authors the
-   feature.** `feature-start.sh` fills the fence, `feature-close.sh` closes the window,
+   feature.** `feature-start.sh` fills the fence — with `sessions` empty, since it pins
+   nothing by default — `feature-close.sh` closes the window,
    and `analysis/manifest.py` is what edits it in between. An executor may correct the
    prose above it — a plan table that drifted, an exclusion that turned out wrong — and
    never the fence.

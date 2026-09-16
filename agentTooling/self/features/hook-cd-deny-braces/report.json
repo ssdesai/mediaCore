@@ -1,0 +1,177 @@
+{
+  "slug": "hook-cd-deny-braces",
+  "generated_at": "2026-09-16T14:57:28.058484+00:00",
+  "cost": {
+    "method": "plans",
+    "planning": 6.3424325,
+    "implementer": 0.0,
+    "build": 2.2757779,
+    "verify": 1.9220632000000002,
+    "review": 1.8485955,
+    "total": 12.3888691,
+    "planning_pct": 51.19460419514804,
+    "build_pct": 18.369537054839007,
+    "verify_pct": 15.514436261175767,
+    "review_pct": 14.921422488837177,
+    "cost_per_plan": 3.097217275,
+    "cost_per_file": 0.77430431875,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "plans",
+    "planning_sessions_s": 2812,
+    "planning_subagents_s": 0,
+    "planning_s": 2812,
+    "implementer_s": null,
+    "build_s": 564.092,
+    "verify_s": 770.638,
+    "review_s": 235.88,
+    "executor_s": 1570.6100000000001,
+    "total_s": 4382.610000000001,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-16T14:22:30+00:00",
+      "last_at": "2026-09-16T14:50:45+00:00",
+      "batch_span_s": 1695.0,
+      "batch_runs": 1,
+      "batch_runs_s": 1695.0,
+      "passes_s": {
+        "auto": 567.0,
+        "verify": 772.0,
+        "review": 244.0
+      },
+      "gates_s": 111.0,
+      "gate_runs": 1,
+      "plans_s": 1576.0,
+      "plan_runs": 4,
+      "pr_opened_at": "2026-09-16T14:50:45+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/42"
+    }
+  },
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 6.3424325
+  },
+  "cold_start_tax_tokens": 386379,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 2,
+      "total_turns": 51,
+      "total_cost_usd": 3.084765,
+      "total_duration_s": 420.01300000000003,
+      "flags": []
+    },
+    {
+      "model": "sonnet",
+      "plan_count": 2,
+      "total_turns": 57,
+      "total_cost_usd": 2.9616716000000003,
+      "total_duration_s": 1150.597,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "101-hook-tests-sonnet",
+      "edit_count": 6,
+      "files_edited": 3,
+      "churn_ratio": 2.0
+    },
+    {
+      "plan": "102-hook-deny-and-braces-opus",
+      "edit_count": 9,
+      "files_edited": 5,
+      "churn_ratio": 1.8
+    },
+    {
+      "plan": "103-verify-sonnet",
+      "edit_count": 6,
+      "files_edited": 6,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "104-review-opus",
+      "edit_count": 14,
+      "files_edited": 6,
+      "churn_ratio": 2.3333333333333335
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "101-hook-tests-sonnet",
+      "plan_md_lines": 162,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "102-hook-deny-and-braces-opus",
+      "plan_md_lines": 194,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "103-verify-sonnet",
+      "plan_md_lines": 58,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "104-review-opus",
+      "plan_md_lines": 69,
+      "loc_changed": "not computed: streams unavailable"
+    }
+  ],
+  "re_hunting": "not computed: streams unavailable",
+  "plan_drift": [
+    {
+      "plan": "101-hook-tests-sonnet",
+      "edited_not_listed": [],
+      "listed_not_edited": [
+        "allow-repo-commands.sh",
+        "tests/"
+      ]
+    },
+    {
+      "plan": "102-hook-deny-and-braces-opus",
+      "edited_not_listed": [],
+      "listed_not_edited": [
+        "hooks/"
+      ]
+    },
+    {
+      "plan": "103-verify-sonnet",
+      "edited_not_listed": [
+        "self/features/hook-cd-deny-braces/verify/inprogress/_scratch_brace_probe.py",
+        "self/features/hook-cd-deny-braces/verify/inprogress/_scratch_brace_probe2.py",
+        "self/features/hook-cd-deny-braces/verify/inprogress/_scratch_check_bashlex.py",
+        "self/features/hook-cd-deny-braces/verify/inprogress/_scratch_deny_probe.py",
+        "self/features/hook-cd-deny-braces/verify/inprogress/_scratch_deny_probe2.py",
+        "self/features/hook-cd-deny-braces/verify/inprogress/_scratch_probe_access.py"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "104-review-opus",
+      "edited_not_listed": [
+        "hooks/README.md",
+        "hooks/allow-repo-commands.sh",
+        "self/features/hook-cd-deny-braces/review/inprogress/_scratch_hash_probe.py",
+        "self/review-report.md",
+        "self/tests/README.md",
+        "self/tests/allow-repo-commands.sh"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": "not computed: streams unavailable",
+  "warnings": []
+}

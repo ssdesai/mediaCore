@@ -178,7 +178,7 @@ check "6k. --check rc 0 after re-seed (got $rc3)" '[[ $rc3 -eq 0 ]]'
 check "7a. --bogus: exit 2 (got $rc)" '[[ $rc -eq 2 ]]'
 
 # ── 8. the real checkout's copies agree with its templates (read-only) ──────────
-for f in gate.sh pr.sh worktree-setup.sh; do
+for f in gate.sh pr.sh worktree-setup.sh open-session.sh; do
   tver="$(tv "$AT/templates/plans/$f")"
   sver="$(tv "$AT/self/$f")"
   check "8. $f: template-version is a non-empty integer and self/$f matches (template=$tver self=$sver)" \

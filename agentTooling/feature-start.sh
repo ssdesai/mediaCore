@@ -2,7 +2,7 @@
 set -uo pipefail
 
 # Start a feature: feature-start.sh [--self] <slug> [--method direct|plans|hand]
-#   [--base <branch>] [--no-gate] [--no-pin] [--session <id>]
+#   [--base <branch>] [--no-gate] [--pin] [--session <id>] [--open]
 #
 # The only sanctioned way to create a feature branch or worktree (LIFECYCLE.md). The
 # rule, for slug S in a repo whose primary checkout is R:
@@ -23,25 +23,48 @@ set -uo pipefail
 #      and being run from a worktree's copy (the worktree's copy is the wrong copy);
 #   2. makes sure the common git dir's info/exclude ignores /.worktrees/ — so the
 #      primary's `git status` stays clean with the worktree inside it, which is what
-#      feature-close.sh's dirty-primary refusal needs — then fetches origin and adds the
-#      worktree R/.worktrees/S on a new branch S off origin/<base> (default main;
-#      `--base` records a stacked feature's base for the PR);
-#   3. runs the repo's setup hook inside it — plans/worktree-setup.sh, or
+#      feature-close.sh's dirty-primary refusal needs — then fetches origin;
+#   3. prunes the features that have merged: every worktree under R/.worktrees/ whose
+#      branch is an ancestor of origin/main is removed and its local branch deleted
+#      (`git branch -D` — ancestry against origin/main is the check, and `-d` would
+#      re-decide it against the primary's own HEAD, which lags whenever the PR merged
+#      on the forge and nobody pulled).
+#      That is the whole of post-merge teardown. A worktree with uncommitted work is
+#      left in place with one line saying so, an unmerged one is never touched, and
+#      nothing is committed or pushed;
+#   4. adds the worktree R/.worktrees/S on a new branch S off origin/<base> (default
+#      main; `--base` records a stacked feature's base for the PR);
+#   5. runs the repo's setup hook inside it — plans/worktree-setup.sh, or
 #      self/worktree-setup.sh under --self — for the venv, npm install, dev port;
-#   4. runs the repo's gate inside it and stops unless the verdict is green: a red base
+#   6. runs the repo's gate inside it and stops unless the verdict is green: a red base
 #      is the implementer's context spent on someone else's failures (`--no-gate` skips);
-#   5. writes the manifest from templates/plans/features/TEMPLATE.md with its fence
-#      filled (branches [S], base, `from` now in UTC with a Z, `to` null, the running
-#      session pinned from $CLAUDE_CODE_SESSION_ID so a planning session that began on
-#      main is claimed by id), and a review-brief stub carrying @@TODO@@ that
-#      run-review.sh refuses to run until it is replaced;
-#   6. commits the feature directory on S as `S: start`;
-#   7. prints where to launch the coordinator session and the line every brief opens with.
+#   7. writes the manifest from templates/plans/features/TEMPLATE.md with its fence
+#      filled (branches [S], base, `from` now in UTC with a Z, `to` null, and no pin),
+#      and a review-brief stub carrying @@TODO@@ that run-review.sh refuses to run until
+#      it is replaced;
+#   8. writes the ROUTING RECORD for the session that ran it —
+#      plans/routing/<session-id>.json, self/routing/ under --self — through
+#      analysis/routing.py, from that session's own transcript;
+#   9. commits the feature directory and the routing record on S as `S: start`;
+#  10. with `--open`, runs the repo's plans/open-session.sh (self/open-session.sh under
+#      --self) with the worktree path as its only argument, which is how the coordinator
+#      session is launched INSIDE the worktree;
+#  11. prints where to coordinate from and the line every brief opens with.
+#
+# **This session is a router, and a router is never pinned.** One coordinator session per
+# feature, launched in that feature's worktree, is the rule (LIFECYCLE.md rule 1); the
+# session that runs this script opens several features and belongs to none of them, so
+# pinning it bills one session's whole transcript to every feature it started. Its spend
+# is routing overhead instead, reported per repo from the record step 8 writes
+# (analysis/README.md → routing.py). `--pin` restores the old behaviour for the rare case
+# where this really is the feature's own coordinator, and `--session <id>` names the
+# session — for the record always, and for the pin when `--pin` is given. `--no-pin` is
+# accepted and does nothing, so a brief or a note written under the old default still runs.
 #
 # The primary checkout's tracked tree is never touched: nothing here checks out, stashes
 # or commits in it, so it need not be clean and nothing else running in it is disturbed.
 # Its one write outside the new worktree is the info/exclude entry, which no repo tracks.
-# On a refusal after step 2 the worktree is left in place for inspection.
+# On a refusal after step 4 the worktree is left in place for inspection.
 #
 # Exit codes: 2 usage; 1 any refusal.
 
@@ -56,6 +79,19 @@ TODO_MARKER="@@TODO@@"
 # (LIFECYCLE.md). feature-close.sh and analysis/capture_planning.py each hold the same
 # name in one constant of their own; the three move together.
 WORKTREES_DIR_NAME=".worktrees"
+# The ref a worktree's branch must be an ancestor of to count as merged. `origin/main`
+# and not the feature's own `--base`: a stacked feature's base is itself a branch that has
+# to reach main before its stack does, so this is the one ref that means "merged" for
+# every worktree under .worktrees/. With no such ref the prune does nothing at all.
+PRUNE_MERGED_INTO="origin/main"
+# How the prune deletes a pruned worktree's local branch. `-D` because ancestry against
+# $PRUNE_MERGED_INTO is proven before the delete is attempted; `-d` would re-decide
+# "merged" against the branch's upstream or the primary's HEAD, which is a different and
+# laggier question (see prune_one).
+PRUNE_DELETE_FLAG="-D"
+# The module that derives and writes the routing record, run from the new worktree's copy
+# so the record lands in the worktree's corpus and rides the `S: start` commit.
+ROUTING_MODULE="analysis/routing.py"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/plan-runner-roots.sh"
@@ -64,13 +100,13 @@ SELF_FLAG=()
 if [[ "${1:-}" == "--self" ]]; then SELF_FLAG=(--self); shift; fi
 
 usage() {
-  echo "usage: feature-start.sh [--self] <slug> [--method direct|plans|hand] [--base <branch>] [--no-gate] [--no-pin] [--session <id>]" >&2
+  echo "usage: feature-start.sh [--self] <slug> [--method direct|plans|hand] [--base <branch>] [--no-gate] [--pin] [--session <id>] [--open]" >&2
   exit "$USAGE_RC"
 }
 refuse() { echo "  refused  $*" >&2; exit "$REFUSED_RC"; }
 
 SLUG="${1:-}"; [[ -n "$SLUG" ]] || usage; shift
-METHOD="$DEFAULT_METHOD"; BASE="$DEFAULT_BASE"; RUN_GATE=1; PIN=1; SESSION_OPT=""
+METHOD="$DEFAULT_METHOD"; BASE="$DEFAULT_BASE"; RUN_GATE=1; PIN=0; SESSION_OPT=""; OPEN=0
 while (( $# )); do
   # Every value-taking flag checks its arity first: `shift 2` with one argument left
   # returns non-zero WITHOUT shifting, and there is no `set -e` here to stop on it, so a
@@ -79,8 +115,12 @@ while (( $# )); do
     --method)  (( $# >= 2 )) || usage; METHOD="$2"; shift 2 ;;
     --base)    (( $# >= 2 )) || usage; BASE="$2"; shift 2 ;;
     --no-gate) RUN_GATE=0; shift ;;
-    --no-pin)  PIN=0; shift ;;
+    --pin)     PIN=1; shift ;;
+    # Accepted and ignored: not pinning is the default now, and a brief, a runbook or a
+    # note written under the old one must not stop working on a flag that agrees with it.
+    --no-pin)  shift ;;
     --session) (( $# >= 2 )) || usage; SESSION_OPT="$2"; shift 2 ;;
+    --open)    OPEN=1; shift ;;
     *) usage ;;
   esac
 done
@@ -103,7 +143,17 @@ WT_REPO_DIR="$WORKTREE${REL_REPO:+/$REL_REPO}"
 WT_AT="$WORKTREE${REL_AT:+/$REL_AT}"
 WT_FEATURES="$WT_REPO_DIR/$FEATURES_LABEL"
 HOOK_LABEL="${GATE_SCRIPT_LABEL%/gate.sh}/worktree-setup.sh"
+# The repo-owned hook --open runs. Seeded like worktree-setup.sh and resolved the same
+# way, so plans/open-session.sh and self/open-session.sh are one rule.
+OPEN_HOOK_LABEL="${GATE_SCRIPT_LABEL%/gate.sh}/open-session.sh"
+# Where the routing record goes, beside the feature corpus rather than inside it —
+# analysis/routing.py derives the same path from the features root.
+ROUTING_LABEL="${FEATURES_LABEL%/features}/routing"
+WORKTREES_ROOT="$PRIMARY/$WORKTREES_DIR_NAME"
 REPO_NAME="$(basename "$PRIMARY")"
+# The session that ran this script: the router. It names the routing record always, and
+# the manifest's pin only under --pin.
+ROUTER_SESSION="${SESSION_OPT:-${CLAUDE_CODE_SESSION_ID:-}}"
 
 git -C "$PRIMARY" show-ref --verify --quiet "refs/heads/$SLUG" && refuse "branch '$SLUG' already exists"
 [[ -e "$WORKTREE" ]] && refuse "$WORKTREE already exists"
@@ -135,6 +185,58 @@ fi
 if git -C "$PRIMARY" remote get-url origin >/dev/null 2>&1; then
   git -C "$PRIMARY" fetch -q origin 2>/dev/null || echo "  warn  git fetch origin failed; branching from the local $BASE"
 fi
+# ── Prune the features that have merged ───────────────────────────────────────
+# The whole of post-merge teardown, done here rather than by a close step, because the
+# next start is the first moment anyone is looking and the fetch above has just refreshed
+# the evidence. Only worktrees under R/.worktrees/ are candidates — never the primary,
+# never a checkout somewhere else — and only when the branch is an ancestor of
+# $PRUNE_MERGED_INTO. Nothing is committed and nothing is pushed.
+#
+# prune_one <worktree path> <branch>
+prune_one() {
+  local wt="$1" branch="$2" label
+  [[ -n "$wt" && -n "$branch" ]] || return 0
+  case "$wt" in "$WORKTREES_ROOT"/*) ;; *) return 0 ;; esac
+  git -C "$PRIMARY" merge-base --is-ancestor "$branch" "$PRUNE_MERGED_INTO" 2>/dev/null || return 0
+  label="${wt#"$PRIMARY"/}"
+  # Uncommitted work in a merged worktree is work the merge did not carry. Say so and
+  # leave it: the next start will offer to take it again once it is committed or dropped.
+  if [[ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]]; then
+    echo "  kept      $label — merged into $PRUNE_MERGED_INTO but has uncommitted changes"
+    return 0
+  fi
+  if git -C "$PRIMARY" worktree remove "$wt" >/dev/null 2>&1; then
+    # $PRUNE_DELETE_FLAG is -D, not -d, and that is deliberate: the merge-base check above
+    # has already proven this branch is an ancestor of $PRUNE_MERGED_INTO, so `-d`'s own
+    # check is both redundant and the WRONG one — it judges "merged" against the branch's
+    # upstream or the primary's HEAD, either of which lags origin/main whenever the PR
+    # merged on the forge and nobody pulled, and it refuses there. That left the worktree
+    # gone and the branch behind. A failure now is a real one (a branch checked out
+    # somewhere else), so it still gets a line of its own rather than a claimed deletion.
+    if git -C "$PRIMARY" branch "$PRUNE_DELETE_FLAG" "$branch" >/dev/null 2>&1; then
+      echo "  pruned    $label and branch $branch (merged into $PRUNE_MERGED_INTO)"
+    else
+      echo "  pruned    $label; kept branch $branch — git branch $PRUNE_DELETE_FLAG refused it"
+    fi
+  else
+    echo "  kept      $label — git worktree remove refused it"
+  fi
+}
+if git -C "$PRIMARY" show-ref --verify --quiet "refs/remotes/$PRUNE_MERGED_INTO"; then
+  # `git worktree list --porcelain` prints one blank-line-separated block per worktree:
+  # `worktree <path>`, `HEAD <sha>`, then `branch refs/heads/<name>` unless it is
+  # detached. Read it pairwise — bash 3.2 has no associative array to collect it in — and
+  # flush the last block after the loop, since the final one may carry no trailing blank.
+  prune_wt=""; prune_branch=""
+  while IFS= read -r prune_line; do
+    case "$prune_line" in
+      "worktree "*)          prune_one "$prune_wt" "$prune_branch"; prune_wt="${prune_line#worktree }"; prune_branch="" ;;
+      "branch refs/heads/"*) prune_branch="${prune_line#branch refs/heads/}" ;;
+    esac
+  done < <(git -C "$PRIMARY" worktree list --porcelain 2>/dev/null)
+  prune_one "$prune_wt" "$prune_branch"
+fi
+
 if git -C "$PRIMARY" show-ref --verify --quiet "refs/remotes/origin/$BASE"; then
   START_POINT="origin/$BASE"
 elif git -C "$PRIMARY" show-ref --verify --quiet "refs/heads/$BASE"; then
@@ -176,13 +278,17 @@ fi
 # ── Manifest and review stub ──────────────────────────────────────────────────
 NOW="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 SESSION=""
-if (( PIN )); then SESSION="${SESSION_OPT:-${CLAUDE_CODE_SESSION_ID:-}}"; fi
+if (( PIN )); then SESSION="$ROUTER_SESSION"; fi
 if (( SELF_MODE )); then
   # The self corpus numbers plans as one sequence (self/PROJECT_FACTS.md); a consuming
   # repo numbers per feature from 01.
-  last_nn="$(find "$WT_FEATURES" -name '[0-9][0-9]-*.md' 2>/dev/null | sed 's|.*/||; s|^\([0-9][0-9]\).*|\1|' | sort -n | tail -1)"
+  # A leading run of digits of ANY length, sorted numerically. Matching two digits only
+  # made every plan past 99 invisible: with 101-104 on disk the highest seen was 99 or
+  # nothing at all, and the corpus was handed 100 a second time.
+  last_nn="$(find "$WT_FEATURES" -name '[0-9]*-*.md' 2>/dev/null | sed 's|.*/||; s|^\([0-9][0-9]*\).*|\1|' | sort -n | tail -1)"
   # 10#: the sequence is zero-padded, and bash reads a leading zero as octal — `08` and
   # `09` are then "value too great for base" and the manifest never gets written.
+  # %02d pads below 10 only, so a three-digit number passes through unchanged.
   NN="$(printf '%02d' $(( 10#${last_nn:-0} + 1 )))"
 else
   NN="01"
@@ -222,25 +328,68 @@ STUB
 echo "  manifest  ${FEATURE_DIR#"$WORKTREE"/}/README.md  (method $METHOD, from $NOW${SESSION:+, session $SESSION pinned})"
 echo "  review    ${FEATURE_DIR#"$WORKTREE"/}/review/incomplete/$STEM.md  (stub — $TODO_MARKER)"
 
-( cd "$WORKTREE" && git add "${FEATURE_DIR#"$WORKTREE"/}" && git commit -q -m "$SLUG: start" ) \
+# ── The routing record ────────────────────────────────────────────────────────
+# Written for THIS session — the router — and committed with the feature directory, so
+# the router-to-feature link is in git before the transcript it is derived from can
+# expire. Never a refusal: a transcript that has not been flushed, or has aged out,
+# yields a record with this slug and no figures plus one warning, and the start goes on.
+# -B, for the reason the manifest call gives: no analysis/__pycache__ in the new worktree.
+ROUTING_PATHS=()
+if [[ -n "$ROUTER_SESSION" ]]; then
+  if python3 -B "$WT_AT/$ROUTING_MODULE" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} \
+      --session "$ROUTER_SESSION" --slug "$SLUG" --primary "$PRIMARY" >/dev/null; then
+    # Relative to $WORKTREE, where the commit below runs — so it carries REL_REPO, as the
+    # feature directory does, for a --self start from a vendored agentTooling.
+    ROUTING_PATHS=("${REL_REPO:+$REL_REPO/}$ROUTING_LABEL/$ROUTER_SESSION.json")
+    echo "  routing   ${ROUTING_PATHS[0]}  (router $ROUTER_SESSION, not pinned)"
+  else
+    echo "  warn      could not write the routing record for session $ROUTER_SESSION"
+  fi
+else
+  echo "  routing   none (no session id in \$CLAUDE_CODE_SESSION_ID and no --session)"
+fi
+
+( cd "$WORKTREE" && git add "${FEATURE_DIR#"$WORKTREE"/}" \
+    ${ROUTING_PATHS[@]+"${ROUTING_PATHS[@]}"} && git commit -q -m "$SLUG: start" ) \
   || refuse "could not commit the feature directory in $WORKTREE"
 echo "  commit    $SLUG: start"
+
+# ── Open the coordinator session inside the worktree ──────────────────────────
+# The repo owns how a session is opened — a terminal, a tab, an editor — so this runs
+# plans/open-session.sh (self/open-session.sh under --self) and judges nothing but its
+# exit code. Advisory: a hook that fails leaves a started feature, not a refused start.
+if (( OPEN )); then
+  if [[ -x "$WT_REPO_DIR/$OPEN_HOOK_LABEL" ]]; then
+    if "$WT_REPO_DIR/$OPEN_HOOK_LABEL" "$WORKTREE"; then
+      echo "  open      $OPEN_HOOK_LABEL ran for $WORKTREE"
+    else
+      echo "  warn      $OPEN_HOOK_LABEL exited non-zero; open the session by hand"
+    fi
+  else
+    echo "  warn      $OPEN_HOOK_LABEL is absent or not executable; open the session by hand"
+  fi
+fi
 
 # ── Next ──────────────────────────────────────────────────────────────────────
 echo ""
 echo "Next, in this order:"
 echo "  1. Replace $TODO_MARKER in review/incomplete/$STEM.md with the review brief, from the spec."
-echo "  2. Coordinate from one of two places. A session is billed to the branch of the directory"
-echo "     it was launched in (LIFECYCLE.md, rule 1):"
-echo "       - inside the worktree, claimed by branch $SLUG with no pin:"
-echo "           cd $WORKTREE && claude"
-if [[ -n "$SESSION" ]]; then
-  echo "       - or from the primary checkout, which reaches the worktree at the path above:"
-  echo "           session $SESSION is pinned in the manifest, and every delegate it spawns"
-  echo "           must be pinned in \"subagents\" while its transcript exists."
+# One place, not two. A session is billed to the branch of the directory it was launched
+# in (LIFECYCLE.md, rule 1), so a coordinator launched in the worktree is claimed by
+# branch $SLUG and needs no pin — and this session, which started the feature, stays a
+# router with no claim on it.
+if (( OPEN )); then
+  echo "  2. Coordinate in the session --open just launched, in $WORKTREE."
 else
-  echo "       - the primary checkout reaches the worktree too, but this run pinned no session;"
-  echo "           a session there is claimed only once its id is in the manifest's \"sessions\"."
+  echo "  2. Coordinate from inside the worktree, where the feature is claimed by branch $SLUG"
+  echo "     with no pin. Launch a session there — or re-run this with --open, which runs"
+  echo "     $OPEN_HOOK_LABEL for you:"
+  echo "       $WORKTREE"
+fi
+if [[ -n "$SESSION" ]]; then
+  echo "     --pin also pinned session $SESSION in the manifest, so a session in the primary"
+  echo "     checkout is claimed too, and every delegate it spawns must be pinned in"
+  echo "     \"subagents\" while its transcript exists."
 fi
 echo "  3. Every delegate brief opens with:  feature: $REPO_NAME/$SLUG"
 echo "  4. After the PR merges, from the primary checkout:  feature-close.sh ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} $SLUG"

@@ -33,6 +33,7 @@ from typing import NamedTuple
 
 from pricing import RATES_VERIFIED, is_rates_stale
 from roots import add_self_flag, artifact_root, features_root
+from routing import load_records, routers_of, started_slugs
 from transcript import to_utc
 
 # Turn-count flags. The first two are model-fit — the plan ran on the wrong model.
@@ -2268,8 +2269,106 @@ def run_single_feature(repo_dir, features_dir, slug):
         f"time {minutes_cell(time['total_s'])} min"
         + (" (partial)" if time["total_is_partial"] else "")
     )
+    render_routed_by(features_dir, slug)
     for warning in warnings:
         print(f"WARN: {warning}")
+
+
+# ── Routing overhead ──────────────────────────────────────────────────────────
+# A router — the session that ran `feature-start.sh` — is never pinned into a feature
+# (design 2026-09-16 §2), so its spend belongs to no feature's buckets and would go
+# unreported without a table of its own. It is reported as a SUM beside the features it
+# started, never split across them: the split is exactly the arithmetic the rule removes.
+# The frozen total beside each slug is that feature's own `report.json`, so the two
+# figures a reader compares are both records rather than one record and one estimate.
+ROUTING_TABLE_TITLE = "Routing overhead"
+ROUTING_TABLE_HEADER = (
+    "| router session | cost | minutes | features started (frozen total each) |"
+)
+ROUTING_TABLE_RULE = "|---|---|---|---|"
+ROUTING_EMPTY_NOTE = (
+    "no routing records under this corpus — nothing here was started by a router that "
+    "left one (agentTooling/analysis/routing.py)"
+)
+# A figure the record or the feature's report does not carry. Never 0: a router whose
+# transcript had aged out before the record was refreshed costs an unknown amount, and a
+# zero in a spend table reads as "free".
+ROUTING_UNKNOWN_CELL = "n/a"
+ROUTING_SLUG_SEPARATOR = ", "
+# Printed under the table. The denominator is the trend table's own totals, so the
+# fraction compares like with like — every feature the corpus can report on.
+ROUTING_FRACTION_LINE = (
+    "routing overhead ${routing:.4f} against ${features:.4f} of feature spend"
+)
+ROUTING_FRACTION_PCT = " ({pct:.1f}%)"
+ROUTING_FRACTION_NO_BASE = " (no feature spend to compare against)"
+# One feature's own report says who started it, and what else that router started in the
+# same breath — read from the routing files, which own the list.
+ROUTED_BY_LINE = "routed by {session}"
+ROUTED_ALONGSIDE = ", alongside {slugs}"
+
+
+def frozen_total(features_dir, slug):
+    """A feature's frozen total from its own `report.json`, or None when it has none —
+    unreported, in flight, or a slug the router named and nobody started."""
+    try:
+        data = json.loads(Path(features_dir, slug, "report.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return (data.get("cost") or {}).get("total")
+
+
+def render_routing_table(features_dir, feature_total):
+    """Print the Routing table and the routing fraction. `feature_total` is the summed
+    cost of the trend rows above it, the denominator of the fraction."""
+    records = load_records(features_dir)
+    print("")
+    print(f"### {ROUTING_TABLE_TITLE}")
+    print("")
+    if not records:
+        print(ROUTING_EMPTY_NOTE)
+        return
+    print(ROUTING_TABLE_HEADER)
+    print(ROUTING_TABLE_RULE)
+    routing_total = 0.0
+    for record in sorted(records, key=lambda r: r.get("session_id") or ""):
+        cost = record.get("cost_usd")
+        if cost is not None:
+            routing_total += cost
+        cost_cell = ROUTING_UNKNOWN_CELL if cost is None else f"${cost:.4f}"
+        started = []
+        for slug in started_slugs(record):
+            total = frozen_total(features_dir, slug)
+            total_cell = ROUTING_UNKNOWN_CELL if total is None else f"${total:.4f}"
+            started.append(f"{slug} ({total_cell})")
+        print(
+            f"| {record.get('session_id')} | {cost_cell} "
+            f"| {minutes_cell(record.get('duration_s'))} "
+            f"| {ROUTING_SLUG_SEPARATOR.join(started)} |"
+        )
+    print("")
+    line = ROUTING_FRACTION_LINE.format(routing=routing_total, features=feature_total)
+    if feature_total:
+        line += ROUTING_FRACTION_PCT.format(pct=100.0 * routing_total / feature_total)
+    else:
+        line += ROUTING_FRACTION_NO_BASE
+    print(line)
+
+
+def render_routed_by(features_dir, slug):
+    """The "routed by" line under one feature's summary, or nothing at all when no
+    routing record names this slug. Never a split: the router's dollars stay the
+    router's (design §3.4).
+
+    The "does this record name my slug" predicate is `routing.routers_of` and is not
+    repeated here — one scan, and one place that can be wrong. `load_records` already
+    returns the records sorted by session id, so the order below is stable."""
+    for record in routers_of(features_dir, slug):
+        line = ROUTED_BY_LINE.format(session=record.get("session_id"))
+        others = [name for name in started_slugs(record) if name != slug]
+        if others:
+            line += ROUTED_ALONGSIDE.format(slugs=ROUTING_SLUG_SEPARATOR.join(others))
+        print(line)
 
 
 def run_trend_mode(features_dir):
@@ -2308,6 +2407,8 @@ def run_trend_mode(features_dir):
             f"| {cost.get('review_pct', 0.0):.1f}% "
             f"| ${cost['cost_per_plan']:.4f} | {row['generated_at']} |"
         )
+
+    render_routing_table(features_dir, sum(row["cost"].get("total") or 0.0 for row in rows))
 
 
 def main():

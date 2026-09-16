@@ -35,6 +35,24 @@ then `npx playwright test tests/foo.spec.ts` as the next call — not the two jo
 Delegated agents and batch runs inherit this rule. A brief that pastes a `cd X && ...`
 command teaches the wrong shape.
 
+The chained `cd` is one case of the general rule: **every path a literal, every program
+named, nothing decided at run time.** No variables in paths, no `$(…)` in paths, no
+heredocs into an interpreter, one line per call. A command whose paths only exist once it
+runs is a command the reads fence cannot check, whatever it turns out to do — so
+`R=/abs/path; sed -n 1,40p $R/src/a.py; grep -n thing $R/src/b.py` stops for approval
+where the same two `sed` and `grep` calls with the path written out are approved with no
+prompt at all. Write the literal you already have. When the work genuinely needs a
+computed value — a loop over files, a multi-step transformation — the answer is not a
+cleverer one-liner but a script: `Write` it to the scratchpad and run that one named
+program.
+
+Where `hooks/allow-repo-commands.sh` is wired, a chained `cd` is **denied**, and so is an
+assignment at command position whose own `$NAME` is used later on the same line
+(`X=/p; cat $X/f`) — the one case where the literal is provably still in hand and the fix
+is a substitution. The denial's reason is the correction. Rewrite the command as the
+reason says; do not retry it, and do not work around it with `pushd` or a subshell, which
+are denied too. The rest of the rule is not enforced and is no less binding.
+
 ### Writing files
 
 Author files with the Edit and Write tools, never by shelling out — not `cat > file`, not

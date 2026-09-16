@@ -24,16 +24,30 @@ set -uo pipefail
 #       `git status --porcelain` empty with the worktree nested inside it, because
 #       info/exclude now carries `/.worktrees/` exactly once and every entry it already
 #       held, an unterminated last line included, is intact — writes the manifest
-#       (branches [S], base main, `from` in UTC with a Z, `to` null, the running session
-#       pinned from $CLAUDE_CODE_SESSION_ID), a review stub carrying @@TODO@@ numbered
-#       next in the global sequence, commits `S: start`, ran the hook and the gate inside
-#       the worktree, and prints the worktree path and the `feature: <repo>/S` line;
+#       (branches [S], base main, `from` in UTC with a Z, `to` null, and NO pin: the
+#       session that runs the start is a router, never a claimant), a review stub carrying
+#       @@TODO@@ numbered next in the global sequence, a routing record naming S under
+#       self/routing/<session-id>.json, commits both as `S: start`, ran the hook and the
+#       gate inside the worktree, and prints the worktree path and the
+#       `feature: <repo>/S` line;
 #   S2. it refuses a slug that fails the pattern, a slug whose branch exists, a slug
 #       whose worktree path is already taken, and being run from a worktree's copy —
 #       creating nothing in each case;
-#   S3. --no-pin, --session, an unset environment, --method, --base, --no-gate, and a
-#       red gate (refuses, worktree left in place, no manifest); and after seven more
-#       starts the exclude entry is still there exactly once;
+#   S3. --pin (the opt-in that restores the old behaviour), --no-pin (an accepted no-op),
+#       --session with and without --pin, an unset environment, --method, --base,
+#       --no-gate, and a red gate (refuses, worktree left in place, no manifest); and
+#       after seven more starts the exclude entry is still there exactly once;
+#   S4. the prune: a start removes every worktree under .worktrees/ whose branch is an
+#       ancestor of origin/main and whose tree is clean, deletes that local branch, leaves
+#       a dirty merged one and an unmerged one alone, and pushes nothing — including when
+#       the merge happened on the REMOTE and the primary's own main still lags, which is
+#       the case `git branch -d` refuses and `-D` (ancestry already proven) does not;
+#   S5. --open runs the repo's open-session.sh hook with the worktree path as its only
+#       argument, a start without it runs nothing, and both copies of the hook quote that
+#       path inside the string they hand to Terminal.app;
+#   S6. a --self start from an agentTooling VENDORED one directory inside the primary
+#       (REL_REPO non-empty) commits agentTooling/self/features/<slug>/ AND
+#       agentTooling/self/routing/<id>.json in `S: start`;
 #   T1. run-review.sh files a brief whose line begins with @@TODO@@ to failed/ without
 #       calling claude, and runs one that merely mentions the marker mid-sentence;
 #   T2. a real brief runs, and on the clean pass the PR hook pushes S itself and calls
@@ -90,7 +104,7 @@ mkdir -p "$AT/analysis" "$AT/self/features/old/review/complete" "$AT/templates/p
 for f in feature-start.sh feature-close.sh plan-runner-roots.sh plan-runner-lib.sh run-review.sh stamp-timing.sh; do
   cp "$HERE/$f" "$AT/$f" 2>/dev/null || true
 done
-for f in pricing.py roots.py transcript.py capture_planning.py report.py manifest.py; do
+for f in pricing.py roots.py transcript.py capture_planning.py report.py manifest.py routing.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f" 2>/dev/null || true
 done
 cp "$HERE/templates/plans/features/TEMPLATE.md" "$AT/templates/plans/features/TEMPLATE.md"
@@ -103,6 +117,13 @@ cat > "$AT/self/worktree-setup.sh" <<'STUB'
 #!/usr/bin/env bash
 pwd > "${HOOK_CWD_OUT:?}"
 exit "${HOOK_STUB_RC:-0}"
+STUB
+# Stub open-session hook: records the one argument it was handed. The seeded script's own
+# body talks to Terminal.app and is never run by a test.
+cat > "$AT/self/open-session.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "$1" > "${OPEN_ARG_OUT:?}"
+exit "${OPEN_STUB_RC:-0}"
 STUB
 # Stub gate: the real contract — exit 0, verdict in the report's last section.
 cat > "$AT/self/gate.sh" <<'STUB'
@@ -130,10 +151,11 @@ case "$1 $2" in
 esac
 exit 0
 STUB
-chmod +x "$AT/self/worktree-setup.sh" "$AT/self/gate.sh" "$TMP/bin/claude" "$TMP/bin/gh"
+chmod +x "$AT/self/worktree-setup.sh" "$AT/self/open-session.sh" "$AT/self/gate.sh" "$TMP/bin/claude" "$TMP/bin/gh"
 export PATH="$TMP/bin:$PATH"
 export GH_LOG="$TMP/gh.log"; : > "$GH_LOG"
 export HOOK_CWD_OUT="$TMP/hook-cwd"
+export OPEN_ARG_OUT="$TMP/open-arg"
 export CLAUDE_CALLED_OUT="$TMP/claude-called"
 
 printf 'self/gate-report*.txt\nself/review-report.md\n' > "$AT/.gitignore"
@@ -176,7 +198,11 @@ fence() {
   python3 -c "import json,re,sys; t=open(sys.argv[1]).read(); m=re.findall(r'\`\`\`json\n(.*?)\n\`\`\`', t, re.S); d=json.loads(m[-1]); print(eval(sys.argv[2]))" "$1" "$2" 2>/dev/null
 }
 pj() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2]))" "$1" "$2" 2>/dev/null; }
-start() { ( cd "$TMP" && "$AT/feature-start.sh" --self "$@" 2>&1 ); }
+# $HOME is redirected for the start too: it writes a routing record derived from the
+# router's transcript, and no test may read the machine's own ~/.claude (README.md).
+start() { ( cd "$TMP" && HOME="$FAKE_HOME" "$AT/feature-start.sh" --self "$@" 2>&1 ); }
+# The routing record a start writes for the session that ran it, inside the new worktree.
+routing_record() { echo "$1/self/routing/$2.json"; }
 close() { ( cd "$TMP" && HOME="$FAKE_HOME" "$AT/feature-close.sh" --self "$@" 2>&1 ); }
 branches() { git -C "$AT" for-each-ref --format='%(refname:short)' refs/heads | sort | tr '\n' ' '; }
 now_z() { date -u '+%Y-%m-%dT%H:%M:%S.000Z'; }
@@ -199,17 +225,27 @@ check "S1d. S branched from origin/main" '[[ "$(git -C "$WT" rev-parse HEAD~1 2>
 check "S1e. manifest: slug, branches [S], base main" '[[ "$(fence "$FD/README.md" "d[\"slug\"]")" == "$SLUG" && "$(fence "$FD/README.md" "d[\"branches\"]")" == "['"'"'$SLUG'"'"']" && "$(fence "$FD/README.md" "d[\"base\"]")" == "main" ]]'
 check "S1f. manifest: method direct by default, review stub in plans" '[[ "$(fence "$FD/README.md" "d[\"method\"]")" == "direct" && "$(fence "$FD/README.md" "d[\"plans\"]")" == "['"'"'08-review-opus'"'"']" ]]'
 check "S1g. manifest: from ends in Z, to is null" '[[ "$(fence "$FD/README.md" "d[\"session_window\"][\"from\"]")" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ && "$(fence "$FD/README.md" "d[\"session_window\"][\"to\"]")" == "None" ]]'
-check "S1h. manifest: the running session is pinned, subagents empty" '[[ "$(fence "$FD/README.md" "d[\"sessions\"]")" == "['"'"'$PIN'"'"']" && "$(fence "$FD/README.md" "d[\"subagents\"]")" == "[]" ]]'
+check "S1h. manifest: a plain start pins nothing — the router is never a claimant" '[[ "$(fence "$FD/README.md" "d[\"sessions\"]")" == "[]" && "$(fence "$FD/README.md" "d[\"subagents\"]")" == "[]" ]]'
 check "S1i. review stub numbered next in the global sequence, carrying @@TODO@@" '[[ -f "$FD/review/incomplete/08-review-opus.md" ]] && grep -q "@@TODO@@" "$FD/review/incomplete/08-review-opus.md"'
 check "S1j. first commit is 'S: start' and the worktree is clean" '[[ "$(git -C "$WT" log -1 --format=%s)" == "$SLUG: start" && -z "$(git -C "$WT" status --porcelain)" ]]'
 check "S1k. the hook ran inside the worktree" '[[ "$(cat "$HOOK_CWD_OUT" 2>/dev/null)" == "$WT" ]]'
 check "S1l. the gate ran inside the worktree" '[[ -f "$WT/self/gate-report.txt" ]]'
-check "S1m. output names the worktree and the feature line" 'grep -q "cd $WT" <<<"$out" && grep -q "feature: agentTooling/$SLUG" <<<"$out"'
+# The one place to coordinate from, named as a path and never as `cd <path> && claude`:
+# the Next block is read by agents, and a chained cd taught there is the shape
+# CONVENTIONS.md § Shell commands and the hook both refuse.
+check "S1m. output names the worktree and the feature line" 'grep -q "$WT" <<<"$out" && grep -q "feature: agentTooling/$SLUG" <<<"$out"'
+check "S1m2. ... without teaching a chained cd" '! grep -qE "cd [^ ]+ (&&|;)" <<<"$out"'
 check "S1n. output says the stub brief must be replaced" 'grep -q "@@TODO@@" <<<"$out"'
 check "S1o. the worktree is inside the primary at R/$WORKTREES_DIR/S, and nothing is at the legacy R-S" '[[ -d "$WT" && ! -e "$AT-$SLUG" ]]'
 check "S1p. info/exclude carries /$WORKTREES_DIR/ exactly once (got $(exclude_count))" '[[ "$(exclude_count)" == "1" ]]'
 check "S1q. ... and the entry it already held, unterminated, is intact on a line of its own" 'grep -qxF "$KEEP_ENTRY" "$EXCLUDE"'
 check "S1r. nothing tracked was touched to ignore it" '[[ -z "$(git -C "$AT" diff HEAD --name-only)" ]]'
+S1_RECORD="$(routing_record "$WT" "$PIN")"
+check "S1s. a routing record for the running session is written under self/routing/" '[[ -f "$S1_RECORD" ]]'
+check "S1t. ... naming this slug in features_started" \
+  '[[ "$(pj "$S1_RECORD" "[f[\"slug\"] for f in d[\"features_started\"]]")" == *"'"'"'$SLUG'"'"'"* ]]'
+check "S1u. ... and it is part of the S: start commit" \
+  'git -C "$WT" show --name-only --format= HEAD | grep -qx "self/routing/$PIN.json"'
 
 # ── S2. refusals create nothing ───────────────────────────────────────────────
 before="$(branches)"
@@ -230,11 +266,18 @@ rmdir "$(wt_path lifecycle-occupied)"
 
 # ── S3. options ───────────────────────────────────────────────────────────────
 start lifecycle-nopin --no-pin --no-gate >/dev/null 2>&1
-check "S3a. --no-pin leaves sessions empty" '[[ "$(fence "$(wt_path lifecycle-nopin)/self/features/lifecycle-nopin/README.md" "d[\"sessions\"]")" == "[]" ]]'
-start lifecycle-sess --session abc-123 --no-gate >/dev/null 2>&1
-check "S3b. --session pins the id given" '[[ "$(fence "$(wt_path lifecycle-sess)/self/features/lifecycle-sess/README.md" "d[\"sessions\"]")" == "['"'"'abc-123'"'"']" ]]'
-( cd "$TMP" && env -u CLAUDE_CODE_SESSION_ID "$AT/feature-start.sh" --self lifecycle-noenv --no-gate >/dev/null 2>&1 )
+check "S3a. --no-pin is an accepted no-op and leaves sessions empty" '[[ "$(fence "$(wt_path lifecycle-nopin)/self/features/lifecycle-nopin/README.md" "d[\"sessions\"]")" == "[]" ]]'
+start lifecycle-pin --pin --no-gate >/dev/null 2>&1
+check "S3a2. --pin restores the old behaviour and pins the running session" '[[ "$(fence "$(wt_path lifecycle-pin)/self/features/lifecycle-pin/README.md" "d[\"sessions\"]")" == "['"'"'$PIN'"'"']" ]]'
+start lifecycle-sess --pin --session abc-123 --no-gate >/dev/null 2>&1
+check "S3b. --session with --pin pins the id given" '[[ "$(fence "$(wt_path lifecycle-sess)/self/features/lifecycle-sess/README.md" "d[\"sessions\"]")" == "['"'"'abc-123'"'"']" ]]'
+start lifecycle-sess-nopin --session def-456 --no-gate >/dev/null 2>&1
+check "S3b2. --session without --pin pins nothing, and names the router's record" \
+  '[[ "$(fence "$(wt_path lifecycle-sess-nopin)/self/features/lifecycle-sess-nopin/README.md" "d[\"sessions\"]")" == "[]" ]] && [[ -f "$(routing_record "$(wt_path lifecycle-sess-nopin)" def-456)" ]]'
+( cd "$TMP" && HOME="$FAKE_HOME" env -u CLAUDE_CODE_SESSION_ID "$AT/feature-start.sh" --self lifecycle-noenv --no-gate >/dev/null 2>&1 )
 check "S3c. no session id in the environment means no pin" '[[ "$(fence "$(wt_path lifecycle-noenv)/self/features/lifecycle-noenv/README.md" "d[\"sessions\"]")" == "[]" ]]'
+check "S3c2. ... and no routing record, there being no router to record" \
+  '[[ -z "$(ls "$(wt_path lifecycle-noenv)/self/routing" 2>/dev/null)" ]]'
 start lifecycle-hand --method hand --no-gate >/dev/null 2>&1
 check "S3d. --method hand is recorded" '[[ "$(fence "$(wt_path lifecycle-hand)/self/features/lifecycle-hand/README.md" "d[\"method\"]")" == "hand" ]]'
 start lifecycle-bad-method --method nope --no-gate >/dev/null 2>&1; rc=$?
@@ -250,6 +293,141 @@ HOOK_STUB_RC=3 start lifecycle-hookfail --no-gate >/dev/null 2>&1; rc=$?
 check "S3k. a failing hook refuses, worktree left for inspection (got $rc)" '[[ $rc -ne 0 && -d "$(wt_path lifecycle-hookfail)" && ! -e "$(wt_path lifecycle-hookfail)/self/features/lifecycle-hookfail" ]]'
 check "S3l. after every start above, info/exclude still carries /$WORKTREES_DIR/ exactly once (got $(exclude_count))" '[[ "$(exclude_count)" == "1" ]] && grep -qxF "$KEEP_ENTRY" "$EXCLUDE"'
 check "S3m. ... and the primary is still clean with all of them nested inside it" '[[ -z "$(git -C "$AT" status --porcelain)" ]]'
+
+# ── S4. the prune removes merged worktrees and nothing else ───────────────────
+# The whole of post-merge teardown (design 2026-09-16 §3.1): every worktree under
+# .worktrees/ whose branch is an ancestor of origin/main goes, and nothing else does. The
+# fixture merges two of the features above into origin/main — one left clean, one made
+# dirty — and leaves lifecycle-based unmerged as the control.
+#
+# Both prune candidates are started with no session id in the environment, so neither
+# writes a routing record. Two branches cut from the same main that each ADD
+# self/routing/<one id>.json with different `features_started` are an add/add conflict,
+# which a human resolves by taking the side with the LATER `captured_at` — the superset,
+# since a router only ever grows (design §3.4) — real, accepted, and not what this phase
+# is about.
+PRUNE_CLEAN="lifecycle-merged-clean"; PRUNE_DIRTY="lifecycle-merged-dirty"
+PRUNE_UNMERGED="lifecycle-based"
+for slug in "$PRUNE_CLEAN" "$PRUNE_DIRTY"; do
+  ( cd "$TMP" && HOME="$FAKE_HOME" env -u CLAUDE_CODE_SESSION_ID \
+      "$AT/feature-start.sh" --self "$slug" --no-gate >/dev/null 2>&1 )
+  git -C "$AT" merge -q --no-ff -m "Merge $slug" "$slug"
+done
+git -C "$AT" push -q origin main 2>/dev/null
+echo "work in progress" > "$(wt_path "$PRUNE_DIRTY")/uncommitted.txt"
+origin_refs_before="$(git -C "$ORIGIN" for-each-ref --format='%(refname) %(objectname)' | sort)"
+out="$(start lifecycle-prunes --no-gate)"
+check "S4a. the merged, clean worktree and its branch are gone" \
+  '[[ ! -e "$(wt_path "$PRUNE_CLEAN")" ]] && ! git -C "$AT" show-ref --quiet "refs/heads/$PRUNE_CLEAN"'
+check "S4b. ... and the start said so" 'grep -q "$PRUNE_CLEAN" <<<"$out"'
+check "S4c. the merged but dirty one is left in place, with its branch" \
+  '[[ -d "$(wt_path "$PRUNE_DIRTY")" ]] && git -C "$AT" show-ref --quiet "refs/heads/$PRUNE_DIRTY"'
+check "S4d. ... named in one line of its own" 'grep -q "$PRUNE_DIRTY" <<<"$out"'
+check "S4e. the unmerged worktree is untouched" \
+  '[[ -d "$(wt_path "$PRUNE_UNMERGED")" ]] && git -C "$AT" show-ref --quiet "refs/heads/$PRUNE_UNMERGED"'
+check "S4f. the primary checkout itself is never a candidate" \
+  '[[ -d "$AT" && "$(git -C "$AT" branch --show-current)" == "main" && -z "$(git -C "$AT" status --porcelain)" ]]'
+check "S4g. the prune pushed nothing" \
+  '[[ "$(git -C "$ORIGIN" for-each-ref --format="%(refname) %(objectname)" | sort)" == "$origin_refs_before" ]]'
+
+# The merge happened on the REMOTE and the primary's own main was never pulled — the
+# ordinary shape after a PR merges on the forge. The fixture reproduces it exactly as the
+# real loop makes it: self/pr.sh pushes the branch with `-u`, so its upstream is
+# origin/<slug>; a second clone stands in for the forge, merging into origin/main and
+# deleting the remote branch; the primary's fetch (with fetch.prune, which this checkout
+# sets as many real ones do) then drops the remote-tracking ref, leaving the branch with a
+# dangling upstream and the primary's main behind origin/main.
+#
+# `git branch -d` gets this wrong: with no upstream left it re-decides "merged" against
+# HEAD — the lagging local main — and refuses, which is how a worktree came to be removed
+# while the output claimed its branch had gone with it. The prune already proves ancestry
+# against origin/main before it deletes anything, so the delete is `git branch -D`.
+PRUNE_REMOTE="lifecycle-merged-remote"
+FORGE_CLONE="$TMP/forge-clone"
+git -C "$AT" config fetch.prune true
+( cd "$TMP" && HOME="$FAKE_HOME" env -u CLAUDE_CODE_SESSION_ID \
+    "$AT/feature-start.sh" --self "$PRUNE_REMOTE" --no-gate >/dev/null 2>&1 )
+git -C "$(wt_path "$PRUNE_REMOTE")" push -q -u origin "$PRUNE_REMOTE" 2>/dev/null
+git clone -q "$ORIGIN" "$FORGE_CLONE" 2>/dev/null
+git -C "$FORGE_CLONE" config user.email test@example.invalid
+git -C "$FORGE_CLONE" config user.name "forge"
+git -C "$FORGE_CLONE" merge -q --no-ff -m "Merge $PRUNE_REMOTE" "origin/$PRUNE_REMOTE"
+git -C "$FORGE_CLONE" push -q origin main 2>/dev/null
+git -C "$FORGE_CLONE" push -q origin --delete "$PRUNE_REMOTE" 2>/dev/null
+main_before="$(git -C "$AT" rev-parse main)"
+out="$(start lifecycle-prunes-remote --no-gate)"
+check "S4h. the primary's own main still lags origin/main — the case under test" \
+  '[[ "$(git -C "$AT" rev-parse main)" == "$main_before" ]] && ! git -C "$AT" merge-base --is-ancestor "$(git -C "$AT" rev-parse origin/main)" main'
+check "S4i. the worktree merged only on the remote is removed" \
+  '[[ ! -e "$(wt_path "$PRUNE_REMOTE")" ]]'
+check "S4j. ... and its local branch is gone, though -d would have refused it" \
+  '! git -C "$AT" show-ref --quiet "refs/heads/$PRUNE_REMOTE"'
+check "S4k. ... and the printed line says the branch was deleted, not kept" \
+  'grep -q "pruned .*$PRUNE_REMOTE and branch $PRUNE_REMOTE" <<<"$out" && ! grep -q "kept branch $PRUNE_REMOTE" <<<"$out"'
+# Level the primary's main with origin/main again and drop the prune config: the phases
+# below push main from this checkout, and a main left lagging would fail that push for a
+# reason none of them is about.
+git -C "$AT" fetch -q origin 2>/dev/null
+git -C "$AT" merge -q --ff-only origin/main 2>/dev/null
+git -C "$AT" config --unset fetch.prune
+
+# ── S5. --open runs the repo's hook with the worktree path ────────────────────
+rm -f "$OPEN_ARG_OUT"
+start lifecycle-noopen --no-gate >/dev/null 2>&1
+check "S5a. a start without --open runs no session hook" '[[ ! -e "$OPEN_ARG_OUT" ]]'
+start lifecycle-opens --open --no-gate >/dev/null 2>&1
+check "S5b. --open runs open-session.sh with the worktree path as its only argument" \
+  '[[ "$(cat "$OPEN_ARG_OUT" 2>/dev/null)" == "$(wt_path lifecycle-opens)" ]]'
+check "S5c. the seeded hook never spells a chained cd as a command" \
+  '! grep -E "^[[:space:]]*(cd|pushd)[[:space:]][^|;&]*(&&|;)" "$HERE/templates/plans/open-session.sh" "$HERE/self/open-session.sh"'
+# The one `cd <path> && <command>` in the tree is text for Terminal.app, whose shell
+# word-splits it. Unquoted, a checkout under `~/My Projects` opens the session in the
+# wrong directory — and a session is billed to the branch of the directory it was
+# launched in, so the mistake is silent and lands in the ledger.
+QUOTED_WORKTREE_IN_OSASCRIPT="cd '\$WORKTREE'"
+check "S5d. ... and both copies quote the worktree path inside the osascript string" \
+  'grep -qF "$QUOTED_WORKTREE_IN_OSASCRIPT" "$HERE/templates/plans/open-session.sh" && grep -qF "$QUOTED_WORKTREE_IN_OSASCRIPT" "$HERE/self/open-session.sh"'
+
+# ── S6. a --self start from a VENDORED agentTooling ───────────────────────────
+# The layout every consuming repo has: agentTooling one directory inside the primary
+# checkout with no .git of its own, so REPO_DIR is <primary>/agentTooling and REL_REPO is
+# `agentTooling`. Every path the start commits has to carry that prefix. The feature
+# directory gets it for free, by being stripped off an absolute path; the routing record
+# is built from a label instead, and without the prefix `git add self/routing/<id>.json`
+# matched nothing, failed, and took the whole `S: start` commit down with it — so the
+# start refused, in the one layout no scaffold exercised.
+#
+# Built beside the standalone scaffold rather than by rewriting it: $AT's first commit —
+# the harness with its stubs, templates and analysis modules, before any start ran —
+# unpacked one directory down inside a fresh consumer repo. No origin, so this start
+# branches from the local main, fetches nothing and prunes nothing.
+VENDOR="$TMP/consumer"
+VENDOR_AT="$VENDOR/agentTooling"
+VENDOR_SLUG="vendored-start"
+VENDOR_WT="$VENDOR/$WORKTREES_DIR/$VENDOR_SLUG"
+VENDOR_RECORD="$VENDOR_WT/agentTooling/self/routing/$PIN.json"
+mkdir -p "$VENDOR_AT"
+git -C "$AT" archive "$(git -C "$AT" rev-list --max-parents=0 HEAD)" | tar -x -C "$VENDOR_AT"
+printf 'a consuming repo, with agentTooling vendored one directory inside it\n' > "$VENDOR/README.md"
+git -C "$VENDOR" init -q
+git -C "$VENDOR" symbolic-ref HEAD refs/heads/main
+git -C "$VENDOR" config user.email test@example.invalid
+git -C "$VENDOR" config user.name "lifecycle test"
+git -C "$VENDOR" add -A
+git -C "$VENDOR" commit -q -m "init"
+vendor_out="$( cd "$TMP" && HOME="$FAKE_HOME" "$VENDOR_AT/feature-start.sh" --self "$VENDOR_SLUG" --no-gate 2>&1 )"; rc=$?
+check "S6a. a --self start from a vendored agentTooling exits 0 (got $rc)" '[[ $rc -eq 0 ]]'
+check "S6b. the worktree is under the CONSUMER's .worktrees/, not agentTooling's" \
+  '[[ -d "$VENDOR_WT" && ! -e "$VENDOR_AT/$WORKTREES_DIR" ]]'
+check "S6c. the feature directory is at agentTooling/self/features/<slug>/" \
+  '[[ -f "$VENDOR_WT/agentTooling/self/features/$VENDOR_SLUG/README.md" ]]'
+check "S6d. the routing record carries the agentTooling/ prefix too" '[[ -f "$VENDOR_RECORD" ]]'
+check "S6e. ... and rides the S: start commit, which did not abort on its pathspec" \
+  '[[ "$(git -C "$VENDOR_WT" log -1 --format=%s)" == "$VENDOR_SLUG: start" ]] && git -C "$VENDOR_WT" show --name-only --format= HEAD | grep -qx "agentTooling/self/routing/$PIN.json"'
+check "S6f. the start named the prefixed record in its output" \
+  'grep -q "agentTooling/self/routing/$PIN.json" <<<"$vendor_out"'
+check "S6g. the worktree is clean and the consumer's primary untouched" \
+  '[[ -z "$(git -C "$VENDOR_WT" status --porcelain)" && -z "$(git -C "$VENDOR" status --porcelain)" ]]'
 
 # ── T1. a stub brief cannot run ───────────────────────────────────────────────
 rm -f "$CLAUDE_CALLED_OUT"
@@ -353,15 +531,21 @@ out="$(close "$SLUG")"; rc=$?
 check "C2a. an unclaimed delegate naming S stops the close (got $rc)" '[[ $rc -ne 0 ]] && grep -q "$AGENT_D" <<<"$out"'
 check "C2b. ... writing nothing" '[[ ! -e "$AT/self/features/$SLUG/planning.json" && -z "$(git -C "$AT" status --porcelain)" ]]'
 check "C2c. the one briefed for S-two is not S's stray and is never named" '! grep -q "$AGENT_E" <<<"$out"'
-python3 - "$AT/self/features/$SLUG/README.md" "$AGENT_D" <<'PY'
+# The delegate's pin, and the coordinator's. The start no longer writes the second one —
+# the session that runs it is a router and is never a claimant (S1h) — so a feature that
+# really was coordinated from the primary checkout pins that session by hand, which is the
+# one case `--pin`/`"sessions"` still exists for and what C3c reads.
+python3 - "$AT/self/features/$SLUG/README.md" "$AGENT_D" "$PIN" <<'PY'
 import re, sys
-path, agent = sys.argv[1], sys.argv[2]
+path, agent, session = sys.argv[1], sys.argv[2], sys.argv[3]
 text = open(path).read()
 new, n = re.subn(r'"subagents":\s*\[\]', '"subagents": ["%s"]' % agent, text, count=1)
 assert n == 1
+new, n = re.subn(r'"sessions":\s*\[\]', '"sessions": ["%s"]' % session, new, count=1)
+assert n == 1
 open(path, "w").write(new)
 PY
-git -C "$AT" commit -q -am "$SLUG: pin the delegate" && git -C "$AT" push -q origin main 2>/dev/null
+git -C "$AT" commit -q -am "$SLUG: pin the delegate and the coordinator" && git -C "$AT" push -q origin main 2>/dev/null
 
 # ── C3. the close ─────────────────────────────────────────────────────────────
 # With the real stray pinned this must go through, and AGENT_E — still unclaimed, still
@@ -534,7 +718,9 @@ check "W1d. ... and the bound is at second resolution though the evidence carrie
 # stopped. The close falls back to its own clock and announces it.
 SLUGN="lifecycle-nobranch"
 PIN_N="nbnbnbnb-0000-0000-0000-000000000006"
-start "$SLUGN" --no-gate --session "$PIN_N" >/dev/null 2>&1
+# --pin as well as --session: pinning is opt-in now (S1h), and this phase's whole premise
+# is a feature whose only claimed session is a pinned one off the branch.
+start "$SLUGN" --no-gate --pin --session "$PIN_N" >/dev/null 2>&1
 git -C "$AT" merge -q --no-ff -m "Merge $SLUGN" "$SLUGN" && git -C "$AT" push -q origin main 2>/dev/null
 session_line "$PIN_N" "/elsewhere/repo" "main" "msg-n" "$MODEL" "2026-02-02T00:00:00.000Z" 100 3000 0 0 0 \
   > "$EP/$PIN_N.jsonl"

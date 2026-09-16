@@ -81,6 +81,22 @@ user_line() {
   printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":"ok"}}\n' "$timestamp"
 }
 
+# bash_tool_line SESSION_ID CWD BRANCH MESSAGE_ID MODEL TIMESTAMP COMMAND INPUT OUTPUT
+# One `assistant` line whose message content holds a `tool_use` block for the **Bash**
+# tool — the shape `analysis/routing.py` reads a router's `feature-start.sh <slug>` calls
+# out of, and the only transcript fact the routing record's `features_started` rests on.
+# Billable like `session_line`: a real tool call is part of a priced response, and the
+# routing record's `cost_usd` is summed over the same lines. Cache counters are zero, so
+# cost is proportional to INPUT/OUTPUT alone.
+#
+# COMMAND is embedded in JSON as-is, so it must carry no double quote or backslash.
+bash_tool_line() {
+  local session_id="$1" cwd="$2" branch="$3" message_id="$4" model="$5" timestamp="$6"
+  local command="$7" input="${8:-100}" output="${9:-200}"
+  printf '{"type":"assistant","sessionId":"%s","cwd":"%s","gitBranch":"%s","timestamp":"%s","isSidechain":false,"message":{"id":"%s","model":"%s","content":[{"type":"tool_use","name":"Bash","input":{"command":"%s"}}],"usage":{"input_tokens":%s,"output_tokens":%s,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}\n' \
+    "$session_id" "$cwd" "$branch" "$timestamp" "$message_id" "$model" "$command" "$input" "$output"
+}
+
 # subagent_prompt_line SESSION_ID AGENT_ID CWD BRANCH TIMESTAMP TEXT
 # The subagent's opening `user` line — the brief it was spawned with. Unbilled (no
 # usage); it exists so `--list-subagents` has a prompt head to print.

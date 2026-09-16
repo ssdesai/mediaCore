@@ -139,6 +139,7 @@ shell_scripts=(
   self/gate.sh
   self/pr.sh
   self/worktree-setup.sh
+  self/open-session.sh
   self/tests/level-sentinel.sh
   self/tests/tiered-gates.sh
   self/tests/cost-recovery.sh
@@ -155,6 +156,7 @@ shell_scripts=(
   self/tests/batch-sigpipe.sh
   self/tests/report-footnotes.sh
   self/tests/feature-lifecycle.sh
+  self/tests/routing-record.sh
   self/tests/worktree-claims.sh
   self/tests/recover-at-close.sh
   self/tests/recover-duration.sh
@@ -164,10 +166,12 @@ shell_scripts=(
   self/tests/template-versions.sh
   self/tests/allow-repo-commands.sh
   self/tests/hook-wiring.sh
+  self/tests/plan-numbering.sh
   run-escalation-plan.sh
   templates/plans/gate.sh
   templates/plans/pr.sh
   templates/plans/worktree-setup.sh
+  templates/plans/open-session.sh
 )
 for script in "${shell_scripts[@]}"; do
   record "bash -n $script" bash -n "$script"
@@ -202,6 +206,7 @@ record "usage limit kill self-test" bash self/tests/usage-limit-kill.sh
 record "batch sigpipe self-test" bash self/tests/batch-sigpipe.sh
 record "report footnotes self-test" bash self/tests/report-footnotes.sh
 record "feature lifecycle self-test" bash self/tests/feature-lifecycle.sh
+record "routing record self-test" bash self/tests/routing-record.sh
 record "worktree claims self-test" bash self/tests/worktree-claims.sh
 record "recover at close self-test" bash self/tests/recover-at-close.sh
 record "recover duration self-test" bash self/tests/recover-duration.sh
@@ -217,6 +222,9 @@ record "template versions self-test" bash self/tests/template-versions.sh
 # execution, and the second asserts the wiring never removes a repo's own settings.
 record "allow repo commands self-test" bash self/tests/allow-repo-commands.sh
 record "hook wiring self-test" bash self/tests/hook-wiring.sh
+# The corpus numbers its plans as one sequence (self/PROJECT_FACTS.md), and the start
+# script is the only thing that hands out the next number.
+record "plan numbering self-test" bash self/tests/plan-numbering.sh
 
 echo "=== gate: python syntax ==="
 # Compiles each file independently — it does NOT exercise the bare cross-imports
@@ -226,6 +234,15 @@ record "py_compile analysis" python3 -m py_compile analysis/*.py
 # The hook keeps a .sh name so its settings.json entry reads as a hook script; it is
 # Python, and this is the one place its syntax is checked without running it.
 record "py_compile hooks" python3 -m py_compile hooks/wire-settings.py hooks/allow-repo-commands.sh
+
+echo "=== gate: permission policy ==="
+# This checkout's .claude/settings.json is not hand-authored: hooks/wire-settings.py
+# --self writes it, exactly as sync-plans.sh writes a consuming repo's (hooks/README.md).
+# Blocking, because a committed file that has drifted from the helper is a policy nobody
+# is enforcing — the deny rules a session actually loads are whatever the file says.
+# -B: leave no hooks/__pycache__ behind in the tree the gate is checking.
+record "permission policy wired into .claude/settings.json" \
+  python3 -B hooks/wire-settings.py --self --repo "$REPO_DIR" --check
 
 echo "=== gate: rate table ==="
 # analysis/README.md makes this step 1 of the weekly flow. Informational by design:

@@ -109,7 +109,7 @@ ENCLOSING_NAME="$(basename "$TMP")"
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
 
-for f in pricing.py roots.py transcript.py capture_planning.py; do
+for f in pricing.py roots.py transcript.py capture_planning.py routing.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f"
 done
 
@@ -577,7 +577,7 @@ VSESSION="55555555-0000-0000-0000-000000000005"
 VBRANCH="vendoredBranch"
 
 mkdir -p "$VAT/analysis" "$VAT/self/features" "$VHOST/plans/features"
-for f in pricing.py roots.py transcript.py capture_planning.py; do
+for f in pricing.py roots.py transcript.py capture_planning.py routing.py; do
   cp "$HERE/analysis/$f" "$VAT/analysis/$f"
 done
 git init -q "$VHOST" >/dev/null 2>&1
