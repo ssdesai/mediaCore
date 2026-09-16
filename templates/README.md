@@ -15,10 +15,11 @@ plans/BACKLOG.md             repo-owned — seeded once, never overwritten
 plans/gate.sh                repo-owned — seeded once, never overwritten
 plans/pr.sh                  repo-owned — seeded once, never overwritten
 plans/worktree-setup.sh      repo-owned — seeded once, never overwritten
+plans/open-session.sh        repo-owned — seeded once, never overwritten
 ```
 
 `plans/TEMPLATE_VERSIONS` is not synced anywhere: it is the version-and-hash table for
-the three repo-owned scripts, described under `template-version` below.
+the four repo-owned scripts, described under `template-version` below.
 
 The five stubs are repo-agnostic on purpose: each describes its folder and points at
 `agentTooling/RUNNER.md` for the execution model, so that model is documented once
@@ -38,8 +39,8 @@ unanchored pattern would silently stop the next one being added. The file is a r
 `.gitignore` while it sits here too, which is harmless: nothing under `templates/plans/`
 matches those patterns.
 
-`gate.sh`, `pr.sh` and `worktree-setup.sh` are seeded into `plans/` once and then owned
-by the repo. The gate
+`gate.sh`, `pr.sh`, `worktree-setup.sh` and `open-session.sh` are seeded into `plans/`
+once and then owned by the repo. The gate
 skeleton takes an optional level label (`gate.sh NN`) and writes `gate-report.NN.txt`
 beside `gate-report.txt`; the PR skeleton creates **no branch at all** — the feature
 already ran on its own, in the worktree `../feature-start.sh` made — and opens the PR
@@ -49,10 +50,17 @@ waiting for a merge. `worktree-setup.sh` is a no-op skeleton whose comments list
 a venv per worktree (never shared: an editable install points at whichever tree ran it
 last), `npm install`, a per-worktree dev port; `../feature-start.sh` runs it inside
 every new feature worktree and stops the start if it exits non-zero
-(`../LIFECYCLE.md`). Repos that seeded any of the three before it existed merge the
+(`../LIFECYCLE.md`). `open-session.sh` is the hook the same script runs under `--open`,
+with the new worktree's absolute path as its only argument: its job is to put a
+coordinator session *inside* the worktree, because a session is billed to the branch of
+the directory it was launched in and that is where a feature's work is claimed with no
+pin. It ships opening a Terminal.app window running `claude` through `osascript`, and is
+the one place in this subtree where a `cd <path> && <command>` string may be written —
+the string is handed to Terminal.app, not to the Bash tool, and its own header says so.
+Repos that seeded any of the four before it existed merge the
 change by hand — see `../README.md` → "Updating".
 
-The three seeded scripts carry a `# template-version: N` line. `sync-plans.sh --check`
+The four seeded scripts carry a `# template-version: N` line. `sync-plans.sh --check`
 compares a seeded copy's line against the template's and reports `DRIFT` when it is behind.
 Bump the template's number whenever the body below `REPO-SPECIFIC` changes in a way
 seeded copies must merge by hand, and say what changed in the README's "Adopting …"

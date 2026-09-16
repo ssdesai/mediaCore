@@ -11,8 +11,8 @@ set -euo pipefail
 # Copying once solves nothing; syncing keeps one source of truth.
 #
 # Overwriting the generated stubs is safe because they carry no repo-specific content;
-# the five files that do — PROJECT_FACTS.md, BACKLOG.md, gate.sh, pr.sh and
-# worktree-setup.sh — are seeded from the skeleton on first run and never overwritten
+# the six files that do — PROJECT_FACTS.md, BACKLOG.md, gate.sh, pr.sh,
+# worktree-setup.sh and open-session.sh — are seeded from the skeleton on first run and never overwritten
 # again. `--check` reports on both halves without writing anything: STALE or missing
 # generated stubs, and repo-owned scripts whose template-version line trails the
 # template's, plus an unfilled PROJECT_FACTS.md and a missing BACKLOG.md. The write path
@@ -20,8 +20,8 @@ set -euo pipefail
 # wrote are always in sync.
 #
 # Beyond plans/, one file in .claude/ is maintained: the PreToolUse hook entry pointing at
-# hooks/allow-repo-commands.sh, which is what stops blockReadsOutsideWorkingDirectories
-# from prompting on every `cd X && cmd`. It is merged, never copied — see hooks/README.md.
+# hooks/allow-repo-commands.sh, which approves repo-confined reads and tests and denies a
+# chained `cd`. It is merged, never copied — see hooks/README.md.
 # A repo that hand-edits or removes the entry keeps its version; nothing is re-added.
 #
 # Scope: apart from that one entry, this writes into the CONSUMING repo's plans/ only.
@@ -53,9 +53,12 @@ WIRE_SETTINGS="$SCRIPT_DIR/hooks/wire-settings.py"
 GENERATED=(README.md interactive/README.md features/README.md features/TEMPLATE.md .gitignore)
 
 # The repo-owned scripts: seeded once from the skeleton, then never overwritten again.
+# `open-session.sh` is what `feature-start.sh --open` runs to put a coordinator session
+# inside the new worktree; it is repo-owned because how a session is opened is a
+# per-machine, per-repo choice (a terminal, a tmux window, an editor).
 # Checked by template-version rather than by content, since a repo customizes
 # everything below each script's REPO-SPECIFIC marker.
-REPO_OWNED_SCRIPTS=(gate.sh pr.sh worktree-setup.sh)
+REPO_OWNED_SCRIPTS=(gate.sh pr.sh worktree-setup.sh open-session.sh)
 
 # Repo-owned docs seeded once and then reported by PRESENCE alone. An entry written into
 # one is content, not drift, and an EMPTY one is the correct steady state — a repo that
@@ -84,6 +87,7 @@ repo_owned_created_hint() {
     gate.sh) echo "fill in the REPO-SPECIFIC sections before relying on it" ;;
     pr.sh) echo "check its forge CLI before relying on it; it bases the PR on whatever branch is checked out" ;;
     worktree-setup.sh) echo "fill in this repo's per-worktree setup (venv, npm install, dev port)" ;;
+    open-session.sh) echo "it opens a Terminal.app window running claude; swap in this repo's launcher" ;;
   esac
 }
 
