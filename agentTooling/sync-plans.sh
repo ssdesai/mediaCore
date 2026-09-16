@@ -19,9 +19,15 @@ set -euo pipefail
 # below is unchanged and ends with that same repo-owned report, since the stubs it just
 # wrote are always in sync.
 #
-# Scope: this writes into the CONSUMING repo's plans/ only. agentTooling's own corpus
-# under self/ is hand-written and is never generated from templates/ — every stub here
-# points back up at ../agentTooling/…, which is wrong from inside agentTooling, and this
+# Beyond plans/, one file in .claude/ is maintained: the PreToolUse hook entry pointing at
+# hooks/allow-repo-commands.sh, which is what stops blockReadsOutsideWorkingDirectories
+# from prompting on every `cd X && cmd`. It is merged, never copied — see hooks/README.md.
+# A repo that hand-edits or removes the entry keeps its version; nothing is re-added.
+#
+# Scope: apart from that one entry, this writes into the CONSUMING repo's plans/ only.
+# agentTooling's own corpus under self/ is hand-written and is never generated from
+# templates/ — every stub here points back up at ../agentTooling/…, which is wrong from
+# inside agentTooling, and this
 # directory is the source those stubs point at rather than a copy of it. There is no
 # --self flag; there would be nothing to generate.
 
@@ -31,6 +37,11 @@ TEMPLATE_DIR="$SCRIPT_DIR/templates/plans"
 PLANS_DIR="$REPO_DIR/plans"
 USAGE_RC=2
 STATUS_COL_WIDTH=11
+
+# The Claude Code hook wiring. Merged into the repo's .claude/settings.json rather than
+# copied from a template: that file is repo-owned and may hold unrelated settings, so the
+# helper appends one PreToolUse entry when absent and touches nothing else.
+WIRE_SETTINGS="$SCRIPT_DIR/hooks/wire-settings.py"
 
 # The stubs that are regenerated every run. PROJECT_FACTS.md is deliberately absent.
 #
@@ -137,14 +148,32 @@ check_repo_owned() {
   return "$count"
 }
 
+# sync_hook <--check|--write> — one status line for the PreToolUse hook wiring in
+# .claude/settings.json, from the helper that owns the merge. Returns the count of items
+# needing attention (0 or 1), like the checks above.
+sync_hook() {
+  local mode="$1" out rc=0
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "SKIPPED" ".claude/settings.json (python3 not found; hook not wired)"
+    return 1
+  fi
+  if [[ ! -f "$WIRE_SETTINGS" ]]; then
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "SKIPPED" ".claude/settings.json (hooks/wire-settings.py missing; hook not wired)"
+    return 1
+  fi
+  out="$(python3 "$WIRE_SETTINGS" --repo "$REPO_DIR" "$mode")" || rc=$?
+  printf "  %-${STATUS_COL_WIDTH}s%s\n" "${out%%$'\t'*}" "${out#*$'\t'}"
+  return "$rc"
+}
+
 # finish <count> — the last line and exit code, shared by --check and the write path.
 finish() {
   local count="$1"
   if (( count == 0 )); then
-    echo "plans/ is in sync with agentTooling/templates/."
+    echo "plans/ and the hook wiring are in sync with agentTooling/."
     exit 0
   fi
-  echo "plans/ needs attention: $count item(s) above."
+  echo "needs attention: $count item(s) above."
   exit 1
 }
 
@@ -165,6 +194,7 @@ if [[ "$MODE" == "check" ]]; then
   count=0
   rc=0; check_stubs || rc=$?; count=$((count + rc))
   rc=0; check_repo_owned || rc=$?; count=$((count + rc))
+  rc=0; sync_hook --check || rc=$?; count=$((count + rc))
   finish "$count"
 fi
 
@@ -205,6 +235,10 @@ for f in "${REPO_OWNED_SCRIPTS[@]}"; do
   fi
 done
 
+hook_rc=0
+sync_hook --write || hook_rc=$?
+
 count=0
 rc=0; check_repo_owned || rc=$?; count=$((count + rc))
+count=$((count + hook_rc))
 finish "$count"

@@ -135,7 +135,7 @@ written and confirmed red before the fix.
   "plans": ["86-review-opus"],
   "branches": ["stream-capture-file-first"],
   "base": "main",
-  "session_window": {"from": "2026-09-06T15:06:37Z", "to": "2026-09-06T16:27:35Z"},
+  "session_window": {"from": "2026-09-06T15:06:37Z", "to": "2026-09-06T16:05:10Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": ["2d8b1236-3e77-450f-bc9e-8165c0cf9f9c"],

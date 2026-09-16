@@ -233,14 +233,27 @@ The manifest ends with a machine-readable fence:
   either drops a real session or double-counts one. Derive each bound from the gap between
   the adjacent sessions' actual timestamps rather than picking a plausible day.
 
-  **Set `to` as soon as the feature is done.** `"to": null` is correct only while the
-  feature is still being planned. Two open-ended windows on a shared branch each claim
+  **`feature-close.sh` sets `to`, from evidence — do not hand-write one.** `"to": null`
+  means "still in flight", and the close is what shuts it: one second past the last
+  instant of the sessions this feature's `branches` and `session_window` select and of
+  their subagents, stamped before the capture so the share split runs against the real
+  bound (`LIFECYCLE.md` → step 6). Write one by hand only for a feature the close will
+  never run over, and never widen one already set — `analysis/manifest.py set-window-to
+  --tighten` is the only path that may move it, and only inwards. What still goes wrong
+  is a window left open after the work is done: two open-ended windows on a shared branch
+  each claim
   the other's sessions, and the cost lands in both totals with nothing visibly wrong —
   this is not hypothetical, it is how `discogs-field-reconciliation` and
   `discogs-provenance-and-packaging` came to report the same $37.14 apiece.
   `analysis/capture_planning.py` now warns when two manifests share a branch *and* their
   windows intersect; a `to` bound is how you answer it. Because `to` is exclusive, the
-  next feature's `from` may be the same instant — chained windows are exactly disjoint.
+  next feature's `from` may be the same instant — chained windows are exactly disjoint,
+  which is what stamping from evidence is for: a `to` taken from the close's own clock
+  makes every feature started from one coordinator end at the same instant, so the windows
+  nest instead of chaining.
+  An open `to` on a session another manifest also claims now takes a **share** of
+  everything from there to the end of the transcript, rather than the whole of it — still
+  wrong, but no longer doubled.
 - `exclude_sessions` — optional escape hatch for sessions inside that window that still
   belong to a different feature. Both `session_window` and `exclude_sessions` are
   optional and usually absent.
@@ -251,7 +264,11 @@ The manifest ends with a machine-readable fence:
   in that checkout, a pin names one. A pinned session that branch and window would also
   select is priced once, and each `planning.json` entry records `selected_by` (`pinned`
   or `branch`) and the `cwd` it was launched in. A pin that is also in
-  `exclude_sessions` warns, and the pin wins. Find an id with
+  `exclude_sessions` warns, and the pin wins. A session more than one manifest claims is
+  now **split** between them by the windows they claim it with, so `session_window` on a
+  pinned session has become load-bearing where it used to be inert — a wrong bound moves
+  money between features rather than merely widening a net; see `analysis/README.md` for
+  the split rule. Find an id with
   `capture_planning.py --list-sessions [--unclaimed] [--since <date>]`.
 - `subagents` — optional. Agent ids (`agent-<id>.jsonl` under the parent session's
   `subagents/` directory) to claim outright. Needed only when the delegate's parent was

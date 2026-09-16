@@ -803,22 +803,57 @@ def multi_sidecar_stems(loaded_plans, usage_index):
 
 
 def compute_shared_sessions(planning_data):
-    """`[{session_id, cost_usd, also_claimed_by}]` for every session in this feature's
-    `planning.json` that another feature also counts — `capture_planning.py` writes
-    `also_claimed_by` onto the entry, and this is what carries it into the report.
+    """`[{session_id, cost_usd, session_cost_usd, also_claimed_by}]` for every session in
+    this feature's `planning.json` that another feature also counts.
 
-    A coordinator that ran seven features is priced in full by each of their closes, so
-    seven reports sum its cost and, before this, none of them said so. There is no
-    apportionment and there will not be one: the transcript cannot say which feature a
-    message served, and a split by message count would be a number nobody measured. The
-    dollars are the session's own `priced[]` rows — its delegates are excluded, since a
-    subagent belongs to exactly one feature by the ledger's refusal.
+    `also_claimed_by` here is the **union** of the entry's own `also_claimed_by` (written
+    by `annotate_frozen_record` from the claims ledger, so only features that have already
+    captured) and the non-`"self"` features named in its `share_basis` (the claim set the
+    split actually used, which reaches co-claimants still in flight through their
+    manifests alone). Either one alone under-reports: a divided `cost_usd` with no
+    disclosure beside it is the one outcome this feature must never produce.
 
-    Read with `.get(… ) or []` throughout: every `planning.json` frozen before this
-    existed has neither key, and `--all` ranks those beside new ones."""
+    A coordinator that ran seven features used to be priced in full by each of their
+    closes, so seven reports summed its cost and none of them said so. That objection no
+    longer holds: the split is not by message count — a number nobody measured — but by
+    the claims themselves, each feature's own `session_window`, which are facts the
+    manifests already state. The claims partition the transcript, so the shares plus the
+    unclaimed remainder equal the session's own cost exactly. Where claims overlap, the
+    even division among the overlapping claimants is an estimator rather than a fact,
+    which is why the entry's `share_basis` records what it used. The dollars here are the
+    session's own `priced[]` rows — its delegates are excluded, since a subagent belongs
+    to exactly one feature by the ledger's refusal.
+
+    `cost_usd` is this feature's own share; `session_cost_usd` is the session's
+    **undivided** cost, copied off the entry, and is omitted when the record predates the
+    split. The two are not the same figure and must not be described as one: the
+    footnote's whole point is `cost_usd` *of* `session_cost_usd`. Read with
+    `.get(… ) or []` throughout, and `session_cost_usd`
+    with a bare `.get(…)`: every `planning.json` frozen before this existed has none of
+    the new keys, and `--all` ranks those beside new ones."""
     shared = []
     for entry in planning_data.get("sessions") or []:
-        also_claimed_by = entry.get("also_claimed_by") or []
+        # Two sources, unioned, because they are populated at different times and the
+        # narrower one alone loses exactly the case this feature must not be silent
+        # about. `also_claimed_by` is the claims LEDGER's answer, so it names only
+        # features that have already captured; `share_basis` is the answer the split
+        # itself used, which reaches co-claimants still in flight through their
+        # manifests. A feature that closes while a co-claimant has no `planning.json`
+        # yet therefore has a halved `cost_usd` and an empty `also_claimed_by` — keying
+        # the disclosure off the ledger alone would print no footnote at all beside a
+        # figure that had just been divided, which is a worse failure than the
+        # over-count this feature removed: that one announced itself.
+        also_claimed_by = list(entry.get("also_claimed_by") or [])
+        seen = set(also_claimed_by)
+        for claim in entry.get("share_basis") or []:
+            # `source: "self"` is this feature's own claim, always present and never a
+            # co-claimant; anything else is another feature the split divided against.
+            if claim.get("source") == "self":
+                continue
+            feature = claim.get("feature")
+            if feature and feature not in seen:
+                seen.add(feature)
+                also_claimed_by.append(feature)
         if not also_claimed_by:
             continue
         session_id = entry.get("session_id")
@@ -827,11 +862,15 @@ def compute_shared_sessions(planning_data):
             for row in (planning_data.get("priced") or [])
             if row.get("session_id") == session_id and not row.get("agent_id")
         )
-        shared.append({
+        record = {
             "session_id": session_id,
             "cost_usd": cost_usd,
             "also_claimed_by": list(also_claimed_by),
-        })
+        }
+        session_cost_usd = entry.get("session_cost_usd")
+        if session_cost_usd is not None:
+            record["session_cost_usd"] = session_cost_usd
+        shared.append(record)
     return shared
 
 
@@ -1887,18 +1926,38 @@ def render_report_md(data):
         # know is that the same figure appears in somebody else's report too, which is a
         # fact about the corpus rather than about this cell. Absent entirely when no
         # session is shared, so an ordinary feature's report is unchanged.
-        detail = "; ".join(
-            f"`{s['session_id']}` (${s['cost_usd']:.4f}), also counted by "
-            + ", ".join(s["also_claimed_by"])
-            for s in shared
-        )
-        lines.append("")
-        lines.append(
-            f"Sessions this feature does not count alone: {detail}. Each is priced here "
-            f"in full and in full there: a transcript cannot say which feature a message "
-            f"served, so nothing is apportioned, and summing these features' totals "
-            f"counts it once per feature."
-        )
+        #
+        # Rendered as two separate paragraphs rather than one conditional string: a
+        # session with no session_cost_usd predates the split and is still counted in
+        # full, and "in full" must never land beside a figure that was actually divided.
+        split = [s for s in shared if "session_cost_usd" in s]
+        unsplit = [s for s in shared if "session_cost_usd" not in s]
+        if split:
+            detail = "; ".join(
+                f"`{s['session_id']}` (this feature's share ${s['cost_usd']:.4f} of "
+                f"${s['session_cost_usd']:.4f}), also claimed by "
+                + ", ".join(s["also_claimed_by"])
+                for s in split
+            )
+            lines.append("")
+            lines.append(
+                f"Sessions this feature shares: {detail}. The shares of all claimants "
+                f"sum to the session's own cost, so summing these features' totals now "
+                f"counts it once, not once per feature."
+            )
+        if unsplit:
+            detail = "; ".join(
+                f"`{s['session_id']}` (${s['cost_usd']:.4f}), also counted by "
+                + ", ".join(s["also_claimed_by"])
+                for s in unsplit
+            )
+            lines.append("")
+            lines.append(
+                f"Sessions this feature does not count alone: {detail}. Each is priced "
+                f"here in full and in full there: a transcript cannot say which feature a "
+                f"message served, so nothing is apportioned, and summing these features' "
+                f"totals counts it once per feature."
+            )
     multi = cost.get("multi_sidecar_stems") or []
     if multi:
         # find_orphan_usage cannot see a same-stem twin — the stem IS in the manifest,

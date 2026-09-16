@@ -78,7 +78,7 @@ FEATURE_DIR="$AT/self/features/$SLUG"
 BRANCH="tzBranch"
 MODEL="claude-sonnet-5"
 FAKE_HOME="$TMP/home"
-PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$AT" | tr '/' '-')"
+PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$AT" | tr '/.' '--')"
 mkdir -p "$PROJECTS" "$FEATURE_DIR"
 
 write_manifest() {

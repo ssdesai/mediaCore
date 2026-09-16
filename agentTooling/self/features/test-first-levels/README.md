@@ -54,7 +54,7 @@ a rejected alternative rather than the shipped rule.
   "slug": "test-first-levels",
   "plans": ["65-runner-sentinels-sonnet", "66-batch-level-loop-sonnet", "67-gate-label-and-skip-haiku", "68-doctrine-levels-sonnet", "69-verify-sonnet", "70-review-opus"],
   "branches": ["test-first-levels"],
-  "session_window": {"from": "2026-08-20T00:00:00Z", "to": null},
+  "session_window": {"from": "2026-08-20T00:00:00Z", "to": "2026-08-20T18:12:17Z"},
   "exclude_sessions": []
 }
 ```

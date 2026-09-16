@@ -84,7 +84,7 @@ WINDOW_FROM="2026-07-01T00:00:00Z"
 WINDOW_TO="2026-07-05T00:00:00Z"
 
 FAKE_HOME="$TMP/home"
-PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$AT" | tr '/' '-')"
+PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$AT" | tr '/.' '--')"
 mkdir -p "$PROJECTS" "$FEATURE_DIR"
 
 # write_manifest [PINS_JSON] — PINS_JSON is the `subagents` array, default empty.
@@ -284,7 +284,9 @@ write_manifest "[\"$AGENT_3\"]"
 
 # ── 11. the claims ledger records every priced subagent ───────────────────────
 LEDGER="$FAKE_HOME/.claude/subagent-claims.json"
-REPO_NAME="$(basename "$AT")"   # the fixture copy has no .git, so identity falls back to the directory name
+# The self corpus's identity is declared (roots.SELF_CORPUS_IDENTITY) and its
+# repo_display_name is `agentTooling`, which is what this fixture's copy is called.
+REPO_NAME="$(basename "$AT")"
 # The ledger has two sections — `subagents` (one claimant per id) and `sessions` (a list,
 # since a coordinator spans features); this reads the first by name rather than tolerating
 # the legacy flat shape, so a regression to it fails here. claims-ledger.sh owns the

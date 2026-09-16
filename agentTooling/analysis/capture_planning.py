@@ -44,6 +44,7 @@ Usage: python3 agentTooling/analysis/capture_planning.py <slug>
        python3 agentTooling/analysis/capture_planning.py --all [--recapture]
        python3 agentTooling/analysis/capture_planning.py --list-subagents [--since YYYY-MM-DD]
        python3 agentTooling/analysis/capture_planning.py --list-subagents --unclaimed --for <repo>/<slug>
+       python3 agentTooling/analysis/capture_planning.py --last-branch-instant <slug>
 """
 
 from __future__ import annotations
@@ -52,23 +53,43 @@ import argparse
 import json
 import re
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from pricing import RATES_VERIFIED, compute_cost, is_rates_stale
-from roots import add_self_flag, all_features_roots, features_root, session_root
-from transcript import add_usage, iter_billable_messages, to_utc
+from roots import (
+    SELF_CORPUS_IDENTITY, add_self_flag, all_features_roots, features_root, session_root,
+)
+from transcript import add_usage, iter_billable_messages, iter_billable_messages_at, to_utc
+
+# Feature worktree layout (LIFECYCLE.md): the directory under the primary checkout that
+# holds every feature's worktree. feature-start.sh and feature-close.sh each hold the same
+# name in one constant of their own; the three move together.
+WORKTREES_DIR_NAME = ".worktrees"
+
+# Claude Code's project-directory naming: every one of these characters in the launch cwd
+# becomes `TRANSCRIPT_DIR_MANGLE_TO`, which is why `<R>/.worktrees/<slug>` is filed under
+# `…-<R>--worktrees-<slug>`.
+TRANSCRIPT_DIR_MANGLED_CHARS = "/."
+TRANSCRIPT_DIR_MANGLE_TO = "-"
 
 
 def transcript_dir_name(repo_dir):
     """cwd path -> its transcript directory name under ~/.claude/projects/,
-    e.g. /Users/x/dev/vinylCatalogue -> -Users-x-dev-vinylCatalogue.
+    e.g. /Users/x/dev/vinylCatalogue -> -Users-x-dev-vinylCatalogue, and a feature
+    worktree /Users/x/dev/vinylCatalogue/.worktrees/foo -> …-vinylCatalogue--worktrees-foo.
+    Claude Code turns every character in `TRANSCRIPT_DIR_MANGLED_CHARS` into `-`; mangling
+    only `/`, as this did before, left a `.` anywhere in the primary's own path in the
+    fragment, which then matched no project directory at all.
 
     For matching ~/.claude/projects/ directory *names* only. The mangled form is
     not a valid prefix or substring test against a real filesystem path (a `cwd`
     value) — see the repo_match fallback in main(), which uses the unmangled
     session root for that instead."""
-    return str(repo_dir).replace("/", "-")
+    return "".join(
+        TRANSCRIPT_DIR_MANGLE_TO if char in TRANSCRIPT_DIR_MANGLED_CHARS else char
+        for char in str(repo_dir)
+    )
 
 
 def parse_manifest(readme_path):
@@ -135,6 +156,20 @@ def check_naive_bounds(manifest):
     return warnings
 
 
+def is_empty_window(window):
+    """Whether a normalized window is proven to match nothing: `from >= to`.
+
+    The rule lives here once because two callers need the same answer and would drift
+    apart if each spelled it out. `check_empty_window` turns it into the warning a
+    malformed manifest deserves; `share_owners` uses it to keep such a claim out of the
+    head-stretch fallback, which is the one place a window that matches nothing could
+    still be handed time. Both bounds must be present — an open-ended window is
+    unbounded, not empty.
+    """
+    frm, to = window.get("from"), window.get("to")
+    return frm is not None and to is not None and frm >= to
+
+
 def check_empty_window(window):
     """Warn when a normalized `session_window` cannot match anything: `from >= to`.
 
@@ -159,16 +194,20 @@ def check_empty_window(window):
     window is empty, and that is worth hearing about on every pass, not only on the run
     that would rewrite it.
     """
-    frm, to = window.get("from"), window.get("to")
-    if frm is None or to is None or frm < to:
+    if not is_empty_window(window):
         return []
+    frm, to = window.get("from"), window.get("to")
     relation = "equals" if frm == to else "is later than"
     return [
         f"session_window is empty — `from` ({frm.isoformat()}) {relation} `to` "
         f"({to.isoformat()}), and the window is half-open, so it matches no session "
         "at all and this feature will capture as $0.00 regardless of what is on its "
-        "branch. Widen the window to cover the sessions you mean; to chain onto a "
-        "neighbouring feature, give this one a `from` at the neighbour's `to`"
+        "branch. A session named in `sessions` is pinned by id and admitted without "
+        "consulting the window, so those are still captured — in full while no other "
+        "feature claims one, and at $0.00 as soon as one does, since an empty window "
+        "can own no share of a session it is split against. Widen the window to cover "
+        "the sessions you mean; to chain onto a neighbouring feature, give this one a "
+        "`from` at the neighbour's `to`"
     ]
 
 
@@ -272,18 +311,65 @@ def subagent_transcript_paths(transcript_dir, session_id):
     return sorted(subagents_dir.glob("agent-*.jsonl"))
 
 
-def cwd_under_any(lines, roots):
-    """Whether any line's cwd is one of `roots` or a path beneath one. The roots are the
-    primary checkout and the feature's own worktree `<primary>-<slug>` (LIFECYCLE.md): a
-    worktree is a *sibling* of the primary, so a prefix test on the primary alone dropped
-    every session launched in one — the bug the triage under self/ measured."""
+def feature_worktree_path(primary, slug):
+    """The feature's worktree as `feature-start.sh` creates it, `<primary>/.worktrees/<slug>`
+    (LIFECYCLE.md). Derived from the slug rather than looked up, so it still resolves after
+    `feature-close.sh` has removed the worktree."""
+    return f"{primary}/{WORKTREES_DIR_NAME}/{slug}"
+
+
+def legacy_worktree_path(primary, slug):
+    """The sibling `<primary>-<slug>` `feature-start.sh` created before worktrees moved
+    inside the primary. A feature started then keeps it until it closes, and it stays
+    claimable for good: a `--recapture` of such a feature that could not claim it would
+    drop every session launched there and shrink the frozen cost."""
+    return f"{primary}-{slug}"
+
+
+def claim_roots(primary, slug):
+    """`(roots, fences)` for `cwd_under_any`, for feature `slug`. The roots are where a
+    session it may claim was launched: the primary checkout, this feature's worktree and
+    its legacy sibling. The fence is the one directory under a root that is NOT
+    claimable, `<primary>/.worktrees`, which holds every other feature's worktree — under
+    the primary, so the primary root alone would hand every feature's sessions to every
+    other feature."""
+    roots = (primary, feature_worktree_path(primary, slug), legacy_worktree_path(primary, slug))
+    fences = (f"{primary}/{WORKTREES_DIR_NAME}",)
+    return roots, fences
+
+
+def path_at_or_under(path, base):
+    """Whether `path` is `base` or a path beneath it — a component test, so `<R>-x` is not
+    under `<R>`."""
+    return path == base or path.startswith(base + "/")
+
+
+def cwd_claimable(cwd, roots, fences=()):
+    """Whether a launch directory is claimable: the most specific — longest — of `roots`
+    and `fences` that `cwd` is at or under must be a root. So `<R>/.worktrees/<other>`
+    falls to the fence `<R>/.worktrees` although it is also under the root `<R>`, while
+    `<R>/.worktrees/<slug>` is claimed by its own, longer root. A cwd under neither is not
+    claimable."""
+    best_len = -1
+    best_is_root = False
+    for base, is_root in [(root, True) for root in roots] + [(fence, False) for fence in fences]:
+        if path_at_or_under(cwd, base) and len(base) > best_len:
+            best_len, best_is_root = len(base), is_root
+    return best_is_root
+
+
+def cwd_under_any(lines, roots, fences=()):
+    """Whether any line's cwd is claimable from `roots` past `fences` (`cwd_claimable`;
+    `claim_roots` builds both for a feature). A prefix test on the primary alone once
+    dropped every session launched in a sibling worktree — the bug the triage under self/
+    measured — and, with worktrees nested inside the primary, would now claim every other
+    feature's; the fence is what stops the second."""
     for line in lines:
         cwd = line.get("cwd")
         if not isinstance(cwd, str):
             continue
-        for root in roots:
-            if cwd == root or cwd.startswith(root + "/"):
-                return True
+        if cwd_claimable(cwd, roots, fences):
+            return True
     return False
 
 
@@ -324,11 +410,13 @@ def find_pinned_elsewhere(agent_id, skip_dirs):
 
 def price_subagent(totals, session_id, agent_id, agent_lines):
     """Add every billable message of one subagent transcript to `totals` under
-    (session_id, agent_id, model, True). Every line of a subagent transcript says
+    (session_id, agent_id, model, True, ()). Every line of a subagent transcript says
     `isSidechain: true`, so the flag is pinned here rather than read — a subagent is
-    sidechain cost by definition, whatever an individual line says."""
+    sidechain cost by definition, whatever an individual line says. The trailing `()`
+    is the same empty refs tuple an unshared session's key carries: a subagent belongs
+    to exactly one feature by the claims-ledger refusal, so it is never split."""
     for model, usage, _ in iter_billable_messages(agent_lines):
-        add_usage(totals, (session_id, agent_id, model, True), usage)
+        add_usage(totals, (session_id, agent_id, model, True, ()), usage)
 
 
 def agent_start_of(agent_lines):
@@ -389,6 +477,11 @@ CLAIMS_LEDGER_NAME = "subagent-claims.json"
 # id is a hex token and can never collide with either key.
 LEDGER_SUBAGENTS_KEY = "subagents"
 LEDGER_SESSIONS_KEY = "sessions"
+# A session claim records the window it was claimed with, so a capture in another repo
+# can split the session against it. A claim written before this field exists is read as
+# unbounded, which reproduces the old "counts the whole transcript" behaviour as an even
+# split rather than silently dropping the claimant.
+LEDGER_CLAIM_WINDOW_KEY = "window"
 # The first line of a delegate's brief names the feature it is for (ORCHESTRATION.md):
 #   feature: <repo>/<slug>
 BRIEF_FEATURE_RE = re.compile(r"^\s*feature:\s*([\w.-]+)/([\w.-]+)\s*$", re.MULTILINE)
@@ -445,19 +538,25 @@ def save_ledger(claims, session_claims):
     path.write_text(json.dumps(ledger, indent=2) + "\n")
 
 
-def repo_identity(sessions_dir):
+def repo_identity(checkout_dir):
     """What makes two captures 'the same repo' in the ledger: the origin URL, which
-    survives worktrees and scratch clones; the directory name when there is none."""
+    survives worktrees and scratch clones; the directory name when there is none.
+
+    Asked of a *checkout* — "which repo is this directory in" — which is why the
+    parameter is named for one. A corpus's identity goes through `corpus_identity`
+    instead, which declares the self corpus's rather than deriving it; a vendored
+    `agentTooling/` has no `.git` and this would walk up out of it and answer with the
+    consumer's origin. `corpus_identity` is this function's only caller."""
     try:
         url = subprocess.run(
-            ["git", "-C", str(sessions_dir), "remote", "get-url", "origin"],
+            ["git", "-C", str(checkout_dir), "remote", "get-url", "origin"],
             capture_output=True, text=True, timeout=10,
         )
         if url.returncode == 0 and url.stdout.strip():
             return url.stdout.strip()
     except (OSError, subprocess.SubprocessError):
         pass
-    return Path(sessions_dir).name
+    return Path(checkout_dir).name
 
 
 def repo_display_name(identity):
@@ -466,6 +565,43 @@ def repo_display_name(identity):
     `musicMap`; the identity itself when it is already a bare directory name."""
     tail = identity.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
     return tail[:-len(".git")] if tail.endswith(".git") else tail
+
+
+def corpus_identity(features_dir):
+    """Which repo the corpus under `features_dir` belongs to — the `repo` half of the
+    `(repo, slug)` key the claims ledger records and the session share split dedupes on.
+    ONE rule, so that a feature cannot enter the ledger under one identity and be looked
+    for under another.
+
+    Declared for agentTooling's own corpus (`roots.SELF_CORPUS_IDENTITY`), derived from
+    the enclosing checkout's origin for every other. The self corpus cannot be derived:
+    `<consumer>/agentTooling/self/features` has `<consumer>/agentTooling` two levels up
+    and that directory has no `.git`, so `repo_identity` walks out of the vendored copy
+    and answers with the CONSUMER's origin. Every self-corpus manifest then entered the
+    consumer's claim set as `(<consumer origin>, <slug>)` while the ledger — written by
+    the standalone checkout's own `--self` runs — held the same feature as
+    `(https://github.com/ssdesai/agentTooling.git, <slug>)`. Two keys for one feature,
+    both surviving the dedupe: the feature counted twice and `share_basis` naming a
+    `<consumer>/<slug>` that exists nowhere. Measured on session `ed088063`, 13 intervals
+    for 11 real claimants.
+
+    Compared against `features_root(True)` rather than tested for a `self/features` tail,
+    because that is the same object every caller here is handed — `main` passes
+    `features_root(args.self_mode)` and the claimant index walks `all_features_roots()`,
+    both from `roots`, both already resolved.
+
+    Two questions, and only one of them is this: which corpus a FEATURE belongs to.
+    Which repo a *checkout* is — the origin of a directory on disk — is the other, and
+    it is `repo_identity`, called from here and nowhere else, on `features_dir.parents[1]`.
+    They are not interchangeable and cannot be collapsed into one answer: transcripts are
+    filed under the enclosing repo's project directory, so a `--self` session in a
+    vendored checkout really did run in the consumer's repo while the feature it was
+    building belongs to agentTooling.
+    """
+    features_dir = Path(features_dir)
+    if features_dir == features_root(True):
+        return SELF_CORPUS_IDENTITY
+    return repo_identity(features_dir.parents[1])
 
 
 def brief_feature_of(lines):
@@ -547,11 +683,34 @@ def other_session_claimants(session_claims, session_id, repo, slug):
     return sorted(set(others))
 
 
-def record_session_claims(session_claims, session_costs, session_selected_by, repo, repo_name, slug):
+def _iso_or_none(moment):
+    """An aware UTC datetime as an ISO 8601 string with a `Z` suffix rather than the
+    `+00:00` `datetime.isoformat()` writes for it, or None. Every instant here already
+    went through `to_utc`, so this is always a lossless round trip of it — and it is
+    what lets a bound serialized this way (a ledger claim's `window`, a `share_basis`
+    entry's `from`/`to`) compare equal to the `Z`-suffixed string a manifest wrote it
+    with, when the two name the same instant."""
+    return moment.isoformat().replace("+00:00", "Z") if moment is not None else None
+
+
+def _window_iso(window):
+    """A normalized `{"from", "to"}` window as ISO strings (or None) — the shape a
+    ledger claim's `window` key carries, so another repo's capture reads the instant
+    this claim was made with rather than re-parsing whatever zone format the pinning
+    manifest happened to use."""
+    return {"from": _iso_or_none(window["from"]), "to": _iso_or_none(window["to"])}
+
+
+def record_session_claims(session_claims, session_costs, session_selected_by, repo, repo_name, slug, window):
     """Replace this (repo, slug)'s session claims with the sessions priced now, keeping
     every other feature's. A session id maps to a LIST of claims — the difference from
     `record_claims`, and the whole of item 3: two features may both legitimately count one
-    coordinator, so the ledger records both and neither is refused."""
+    coordinator, so the ledger records both and neither is refused.
+
+    `window` is this feature's own normalized `session_window`, written into every claim
+    under `LEDGER_CLAIM_WINDOW_KEY` as ISO strings — the normalized instants, not the
+    manifest's raw ones, so a bound written in local time reaches another repo's capture
+    as the instant it is."""
     for session_id in list(session_claims):
         remaining = [
             claim for claim in session_claims[session_id]
@@ -562,6 +721,7 @@ def record_session_claims(session_claims, session_costs, session_selected_by, re
         else:
             del session_claims[session_id]
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    window_iso = _window_iso(window)
     for session_id, cost in session_costs.items():
         session_claims.setdefault(session_id, []).append({
             "repo": repo,
@@ -570,10 +730,11 @@ def record_session_claims(session_claims, session_costs, session_selected_by, re
             "selected_by": session_selected_by.get(session_id, "branch"),
             "cost_usd": cost,
             "claimed_at": now,
+            LEDGER_CLAIM_WINDOW_KEY: window_iso,
         })
 
 
-def add_session_claims(session_claims, session_costs, session_selected_by, repo, repo_name, slug):
+def add_session_claims(session_claims, session_costs, session_selected_by, repo, repo_name, slug, window):
     """Add this (repo, slug)'s session claims where the ledger does not already hold them,
     and change nothing it does. Returns True when it added any.
 
@@ -582,8 +743,12 @@ def add_session_claims(session_claims, session_costs, session_selected_by, repo,
     from transcripts, this one by the annotate-only path over a record it must not touch.
     So an existing claim keeps its own `claimed_at` and its own dollars, and a second
     sweep over an unchanged corpus writes nothing at all — the ledger file included.
-    """
+
+    `window` is this feature's own normalized `session_window`, read from its manifest
+    since this path runs no transcript scan of its own; see `record_session_claims` for
+    why it is written normalized rather than raw."""
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    window_iso = _window_iso(window)
     added = False
     for session_id, cost in session_costs.items():
         claims = session_claims.get(session_id) or []
@@ -596,6 +761,7 @@ def add_session_claims(session_claims, session_costs, session_selected_by, repo,
             "selected_by": session_selected_by.get(session_id, "branch"),
             "cost_usd": cost,
             "claimed_at": now,
+            LEDGER_CLAIM_WINDOW_KEY: window_iso,
         })
         session_claims[session_id] = claims
         added = True
@@ -646,9 +812,19 @@ def frozen_session_costs(record):
 
 def annotate_frozen_record(output_path, record, session_claims, repo, slug):
     """Refresh a frozen record's `sessions[].also_claimed_by` from the claims ledger,
-    writing `planning.json` only when something changed. Returns the session ids that
-    carry the annotation after the write, or None when nothing changed and nothing was
-    written.
+    writing `planning.json` only when something changed. Returns
+    `(annotated_session_ids, changed)`.
+
+    **Two values, never folded into one.** "Which sessions are annotated" and "did this
+    run write" are different questions, and returning `annotated or None` answered only
+    the second: the caller's `predates the share rule` WARN sat in the `else` of `if
+    annotated is None`, so it fired on the first `--all` that converged the annotation and
+    never again, while the stale full-count figure was still sitting there. `sweep.sh`
+    runs `--all` weekly, so that warning was seen once per corpus. The annotation converges
+    on the first pass by design (`register_frozen_claims`), which makes "changed" exactly
+    the wrong condition to key a standing repair request off — `check_empty_window` states
+    the same doctrine a few hundred lines up this file: worth hearing about on every pass,
+    not only on the run that would rewrite it.
 
     **It opens no transcript and changes no figure.** Every dollar, every duration,
     `captured_at`, `rates_source`, `warnings`, every session and subagent entry is left
@@ -681,14 +857,13 @@ def annotate_frozen_record(output_path, record, session_claims, repo, slug):
         elif "also_claimed_by" in entry:
             del entry["also_claimed_by"]
             changed = True
-    if not changed:
-        return None
-    with open(output_path, "w") as f:
-        json.dump(record, f, indent=2)
-    return annotated
+    if changed:
+        with open(output_path, "w") as f:
+            json.dump(record, f, indent=2)
+    return annotated, changed
 
 
-def register_frozen_claims(slugs, features_dir, sessions_dir, skip_in_flight):
+def register_frozen_claims(slugs, features_dir, skip_in_flight):
     """Phase one of the annotate-only path: every frozen record this run will annotate
     registers its own session claims in the ledger BEFORE any of them is annotated.
 
@@ -711,7 +886,7 @@ def register_frozen_claims(slugs, features_dir, sessions_dir, skip_in_flight):
     below — never a transcript. `skip_in_flight` mirrors that loop exactly: a feature
     whose window is still open is not annotated there, so its claims are not registered
     here either, and a premature record does not put a premature claim in the ledger."""
-    repo = repo_identity(sessions_dir)
+    repo = corpus_identity(features_dir)
     repo_name = repo_display_name(repo)
     ledger = load_ledger()
     session_claims = ledger[LEDGER_SESSIONS_KEY]
@@ -729,9 +904,16 @@ def register_frozen_claims(slugs, features_dir, sessions_dir, skip_in_flight):
                 # here it only means this record is not registered, and one bad manifest
                 # must not end a corpus-wide run before it starts.
                 continue
+        try:
+            window = normalize_window(parse_manifest(Path(features_dir, slug, "README.md")))
+        except (ValueError, OSError, json.JSONDecodeError):
+            # Same reasoning as the skip_in_flight guard above: this path has no
+            # transcript scan to fall back on, so an unreadable manifest here just
+            # means this record is not registered this sweep.
+            continue
         costs, selected_by = frozen_session_costs(record)
         added |= add_session_claims(
-            session_claims, costs, selected_by, repo, repo_name, slug
+            session_claims, costs, selected_by, repo, repo_name, slug, window
         )
     if added:
         save_ledger(ledger[LEDGER_SUBAGENTS_KEY], session_claims)
@@ -745,10 +927,16 @@ def manifest_pinned_subagents(features_dirs, slug, preferred_dir=None):
     that asks the question runs BEFORE the capture, which is exactly when every one of
     2026-09-07's seven closes printed the advice.
 
-    Looked up by slug rather than by the `<repo>/<slug>` pair: under a vendored subtree a
-    `--self` feature's brief says `agentTooling/<slug>` while the checkout's own repo
-    identity is the enclosing repo, so comparing the two would drop the pin in precisely
-    the case it matters. The pair is never compared here, and this does not change that.
+    Looked up by slug rather than by the `<repo>/<slug>` pair. Not for want of an
+    identity to compare against — `corpus_identity` now declares the self corpus's, so a
+    `--self` feature's `repo` is `agentTooling` on both sides of the comparison wherever
+    this runs. It is the OTHER half that cannot be trusted: `only_feature` is the pair a
+    human typed after `--for`, matched against the one a coordinator wrote into a brief's
+    `feature:` line, and both are free text. A brief that names the slug and gets the repo
+    half wrong — a consuming repo's name in front of a `--self` slug, the shape every
+    vendored coordinator wrote before the identity was declared — would drop the pin in
+    precisely the case that matters, and the pin is the claim. The pair is never compared
+    here, and this does not change that.
 
     What it does do is try the corpus the query is FOR first. `preferred_dir` is
     `self/features` under `--self` and `plans/features` otherwise; when that tree holds a
@@ -877,9 +1065,10 @@ def claimed_session_ids(features_dirs):
 
 
 def list_sessions(sessions_dir, since, unclaimed, features_dirs):
-    """Print every top-level session launched in this repo's primary checkout or one of
-    its sibling worktrees (`<primary>-*`): date, id, branch, cwd, model, cost, minutes
-    and opening prompt. The twin of `--list-subagents`, and the close step's question:
+    """Print every top-level session launched in this repo's primary checkout — which
+    holds every feature worktree, under `<primary>/.worktrees/` — or in a legacy sibling
+    worktree (`<primary>-*`): date, id, branch, cwd, model, cost, minutes and opening
+    prompt. Every feature's, not one feature's: this is discovery, so no fence applies. The twin of `--list-subagents`, and the close step's question:
     `unclaimed` keeps only the sessions no planning.json lists, no manifest pins and no
     usage.json holds — cost that belongs to somebody and is counted by nobody."""
     session_dir_str = str(sessions_dir)
@@ -1235,7 +1424,8 @@ def check_unmatched_branches(branches, branches_seen, feature_worktree=""):
         "planning on it is uncounted. One of three things is true: the name is wrong — "
         "check it against `git branch --list` and record it exactly as git shows it, with "
         "no added prefix; or its sessions were launched somewhere other than the primary "
-        f"checkout and this feature's worktree{where} — launch the coordinator inside the "
+        "checkout (other features' worktrees under it excluded) and this feature's "
+        f"worktree{where} — launch the coordinator inside the "
         "worktree, or pin each session id in `sessions`; or the transcripts have aged out "
         "of ~/.claude/projects/, in which case the name is fine and the cost is unrecoverable"
         for name in unmatched
@@ -1404,14 +1594,529 @@ def feature_slugs(features_dir):
     return sorted(path.parent.name for path in features_dir.glob("*/README.md"))
 
 
+def build_claimant_index(features_dirs):
+    """Every manifest under `features_dirs` — both corpora, in practice — reduced to the
+    facts a claim decision needs: `{features_dir, repo, repo_name, slug, window, pins,
+    branches, excluded}`, in the order `sorted(glob("*/README.md"))` yields them per
+    directory.
+
+    Built ONCE per capture, where `share_ctx` is (`capture_feature`), because
+    `session_claim_intervals` is called once per selected session and used to re-glob and
+    re-parse every README under both features roots on each of those calls — and to run
+    `corpus_identity`, which for a consuming repo's corpus is a `git remote get-url`
+    subprocess, twice per call. On a 40-feature corpus with 30 selected sessions that is
+    roughly 1200 manifest parses and 60 subprocesses for one capture, all of them
+    answering the same question. `corpus_identity` is computed once per features dir here
+    for the same reason — and under `--self` it answers from the declared constant and
+    runs no subprocess at all.
+
+    A README whose fence will not parse is skipped rather than raising: a broken manifest
+    somewhere else in either corpus must not end this capture. That is the same tolerance
+    the per-call scan had, moved.
+
+    Read-only, and derived from the manifests alone — no transcript, no ledger. The
+    session-specific tests (`pins`, `branches`, `excluded`, `window`) are applied by
+    `session_claim_intervals` in memory.
+    """
+    index = []
+    for features_dir in features_dirs:
+        repo = corpus_identity(features_dir)
+        repo_name = repo_display_name(repo)
+        for readme_path in sorted(features_dir.glob("*/README.md")):
+            try:
+                manifest = parse_manifest(readme_path)
+            except (ValueError, OSError, json.JSONDecodeError):
+                continue
+            index.append({
+                "features_dir": features_dir,
+                "repo": repo,
+                "repo_name": repo_name,
+                "slug": readme_path.parent.name,
+                "window": normalize_window(manifest),
+                "pins": set(manifest.get("sessions") or []),
+                "branches": set(manifest.get("branches") or []),
+                "excluded": set(manifest.get("exclude_sessions") or []),
+            })
+    return index
+
+
+# `session_window.to` is EXCLUSIVE (`in_window`) and the share split is half-open on it
+# too, so a bound taken at the last instant itself would drop the very response it was
+# derived from — a single-line session would capture as nothing at all. One second past
+# it is the smallest bound that keeps it, and it is what makes consecutive features chain
+# rather than nest.
+EVIDENCE_OFFSET_SECONDS = 1
+
+
+def last_branch_instant(slug, features_dir, sessions_dir):
+    """The bound `feature-close.sh` stamps as `session_window.to`: one second past the
+    last instant of every session this feature's `branches` + `session_window` select and
+    of those sessions' own subagents. None when the feature has no branch-selected
+    session, which is the caller's cue to fall back to its own clock and say so.
+
+    **Selection is the capture's, by the branch route.** Every term is the shared one —
+    `normalize_window`, `in_window`, `cwd_under_any`, `find_transcript_dirs`,
+    `subagent_transcript_paths` — so the evidence cannot drift from what
+    `capture_feature` will count a moment later. What is deliberately NOT consulted is the
+    pin route: a manifest's `sessions` entry claims a session "regardless of branch,
+    window or cwd", and the session `feature-start.sh` pins is the coordinator that
+    started N features and outlives every one of them, so its last instant is evidence
+    about the coordinator and not about this feature. A pinned session that the branch
+    route would select anyway IS evidence — it is on the branch and in the window, and the
+    pin is redundant there.
+
+    **One term differs from `capture_feature`'s, on purpose: a runner session counts
+    here.** The capture drops every session id a `usage.json` already holds, because its
+    dollars are recorded there and pricing it again would double-count it. That is a rule
+    about what this record PRICES; this function answers when work on the branch STOPPED,
+    and a `claude -p` executor draining a plan in the feature's own worktree is the
+    plainest evidence there is. Excluding it measures nothing in practice: over
+    agentTooling's own 16 features, the branch route without runner sessions finds
+    evidence for one, and with them for nine — each bound one to eleven hours tighter than
+    the `to` the close had stamped, which is the whole of what this feature is for. The
+    manifest's own `exclude_sessions` IS honoured: a session the author disowned is not
+    this feature's work by the author's own word.
+
+    Truncated to whole seconds before the offset is added, so the bound is written at the
+    resolution every other bound in both corpora has and is still strictly after the
+    instant it came from (a last instant of `…:56.700` yields `…:57`, not `…:57.700`).
+
+    Reads timestamps only: no ledger is opened, nothing is written, and no git command is
+    run — `--recapture` may be the caller, and by then the branch is usually deleted.
+    """
+    manifest = parse_manifest(Path(features_dir, slug, "README.md"))
+    branches = set(manifest.get("branches") or [])
+    window = normalize_window(manifest)
+    excluded_ids = set(manifest.get("exclude_sessions") or [])
+    excluded_agent_ids = set(manifest.get("exclude_subagents") or [])
+
+    # The same claimable directories the capture uses (`claim_roots`), so a session in
+    # another feature's worktree can no more bound this window than be priced in it.
+    claimable_roots, claim_fences = claim_roots(str(sessions_dir), slug)
+
+    latest = None
+    for transcript_dir in find_transcript_dirs(sessions_dir):
+        for jsonl_path in sorted(transcript_dir.glob("*.jsonl")):
+            lines = load_transcript_lines(jsonl_path)
+            if not lines:
+                continue
+            session_id = next(
+                (line.get("sessionId") for line in lines if line.get("sessionId")), None
+            )
+            if session_id is None or session_id in excluded_ids:
+                continue
+            branches_seen = {line.get("gitBranch") for line in lines if line.get("gitBranch")}
+            if not (branches_seen & branches):
+                continue
+            if not cwd_under_any(lines, claimable_roots, claim_fences):
+                continue
+            timestamps = [
+                moment
+                for moment in (to_utc(line.get("timestamp")) for line in lines)
+                if moment is not None
+            ]
+            if not timestamps or not in_window(min(timestamps), window):
+                continue
+            end_ts = max(timestamps)
+            latest = end_ts if latest is None else max(latest, end_ts)
+            # A delegate's transcript is part of the work: an implementer that ran for
+            # four hours under a coordinator whose own last line came first would
+            # otherwise bound the feature at the coordinator's instant.
+            for agent_path in subagent_transcript_paths(transcript_dir, session_id):
+                agent_lines = load_transcript_lines(agent_path)
+                if not agent_lines:
+                    continue
+                if agent_id_of(agent_path, agent_lines) in excluded_agent_ids:
+                    continue
+                agent_start_ts = agent_start_of(agent_lines)
+                agent_end_ts = agent_end_of(agent_lines)
+                if agent_start_ts is None or not in_window(agent_start_ts, window):
+                    continue
+                if agent_end_ts is not None:
+                    latest = agent_end_ts if latest is None else max(latest, agent_end_ts)
+
+    if latest is None:
+        return None
+    return latest.replace(microsecond=0) + timedelta(seconds=EVIDENCE_OFFSET_SECONDS)
+
+
+def session_claim_intervals(session_id, session_start, session_branches, share_ctx, warnings):
+    """The claims on one session: `{"feature": "<repo>/<slug>", "from": dt|None,
+    "to": dt|None, "source": "self"|"manifest"|"ledger"}` for each, shaped to be passed
+    straight to `in_window`. This capturing feature's own claim is always first (built
+    from `share_ctx["window"]`, its own normalized `session_window`); the rest are sorted
+    by `(from or datetime.min, feature)`.
+
+    Three sources, in precedence order, de-duplicated by `(repo, slug)`:
+      - **self** — always present.
+      - **manifest** — every entry in `share_ctx["claimants"]` (the index
+        `build_claimant_index` built once for this capture, over every feature README
+        under any directory in `share_ctx["features_dirs"]`), other than this capture's
+        own `(features_dir, slug)`, which either pins `session_id`, or shares a branch
+        with `session_branches` and whose normalized window contains `session_start`;
+        and which does not list `session_id` in `exclude_sessions`.
+      - **ledger** — every entry in `share_ctx["session_claims"].get(session_id)` whose
+        `(repo, slug)` is not already contributed above, read from its `window` key.
+        This is the only route that reaches a repo neither corpus holds a manifest for.
+        A claim with no `window` at all predates recorded windows: it is read as
+        unbounded (`from`/`to` both None), splitting evenly with the other claimants,
+        and warned about by name.
+
+    Nothing here reads the filesystem: the manifests were read once into the index, and
+    this is the per-session filter over it.
+    """
+    repo = share_ctx["repo"]
+    repo_name = share_ctx["repo_name"]
+    slug = share_ctx["slug"]
+    features_dir = share_ctx["features_dir"]
+    own_window = share_ctx["window"]
+
+    own_feature = f"{repo_name}/{slug}"
+    claims = [
+        {"feature": own_feature, "from": own_window["from"], "to": own_window["to"], "source": "self"}
+    ]
+    seen = {(repo, slug)}
+
+    for other in share_ctx["claimants"]:
+        other_slug = other["slug"]
+        if other["features_dir"] == features_dir and other_slug == slug:
+            continue
+        if (other["repo"], other_slug) in seen:
+            continue
+        if session_id in other["excluded"]:
+            continue
+        other_window = other["window"]
+        pins = session_id in other["pins"]
+        shares_branch = bool(other["branches"] & session_branches)
+        if not (pins or (shares_branch and in_window(session_start, other_window))):
+            continue
+        seen.add((other["repo"], other_slug))
+        claims.append({
+            "feature": f"{other['repo_name']}/{other_slug}",
+            "from": other_window["from"], "to": other_window["to"],
+            "source": "manifest",
+        })
+
+    for claim in share_ctx["session_claims"].get(session_id) or []:
+        key = (claim.get("repo"), claim.get("slug"))
+        if key in seen:
+            continue
+        seen.add(key)
+        feature = f"{claim.get('repo_name') or claim.get('repo')}/{claim.get('slug')}"
+        raw_window = claim.get(LEDGER_CLAIM_WINDOW_KEY)
+        if raw_window is None:
+            warnings.append(
+                f"session claim {feature!r} for session {session_id} carries no recorded "
+                "window — it predates recorded windows, so it is read as covering the "
+                "whole transcript and split evenly with the other claimants"
+            )
+            frm, to = None, None
+        else:
+            frm, to = to_utc(raw_window.get("from")), to_utc(raw_window.get("to"))
+        claims.append({"feature": feature, "from": frm, "to": to, "source": "ledger"})
+
+    # Another feature's empty window is not a claim at all, and must not be counted as
+    # one. `share_owners` already refuses to pay it, but merely leaving it in the list
+    # still changes the answer: `select_parent` branches on `len(intervals) <= 1`, so a
+    # single malformed manifest anywhere in either corpus would flip a genuinely
+    # single-claimant session onto the share path, and its one real owner would lose
+    # everything past its own `to` to the unclaimed remainder. That is the silent
+    # under-count the unshared path exists to avoid, arriving through a feature that
+    # cannot own a second of the session. This feature's OWN claim is never dropped: it
+    # is `intervals[0]` by contract, and `check_empty_window` has already warned about it
+    # by the time this runs.
+    kept = []
+    for claim in claims[1:]:
+        if is_empty_window(claim):
+            warnings.append(
+                f"claim {claim['feature']!r} on session {session_id} has an empty window "
+                f"(`from` {_iso_or_none(claim['from'])} is not before `to` "
+                f"{_iso_or_none(claim['to'])}) — it can own no part of any session, so it "
+                "is not counted as a claimant here; fix that feature's `session_window`"
+            )
+            continue
+        kept.append(claim)
+
+    rest = sorted(
+        kept,
+        key=lambda c: (c["from"] or datetime.min.replace(tzinfo=timezone.utc), c["feature"]),
+    )
+    return [claims[0]] + rest
+
+
+def outside_window_cost(lines, to, as_of):
+    """`(dollars, partial)` for the billable responses of one transcript dated at or
+    after `to` — the part of a session that falls outside its own window.
+
+    Priced exactly as the unclaimed remainder is: tokens summed per `(model,
+    is_sidechain)` over `iter_billable_messages_at`, then `pricing.compute_cost` at the
+    session's own `as_of` date. A response is dated by its FIRST line, the same instant
+    the share walk owns it by, so the two answers cannot disagree about which side of the
+    bound a response written across several lines fell on.
+
+    `partial` is True when some model in that stretch has no rate, in which case the
+    dollars exclude it and are a lower bound — the rule `pricing.py` states, reported
+    rather than coerced to a silent zero. A response whose line carries no parseable
+    timestamp is not counted as outside: an undated response cannot be shown to be past
+    the bound.
+    """
+    tokens = {}
+    for model, usage, is_sidechain, moment in iter_billable_messages_at(lines):
+        if moment is None or moment < to:
+            continue
+        add_usage(tokens, (model, is_sidechain), usage)
+    cost = 0.0
+    partial = False
+    for (model, _is_sidechain), bucket in tokens.items():
+        priced, _rates = compute_cost(model, bucket, as_of=as_of)
+        if priced is None:
+            partial = True
+            continue
+        cost += priced
+    return cost, partial
+
+
+# Below these two together, the stretch past `to` is not a quantity worth printing and the
+# warning stays qualitative. The seconds are already truncated to whole ones, so a
+# threshold of 1 means "the overrun is under a second"; the dollars are a sum of priced
+# responses, so `<= 0` means no billable response is out there at all. Both, not either: an
+# unbilled ten-minute tail is a real overrun with no money in it, and an under-a-second one
+# that cost money is real money.
+NO_OUTSIDE_COST_USD = 0.0
+MIN_REPORTED_OUTSIDE_SECONDS = 1
+
+
+def boundary_warning(session_id, window, lines, start_ts, end_ts, shared):
+    """The `may span the window boundary` warning for a SELECTED session whose last
+    instant is at or after its window's `to`, saying how much lies outside and whether it
+    was counted.
+
+    Size is the half of that disclosure that was missing. `shared-session-share`
+    deliberately leaves a session with one claimant priced over its whole transcript,
+    however far it outran its `to` — slicing it removes no double-count and turns a
+    disclosed over-count into a silent under-count on every consuming repo — so the
+    warning is the whole remedy, and "this figure includes work done after the window
+    closed" without a number is not a remedy anyone can act on. Both quantities are here:
+    the dollars, priced as the unclaimed remainder is, and the seconds from `to` to the
+    transcript's last instant.
+
+    Whether they were counted differs by path, so the sentence does too. Unshared, they
+    are in this feature's total. Shared, the split has already excluded them from THIS
+    feature — `share_owners` cannot return a claim whose window ends before the instant —
+    so the same stretch is reported as not counted here. Where it went is a second
+    question the warning must not prejudge: the quantity above is measured from this
+    feature's own `to`, and a claimant bounded later still owns the part of it its window
+    covers. Only the stretch past EVERY claimant's `to` is the unclaimed remainder, and
+    chained windows — what stamping `to` from evidence exists to produce — are exactly the
+    case where the two are not the same stretch.
+
+    When there is nothing out there to measure, the sentence goes back to the qualitative
+    one it replaced. The warning fires on the session's last LINE being past `to`, while
+    the quantity counts billable RESPONSES at or after it, and the two are routinely out of
+    step: a trailing `user` line or a `<synthetic>` notice is what a real transcript ends
+    with far more often than a response, and the seconds are truncated to whole ones. Both
+    zero means the session outran its window by nothing anyone is billed for, and
+    "$0.0000 and 0s of it fall at or after `to`, counted in full" asserts a measurement
+    of nothing where the old sentence said something true. The disclosure is the point;
+    a disclosure of zero is noise, so it says only that no billable response is out there.
+    """
+    to = window["to"]
+    cost, partial = outside_window_cost(lines, to, start_ts.date().isoformat())
+    seconds = int((end_ts - to).total_seconds())
+    prefix = (
+        f"session {session_id} may span the window boundary "
+        f"(window {describe_window(window)} UTC, session ends {end_ts.isoformat()})"
+    )
+    if cost <= NO_OUTSIDE_COST_USD and seconds < MIN_REPORTED_OUTSIDE_SECONDS:
+        return f"{prefix}; no billable response of it falls at or after `to`"
+    at_least = "at least " if partial else ""
+    counted = (
+        "not counted here (the split gives each response to the claimants whose window "
+        "still covers it, and only what is past every claimant's `to` to nobody, as the "
+        "unclaimed remainder)"
+        if shared else
+        "counted in full (this feature is its only claimant, so the session is priced "
+        "over its whole transcript)"
+    )
+    return f"{prefix}; {at_least}${cost:.4f} and {seconds}s of it fall at or after `to`, {counted}"
+
+
+def earliest_dated_claim(intervals):
+    """The claim the opening-stretch fallback pays, or `None` when no claim is dated.
+
+    The ranking pool is every claim with a `from` whose own window is not empty
+    (`is_empty_window`), ordered on `(from, feature)` — the feature name breaking a tie so
+    the answer does not depend on dict or filesystem order. Split out of `share_owners`
+    because `head_bound` needs the same claim and the same pool, and two spellings of
+    "earliest claimant" would drift the way `is_empty_window` exists to stop.
+
+    A claim whose own window is empty is excluded here, not merely from the `in_window`
+    test in `share_owners`. Emptiness is decided by the bounds alone, so
+    `check_empty_window` already promises such a feature "will capture as $0.00" — but the
+    ranking orders on `from` without consulting `to`, so a backwards window with an early
+    `from` would sort first and win the whole head stretch it is proven to own none of.
+    That is reachable in production: a feature that pins a session by id is admitted past
+    window matching entirely, so its window is never required to select anything.
+
+    The only empty claim that reaches here is the capturing feature's **own** —
+    `session_claim_intervals` drops every other feature's, since one of those left in the
+    list would also miscount `len(intervals)`. The own claim cannot be dropped (it is
+    `intervals[0]` by contract), so this filter is what keeps it from being paid.
+    """
+    dated = [
+        claim for claim in intervals
+        if claim["from"] is not None and not is_empty_window(claim)
+    ]
+    if not dated:
+        return None
+    return min(dated, key=lambda claim: (claim["from"], claim["feature"]))
+
+
+def head_bound(intervals):
+    """The earliest instant the opening-stretch fallback may pay, or `None` when the
+    fallback is unbounded or there is no dated claim to rank.
+
+    The fallback hands every instant before the earliest `from` to the earliest claimant,
+    on the reasoning in `share_owners` that a session's opening is the planning that led
+    to the first feature it started. That is true of minutes and false of days: session
+    `2d8b1236` ran 45 hours coordinating fifteen features in three other repos before the
+    first of its three agentTooling claimants opened, and the earliest of those — ahead by
+    49 seconds, with a 25-minute window — was paid $50.12 of that head. So the stretch is
+    bounded by the earliest claimant's OWN window length: `from - (to - from)`, i.e. an
+    instant is still that claimant's planning only when it lies no further before its
+    `from` than its window is long. Earlier than that nobody owns it and it falls to the
+    unclaimed remainder, exactly as the tail does, disclosed with the remedy named.
+
+    Relative and not fixed, because the head is planning for the feature that follows and
+    that scales with the feature: an hour of grace pays a two-minute feature an hour it
+    did not plan for, and starves a three-day one.
+
+    `None` — an unbounded head, today's behaviour — when the earliest claimant's `to` is
+    still `null`. A window with no end has no length to bound by, and a feature in flight
+    is the case where the opening stretch really is its own planning. `feature-close.sh`
+    stamps `to` at close and the recapture that follows applies the bound.
+
+    Returned rather than applied here so that `share_owners` and `partition_seconds` can
+    each ask the same question once — the dollars and the seconds are split by one rule
+    written in one place, the way `is_empty_window` is shared, and cannot disagree.
+    """
+    earliest = earliest_dated_claim(intervals)
+    if earliest is None or earliest["to"] is None:
+        return None
+    return earliest["from"] - (earliest["to"] - earliest["from"])
+
+
+def is_unpaid_head(moment, intervals, bound=None):
+    """Whether an instant nobody owns lies in the opening stretch rather than in a gap
+    between windows or in the tail past every `to`.
+
+    Asked only of instants `share_owners` returned `[]` for, and answered by the bound
+    alone: below `head_bound` the fallback refused to pay, at or above it the fallback
+    would have paid, so an unowned instant at or above the bound is unowned for some other
+    reason. `False` when the bound is `None` — an unbounded head pays everything before
+    the earliest `from`, so nothing there can be unowned, and a session with no dated claim
+    has no opening stretch to speak of.
+
+    `bound` may be passed in by a caller that has it already, so a walk over a transcript
+    does not recompute the same answer once per response — except when the bound is
+    itself `None`, which is indistinguishable from "not supplied" and so is recomputed
+    each call. That costs one `min` over the claims and cannot change the answer (a
+    `None` bound makes the predicate `False` either way), which is why the sentinel is
+    left conflated rather than replaced.
+    """
+    if bound is None:
+        bound = head_bound(intervals)
+    return bound is not None and moment is not None and moment < bound
+
+
+def share_owners(moment, intervals):
+    """Which claims own one instant. Every claim whose window contains it; failing that,
+    the earliest claim alone when the instant precedes every `from` and lies no further
+    before it than `head_bound` allows, because a session's opening stretch is the
+    planning that led to the first feature it started — but only for as long as that
+    feature's own window is, which is what `head_bound` decides. `[]` when the instant is
+    past every `to`, and `[]` equally when it is further back than the bound: both are
+    owned by nobody, reported rather than dropped, and repaired the same way.
+
+    The ranking pool, and why an empty window is kept out of it, are
+    `earliest_dated_claim`'s.
+    """
+    owners = [claim for claim in intervals if in_window(moment, claim)]
+    if owners:
+        return owners
+    earliest = earliest_dated_claim(intervals)
+    if earliest is None or moment is None or moment >= earliest["from"]:
+        return []
+    bound = head_bound(intervals)
+    if bound is not None and moment < bound:
+        return []
+    return [earliest]
+
+
+def partition_seconds(start, end, intervals):
+    """Split `[start, end]` among the claims by the rule `share_owners` applies to one
+    instant, returning `({feature: seconds}, unclaimed_seconds, unclaimed_head_seconds)`.
+
+    Time is apportioned because the alternative is what the ledger holds today: three
+    features that took an evening, eight minutes and an afternoon, each recording one
+    coordinator's whole 22.8-hour span as its own duration. The cut points are every
+    claim's bounds clamped into the span, so the parts are contiguous and sum to it.
+
+    `head_bound` is one of those cut points, for the same reason every `from` and `to` is:
+    a span is judged at its lower edge, so without that edge the whole `[start, min_from)`
+    stretch is decided at `start` — unowned — and the part of the head the fallback still
+    pays is lost from the claimant's `duration_s` while the seconds and the dollars
+    disagree about where it went. That is the `is_empty_window` pattern: the rule is
+    written once and both splits consult it.
+
+    `unclaimed_head_seconds` is the part of `unclaimed_seconds` that lies before the
+    bound — the opening stretch nobody owns, as against a gap between windows or the tail
+    past every `to`. It is a subset of the second figure, not a fourth part of the span,
+    and it exists so the disclosure can name the head apart from the rest: the remedies
+    differ, since no `to` bound widened forwards can reach backwards."""
+    if start is None or end is None or end <= start:
+        return {}, 0.0, 0.0
+    edges = {start, end}
+    for claim in intervals:
+        for bound in (claim["from"], claim["to"]):
+            if bound is not None and start < bound < end:
+                edges.add(bound)
+    head_edge = head_bound(intervals)
+    if head_edge is not None and start < head_edge < end:
+        edges.add(head_edge)
+    ordered = sorted(edges)
+    per_feature = {}
+    unclaimed = 0.0
+    unclaimed_head = 0.0
+    for lower, upper in zip(ordered, ordered[1:]):
+        seconds = (upper - lower).total_seconds()
+        owners = share_owners(lower, intervals)
+        if not owners:
+            unclaimed += seconds
+            if is_unpaid_head(lower, intervals, head_edge):
+                unclaimed_head += seconds
+            continue
+        for claim in owners:
+            per_feature[claim["feature"]] = (
+                per_feature.get(claim["feature"], 0.0) + seconds / len(owners)
+            )
+    return per_feature, unclaimed, unclaimed_head
+
+
 def select_parent(
     lines, session_id, window, warnings, matched_session_ids,
     session_start, session_end, session_branch, matching_branches, totals,
-    pinned=False,
+    share_ctx, share_detail, pinned=False,
 ):
     """Decide one branch-matched session's window membership and, if selected, price it.
     Returns whether it was selected. Split out of `capture_feature` so the subagent walk
-    can run for a parent this function rejected."""
+    can run for a parent this function rejected.
+
+    Once selected, pricing goes through `session_claim_intervals`: a session with one
+    claimant (itself) is billed whole into `totals`, exactly as before; a session with
+    more is walked response by response and billed into `totals` only for the responses
+    this feature owns, with `share_detail[session_id]` left for `capture_feature` to
+    turn into `share_basis`, `session_cost_usd` and the apportioned `duration_s`."""
     # Ordered as instants, not as strings. A session's *start* is what window
     # membership is decided on below, and string ordering picks the wrong line
     # as soon as the transcript mixes formats: "2026-08-21T23:00:00-04:00"
@@ -1429,14 +2134,7 @@ def select_parent(
     # A pin is the human's word: it is claimed whatever the window says.
     selected = pinned or in_window(start_ts, window)
 
-    if selected:
-        if window["to"] is not None and end_ts > window["to"]:
-            warnings.append(
-                f"session {session_id} may span the window boundary "
-                f"(window {describe_window(window)} UTC, "
-                f"session ends {end_ts.isoformat()})"
-            )
-    else:
+    if not selected:
         frm = window["from"]
         if frm is not None and start_ts < frm and end_ts >= frm:
             warnings.append(
@@ -1462,8 +2160,56 @@ def select_parent(
     # measured 2.4x-2.8x over on real sessions, with individual responses
     # repeated up to 9 times. `iter_billable_messages` bills each response once,
     # keyed on its API id, and skips locally-generated `<synthetic>` notices.
-    for model, usage, is_sidechain in iter_billable_messages(lines):
-        add_usage(totals, (session_id, None, model, is_sidechain), usage)
+    branches_seen = {line.get("gitBranch") for line in lines if line.get("gitBranch")}
+    intervals = session_claim_intervals(session_id, start_ts, branches_seen, share_ctx, warnings)
+
+    # After the claim set, not before it: what lies past `to` is counted on the unshared
+    # path and excluded on the shared one, and the warning says which — so it cannot be
+    # written until `len(intervals)` is known.
+    if window["to"] is not None and end_ts > window["to"]:
+        warnings.append(
+            boundary_warning(
+                session_id, window, lines, start_ts, end_ts, shared=len(intervals) > 1
+            )
+        )
+
+    if len(intervals) <= 1:
+        # A session nobody else claims has no double-count to remove, and slicing it
+        # would trade a disclosed over-count for a silent under-count — this must be
+        # byte-identical in effect to a capture that predates sharing altogether.
+        for model, usage, is_sidechain in iter_billable_messages(lines):
+            add_usage(totals, (session_id, None, model, is_sidechain, ()), usage)
+        return True
+
+    own_feature = intervals[0]["feature"]
+    session_tokens = {}
+    unclaimed_tokens = {}
+    # The head is priced beside the rest of the remainder, not instead of it: it goes into
+    # the same `unclaimed_usd` (there is no new `planning.json` field), and these tokens
+    # are a SUBSET of `unclaimed_tokens` so the sum invariants are untouched. What it buys
+    # is the disclosure — the head's remedies are not the tail's, and a single figure
+    # cannot say which one to reach for. Computed once per session, not per response.
+    unclaimed_head_tokens = {}
+    bound = head_bound(intervals)
+    for model, usage, is_sidechain, moment in iter_billable_messages_at(lines):
+        add_usage(session_tokens, (model, is_sidechain), usage)
+        owners = share_owners(moment, intervals)
+        if not owners:
+            add_usage(unclaimed_tokens, (model, is_sidechain), usage)
+            if is_unpaid_head(moment, intervals, bound):
+                add_usage(unclaimed_head_tokens, (model, is_sidechain), usage)
+            continue
+        owner_features = sorted(claim["feature"] for claim in owners)
+        if own_feature not in owner_features:
+            continue
+        add_usage(totals, (session_id, None, model, is_sidechain, tuple(owner_features)), usage)
+
+    share_detail[session_id] = {
+        "intervals": intervals,
+        "session_tokens": session_tokens,
+        "unclaimed_tokens": unclaimed_tokens,
+        "unclaimed_head_tokens": unclaimed_head_tokens,
+    }
     return True
 
 
@@ -1516,13 +2262,13 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         # this run into the ledger, so what is read here is the whole run's claims and
         # not just the ones swept before this feature.
         record = load_frozen_record(output_path)
-        annotated = None
+        annotated, changed = [], False
         if record is not None:
-            annotated = annotate_frozen_record(
+            annotated, changed = annotate_frozen_record(
                 output_path, record, load_ledger()[LEDGER_SESSIONS_KEY],
-                repo_identity(sessions_dir), slug,
+                corpus_identity(features_dir), slug,
             )
-        if annotated is None:
+        if not changed:
             print(
                 f"{slug}: already captured {prior_at}, total ${prior_total:.4f} — skipping "
                 "(--recapture to rebuild it from transcripts)"
@@ -1536,6 +2282,22 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                 f"{slug}: already captured {prior_at}, total ${prior_total:.4f} — {note} "
                 "from the claims ledger; no transcript read and no figure changed"
             )
+        # An annotated session carrying no `share_basis` was frozen before the share rule
+        # existed: its figure still counts that session in full, not by concurrent share.
+        # The annotation only says who else claims it now; it does not, and must not,
+        # touch the number. Printed on EVERY sweep that finds the record in that state,
+        # not only on the one that changed the annotation — the annotation converges on
+        # the first `--all` and the stale figure does not, so keying this off `changed`
+        # asked for the repair once and then went quiet for as long as the transcript had
+        # left. The `skipping` line above still means "this run wrote nothing".
+        entries_by_id = {e.get("session_id"): e for e in (record or {}).get("sessions") or []}
+        for session_id in annotated:
+            if "share_basis" not in (entries_by_id.get(session_id) or {}):
+                print(
+                    f"WARN: {slug}: session {session_id} predates the share rule and "
+                    "was frozen counting it in full — --recapture would rebuild it "
+                    "while its transcript still exists"
+                )
         # The manifest checks still run and still print. They read READMEs, not
         # transcripts, so they cost nothing here, and they are the half of this script's
         # output that stays actionable after a feature is frozen — a `to` bound missing
@@ -1544,7 +2306,10 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         # absent by construction: its evidence is the scan that did not happen.
         for warning in warnings:
             print(f"WARN: {warning}")
-        return "skipped" if annotated is None else "annotated"
+        # "annotated" versus "skipped" is the write, not the warning: `main` counts these
+        # and `sweep.sh` reports them, and a run that wrote nothing must not read as one
+        # that did.
+        return "annotated" if changed else "skipped"
 
     excluded_ids = collect_excluded_session_ids(both_corpora, manifest)
     # Runner-spawned exclusions (a usage.json already holds that session's cost, its
@@ -1565,11 +2330,14 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
 
     session_dir_str = str(sessions_dir)
     dir_fragment = transcript_dir_name(sessions_dir)
-    # LIFECYCLE.md: the feature's worktree is the primary checkout's path plus `-<slug>`,
-    # so it is derived here rather than looked up — it still resolves after the worktree
-    # is removed, and there is nothing to configure.
-    feature_worktree_str = f"{session_dir_str}-{slug}"
-    claimable_roots = (session_dir_str, feature_worktree_str)
+    # LIFECYCLE.md: the feature's worktree is `<primary>/.worktrees/<slug>`, or the legacy
+    # sibling `<primary>-<slug>` for a feature started before that layout. Both are
+    # derived here rather than looked up — they still resolve after the worktree is
+    # removed, and there is nothing to configure — and every other feature's worktree
+    # under `<primary>/.worktrees` is fenced off (`claim_roots`).
+    feature_worktree_str = feature_worktree_path(session_dir_str, slug)
+    legacy_worktree_str = legacy_worktree_path(session_dir_str, slug)
+    claimable_roots, claim_fences = claim_roots(session_dir_str, slug)
 
     totals = {}
     session_start = {}
@@ -1603,6 +2371,38 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     # not a typo just because its sessions were filtered out.
     branches_seen_anywhere = set()
 
+    # Read once, before the walk: the share needs every other feature's claims on a
+    # session this scan is about to select, and both halves of the ledger are needed
+    # before the record is written — the sessions section for the share and the
+    # annotation below, the subagents section for the refusal further down.
+    # Which repo this FEATURE belongs to, not which one the session ran in: it is the
+    # `repo` half of every ledger claim written below — subagent and session alike — and
+    # of `share_ctx`, so it has to be the identity `build_claimant_index` gives the same
+    # corpus, or the feature deduplicates against nothing. `sessions_dir` still answers
+    # where the transcripts are; it does not answer who owns them.
+    repo = corpus_identity(features_dir)
+    repo_name = repo_display_name(repo)
+    ledger = load_ledger()
+    claims = ledger[LEDGER_SUBAGENTS_KEY]
+    session_claims = ledger[LEDGER_SESSIONS_KEY]
+    share_ctx = {
+        "repo": repo,
+        "repo_name": repo_name,
+        "slug": slug,
+        "features_dir": features_dir,
+        "features_dirs": both_corpora,
+        "window": window,
+        "session_claims": session_claims,
+        # Both corpora's manifests, read once. `session_claim_intervals` filters this in
+        # memory for every session `select_parent` selects; before the index it re-globbed
+        # and re-parsed every README, and re-ran `corpus_identity`, on each of those calls.
+        "claimants": build_claimant_index(both_corpora),
+    }
+    # session_id -> {"intervals", "session_tokens", "unclaimed_tokens"} for every
+    # multiply-claimed session `select_parent` selects — absent for a session with one
+    # claimant, which is priced exactly as before.
+    share_detail = {}
+
     for transcript_dir in find_transcript_dirs(sessions_dir):
         for jsonl_path in sorted(transcript_dir.glob("*.jsonl")):
             lines = load_transcript_lines(jsonl_path)
@@ -1626,7 +2426,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             first_cwd = next(
                 (line.get("cwd") for line in lines if isinstance(line.get("cwd"), str)), ""
             )
-            repo_match = session_pinned or cwd_under_any(lines, claimable_roots)
+            repo_match = session_pinned or cwd_under_any(lines, claimable_roots, claim_fences)
             if session_id in excluded_ids:
                 excluded_ids_encountered.add(session_id)
                 # The evidenced zero rests on this narrower set, not on the wide one: an
@@ -1654,8 +2454,8 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
 
             if not repo_match:
                 # A declared branch seen from a directory this feature cannot claim from —
-                # a sibling worktree that is not this feature's — is the case the naming
-                # rule exists for. Remembered so the warning can say where it was seen.
+                # another feature's worktree, nested under `<primary>/.worktrees` or a
+                # legacy sibling — is the case the naming rule exists for. Remembered so the warning can say where it was seen.
                 seen_here = branches_seen & set(branches)
                 if seen_here:
                     launched_elsewhere.setdefault(first_cwd, set()).update(seen_here)
@@ -1675,7 +2475,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                 parent_selected = select_parent(
                     lines, session_id, window, warnings, matched_session_ids,
                     session_start, session_end, session_branch, matching_branches, totals,
-                    pinned=session_pinned,
+                    share_ctx, share_detail, pinned=session_pinned,
                 )
                 if parent_selected:
                     session_selected_by[session_id] = "pinned" if session_pinned else "branch"
@@ -1750,7 +2550,8 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         reachable_session_ids.add(session_id)
         if select_parent(
             lines, session_id, window, warnings, matched_session_ids,
-            session_start, session_end, session_branch, set(), totals, pinned=True,
+            session_start, session_end, session_branch, set(), totals,
+            share_ctx, share_detail, pinned=True,
         ):
             session_selected_by[session_id] = "pinned"
             session_cwd[session_id] = next(
@@ -1764,16 +2565,15 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         if find_pinned_elsewhere(agent_id, this_repo_dirs) is not None:
             reachable_agent_ids.add(agent_id)
 
-    repo = repo_identity(sessions_dir)
-    repo_name = repo_display_name(repo)
     warnings += check_unmatched_branches(branches, branches_seen_anywhere, feature_worktree_str)
     for cwd, seen_branches in sorted(launched_elsewhere.items()):
         warnings.append(
             f"session(s) carrying branch(es) {sorted(seen_branches)} were launched from "
-            f"{cwd!r}, which is neither the primary checkout {session_dir_str!r} nor this "
-            f"feature's worktree {feature_worktree_str!r}, so they are not claimable from "
-            "here — launch the coordinator inside the feature worktree, or pin each "
-            "session id in the manifest's `sessions`"
+            f"{cwd!r}, which this feature cannot claim from: that is the primary checkout "
+            f"{session_dir_str!r} outside {claim_fences[0]!r} (other features' worktrees), "
+            f"this feature's worktree {feature_worktree_str!r}, and its legacy sibling "
+            f"{legacy_worktree_str!r} — launch the coordinator inside the feature worktree, "
+            "or pin each session id in the manifest's `sessions`"
         )
     for session_id in sorted(pinned_session_ids - reachable_session_ids):
         warnings.append(
@@ -1792,13 +2592,6 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             f"subagent {agent_id!r} is both pinned and in exclude_subagents — the pin "
             "wins; drop one of them"
         )
-
-    # Read once, here, because both halves of the ledger are needed before the record is
-    # written: the sessions section annotates the entries below, and the subagents section
-    # is the refusal further down.
-    ledger = load_ledger()
-    claims = ledger[LEDGER_SUBAGENTS_KEY]
-    session_claims = ledger[LEDGER_SESSIONS_KEY]
 
     # `started_at`/`ended_at`/`duration_s` are the transcript's first and last instants
     # and the seconds between — a span, with the caveat `duration_seconds` states.
@@ -1837,10 +2630,11 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         for agent_id in sorted(agent_start)
     ]
 
+    own_feature = f"{repo_name}/{slug}"
     priced = []
     total_is_partial = False
-    for key in sorted(totals.keys(), key=lambda k: (k[0], k[1] or "", k[2], k[3])):
-        session_id, agent_id, model, is_sidechain = key
+    for key in sorted(totals.keys(), key=lambda k: (k[0], k[1] or "", k[2], k[3], k[4])):
+        session_id, agent_id, model, is_sidechain, refs = key
         tokens = totals[key]
         # A subagent is dated by its own start, not its parent's: a four-day coordinator
         # spawns architects on every one of those days, and the rate tier is per day.
@@ -1852,19 +2646,171 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             where = f"subagent {agent_id} of session {session_id}" if agent_id else f"session {session_id}"
             warnings.append(f"no rate for model {model!r} ({where}); excluded from cost total")
             total_is_partial = True
-        priced.append(
-            {
-                "session_id": session_id,
-                "agent_id": agent_id,
-                "model": model,
-                "is_sidechain": is_sidechain,
-                "date": as_of,
-                "duration_s": duration_seconds(started, ended),
-                "tokens": dict(tokens),
-                "cost_usd": cost,
-                "rates_applied": rates_applied,
-            }
+        row = {
+            "session_id": session_id,
+            "agent_id": agent_id,
+            "model": model,
+            "is_sidechain": is_sidechain,
+            "date": as_of,
+            "duration_s": duration_seconds(started, ended),
+            "tokens": dict(tokens),
+            "cost_usd": cost,
+            "rates_applied": rates_applied,
+        }
+        # A response with more than one owner carries only this feature's share here —
+        # divided, so cost_usd.main/.sidechain/.total and every downstream sum
+        # (report.py's roll-up, frozen_session_costs) are already right without being
+        # touched — alongside the undivided full_cost_usd, the share fraction, and who
+        # else it is shared with. A row with one ref (an unshared session, or the head
+        # or tail of a shared one this feature owns alone) or none (a subagent) gains
+        # none of these. `cost` is never divided when it is None — an unpriced row
+        # stays unpriced exactly as today.
+        if cost is not None and len(refs) > 1:
+            row["full_cost_usd"] = cost
+            row["cost_usd"] = cost / len(refs)
+            row["share"] = 1 / len(refs)
+            row["shared_with"] = sorted(f for f in refs if f != own_feature)
+        priced.append(row)
+
+    # session_id -> this feature's own share of that session's cost, from the rows just
+    # priced above (a subagent's cost is excluded, same as `frozen_session_costs` below).
+    # Used to fill in the shared-session fields on `sessions[]` and the warning naming
+    # this feature's share — the session's own (undivided) cost is priced separately,
+    # from `share_detail`, since these divided rows do not sum back to it.
+    session_share_cost = {}
+    for row in priced:
+        if row["agent_id"]:
+            continue
+        session_share_cost[row["session_id"]] = (
+            session_share_cost.get(row["session_id"], 0.0) + (row["cost_usd"] or 0.0)
         )
+
+    for entry in sessions:
+        sid = entry.get("session_id")
+        detail = share_detail.get(sid) if sid else None
+        if detail is None:
+            continue
+        intervals = detail["intervals"]
+        as_of = session_start[sid].date().isoformat()
+
+        session_cost = 0.0
+        for (model, is_sidechain), tokens in detail["session_tokens"].items():
+            cost, _rates = compute_cost(model, tokens, as_of=as_of)
+            if cost is None:
+                warnings.append(
+                    f"no rate for model {model!r} (session {sid}'s own undivided cost); "
+                    "session_cost_usd excludes those tokens and is a lower bound"
+                )
+                continue
+            session_cost += cost
+
+        unclaimed_cost = 0.0
+        for (model, is_sidechain), tokens in detail["unclaimed_tokens"].items():
+            cost, _rates = compute_cost(model, tokens, as_of=as_of)
+            if cost is None:
+                warnings.append(
+                    f"no rate for model {model!r} (session {sid}'s unclaimed remainder); "
+                    "unclaimed_usd excludes those tokens and is a lower bound"
+                )
+                continue
+            unclaimed_cost += cost
+
+        # The head's own dollars, for the disclosure below. No warning of its own on an
+        # unpriced model: these tokens are a SUBSET of the remainder's, so the loop above
+        # has already said that model has no rate and that the figure is a lower bound —
+        # a second copy of the same sentence would say nothing new, and both figures are
+        # then lower bounds together.
+        unclaimed_head_cost = 0.0
+        for (model, is_sidechain), tokens in detail["unclaimed_head_tokens"].items():
+            cost, _rates = compute_cost(model, tokens, as_of=as_of)
+            if cost is None:
+                continue
+            unclaimed_head_cost += cost
+
+        entry["share_basis"] = [
+            {
+                "feature": claim["feature"],
+                "from": _iso_or_none(claim["from"]),
+                "to": _iso_or_none(claim["to"]),
+                "source": claim["source"],
+            }
+            for claim in intervals
+        ]
+        entry["session_cost_usd"] = session_cost
+        entry["session_duration_s"] = duration_seconds(session_start[sid], session_end[sid])
+        # This feature's SHARE of the span, replacing the whole-span default set above —
+        # started_at/ended_at are left untouched, since they are the transcript's own
+        # bounds and only duration_s is apportioned.
+        per_feature_seconds, unclaimed_seconds, unclaimed_head_seconds = partition_seconds(
+            session_start[sid], session_end[sid], intervals
+        )
+        entry["duration_s"] = int(per_feature_seconds.get(own_feature, 0.0))
+        if unclaimed_cost:
+            entry["unclaimed_usd"] = unclaimed_cost
+        # Gated on the seconds, NOT on the dollars. The two are not the same condition:
+        # a session whose last line is non-billable — a user message, a tool result, a
+        # `<synthetic>` notice — past every claimant's `to` has unclaimed *time* and no
+        # unclaimed *cost*. Keyed off the dollars, that session's claimants' duration_s
+        # would silently fail to sum to session_duration_s with nothing in the record or
+        # on stdout saying where the difference went, and no field to read it from.
+        if unclaimed_seconds:
+            entry["unclaimed_duration_s"] = int(unclaimed_seconds)
+
+        other_features = sorted(c["feature"] for c in intervals if c["feature"] != own_feature)
+        own_share_cost = session_share_cost.get(sid, 0.0)
+        warnings.append(
+            f"session {sid} is shared by {len(intervals)} claimant(s); this feature's "
+            f"share is ${own_share_cost:.4f} of the session's own ${session_cost:.4f}, "
+            f"the rest going to {', '.join(other_features)}"
+        )
+        # Either quantity is worth reporting on its own: unclaimed time with no unclaimed
+        # dollars still means a stretch of the session belongs to nobody, and the advice
+        # for repairing it is the same.
+        # Two sentences for two remedies. Everything past every claimant's `to` — and
+        # everything in a gap between two windows — is repaired by widening a `to` bound
+        # forwards or by pinning the session, which is what this warning has always said.
+        # A head is not reachable that way at all: it lies BEFORE the earliest `from`, so
+        # no `to` can grow to cover it, and `from` has no `set-window-to` to move it with
+        # (`analysis/manifest.py` only ever moves `to`, and only inwards). Said with one
+        # figure, the reader reaches for the remedy that cannot work. So the head is named
+        # with its own dollars and seconds whenever there is one, and the sentence for a
+        # remainder that is all tail is left exactly as it was.
+        if unclaimed_head_cost or unclaimed_head_seconds:
+            rest_cost = unclaimed_cost - unclaimed_head_cost
+            rest_seconds = unclaimed_seconds - unclaimed_head_seconds
+            # A remainder that is ALL head has no rest to name — the mirror of the
+            # tail-only case above, and not a rare one: one claimant whose window covers
+            # the session's last instant leaves no tail, and a single claimant leaves no
+            # gap between windows either. Said anyway, the sentence reads "and $0.0000
+            # (0s) is the rest" and then hands the reader the `to`-widening remedy for
+            # exactly nothing — the one remedy that provably cannot reach a head, since
+            # no `to` grows backwards. So the clause and its sentence go together, and
+            # with nothing to contrast the head against, its own remedy stops being
+            # introduced as "For the head".
+            rest_clause = ""
+            rest_remedy = ""
+            if rest_cost or rest_seconds:
+                rest_clause = f" — and ${rest_cost:.4f} ({rest_seconds:.0f}s) is the rest"
+                rest_remedy = (
+                    ". For the rest, widen a claimant's `to` bound, or pin the session "
+                    "to the feature it belongs to, to have it counted"
+                )
+            head_remedy_lead = "For the head, pin" if rest_clause else "Pin"
+            warnings.append(
+                f"session {sid} has ${unclaimed_cost:.4f} ({unclaimed_seconds:.0f}s) "
+                f"unclaimed by any feature, of which ${unclaimed_head_cost:.4f} "
+                f"({unclaimed_head_seconds:.0f}s) is the opening stretch — further before "
+                "the earliest claimant's `from` than that claimant's own window is long"
+                f"{rest_clause}. {head_remedy_lead} the session to the feature that "
+                "planning belongs to, or move the earliest claimant's `from` back by hand "
+                f"(there is no `set-window-to` for `from`){rest_remedy}"
+            )
+        elif unclaimed_cost or unclaimed_seconds:
+            warnings.append(
+                f"session {sid} has ${unclaimed_cost:.4f} ({unclaimed_seconds:.0f}s) "
+                "unclaimed by any feature — widen a claimant's `to` bound, or pin the "
+                "session to the feature it belongs to, to have it counted"
+            )
 
     lost, prior_total = check_frozen_cost(
         output_path, reachable_session_ids, excluded_ids, reachable_agent_ids
@@ -2051,7 +2997,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             )
     record_claims(claims, agent_costs, agent_selected_by, repo, repo_name, slug)
     record_session_claims(
-        session_claims, session_costs, session_selected_by, repo, repo_name, slug
+        session_claims, session_costs, session_selected_by, repo, repo_name, slug, window
     )
     save_ledger(claims, session_claims)
 
@@ -2102,10 +3048,21 @@ def main():
     parser.add_argument(
         "--list-sessions",
         action="store_true",
-        help="print every top-level session launched in this repo's primary checkout or "
-        "a sibling worktree — date, id, branch, cwd, model, cost, opening prompt — "
+        help="print every top-level session launched in this repo's primary checkout "
+        "(feature worktrees under .worktrees/ included) or a legacy sibling worktree "
+        "— date, id, branch, cwd, model, cost, opening prompt — "
         "instead of capturing anything. With --unclaimed, only those no feature "
         "accounts for; the id is what a manifest's `sessions` pin takes",
+    )
+    parser.add_argument(
+        "--last-branch-instant",
+        metavar="SLUG",
+        help="print the bound feature-close.sh stamps as session_window.to for this "
+        "feature — one second past the last instant of the sessions its `branches` and "
+        "`session_window` select, and of their subagents — as ISO 8601 UTC with a Z, or "
+        "nothing at all (exit 0) when it has no branch-selected session. Pins are not "
+        "consulted: the coordinator a manifest pins outlives the feature. Reads "
+        "timestamps only; writes nothing",
     )
     parser.add_argument(
         "--carry-lost",
@@ -2172,6 +3129,19 @@ def main():
             parser.error("--list-sessions takes no slug and no --all")
         list_sessions(session_root(args.self_mode), args.since, args.unclaimed, all_features_roots())
         return
+    if args.last_branch_instant:
+        if args.slug or args.all_features:
+            parser.error("--last-branch-instant takes its own slug and no --all")
+        moment = last_branch_instant(
+            args.last_branch_instant, features_root(args.self_mode),
+            session_root(args.self_mode),
+        )
+        # Nothing, exit 0, when there is no branch-selected session: an empty answer is a
+        # fact about the feature, not a failure, and feature-close.sh reads it as its cue
+        # to stamp at its own clock and announce that it did.
+        if moment is not None:
+            print(_iso_or_none(moment))
+        return
 
     if args.all_features == bool(args.slug):
         parser.error("give either a feature slug or --all, not both and not neither")
@@ -2193,7 +3163,7 @@ def main():
     # before it (`register_frozen_claims`). Skipped under --recapture, where every
     # feature re-derives its claims from transcripts anyway.
     if not recapture:
-        register_frozen_claims(slugs, features_dir, sessions_dir, args.all_features)
+        register_frozen_claims(slugs, features_dir, args.all_features)
 
     counts = {
         "captured": 0, "annotated": 0, "skipped": 0, "refused": 0, "conflict": 0,

@@ -58,13 +58,20 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   and drives the whole loop with `--self` — start a feature, refuse its stub brief,
   review it, open its PR, merge it, close it — synthesizing under a redirected `$HOME`
   the transcripts the close captures. The rule under test (`../../LIFECYCLE.md`): for
-  slug `S` and primary checkout `R`, branch `S`, worktree `R-S`, and every session a
-  feature costs is either launched in `R-S` or pinned by id. Asserts that
-  `feature-start.sh` creates the branch and worktree off `origin/main` leaving the
-  primary on `main` and clean, writes the manifest (`branches [S]`, `base main`, a `Z`
+  slug `S` and primary checkout `R`, branch `S`, worktree `R/.worktrees/S` inside the
+  primary, and every session a feature costs is either launched in that worktree or
+  pinned by id. Its `project_dir` helper mangles `.` as well as `/`, as Claude Code does,
+  which is what files a nested worktree's transcripts under `…-R--worktrees-S`. Asserts
+  that `feature-start.sh` creates the branch and worktree off `origin/main` at
+  `R/.worktrees/S` (nothing at the legacy `R-S`), leaving the primary on `main` and
+  clean — `git status --porcelain` empty with the worktree nested in it, because the
+  common git dir's `info/exclude` now carries `/.worktrees/` exactly once, still exactly
+  once after seven more starts, every entry it already held (an unterminated last line
+  included) intact, and nothing tracked touched — writes the manifest (`branches [S]`, `base main`, a `Z`
   `from`, `to` null, the running session pinned from `$CLAUDE_CODE_SESSION_ID`) and a
   `@@TODO@@` review stub numbered next in the global sequence, commits `S: start`, and
-  refuses a bad slug, an existing branch and a worktree's copy while creating nothing;
+  refuses a bad slug, an existing branch, a worktree path already taken and a worktree's
+  copy while creating nothing;
   that `run-review.sh` files a brief still carrying `@@TODO@@` to `failed/` without
   calling `claude`, and that a real one reaches the PR hook, which pushes `S` itself and
   calls `pr create --base main --head S`, honours `FEATURE_BASE`, and refuses on the base
@@ -83,10 +90,86 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   close leaves the primary byte-identical and clean rather than dirty and refusing its own
   re-run. No model, no network. A missing
   script fails its own assertions loudly rather than aborting the run, the convention
-  `cost-recovery.sh` uses. Depends on `plan-runner-lib.sh` refusing the `@@TODO@@`
-  marker, on `capture_planning.py`'s `--list-subagents`/`--list-sessions --unclaimed`
-  and its zero refusal, and on `analysis/manifest.py`'s `init`, `get`, `claimed` and
-  `set-window-to`.
+  `cost-recovery.sh` uses.
+  Its **W** phase is where `session_window.to` comes from
+  (`self/features/claim-window-precision/README.md`, item 1). Its fixture moves the
+  feature's `from` back to a fixed instant with `set_bound` — a local helper that rewrites
+  one bound inside the manifest's last fence, by hand because two of the shapes it needs
+  are exactly what `manifest.py` refuses to write — and plants a branch session running
+  `12:00:00.700` to `12:45` at a fixed date hours earlier plus, under it, a delegate that
+  ran on to `13:00:00.700`. That fixture is what lets **W1** assert one exact `to`
+  (`13:00:01Z`) carrying three separate facts: it is the DELEGATE's last instant +1s, not
+  the parent's, so the subagent walk in `last_branch_instant` cannot be deleted silently;
+  it is at second resolution though the evidence carried milliseconds, so the
+  `replace(microsecond=0)` truncation cannot be dropped silently (an untruncated
+  `13:00:01.700000Z` parses everywhere and would fail nothing else); and it carries a date
+  a bound stamped at close time could never equal. W1 also asserts that both the session
+  and the delegate are still captured under the now-exclusive bound. **W2** gives a feature
+  nothing but a pinned session off the branch and in another checkout: no branch-selected
+  session, so the close falls back to its own clock and prints the `no branch session`
+  line. **W3** moves that bound later by hand — the shape every `to` in both corpora
+  already had — and pins that `--recapture` tightens it back onto the evidence, printing
+  `old -> new`. **W4** is the refusals, and their exit codes: `set-window-to --tighten`
+  with a LATER instant must leave the fence byte-identical, name both bounds, and exit
+  **3**, the widen refusal's own code — the exit code matters because the close continues
+  past that one and only that one, and asserting merely "non-zero" would pass vacuously
+  under an unimplemented `--tighten`, where argparse exits 2; the bound it already carries
+  is asserted to be a no-op rather than a refusal, which is what `recover-at-close.sh` C12
+  needs from every repair run; and a bound at or before the fence's `from` — an empty
+  window, which every other feature's split would then drop — is refused as a plain exit
+  1, naming both, with the primary left clean by all four. **W5** is the other side of
+  that exit code: a close over a fence with no `to` key at all (so `set-window-to` fails
+  for a reason that is not a refused widen) must refuse, name what `set-window-to` printed
+  rather than the widen it never attempted, capture nothing, and roll its timing carry back
+  so the primary is clean and byte-identical. Its feature is given a real branch session on
+  purpose — without one the close would refuse at the capture anyway and the assertion
+  would pass whatever the stamp did. **W6** is W5's complement and the reason the exit code
+  is asserted at all: the tolerated code is written down twice, `WIDEN_REFUSED_EXIT` in
+  `manifest.py` and `WIDEN_REFUSED_RC` in `feature-close.sh`, since bash cannot import it,
+  so a drift between them would turn every declined widen into a refused close. It moves
+  the bound to `12:30` by hand — between the session's first line and its last, the one
+  shape from which the evidence widens rather than tightens, which is why the W1 fixture
+  carries that middle `12:45` line — and asserts the close warns, captures anyway and
+  leaves the published bound where it found it.
+  Its **L** phase is the legacy layout (`self/features/in-repo-worktrees/README.md`): a
+  feature started normally has its worktree moved by `git worktree move` to the sibling
+  `R-S` every feature started before worktrees moved inside the primary still has, and
+  the close must claim the session launched there by branch, carry that worktree's
+  trailing timing stamp home, and remove it and the branch, leaving the primary clean;
+  a `--recapture` afterwards, with the worktree gone, must still claim the session.
+  Depends on `plan-runner-lib.sh` refusing the `@@TODO@@`
+  marker, on `feature-start.sh` writing the `info/exclude` entry and `feature-close.sh`
+  finding the worktree through `git worktree list --porcelain`, on
+  `capture_planning.py`'s `--list-subagents`/`--list-sessions --unclaimed`,
+  its zero refusal and its `--last-branch-instant` (including the subagent walk and the
+  whole-second truncation), on `feature-close.sh` stamping from that evidence before the
+  capture, rolling the stamp back with `rollback_stamp` and tolerating exactly
+  `manifest.py`'s widen exit code at the stamp, and on `analysis/manifest.py`'s `init`,
+  `get`, `claimed` and `set-window-to [--tighten]`.
+- `worktree-claims.sh` — `capture-guard.sh`'s scaffolding (copies of
+  `analysis/{pricing,roots,transcript,capture_planning}.py` in a throwaway checkout, a
+  bare `mkdir .git`, transcripts under a redirected `$HOME`), asserting which launch
+  directories feature `S` claims a session from now that worktrees are nested in the
+  primary `R` (`self/features/in-repo-worktrees/README.md`). Its `mktemp -d` template is
+  `wt.claims.XXXXXX` on purpose: the dots put a `.` in `R`'s own path, so every project
+  dir is named with `/` and `.` both mangled to `-`, as Claude Code names them, and W0
+  checks that premise and the `…-R--worktrees-S` name of the nested one. One manifest
+  and six sessions on `S`'s branch, all in the window: launched in `R`, in
+  `R/.worktrees/S` (with a delegate under it), in the legacy sibling `R-S`, and — later
+  than those — in `R/.worktrees/<other>` and in the prefix-sharing `R/.worktrees/S-two`
+  and `R-S-two`. Asserts that capture selects the first three by branch with their
+  `cwd`s (W1) and none of the other three, although each sits under `R` or starts with
+  one of `S`'s own worktree paths, naming the other worktree's directory in the warning
+  (W2; W2d–e are the prefix cases, which a bare `startswith(root)` in
+  `path_at_or_under` fails, verified by weakening it); that the delegate filed under the nested project dir
+  is priced with its parent (W3); that `--last-branch-instant` is the delegate's last
+  instant + 1s rather than the other worktree's later one (W4); and that
+  `--list-sessions` and `--list-subagents` find what is filed under the nested and
+  legacy project dirs (W5). W1c-d, W2 and W4 were RED until `capture_planning.py`
+  fenced `R/.worktrees` (`claim_roots`, `cwd_claimable`); everything was RED until
+  `transcript_dir_name` mangled `.`. Depends on `session_line`/`subagent_line`/
+  `subagent_prompt_line` from `fixtures/transcripts/build-transcript.sh`. The legacy half
+  of the rule is also `capture-guard.sh` phase 15. No model, no network.
 - `check-plans.sh` — copies the real `check-plans.sh` and `plan-runner-roots.sh` into a
   throwaway checkout (a missing `check-plans.sh` is tolerated — RED until it lands, the
   `cost-recovery.sh` convention) and drives it against synthesized feature manifests and
@@ -316,9 +399,28 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   capture is *not* refused the way a doubly-claimed subagent is, its `planning.json`
   session entry gains `also_claimed_by: ["<repo>/<slug>"]`, the ledger holds both claims
   under that session id as a **list** (a session may have many claimants, a subagent
-  exactly one), re-capturing the first feature annotates it symmetrically, and
-  `report.py` renders `cost.shared_sessions[{session_id, cost_usd, also_claimed_by}]`
-  with one footnote under the Cost table naming the session and the other feature.
+  exactly one), and re-capturing the first feature annotates it symmetrically. Neither
+  manifest declares a `session_window`, so both claims are unbounded and the money is
+  split evenly between them: `report.py` renders
+  `cost.shared_sessions[{session_id, cost_usd, session_cost_usd, also_claimed_by}]`,
+  where `cost_usd` is this feature's own share and `session_cost_usd` the undivided
+  session beside it, the two features' shares sum to `session_cost_usd`, and the one
+  footnote under the Cost table names the session and the other feature without saying
+  it is counted in full — the sentence that was the whole disclosure before the split
+  existed. A `planning.json` frozen before the share rule carries `also_claimed_by` but
+  none of `share_basis`/`session_cost_usd`/`session_duration_s`, and is still reported
+  the old way: `shared_sessions[]` with no `session_cost_usd`, and a footnote that falls
+  back to saying the session is counted in full there. Finally the **in-flight
+  co-claimant**: `also_claimed_by` stripped while `share_basis` is left in place — the
+  shape of a feature that captures while another feature pinning the same session has not
+  captured yet, so the split found the co-claimant through its manifest but the ledger
+  holds no claim from it. That record still produces a `shared_sessions[]` entry naming
+  the co-claimant recovered from `share_basis`, and a footnote, because keying the
+  disclosure off the ledger alone prints a halved figure with nothing saying what halved
+  it — a silent under-count, worse than the disclosed over-count the split removed, and
+  the corpus's normal case rather than a corner. The record is restored from a copy
+  immediately afterwards, since part C asserts an exact `2 annotated` count over a sweep
+  of the whole corpus.
   **C**: the annotate-only path over a record that is already **frozen** — two features
   each captured while the ledger held no claim on their shared coordinator, which is the
   shape the seven closes of 2026-09-07 left behind. One plain `capture_planning.py --all`
@@ -341,6 +443,260 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   `report.py`'s `compute_shared_sessions`; RED until each landed. D writes into
   `$TMP/plans/features`, the host repo's corpus, which `all_features_roots()` resolves
   as the sibling of the throwaway agentTooling checkout.
+- `session-share.sh` — `claims-ledger.sh`'s arithmetic counterpart: same scaffolding
+  (copies of `analysis/{pricing,roots,transcript,capture_planning}.py` into a throwaway
+  agentTooling checkout, `mkdir -p "$AT/.git"`, and, under a redirected `$HOME`, the
+  `~/.claude/projects/*/<session_id>.jsonl` transcripts capture reads, built with
+  `session_line` from `fixtures/transcripts/build-transcript.sh`). Asserts what a session
+  claimed by more than one feature is priced and timed by — *concurrent share* rather
+  than being counted in full by every claimant. One session
+  (`11111111-0000-0000-0000-000000000001`) carries six responses, all input/cache-read/
+  cache-creation `0` so cost is proportional to output tokens alone:
+
+  | id | timestamp | output tokens |
+  |---|---|---|
+  | `r0` | `08:00` | 1000 |
+  | `r1` | `10:30` | 2000 |
+  | `r2` | `12:30` | 4000 |
+  | `r3` | `14:30` | 6000 |
+  | `r4` | `16:30` | 12000 |
+  | `r5` | `20:30` | 800 |
+
+  Four features (`share-a`..`share-d`) pin that session id in their manifest's
+  `sessions`, with `branches` naming a branch no transcript carries — the pin is the only
+  route in — and these windows: `share-a` `10:00`-`18:00`, `share-b` `12:00`-`18:00`,
+  `share-c` `14:00`-`18:00`, `share-d` `16:00`-`18:00`. A fifth, `share-solo`, pins its own
+  session and is claimed by nobody else. Ownership per response is every claimant whose
+  window covers its timestamp, with the earliest claimant alone owning anything before
+  every window opens and nobody owning anything after every window closes: owned output
+  tokens are **a 10000, b 7000, c 5000, d 3000, unclaimed 800**, summing to the session's
+  25800; duration, partitioned the same way over `[first line, last line]` = 45000s, is
+  **a 22200, b 7800, c 4200, d 1800, unclaimed 9000**. Captures the four in order a, b, c,
+  d, then re-captures `share-a` so its record sees the other three claims — a claimant not
+  yet captured is still found through its manifest alone. Asserts, in order: (1) the four
+  shares plus the unclaimed remainder equal the session's own `cost_usd.total`, to `1e-9`
+  — the assertion the whole feature exists for; (2) each feature's `cost_usd.total`
+  matches its predicted token-ratio share; (3) the earliest claimant's total strictly
+  exceeds what its share would be without the head response, while the other three carry
+  none of it; (4) `share_basis` on the earliest claimant's entry names all four claimants
+  — itself first with `source: "self"`, the other three `"manifest"` with their own
+  manifests' `from`/`to`, asserted as a set rather than an order; (5) `duration_s` is
+  apportioned by the same rule (22200/7800/4200/1800), `session_duration_s` is the whole
+  45000s span on every entry, the unclaimed span is **read from the record's own
+  `unclaimed_duration_s`** and the four apportioned spans plus it sum to 45000 — an
+  earlier cut asserted the unclaimed `9000` as a literal, which supplied the missing
+  seconds itself instead of catching their absence and so could not see a session leaking
+  time, and `started_at`/`ended_at` stay the session's own first and last instants
+  throughout — only `duration_s` is apportioned; (6) `share-solo`'s single-claimant entry
+  carries none of `share_basis`, `session_cost_usd`, `session_duration_s` or
+  `unclaimed_usd`, no `priced[]` row carries `share` or `full_cost_usd`, `duration_s`
+  equals `ended_at - started_at`, and `cost_usd.total` is the whole transcript's cost;
+  (7) a second `r2` line appended at `11:59:59.500`, before `share-b`'s `from` of `12:00`,
+  while `r2`'s first line — first in *file* order, which is what `iter_billable_messages_at`
+  keys on — stays at `12:30` inside that window: the two lines of one response sit in
+  *different* ownership stretches, `{share-a}` and `{share-a, share-b}`. It is still billed
+  once and to its first line's owners: assertion (1)'s invariant still holds and `share-a`/
+  `share-b`'s totals from (2) are unchanged. Both halves are load-bearing — a walk that
+  buckets lines by window and dedups within each bucket bills `r2` once per bucket and
+  breaks (1), and one that dates a response by its *last* line hands all 4000 tokens to
+  `share-a` and breaks (2). An earlier cut of this phase appended the line at
+  `12:00:00.001`, on the same side of every boundary as `12:30` and in the same ownership
+  set, where no dedup strategy can differ and all three checks passed vacuously; (8) capture output names the session in an
+  unclaimed-remainder warning, `unclaimed_usd` is exactly the `800/25800` share of the
+  session cost, and — `8c`, added by `bounded-opening-stretch`'s rework — that warning is
+  the pre-existing tail sentence with no head clause in it, this session having no head
+  (`share-a`'s eight-hour window puts its bound four hours before `r0`); (9) a sixth feature `share-empty`, pinning the same session with a
+  *backwards* window (`09:00`-`03:00`), owns nothing — not the head its early `from` would
+  otherwise rank it first for, and not a second of duration — while a-d's totals and the
+  sum invariant are unchanged; (10) the same defect from its other side, `share-empty-2`
+  (`05:00`-`03:00`, opening before the session's own first response), must not strand the
+  head in the unclaimed remainder; (11) its costliest shape — `share-solo-empty` pins
+  `share-solo`'s single-claimant session with a backwards window, and `share-solo` must
+  stay unshared (no `share_basis`, whole cost, untouched duration) with the offending
+  claim named on stdout. An empty claim from another feature is dropped from the claim set
+  outright rather than merely refused a share, because `select_parent` branches on
+  `len(intervals) <= 1`: counted, it flips a solo session onto the share path and its one
+  real owner loses everything past its own `to`. Phases 9 and 10 are the two ways an empty window
+  reaches the split — pinning by id skips window matching entirely, so a backwards window
+  arrives intact and the head-stretch ranking orders on `from` alone: one shape pays it,
+  the other silently underpays the legitimate earliest claimant. Both were caught in the
+  verify pass, not the build. Extracts the repeated JSON reads into `field` (a `python3 -c` over
+  `json.load`) and `close_enough` (the `1e-9` float comparison) near the top rather than
+  repeating a one-liner in every check. Phases 1-5 and 7-8 were RED until
+  `capture_planning.py` learns to share a multiply-claimed session — a run against
+  today's code is expected to FAIL them, not crash. Phase 6 is GREEN today and must stay
+  green: it is the no-change half of the contract, pinning that a session with a single
+  claimant is never touched by this feature. Phases 9-10 were RED against the build pass's
+  own first cut of `share_owners`, which filtered empty windows out of `in_window` matching
+  but not out of the opening-stretch ranking. No model, no network.
+  Two later phases are `claim-window-precision`'s. **12** is the size of what phase 6
+  leaves unsliced: `share-outside` pins a session of its own with 1000 output tokens
+  inside its window and 3000 after it, so the dollars past `to` are exactly three quarters
+  of the session's cost and a warning that named the whole session, or only the part
+  inside, prints a different figure. The figure is read back out of the warning
+  numerically (a 4-decimal string compare would fail on a last-place rounding difference)
+  and `cost_usd.total` is asserted to exceed it, which is what pins the session as still
+  priced whole; `12g` is the other branch of the same sentence, `not counted`, off
+  share-a's own capture. **13** tightens `share-d`'s `to` to `16:15` — past its `from` but
+  before its only response at `16:30` — through the real `manifest.py set-window-to
+  --tighten`, which is why this file also copies `manifest.py` into the sandbox. share-d
+  then owns nothing and the sum invariant from (1) still holds; `13c` asserts share-c's
+  total ROSE, so a tighten that silently did nothing cannot pass. `16:00` was rejected as
+  the tightened bound: it makes share-d's own window empty, and the assertion would then
+  be satisfied by the pre-existing empty-claim drop rather than by the moved bound.
+  **14** is phase 12's warning where there is nothing to quantify: `share-quiet` pins a
+  session with one response well inside its window and, half a second past `to`, an
+  unbilled `user_line`. The warning fires on the last LINE while the quantity counts
+  billable RESPONSES at or after `to`, so the two are out of step and the quantified
+  sentence would assert a measurement of nothing. The assertion is the absence of the
+  figure — read back with the same `sed` phase 12 uses to read its presence, so a
+  formatted `$0.0000` fails rather than passing as "zero is zero anyway" — plus the
+  qualitative sentence saying no billable response falls past `to`, and `cost_usd.total`
+  still non-zero, the warning being prose either way.
+  **15** is `bounded-opening-stretch`'s, on a session and claimants of its own
+  (`66666666-0000-0000-0000-000000000006`; `head-a` `10:00`-`11:00`, `head-b`
+  `12:00`-`18:00`; responses `r0` `08:00`/1000, `r1` `09:30`/2000, `r2` `10:30`/4000,
+  `r3` `13:00`/3000) so that nothing above is re-run or disturbed. The opening-stretch
+  fallback pays the earliest claimant only as far back as that claimant's own window is
+  long — `head-a`'s hour puts its bound at `09:00`, so `r1` is still its own and `r0`,
+  two hours out, is owned by nobody. Asserts `head-a`'s total is `r1 + r2`; that
+  `unclaimed_usd` is exactly `r0`'s `1000/10000` share and the two totals plus it equal
+  `session_cost_usd`; that `head-b` is unchanged at `r3` alone; that `duration_s` splits
+  the same way — `head-a` `09:00`-`11:00` = 7200s, `unclaimed_duration_s` the 3600s
+  before the bound plus the 3600s gap between the two windows, the three summing to the
+  18000s span; that the unclaimed warning names the head's dollars and seconds APART from
+  the rest of the remainder (the figure read back numerically, as `12c` does) and names
+  the remedies that reach a head — pin the session, or move the earliest claimant's
+  `from` back by hand, `from` having no `set-window-to`; and that an earliest claimant
+  whose `to` is still `null` keeps the UNBOUNDED head, a window with no end having no
+  length to bound by, which is why `write_manifest` writes a bare JSON `null` for a `to`
+  of the literal string `null`. `15a`, `15b` and `15b-sum`, `15d` and `15d-unclaimed`,
+  and every `15e` check were RED against the unbounded fallback on `main`, which pays
+  `head-a` the `08:00` response and `08:00`-`11:00` of the span; `15c`, `15d-sum`, `15f`
+  and `15f-unclaimed` are green on both sides and are the guard, as is phase 3 — an
+  eight-hour window still reaches a head response two hours out, which is what stops the
+  bound being read as a fixed grace period. `15f-duration*` is that phase's rework
+  addition, the seconds side of the in-flight exemption: with `head-a`'s `to` `null`,
+  `head-a`'s `duration_s` is 16200 (`08:00`-`10:00` as the unbounded head, `10:00`-`12:00`
+  as its own open-ended window, and half of the `12:00`-`13:00` overlap), `head-b`'s is
+  1800, and there is no `unclaimed_duration_s` at all. It is the one path where
+  `partition_seconds` gets `head_edge = None` and adds no cut point, so it is where the
+  dollars and the seconds are least constrained to agree, and `15f` asserted only dollars.
+  **16** and **17** are the same feature's rework. **16** is a remainder that is ALL head:
+  a session of its own (`77777777-0000-0000-0000-000000000007`; `n0` `08:00`/1000, `n1`
+  `10:30`/2000, `n2` `13:00`/3000) with `allhead-a` `10:00`-`11:00` and `allhead-b`
+  `11:00`-`14:00` chaining end to end — `in_window` is half-open, so `to == from` leaves
+  no gap — and running past the last response, so the only unowned instants are the
+  `08:00`-`09:00` before `allhead-a`'s bound. The warning must then drop its "and $0.0000
+  (0s) is the rest" clause and its "For the rest" sentence rather than hand the reader the
+  `to`-widening remedy for nothing, which no `to` widened forwards could reach anyway.
+  `16a`/`16a-usd` assert the fixture's own premise — `unclaimed_duration_s` is 3600 and
+  `unclaimed_usd` is `n0`'s `1000/6000` share — without which the two negative greps would
+  pass vacuously on any session that simply has no head. **17** pins the bound's INCLUSIVE
+  edge (ruling 1 is `min_from - moment <= to - from`): a fresh session again
+  (`88888888-0000-0000-0000-000000000008`; `e0` `09:00`/1000, `e1` `10:30`/2000, `e2`
+  `13:00`/3000, `edge-a` `10:00`-`11:00`, `edge-b` `11:00`-`18:00`), since a fifth response
+  on phase 15's session would re-base every token fraction in `15a`-`15f`. `edge-a`'s hour
+  puts its bound at `09:00` exactly, where `e0` sits: its `cost_usd.total` is `e0 + e1`,
+  its `duration_s` is 7200 (`[bound, from)` plus its own window), and nothing on the
+  session is unclaimed in either currency. `16c` and `16d` were RED against the build
+  pass's own warning, which always emitted both halves of the sentence pair; `17a`, `17b`
+  and `17c` are red only under a mutation — flip `share_owners`' `moment < bound` to `<=`
+  and all three move, while `15a` (the dollars) stays green, which is exactly the gap.
+  `8c`, `15f-duration*`, `16a`, `16a-usd`, `16b` and `16e` are guards, green before and
+  after. `8c` is the fourth escalation, on phase 1's output: with no head the warning is
+  the pre-existing tail sentence and carries no head clause at all — the `elif` branch had
+  no reader before it.
+- `session-claims.sh` — `session-share.sh`'s counterpart on the claim-set side: same
+  scaffolding, plus a `write_host_manifest` twin of `write_self_manifest` that writes into
+  `$TMP/plans/features` (the enclosing repo's own corpus, per `claims-ledger.sh` part D)
+  and direct writes/edits of `$FAKE_HOME/.claude/subagent-claims.json`. One session
+  (`33333333-0000-0000-0000-000000000003`) with four responses two hours apart from
+  `2026-06-02T10:00:00.000Z`, equal output tokens so cost is proportional to them alone;
+  `claim-here`, in the self corpus, pins it with window `10:00`-`20:00`. Asserts the three
+  sources a claimant is found from and their ranking: (1) a manifest in the OTHER corpus —
+  `claim-there`, window `14:00`-`20:00` — is found live, `share_basis` naming
+  `<enclosing repo>/claim-there` with source `"manifest"`, claim-here's total three
+  quarters of the session cost (it owns the first two responses alone, half of the last
+  two); (2) with that manifest gone, a claimant in a THIRD repo this checkout cannot read
+  a manifest from at all — `otherRepo/claim-elsewhere` — is found from the ledger's
+  `sessions` section instead, same three quarters, source `"ledger"`; (3) a *stale* ledger
+  entry for `claim-there` under its own `(repo, slug)` does not duplicate its live,
+  current manifest entry — one entry, source `"manifest"`, carrying the manifest's
+  current `from` rather than the ledger's old one; (4) a claim with no `window` key at all
+  (the shape recorded before this feature existed) is read as unbounded — `from`/`to` both
+  null in `share_basis` — splits claim-here's cost exactly in half, and is warned about by
+  name; the same claim seeded into a LEGACY FLAT ledger (no `subagents`/`sessions` keys)
+  still loads but is never read as a session claim — claim-here's cost reverts to the
+  full, unshared figure, no `share_basis` at all; (5) a fifth response appended as the
+  parent transcript's OWN sidechain line (`session_line … true`, plan 89's addition),
+  inside every claimant's window, is shared the same way: `cost_usd.sidechain` is halved
+  on this feature and `cost_usd.total` still equals `main + sidechain`; (6) after a
+  capture, the ledger's own `agentTooling/claim-here` entry carries a `window` of
+  NORMALIZED instants (python `isoformat`, `+00:00`) rather than the manifest's raw
+  strings, asserted by parsing rather than string equality — the shape a third repo's
+  capture (assertion 2's scenario) reads; (7) a record frozen with no other claimant, then
+  claimed by a manifest and a ledger entry that both appear only after the freeze, is
+  ANNOTATED by a plain `--all` (no `--recapture`) rather than recomputed — every field
+  byte-identical to the frozen copy but `also_claimed_by` (asserted with
+  `same_but_annotation`, `claims-ledger.sh` part C's helper), and the run separately warns
+  naming the slug and the session that the frozen figure predates the share rule and
+  `--recapture` would rebuild it while the transcript still exists — and goes on warning on
+  the SECOND consecutive `--all` (7d-7f), which writes nothing: the annotation converges on
+  the first sweep and the stale full-count figure does not, so a warning keyed off "did
+  this run write" asks for the repair once and then goes quiet for as long as the
+  transcript has left, while the `skipping` line still means the run wrote nothing;
+  (8) the subagent side
+  of the ledger is untouched — a subagent claim-here already claims still refuses a second
+  feature's (`claim-twin`'s) capture outright, one check, asserted by reference to
+  `subagent-capture.sh`'s own fixture rather than re-derived here; (9) the claimant scan is
+  indexed once per capture rather than repeated per selected session — a `python3 - <<'PY'`
+  block (the `sys.path` insert of the copied `analysis/` the other tests use) wraps
+  `parse_manifest` in a counter, calls `build_claimant_index`, then
+  `session_claim_intervals` for three different session ids, and asserts the counter did
+  not grow after the index was built. It refuses to pass on an empty corpus (`VACUOUS`
+  below two manifests parsed), since a count of zero is trivially stable; what the index
+  must not change is any *answer*, and that is asserted by every other check in this file
+  and in `session-share.sh` rather than here; (10) the same claim set asked of the
+  **vendored** layout, in a second sandbox — assertions 1-9 stand up the standalone shape
+  (`$AT` holds the `.git`), where the self corpus's identity comes out right whichever
+  rule derives it. Here a consuming repo `vendorHost` holds a real `git init` with a real
+  `origin` (not the bare `mkdir .git` the rest of the file uses: an invalid `.git` makes
+  the subprocess exit 128 and `repo_identity` fall back to the *vendored* directory's own
+  name, `agentTooling`, which is accidentally the right answer — the wrong answer needs a
+  `git` that succeeds), `agentTooling/` beneath it with no `.git`, and the transcripts
+  filed under the enclosing directory's project path with `cwd` the enclosing directory,
+  so `session_root(True)` is the consumer. Four equal responses, `claim-here` and
+  `claim-self-twin` both in the self corpus with windows covering the whole transcript:
+  the twin appears in `share_basis` as `agentTooling/claim-self-twin` with source
+  `manifest` (10a) and nothing in `share_basis` is named for the enclosing repo, the
+  capturing feature itself included (10b); a ledger claim on the same feature under the
+  declared identity and a *different* window dedupes into that one entry rather than
+  becoming a third claimant (10c), keeping the manifest's `from` (10d); `claim-here`'s
+  total is therefore half the session, not the 5/12 three claims produce (10e); and the
+  ledger row the capture writes for itself carries `repo`
+  `https://github.com/ssdesai/agentTooling.git` and `repo_name` `agentTooling` (10f, 10g).
+  The fixture's own precondition is checked rather than assumed — `git -C $VHOST remote
+  get-url origin` really is `$VENDOR_ORIGIN` (10-pre) — because a `git` that failed there
+  would hand the rule the *right* answer by accident and pass the whole phase vacuously.
+  10h-10j then put assertion 7's shape into the same layout, which is the only route
+  through `register_frozen_claims` and the `--all` loop's `annotate_frozen_record` call:
+  the ledger is reseeded to the two rows a SHARED ledger really holds here — `claim-here`'s
+  own and a second feature's, both under the declared identity, since the standalone
+  checkout's `--self` runs wrote them — and a plain `--all` (no `--recapture`) annotates
+  the frozen record rather than recomputing it (10-annotated, `same_but_annotation`
+  again), naming `agentTooling/claim-self-twin` in `also_claimed_by` (10h) and nothing
+  ending in `/claim-here` (10i), while the ledger keeps exactly ONE `claim-here` row and
+  it carries the declared identity (10j). 10i is the defect in that path:
+  `other_session_claimants` excludes a feature's own claim by `(repo, slug)`, so a frozen
+  `--self` record annotated under the consumer's origin misses its own `agentTooling`
+  ledger row and lists ITSELF among its co-claimants.
+  1-7 were RED until `capture_planning.py` looked beyond its own corpus and its own
+  manifest for a session's claimants, and 10a-10g, 10i and 10j until `corpus_identity`
+  declared the self corpus's identity rather than deriving it (10-pre, 10-annotated and
+  10h are green either way: they pin the fixture and the branch taken, not the identity); (8) was GREEN throughout — the subagent
+  refusal it pins is pre-existing and must stay exactly as it is while the session side
+  grows around it. No model, no network.
 - `timestamps-are-utc.sh` — same scaffolding, asserting the UTC convention in
   `analysis/README.md` → "Every instant is UTC": `transcript.utc_date` dates an offset
   timestamp by its UTC day (`2026-07-01T23:00:00-04:00` → `2026-07-02`), a session's start
@@ -362,6 +718,28 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   and value, a `Z`-suffixed or explicit-offset one is not, and a *sibling* manifest's
   naive bound is not — that last one is what keeps the warning actionable rather than a
   standing complaint about every other feature in both corpora.
+- `allow-repo-commands.sh` — builds a throwaway project root with a venv symlink, an
+  in-repo worktree and two symlinks that escape the tree, then feeds the real
+  `hooks/allow-repo-commands.sh` the payload Claude Code sends, one command at a time.
+  Asserts the four `cd X && cmd` shapes that motivated the hook are approved along with
+  ordinary reads and runs; that every bypass the audit found is refused (variable
+  expansion, `--flag=value` paths, attached and combined short flags, sed's `w`,
+  `git branch` mutation, exec-through flags, brace expansion, `|&`, relative paths and
+  globs through symlinks, symlink-following recursion, redirects, a NUL byte); that
+  single-quoted shell characters are literal while double-quoted ones are not; that a
+  worktree session cannot reach the main repo; and that a payload without `cwd`, with
+  `cwd` outside the root, for another tool, or without `CLAUDE_PROJECT_DIR` approves
+  nothing. `~` and `/etc/hosts` are symlink targets and command text only — nothing is
+  read from either. The list of bypasses is `hooks/README.md` → What the audit found.
+- `hook-wiring.sh` — thirteen throwaway repos, one per starting state of
+  `.claude/settings.json` (absent, unrelated content, hook only, deny rules only, a
+  partial deny list with a repo's own rule in it, complete, a different hook, six
+  malformed shapes). Asserts `hooks/wire-settings.py --check` and `--write` report the
+  documented status and exit code and agree; that after a write every deny rule is
+  present and exactly one hook entry names the script; that nothing the repo had is
+  removed or changed, including a hand-customized hook path; that a second write is
+  `kept` with the file byte-identical and `--check` then says `in-sync`; and that
+  malformed files are `INVALID` in both modes and untouched.
 - `sync-check.sh` — copies the real `sync-plans.sh`, `update.sh` and `templates/` (a
   missing `update.sh` is tolerated — RED until plan 77 lands, the `cost-recovery.sh`
   convention) into two throwaway fixtures. Fixture A is a consuming repo at
@@ -384,7 +762,14 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   one is `missing` and is re-seeded; and an unknown flag is a usage error, exit
   2. It also reads — never writes — the real checkout, asserting `gate.sh`/`pr.sh`/
   `worktree-setup.sh` carry the same `template-version` in `templates/plans/` and in
-  `self/`. Fixture B is a subtree cycle: a bare `$TMP/upstream.git`, a `$TMP/work` clone
+  `self/` (8), and that the upstream URL is ONE string across the three places that
+  mirror it by hand: `analysis/roots.py`'s `SELF_CORPUS_IDENTITY` (read by importing
+  `roots`), `update.sh`'s `DEFAULT_REMOTE` (read by parsing the literal) and the root
+  `README.md`'s `git subtree` commands (8b-8d). All three comments say they move
+  together and nothing else enforces it; the failure mode is silent and is the one
+  `self-corpus-identity` fixed — move the remote in one and not the others and every new
+  `--self` ledger claim carries a `repo` matching none of the historical rows, so one
+  feature deduplicates against nothing and is counted twice. Fixture B is a subtree cycle: a bare `$TMP/upstream.git`, a `$TMP/work` clone
   that commits the same three copies as `main`, and `$TMP/consumer2`, which
   `git subtree add`s it at `agentTooling/`, seeds `plans/` and fills
   `PROJECT_FACTS.md`; it asserts `update.sh`: a pull with a clean tree brings across a

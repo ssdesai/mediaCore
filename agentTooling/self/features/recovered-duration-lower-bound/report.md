@@ -1,33 +1,35 @@
 # recovered-duration-lower-bound — cost and waste report
 
-Generated 2026-09-07T20:03:41.797466+00:00.
+Generated 2026-09-09T22:37:00.070776+00:00.
 
 ## Cost
 
 | bucket | usd | % of total |
 |---|---|---|
 | planning | $0.0000 | 0.0% |
-| build | $69.3938 | 95.6% |
+| build | $22.3554 | 87.5% |
 | verify | $0.0000 | 0.0% |
-| review | $3.1853 | 4.4% |
-| **total** | **$72.5791** | 100.0% |
+| review | $3.1853 | 12.5% |
+| **total** | **$25.5408** | 100.0% |
 
-Built direct (`AGENT_DIRECT.md`): build is the implementer's transcript(s), $69.3938, read from `planning.json`; there are no build plans, and the coordinator's minutes on the brief are not separated from it.
+Sessions this feature shares: `ed088063-7aea-498e-84b1-7503d4bd88e1` (this feature's share $3.6693 of $70.4968), also claimed by agentTooling/tooling-backlog-2026-09-06, humanNetworkMap/delete-error-surface, humanNetworkMap/error-surface-completion, humanNetworkMap/mediacore-0-3-0, humanNetworkMap/validation-and-fetch-error-surface, musicMap/integration-test-database, musicMap/mediacore-0-3-0, musicMap/ruff-format-gate, vinylCatalogue/backlog-assertions-2026-09, vinylCatalogue/bundle-track-artist, vinylCatalogue/fold-duplicated-rows, vinylCatalogue/keyed-promotion-pairing, vinylCatalogue/show-selected-and-refetch-flake, vinylCatalogue/staged-commit-journal. The shares of all claimants sum to the session's own cost, so summing these features' totals now counts it once, not once per feature.
 
-cost per plan: $72.5791  
-cost per file touched: $18.1448
+Built direct (`AGENT_DIRECT.md`): build is the implementer's transcript(s), $22.3554, read from `planning.json`; there are no build plans, and the coordinator's minutes on the brief are not separated from it.
+
+cost per plan: $25.5408  
+cost per file touched: $6.3852
 
 ## Time
 
 | bucket | minutes | usd | usd per minute |
 |---|---|---|---|
-| build: implementer | 1357.3 | $69.3938 | $0.0511 |
+| build: implementer | 88.0 | $22.3554 | $0.2542 |
 | ↳ acceptance tests | 5.5 |  |  |
 | ↳ implementation | 13.5 |  |  |
 | ↳ gate | 1.9 |  |  |
 | verify | 0.0 | $0.0000 |  |
 | review | 7.0 | $3.1853 | $0.4558 |
-| **total** | **1364.3** | **$72.5791** | $0.0532 |
+| **total** | **94.9** | **$25.5408** | $0.2690 |
 
 The implementer's minutes are its transcript span — its working time, since a delegate runs start to finish. Verify and review minutes are summed over plans; the wall clock below is the review runner's own record. The indented rows split that span at the implementer's own checkpoint milestones (`stamp-timing.sh <slug> checkpoint status=…`), so they carry minutes and no separate dollars.
 

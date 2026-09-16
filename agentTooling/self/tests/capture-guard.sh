@@ -60,9 +60,11 @@ set -uo pipefail
 #      features are still captured, and the run exits non-zero at the end;
 #  14. an empty session_window (from == to, or from > to) is warned about, while an
 #      open-ended one and a real interval written across two zone formats are not;
-#  15. the naming rule: a session launched in the feature's own worktree, R-<slug>, is
+#  15. the naming rule, for the LEGACY layout: a session launched in the sibling worktree
+#      R-<slug> a feature started before worktrees moved inside the primary still has is
 #      selected and its entry records that cwd, while one launched in any other sibling
-#      directory is not, and the warning names the directory it came from;
+#      directory is not, and the warning names the directory it came from (the nested
+#      layout's side is self/tests/worktree-claims.sh);
 #  16. a capture that matches no session and no subagent writes nothing and exits
 #      non-zero, naming the three causes; --force writes the honest zero.
 #  17. that refusal is lifted when the only sessions on the branch are excluded ones —
@@ -118,7 +120,9 @@ SESSION_B="bbbbbbbb-0000-0000-0000-000000000002"
 # $HOME is redirected so the fixture transcripts are the only ones on disk — a real
 # ~/.claude/projects/ would otherwise leak sessions into every scan below.
 FAKE_HOME="$TMP/home"
-PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$AT" | tr '/' '-')"
+# Claude Code's project-dir name for a cwd: every `/` and `.` becomes `-`. mktemp's
+# `tmp.XXXX` puts a `.` in this path, so a `/`-only fixture names a dir nothing matches.
+PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$AT" | tr '/.' '--')"
 mkdir -p "$PROJECTS"
 
 mkdir -p "$FEATURE_DIR"
@@ -259,7 +263,7 @@ check "8. baseline: the session is priced while reachable" \
 
 # Move it into an orphaned worktree's project dir, rewriting cwd to that worktree.
 WORKTREE="$AT-levels"
-WT_PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$WORKTREE" | tr '/' '-')"
+WT_PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$WORKTREE" | tr '/.' '--')"
 mkdir -p "$WT_PROJECTS"
 session_line "$SESSION_A" "$WORKTREE" "$BRANCH" "msg-$SESSION_A" "$MODEL" \
   "2026-07-01T10:00:00.000Z" 100 5000 0 0 0 > "$WT_PROJECTS/$SESSION_A.jsonl"
@@ -443,18 +447,20 @@ capture --recapture > "$TMP/out14f.txt"
 check "14f. an open-ended window is not warned about" \
   "! grep -q 'session_window is empty' '$TMP/out14f.txt'"
 
-# ── 15. the naming rule: R-<slug> is the feature's worktree ────────────────────
-# LIFECYCLE.md: for slug S in a repo whose primary checkout is R, the worktree is R-S,
-# and the coordinator session is launched inside it. Its transcript lives in that
-# path's own project directory with every line's cwd = R-S — a sibling of R, so the
-# old prefix test (cwd under R) dropped it. Capture derives R-S from the slug and
-# accepts it; any other sibling stays out, and the warning says where it was seen.
+# ── 15. the naming rule, legacy layout: R-<slug> is still the feature's worktree ──
+# Before worktrees moved inside the primary (self/tests/worktree-claims.sh has the
+# nested R/.worktrees/<slug> side), a feature's worktree was the sibling R-S, and a
+# feature started then keeps it until it closes. Its transcript lives in that path's
+# own project directory with every line's cwd = R-S — a sibling of R, so the old prefix
+# test (cwd under R) dropped it. Capture derives R-S from the slug and accepts it, so a
+# --recapture of such a feature still finds its sessions; any other sibling stays out,
+# and the warning says where it was seen.
 write_manifest
 rm -f "$PLANNING" "$PROJECTS"/*.jsonl
 FEATURE_WT="$AT-$SLUG"
-FEATURE_WT_PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$FEATURE_WT" | tr '/' '-')"
+FEATURE_WT_PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$FEATURE_WT" | tr '/.' '--')"
 OTHER_WT="$AT-other"
-OTHER_WT_PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$OTHER_WT" | tr '/' '-')"
+OTHER_WT_PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$OTHER_WT" | tr '/.' '--')"
 mkdir -p "$FEATURE_WT_PROJECTS" "$OTHER_WT_PROJECTS"
 session_line "$SESSION_A" "$FEATURE_WT" "$BRANCH" "msg-$SESSION_A" "$MODEL" \
   "2026-07-01T10:00:00.000Z" 100 5000 0 0 0 > "$FEATURE_WT_PROJECTS/$SESSION_A.jsonl"

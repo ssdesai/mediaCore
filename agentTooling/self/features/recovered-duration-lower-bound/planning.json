@@ -1,6 +1,6 @@
 {
   "slug": "recovered-duration-lower-bound",
-  "captured_at": "2026-09-07T20:03:41.742313+00:00",
+  "captured_at": "2026-09-09T22:37:00.014520+00:00",
   "manifest_branches": [
     "recovered-duration-lower-bound"
   ],
@@ -16,8 +16,120 @@
       "cwd": "/Users/sahildesai/dev",
       "date": "2026-09-06",
       "started_at": "2026-09-06T22:11:08.565000+00:00",
-      "ended_at": "2026-09-07T20:03:35.371000+00:00",
-      "duration_s": 78746
+      "ended_at": "2026-09-08T03:48:25.851000+00:00",
+      "duration_s": 2583,
+      "also_claimed_by": [
+        "agentTooling/tooling-backlog-2026-09-06",
+        "humanNetworkMap/delete-error-surface",
+        "humanNetworkMap/error-surface-completion",
+        "humanNetworkMap/mediacore-0-3-0",
+        "humanNetworkMap/validation-and-fetch-error-surface",
+        "musicMap/integration-test-database",
+        "musicMap/mediacore-0-3-0",
+        "musicMap/ruff-format-gate",
+        "vinylCatalogue/backlog-assertions-2026-09",
+        "vinylCatalogue/bundle-track-artist",
+        "vinylCatalogue/fold-duplicated-rows",
+        "vinylCatalogue/keyed-promotion-pairing",
+        "vinylCatalogue/show-selected-and-refetch-flake",
+        "vinylCatalogue/staged-commit-journal"
+      ],
+      "share_basis": [
+        {
+          "feature": "agentTooling/recovered-duration-lower-bound",
+          "from": "2026-09-07T15:54:34Z",
+          "to": "2026-09-07T20:03:41Z",
+          "source": "self"
+        },
+        {
+          "feature": "musicMap/integration-test-database",
+          "from": "2026-09-06T22:17:40Z",
+          "to": "2026-09-07T15:47:32Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "humanNetworkMap/delete-error-surface",
+          "from": "2026-09-06T22:18:24Z",
+          "to": "2026-09-07T15:47:14Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "agentTooling/tooling-backlog-2026-09-06",
+          "from": "2026-09-06T22:18:44Z",
+          "to": "2026-09-07T15:42:50Z",
+          "source": "manifest"
+        },
+        {
+          "feature": "vinylCatalogue/show-selected-and-refetch-flake",
+          "from": "2026-09-06T22:22:56Z",
+          "to": "2026-09-07T15:49:42Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "vinylCatalogue/backlog-assertions-2026-09",
+          "from": "2026-09-06T22:22:57Z",
+          "to": "2026-09-07T15:53:48Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "vinylCatalogue/staged-commit-journal",
+          "from": "2026-09-06T22:23:01Z",
+          "to": "2026-09-07T15:47:58Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "musicMap/mediacore-0-3-0",
+          "from": "2026-09-07T15:54:31Z",
+          "to": "2026-09-07T20:03:03Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "humanNetworkMap/validation-and-fetch-error-surface",
+          "from": "2026-09-07T15:58:55Z",
+          "to": "2026-09-07T20:10:54Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "humanNetworkMap/mediacore-0-3-0",
+          "from": "2026-09-07T15:59:54Z",
+          "to": "2026-09-07T20:04:11Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "vinylCatalogue/bundle-track-artist",
+          "from": "2026-09-07T16:11:37Z",
+          "to": "2026-09-07T20:01:41Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "vinylCatalogue/keyed-promotion-pairing",
+          "from": "2026-09-07T16:13:17Z",
+          "to": "2026-09-08T03:44:35Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "vinylCatalogue/fold-duplicated-rows",
+          "from": "2026-09-07T19:34:39Z",
+          "to": "2026-09-08T03:44:10Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "humanNetworkMap/error-surface-completion",
+          "from": "2026-09-07T19:37:11Z",
+          "to": "2026-09-07T20:28:34Z",
+          "source": "ledger"
+        },
+        {
+          "feature": "musicMap/ruff-format-gate",
+          "from": "2026-09-07T20:24:10Z",
+          "to": "2026-09-08T03:36:50Z",
+          "source": "ledger"
+        }
+      ],
+      "session_cost_usd": 70.49682075,
+      "session_duration_s": 106637,
+      "unclaimed_usd": 0.2822945,
+      "unclaimed_duration_s": 273
     }
   ],
   "subagents": [
@@ -48,26 +160,36 @@
     "0a1c9791-f948-417a-ac0f-4844d9f1c441",
     "10e9bb82-a9f4-4fee-a4ea-9a980c514564",
     "11675eec-5e12-4f16-9ab0-58faf6dd3d54",
+    "11eb5f09-0014-41bb-b553-7438697b6cb0",
     "2370cfd4-0937-4ed6-ae85-aabf38c302a4",
+    "239d99e7-969f-4b3f-aadc-f6c428fb0d56",
     "2a485894-7422-4e51-b22a-76fe525ceb4a",
     "2e9ce097-2707-4206-9b1b-448cd112f6f9",
     "30ee40d4-0dca-4189-8eda-a60c9883daf7",
     "371a6916-fdc4-428b-b68a-5bb73102629f",
     "41faf82d-d46d-4e7c-8846-8c19c8cb059b",
+    "480d21a8-62fd-4069-9ceb-ca6782615b2d",
     "48ccc3a0-a6ab-45a0-8811-7c3f5e48fea4",
+    "4dbfb81c-d588-4b8a-ae6c-585db1231fba",
     "63e4b311-5584-4004-91ce-5d9a964bb1d4",
     "6be11f3a-e935-4823-a8d5-0deeee6b61bf",
     "7513e2cf-3e85-4ce9-98e6-bfface6cd02d",
+    "9163e37a-f68c-46e1-9da3-0608b83a305b",
     "a36adceb-ed95-418e-81d3-63050a1a52f9",
     "ab17a74a-0268-424a-bf25-420a62959b45",
+    "b1c73a95-043e-4634-9d73-b75a0e6297d2",
     "b4eb7ce2-e048-4b36-9ff1-58632118e540",
+    "b5e1415e-ecc1-4046-a7c5-720317045ada",
     "bb605d58-6618-4206-920e-c3fbe33d5835",
+    "c5730b1b-a26d-4085-8fb9-afbcab384477",
     "c8f61520-3899-45b0-b578-0aba685b28fd",
+    "d5dc1fae-5dce-4873-b473-f467c7f1afd4",
     "deb4f210-5325-4dd3-957b-c1d989ef9010",
     "e10f23f4-25bc-4e37-92ed-713a18b33cb3",
     "e306171f-5858-4264-b6f0-055739e0d199",
     "ead9f6f1-0636-4692-a41b-99539d168a1a",
-    "f0deb6a9-97bc-4d36-93d0-670c5083975b"
+    "f0deb6a9-97bc-4d36-93d0-670c5083975b",
+    "f7179479-64b8-494b-8c86-386adad50a65"
   ],
   "excluded_agent_ids": [],
   "priced": [
@@ -77,15 +199,15 @@
       "model": "claude-fable-5-1",
       "is_sidechain": false,
       "date": "2026-09-06",
-      "duration_s": 78746,
+      "duration_s": 106637,
       "tokens": {
-        "input": 5498,
-        "output": 416750,
-        "cache_read": 39661652,
+        "input": 468,
+        "output": 16211,
+        "cache_read": 3277857,
         "cache_creation_5m": 0,
-        "cache_creation_1h": 994987
+        "cache_creation_1h": 30205
       },
-      "cost_usd": 50.707633,
+      "cost_usd": 0.27984928125,
       "rates_applied": {
         "model": "claude-fable-5-1",
         "input": 10,
@@ -94,7 +216,251 @@
         "cache_creation_5m": 12.5,
         "cache_creation_1h": 20.0,
         "tier": "standard"
-      }
+      },
+      "full_cost_usd": 2.23879425,
+      "share": 0.125,
+      "shared_with": [
+        "humanNetworkMap/error-surface-completion",
+        "humanNetworkMap/mediacore-0-3-0",
+        "humanNetworkMap/validation-and-fetch-error-surface",
+        "musicMap/mediacore-0-3-0",
+        "vinylCatalogue/bundle-track-artist",
+        "vinylCatalogue/fold-duplicated-rows",
+        "vinylCatalogue/keyed-promotion-pairing"
+      ]
+    },
+    {
+      "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+      "agent_id": null,
+      "model": "claude-fable-5-1",
+      "is_sidechain": false,
+      "date": "2026-09-06",
+      "duration_s": 106637,
+      "tokens": {
+        "input": 2,
+        "output": 4730,
+        "cache_read": 162654,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 2746
+      },
+      "cost_usd": 0.04744335714285714,
+      "rates_applied": {
+        "model": "claude-fable-5-1",
+        "input": 10,
+        "output": 50,
+        "cache_read": 0.25,
+        "cache_creation_5m": 12.5,
+        "cache_creation_1h": 20.0,
+        "tier": "standard"
+      },
+      "full_cost_usd": 0.3321035,
+      "share": 0.14285714285714285,
+      "shared_with": [
+        "humanNetworkMap/error-surface-completion",
+        "humanNetworkMap/mediacore-0-3-0",
+        "humanNetworkMap/validation-and-fetch-error-surface",
+        "musicMap/mediacore-0-3-0",
+        "vinylCatalogue/fold-duplicated-rows",
+        "vinylCatalogue/keyed-promotion-pairing"
+      ]
+    },
+    {
+      "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+      "agent_id": null,
+      "model": "claude-fable-5-1",
+      "is_sidechain": false,
+      "date": "2026-09-06",
+      "duration_s": 106637,
+      "tokens": {
+        "input": 2,
+        "output": 1594,
+        "cache_read": 165400,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 6882
+      },
+      "cost_usd": 0.043118333333333335,
+      "rates_applied": {
+        "model": "claude-fable-5-1",
+        "input": 10,
+        "output": 50,
+        "cache_read": 0.25,
+        "cache_creation_5m": 12.5,
+        "cache_creation_1h": 20.0,
+        "tier": "standard"
+      },
+      "full_cost_usd": 0.25871,
+      "share": 0.16666666666666666,
+      "shared_with": [
+        "humanNetworkMap/error-surface-completion",
+        "humanNetworkMap/mediacore-0-3-0",
+        "humanNetworkMap/validation-and-fetch-error-surface",
+        "vinylCatalogue/fold-duplicated-rows",
+        "vinylCatalogue/keyed-promotion-pairing"
+      ]
+    },
+    {
+      "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+      "agent_id": null,
+      "model": "claude-fable-5-1",
+      "is_sidechain": false,
+      "date": "2026-09-06",
+      "duration_s": 106637,
+      "tokens": {
+        "input": 98,
+        "output": 37827,
+        "cache_read": 774392,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 44505
+      },
+      "cost_usd": 0.744007,
+      "rates_applied": {
+        "model": "claude-fable-5-1",
+        "input": 10,
+        "output": 50,
+        "cache_read": 0.25,
+        "cache_creation_5m": 12.5,
+        "cache_creation_1h": 20.0,
+        "tier": "standard"
+      },
+      "full_cost_usd": 2.976028,
+      "share": 0.25,
+      "shared_with": [
+        "humanNetworkMap/mediacore-0-3-0",
+        "humanNetworkMap/validation-and-fetch-error-surface",
+        "musicMap/mediacore-0-3-0"
+      ]
+    },
+    {
+      "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+      "agent_id": null,
+      "model": "claude-fable-5-1",
+      "is_sidechain": false,
+      "date": "2026-09-06",
+      "duration_s": 106637,
+      "tokens": {
+        "input": 32,
+        "output": 6716,
+        "cache_read": 221757,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 14890
+      },
+      "cost_usd": 0.13787185,
+      "rates_applied": {
+        "model": "claude-fable-5-1",
+        "input": 10,
+        "output": 50,
+        "cache_read": 0.25,
+        "cache_creation_5m": 12.5,
+        "cache_creation_1h": 20.0,
+        "tier": "standard"
+      },
+      "full_cost_usd": 0.68935925,
+      "share": 0.2,
+      "shared_with": [
+        "humanNetworkMap/mediacore-0-3-0",
+        "humanNetworkMap/validation-and-fetch-error-surface",
+        "musicMap/mediacore-0-3-0",
+        "vinylCatalogue/bundle-track-artist"
+      ]
+    },
+    {
+      "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+      "agent_id": null,
+      "model": "claude-fable-5-1",
+      "is_sidechain": false,
+      "date": "2026-09-06",
+      "duration_s": 106637,
+      "tokens": {
+        "input": 164,
+        "output": 11056,
+        "cache_read": 795180,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 30145
+      },
+      "cost_usd": 0.19373357142857145,
+      "rates_applied": {
+        "model": "claude-fable-5-1",
+        "input": 10,
+        "output": 50,
+        "cache_read": 0.25,
+        "cache_creation_5m": 12.5,
+        "cache_creation_1h": 20.0,
+        "tier": "standard"
+      },
+      "full_cost_usd": 1.356135,
+      "share": 0.14285714285714285,
+      "shared_with": [
+        "humanNetworkMap/mediacore-0-3-0",
+        "humanNetworkMap/validation-and-fetch-error-surface",
+        "musicMap/mediacore-0-3-0",
+        "vinylCatalogue/bundle-track-artist",
+        "vinylCatalogue/fold-duplicated-rows",
+        "vinylCatalogue/keyed-promotion-pairing"
+      ]
+    },
+    {
+      "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+      "agent_id": null,
+      "model": "claude-fable-5-1",
+      "is_sidechain": false,
+      "date": "2026-09-06",
+      "duration_s": 106637,
+      "tokens": {
+        "input": 1522,
+        "output": 89840,
+        "cache_read": 14215736,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 169839
+      },
+      "cost_usd": 1.9096556666666666,
+      "rates_applied": {
+        "model": "claude-fable-5-1",
+        "input": 10,
+        "output": 50,
+        "cache_read": 0.25,
+        "cache_creation_5m": 12.5,
+        "cache_creation_1h": 20.0,
+        "tier": "standard"
+      },
+      "full_cost_usd": 11.457934,
+      "share": 0.16666666666666666,
+      "shared_with": [
+        "humanNetworkMap/mediacore-0-3-0",
+        "humanNetworkMap/validation-and-fetch-error-surface",
+        "musicMap/mediacore-0-3-0",
+        "vinylCatalogue/bundle-track-artist",
+        "vinylCatalogue/keyed-promotion-pairing"
+      ]
+    },
+    {
+      "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+      "agent_id": null,
+      "model": "claude-fable-5-1",
+      "is_sidechain": false,
+      "date": "2026-09-06",
+      "duration_s": 106637,
+      "tokens": {
+        "input": 34,
+        "output": 5995,
+        "cache_read": 336758,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 12147
+      },
+      "cost_usd": 0.31360975,
+      "rates_applied": {
+        "model": "claude-fable-5-1",
+        "input": 10,
+        "output": 50,
+        "cache_read": 0.25,
+        "cache_creation_5m": 12.5,
+        "cache_creation_1h": 20.0,
+        "tier": "standard"
+      },
+      "full_cost_usd": 0.6272195,
+      "share": 0.5,
+      "shared_with": [
+        "musicMap/mediacore-0-3-0"
+      ]
     },
     {
       "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
@@ -148,17 +514,21 @@
     }
   ],
   "cost_usd": {
-    "main": 50.707633,
+    "main": 3.6692888098214285,
     "sidechain": 18.68614575,
     "subagents": 18.68614575,
-    "total": 69.39377875,
+    "total": 22.35543455982143,
     "total_is_partial": false
   },
   "duration_s": {
-    "sessions": 78746,
+    "sessions": 2583,
     "subagents": 2694,
     "entries_without_duration": []
   },
   "rates_source": "agentTooling/analysis/pricing.py RATES_VERIFIED=2026-09-04",
-  "warnings": []
+  "warnings": [
+    "session ed088063-7aea-498e-84b1-7503d4bd88e1 may span the window boundary (window 2026-09-07T15:54:34+00:00..2026-09-07T20:03:41+00:00 UTC, session ends 2026-09-08T03:48:25.851000+00:00); $19.7892 and 27884s of it fall at or after `to`, not counted here (the split gives each response to the claimants whose window still covers it, and only what is past every claimant's `to` to nobody, as the unclaimed remainder)",
+    "session ed088063-7aea-498e-84b1-7503d4bd88e1 is shared by 15 claimant(s); this feature's share is $3.6693 of the session's own $70.4968, the rest going to agentTooling/tooling-backlog-2026-09-06, humanNetworkMap/delete-error-surface, humanNetworkMap/error-surface-completion, humanNetworkMap/mediacore-0-3-0, humanNetworkMap/validation-and-fetch-error-surface, musicMap/integration-test-database, musicMap/mediacore-0-3-0, musicMap/ruff-format-gate, vinylCatalogue/backlog-assertions-2026-09, vinylCatalogue/bundle-track-artist, vinylCatalogue/fold-duplicated-rows, vinylCatalogue/keyed-promotion-pairing, vinylCatalogue/show-selected-and-refetch-flake, vinylCatalogue/staged-commit-journal",
+    "session ed088063-7aea-498e-84b1-7503d4bd88e1 has $0.2823 (274s) unclaimed by any feature \u2014 widen a claimant's `to` bound, or pin the session to the feature it belongs to, to have it counted"
+  ]
 }

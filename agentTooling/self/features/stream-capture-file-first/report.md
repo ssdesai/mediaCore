@@ -1,33 +1,35 @@
 # stream-capture-file-first — cost and waste report
 
-Generated 2026-09-06T16:27:35.334586+00:00.
+Generated 2026-09-10T14:11:13.142989+00:00.
 
 ## Cost
 
 | bucket | usd | % of total |
 |---|---|---|
 | planning | $0.0000 | 0.0% |
-| build | $84.2069 | 96.0% |
+| build | $28.8040 | 89.2% |
 | verify | $0.0000 | 0.0% |
-| review | $3.4896 | 4.0% |
-| **total** | **$87.6965** | 100.0% |
+| review | $3.4896 | 10.8% |
+| **total** | **$32.2937** | 100.0% |
 
-Built direct (`AGENT_DIRECT.md`): build is the implementer's transcript(s), $84.2069, read from `planning.json`; there are no build plans, and the coordinator's minutes on the brief are not separated from it.
+Sessions this feature shares: `2d8b1236-3e77-450f-bc9e-8165c0cf9f9c` (this feature's share $2.7263 of $58.4732), also claimed by agentTooling/recover-cost-at-close, agentTooling/stale-failed-sidecars. The shares of all claimants sum to the session's own cost, so summing these features' totals now counts it once, not once per feature.
 
-cost per plan: $87.6965  
-cost per file touched: $14.6161
+Built direct (`AGENT_DIRECT.md`): build is the implementer's transcript(s), $28.8040, read from `planning.json`; there are no build plans, and the coordinator's minutes on the brief are not separated from it.
+
+cost per plan: $32.2937  
+cost per file touched: $5.3823
 
 ## Time
 
 | bucket | minutes | usd | usd per minute |
 |---|---|---|---|
-| build: implementer | 2950.1 | $84.2069 | $0.0285 |
+| build: implementer | 147.1 | $28.8040 | $0.1958 |
 | ↳ acceptance tests | 5.5 |  |  |
 | ↳ implementation | 15.5 |  |  |
 | ↳ gate | 2.4 |  |  |
 | verify | 0.0 | $0.0000 |  |
 | review | 10.2 | $3.4896 | $0.3415 |
-| **total** | **2960.3** | **$87.6965** | $0.0296 |
+| **total** | **157.4** | **$32.2937** | $0.2052 |
 
 The implementer's minutes are its transcript span — its working time, since a delegate runs start to finish. Verify and review minutes are summed over plans; the wall clock below is the review runner's own record. The indented rows split that span at the implementer's own checkpoint milestones (`stamp-timing.sh <slug> checkpoint status=…`), so they carry minutes and no separate dollars.
 

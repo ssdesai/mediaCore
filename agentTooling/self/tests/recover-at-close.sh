@@ -109,8 +109,11 @@ now_z() { date -u '+%Y-%m-%dT%H:%M:%S.000Z'; }
 FAKE_HOME="$TMP/home"
 mkdir -p "$FAKE_HOME/.claude/projects"
 export HOME="$FAKE_HOME"
-# ~/.claude/projects/<cwd with every / replaced by ->, the encoding Claude Code uses.
-project_dir() { echo "$FAKE_HOME/.claude/projects/$(echo "$1" | tr '/' '-')"; }
+# ~/.claude/projects/<cwd with every / and . replaced by ->, the encoding Claude Code
+# uses — the `.` matters for a feature worktree, which lives at R/.worktrees/<slug>.
+project_dir() { echo "$FAKE_HOME/.claude/projects/$(echo "$1" | tr '/.' '--')"; }
+# Where feature-start.sh puts a feature's worktree: <primary>/.worktrees/<slug> (LIFECYCLE.md).
+WORKTREES_DIR=".worktrees"
 
 mkdir -p "$TMP/bin"
 # Stub claude: the shape a real `--output-format stream-json --verbose` run streams — an
@@ -310,7 +313,7 @@ feature_stem() { fence "$LA/self/features/$1/README.md" 'd["plans"][0]'; }
 close_fixture() {
   local slug="$1" review_sid="$2" plant="$3"
   local plant_session="${4:-yes}" extra="${5:-}" rel
-  local wt="$LA-$slug" fd
+  local wt="$LA/$WORKTREES_DIR/$slug" fd
   # --session pins the planning session by id, which claims it "regardless of branch,
   # window or cwd". Without the pin this fixture rides a real boundary: `in_window`'s
   # `to` is EXCLUSIVE, feature-close.sh stamps `to` seconds after the transcript is
@@ -382,7 +385,7 @@ check "C9. ... so the bare '\''review \$0.0000 (0.0%);'\'' the defect printed is
 TO_BEFORE="$(fence "$LA/self/features/$SLUG_OK/README.md" 'd["session_window"]["to"]')"
 head_before="$(git -C "$LA" rev-parse HEAD)"
 out_re="$( cd "$TMP/close" && "$LA/feature-close.sh" --self "$SLUG_OK" --recapture 2>&1 )"; rc_re=$?
-check "C10. --recapture closes again with the worktree and local branch gone (got $rc_re)" '[[ $rc_re -eq 0 && ! -d "$LA-$SLUG_OK" ]] && ! git -C "$LA" show-ref --quiet "refs/heads/$SLUG_OK"'
+check "C10. --recapture closes again with the worktree and local branch gone (got $rc_re)" '[[ $rc_re -eq 0 && ! -d "$LA/$WORKTREES_DIR/$SLUG_OK" ]] && ! git -C "$LA" show-ref --quiet "refs/heads/$SLUG_OK"'
 check "C11. ... re-committing the cost records" '[[ "$(git -C "$LA" rev-parse HEAD)" != "$head_before" && "$(git -C "$LA" log -1 --format=%s)" == "$SLUG_OK: cost records" ]]'
 TO_AFTER="$(fence "$LA/self/features/$SLUG_OK/README.md" 'd["session_window"]["to"]')"
 check "C12. ... and leaving session_window.to where the first close put it (was $TO_BEFORE, now $TO_BEFORE)" '[[ -n "$TO_BEFORE" && "$TO_BEFORE" != "None" && "$TO_AFTER" == "$TO_BEFORE" ]]'
@@ -512,13 +515,13 @@ check "E5. ... and the re-run refuses for the same reason, not for a dirty prima
 # step 10 asks — are these leftovers the harness's own, or somebody's work?
 SLUG_STRAY="close-stray-usage"
 out_stray="$(close_fixture "$SLUG_STRAY" "sess-close-stray" yes yes "notes/left-behind.usage.json")"; rc_stray=$?
-check "F1. a worktree holding a .usage.json outside a queue is kept, not force-removed (got $rc_stray)" '[[ $rc_stray -eq 0 && -d "$LA-$SLUG_STRAY" ]]'
+check "F1. a worktree holding a .usage.json outside a queue is kept, not force-removed (got $rc_stray)" '[[ $rc_stray -eq 0 && -d "$LA/$WORKTREES_DIR/$SLUG_STRAY" ]]'
 check "F2. ... and the close says so instead of discarding it" 'grep -q "uncommitted or untracked files that are not" <<<"$out_stray"'
 # The complement, so F1 cannot pass by the close simply never force-removing anything: the
 # same file INSIDE a queue is the harness's own, and the worktree comes away.
 SLUG_OWNED="close-owned-usage"
 out_owned="$(close_fixture "$SLUG_OWNED" "sess-close-owned" yes yes "review/complete/99-extra-sonnet.usage.json")"; rc_owned=$?
-check "F3. ... while one inside a queue is the harness's own and the worktree comes away (got $rc_owned)" '[[ $rc_owned -eq 0 && ! -d "$LA-$SLUG_OWNED" ]] && grep -q "discarding uncommitted records already carried home" <<<"$out_owned"'
+check "F3. ... while one inside a queue is the harness's own and the worktree comes away (got $rc_owned)" '[[ $rc_owned -eq 0 && ! -d "$LA/$WORKTREES_DIR/$SLUG_OWNED" ]] && grep -q "discarding uncommitted records already carried home" <<<"$out_owned"'
 
 echo
 if (( fails > 0 )); then echo "recover-at-close: $fails assertion(s) FAILED"; exit 1; fi

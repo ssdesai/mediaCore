@@ -81,7 +81,7 @@ double-counts the session and `check_branch_overlap` will say so.
     "03-verify-sonnet",
     "04-review-opus"
   ],
-  "session_window": {"from": "2026-08-23T17:00:00Z", "to": null},
+  "session_window": {"from": "2026-08-23T17:00:00Z", "to": "2026-08-23T16:46:31Z"},
   "exclude_sessions": []
 }
 ```

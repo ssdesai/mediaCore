@@ -67,8 +67,8 @@ def utc_date(timestamp):
     return parsed.date().isoformat() if parsed else None
 
 
-def iter_billable_messages(lines):
-    """Yield (model, usage, is_sidechain) once per billable API response.
+def iter_billable_messages_at(lines):
+    """Yield (model, usage, is_sidechain, moment) once per billable API response.
 
     One API response is written as several `assistant` lines, one per content
     block, each repeating that response's `usage` verbatim — summing per line
@@ -76,6 +76,18 @@ def iter_billable_messages(lines):
     line with no id cannot be de-duplicated; count it, since dropping it would
     under-bill. `model: "<synthetic>"` marks a locally-generated notice with
     all-zero usage and is skipped.
+
+    `moment` is `to_utc(line.get("timestamp"))` of the FIRST line of that response —
+    the line whose message id had not yet been seen — never the last, and may be
+    None when that line carries no parseable timestamp. 58% of real API responses
+    are written as several transcript lines carrying different timestamps, up to
+    1.5s apart: a consumer that took the last line's timestamp, or that grouped
+    lines into buckets before de-duplicating by message id, would place (or bill) a
+    response straddling a bucket boundary once per bucket it touched rather than
+    once. Keying on the first-seen line, inline with the same de-duplication this
+    generator already does, is what keeps a caller that buckets by time — a claim
+    window, a report period — from double-counting exactly the responses that
+    straddle one of its boundaries.
     """
     seen_message_ids = set()
     for line in lines:
@@ -91,7 +103,16 @@ def iter_billable_messages(lines):
             if message_id in seen_message_ids:
                 continue
             seen_message_ids.add(message_id)
-        yield model, usage, bool(line.get("isSidechain", False))
+        yield model, usage, bool(line.get("isSidechain", False)), to_utc(line.get("timestamp"))
+
+
+def iter_billable_messages(lines):
+    """Yield (model, usage, is_sidechain) once per billable API response — see
+    `iter_billable_messages_at` for the dedup rule and why its `moment` is the
+    first line's. A thin wrapper for the callers that only ever priced tokens and
+    have no use for when a response happened."""
+    for model, usage, is_sidechain, _moment in iter_billable_messages_at(lines):
+        yield model, usage, is_sidechain
 
 
 def add_usage(totals, key, usage):

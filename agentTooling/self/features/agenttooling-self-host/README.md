@@ -130,7 +130,7 @@ smoke tests — no build executor has bash, and the moves must not happen until
 {
   "slug": "agenttooling-self-host",
   "branches": ["browseImages"],
-  "session_window": { "from": "2026-07-30T19:03:00", "to": null },
+  "session_window": { "from": "2026-07-30T19:03:00", "to": "2026-07-31T02:56:49Z" },
   "plans": [
     "59-runner-self-mode-sonnet",
     "60-self-corpus-scaffold-haiku",

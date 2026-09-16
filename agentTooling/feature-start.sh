@@ -9,7 +9,11 @@ set -uo pipefail
 #
 #   slug      ^[a-z0-9]+(-[a-z0-9]+)*$     kebab-case, no slash, no owner prefix
 #   branch    S
-#   worktree  R-S                          a sibling directory of the primary checkout
+#   worktree  R/.worktrees/S               inside the primary checkout, kept out of git
+#
+# Inside rather than beside R because a session launched in R can then reach the worktree
+# with no access outside its own folder. Features started before this layout keep their
+# sibling R-S until they close; feature-close.sh and capture handle both.
 #
 # Everything cost capture needs is then derived from the slug — the branch to match, the
 # worktree path, the transcript directory a session launched there is filed under — with
@@ -17,8 +21,11 @@ set -uo pipefail
 #
 #   1. refuses a slug that fails the pattern, a branch or worktree that already exists,
 #      and being run from a worktree's copy (the worktree's copy is the wrong copy);
-#   2. fetches origin and adds the worktree R-S on a new branch S off origin/<base>
-#      (default main; `--base` records a stacked feature's base for the PR);
+#   2. makes sure the common git dir's info/exclude ignores /.worktrees/ — so the
+#      primary's `git status` stays clean with the worktree inside it, which is what
+#      feature-close.sh's dirty-primary refusal needs — then fetches origin and adds the
+#      worktree R/.worktrees/S on a new branch S off origin/<base> (default main;
+#      `--base` records a stacked feature's base for the PR);
 #   3. runs the repo's setup hook inside it — plans/worktree-setup.sh, or
 #      self/worktree-setup.sh under --self — for the venv, npm install, dev port;
 #   4. runs the repo's gate inside it and stops unless the verdict is green: a red base
@@ -31,9 +38,10 @@ set -uo pipefail
 #   6. commits the feature directory on S as `S: start`;
 #   7. prints where to launch the coordinator session and the line every brief opens with.
 #
-# The primary checkout is never touched: nothing here checks out, stashes or commits in
-# it, so it need not be clean and nothing else running in it is disturbed. On a refusal
-# after step 2 the worktree is left in place for inspection.
+# The primary checkout's tracked tree is never touched: nothing here checks out, stashes
+# or commits in it, so it need not be clean and nothing else running in it is disturbed.
+# Its one write outside the new worktree is the info/exclude entry, which no repo tracks.
+# On a refusal after step 2 the worktree is left in place for inspection.
 #
 # Exit codes: 2 usage; 1 any refusal.
 
@@ -44,6 +52,10 @@ KNOWN_METHODS="direct plans hand"
 DEFAULT_METHOD="direct"
 DEFAULT_BASE="main"
 TODO_MARKER="@@TODO@@"
+# The directory under the primary checkout that holds every feature worktree
+# (LIFECYCLE.md). feature-close.sh and analysis/capture_planning.py each hold the same
+# name in one constant of their own; the three move together.
+WORKTREES_DIR_NAME=".worktrees"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/plan-runner-roots.sh"
@@ -86,7 +98,7 @@ if [[ "$(git -C "$PRIMARY" rev-parse --git-dir)" != "$(git -C "$PRIMARY" rev-par
 fi
 REL_REPO="${REPO_DIR#"$PRIMARY"}"; REL_REPO="${REL_REPO#/}"          # "" or agentTooling
 REL_AT="${SCRIPT_DIR#"$PRIMARY"}"; REL_AT="${REL_AT#/}"              # "" or agentTooling
-WORKTREE="$PRIMARY-$SLUG"
+WORKTREE="$PRIMARY/$WORKTREES_DIR_NAME/$SLUG"
 WT_REPO_DIR="$WORKTREE${REL_REPO:+/$REL_REPO}"
 WT_AT="$WORKTREE${REL_AT:+/$REL_AT}"
 WT_FEATURES="$WT_REPO_DIR/$FEATURES_LABEL"
@@ -95,6 +107,29 @@ REPO_NAME="$(basename "$PRIMARY")"
 
 git -C "$PRIMARY" show-ref --verify --quiet "refs/heads/$SLUG" && refuse "branch '$SLUG' already exists"
 [[ -e "$WORKTREE" ]] && refuse "$WORKTREE already exists"
+
+# ── Keep the worktrees directory out of git ───────────────────────────────────
+# The worktree sits inside the primary checkout, so without an ignore entry the primary's
+# `git status` lists `.worktrees/` as untracked — and feature-close.sh refuses a dirty
+# primary, so every close would stop on it. The entry goes in the COMMON git dir's
+# info/exclude: per clone, exactly as the worktree is, and nothing any repo tracks
+# changes, so a consuming repo has nothing to commit or hand-merge. Idempotent: appended
+# only when no line already equals it, and an unterminated last line is closed first so
+# an existing entry is never extended. Before `git worktree add`, so the primary is never
+# dirty, not even for the length of this run.
+COMMON_GIT_DIR="$(cd "$PRIMARY" && cd "$(git rev-parse --git-common-dir)" && pwd)" \
+  || refuse "cannot resolve the common git dir of $PRIMARY"
+EXCLUDE_FILE="$COMMON_GIT_DIR/info/exclude"
+EXCLUDE_ENTRY="/$WORKTREES_DIR_NAME/"
+if ! grep -qxF -- "$EXCLUDE_ENTRY" "$EXCLUDE_FILE" 2>/dev/null; then
+  mkdir -p "$(dirname "$EXCLUDE_FILE")" || refuse "cannot create $(dirname "$EXCLUDE_FILE")"
+  # $(…) strips a trailing newline, so this is non-empty exactly when the last byte is not one.
+  if [[ -s "$EXCLUDE_FILE" && -n "$(tail -c 1 "$EXCLUDE_FILE")" ]]; then
+    printf '\n' >> "$EXCLUDE_FILE" || refuse "cannot write $EXCLUDE_FILE"
+  fi
+  printf '%s\n' "$EXCLUDE_ENTRY" >> "$EXCLUDE_FILE" || refuse "cannot write $EXCLUDE_FILE"
+  echo "  ignore    $EXCLUDE_ENTRY added to $EXCLUDE_FILE"
+fi
 
 # ── Branch and worktree ───────────────────────────────────────────────────────
 if git -C "$PRIMARY" remote get-url origin >/dev/null 2>&1; then
@@ -195,8 +230,17 @@ echo "  commit    $SLUG: start"
 echo ""
 echo "Next, in this order:"
 echo "  1. Replace $TODO_MARKER in review/incomplete/$STEM.md with the review brief, from the spec."
-echo "  2. Launch the coordinator session INSIDE the worktree, not here:"
-echo "       cd $WORKTREE && claude"
-echo "     A session is billed to the branch of the directory it was launched in."
+echo "  2. Coordinate from one of two places. A session is billed to the branch of the directory"
+echo "     it was launched in (LIFECYCLE.md, rule 1):"
+echo "       - inside the worktree, claimed by branch $SLUG with no pin:"
+echo "           cd $WORKTREE && claude"
+if [[ -n "$SESSION" ]]; then
+  echo "       - or from the primary checkout, which reaches the worktree at the path above:"
+  echo "           session $SESSION is pinned in the manifest, and every delegate it spawns"
+  echo "           must be pinned in \"subagents\" while its transcript exists."
+else
+  echo "       - the primary checkout reaches the worktree too, but this run pinned no session;"
+  echo "           a session there is claimed only once its id is in the manifest's \"sessions\"."
+fi
 echo "  3. Every delegate brief opens with:  feature: $REPO_NAME/$SLUG"
 echo "  4. After the PR merges, from the primary checkout:  feature-close.sh ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} $SLUG"

@@ -91,11 +91,10 @@ SPAN_S="450.0"          # FIRST -> LAST, the figure the sidecar must carry
 SPAN2_S="60.0"
 SUM_S="510.0"
 
-# A `user` line: timestamped, carries no usage, and is not what iter_billable_messages
-# yields. The last instant of a real transcript is one of these far more often than not.
-user_line() {                          # user_line TIMESTAMP
-  printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":"ok"}}\n' "$1"
-}
+# `user_line TIMESTAMP` — timestamped, no usage, not what iter_billable_messages yields;
+# the last instant of a real transcript is one of these far more often than not. It lived
+# here until `session-share.sh` needed the same shape, and is now in
+# fixtures/transcripts/build-transcript.sh, sourced above.
 
 recover() { python3 "$AT/analysis/recover_attempts.py" --self "$@" 2>&1; }
 

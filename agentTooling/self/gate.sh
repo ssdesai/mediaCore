@@ -146,6 +146,8 @@ shell_scripts=(
   self/tests/timestamps-are-utc.sh
   self/tests/subagent-capture.sh
   self/tests/claims-ledger.sh
+  self/tests/session-share.sh
+  self/tests/session-claims.sh
   self/tests/direct-timing.sh
   self/tests/stale-failed-sidecars.sh
   self/tests/stream-capture.sh
@@ -153,12 +155,15 @@ shell_scripts=(
   self/tests/batch-sigpipe.sh
   self/tests/report-footnotes.sh
   self/tests/feature-lifecycle.sh
+  self/tests/worktree-claims.sh
   self/tests/recover-at-close.sh
   self/tests/recover-duration.sh
   self/tests/check-plans.sh
   self/tests/sync-check.sh
   self/tests/sweep.sh
   self/tests/template-versions.sh
+  self/tests/allow-repo-commands.sh
+  self/tests/hook-wiring.sh
   run-escalation-plan.sh
   templates/plans/gate.sh
   templates/plans/pr.sh
@@ -188,6 +193,8 @@ record "capture guard self-test" bash self/tests/capture-guard.sh
 record "timestamps are utc self-test" bash self/tests/timestamps-are-utc.sh
 record "subagent capture self-test" bash self/tests/subagent-capture.sh
 record "claims ledger self-test" bash self/tests/claims-ledger.sh
+record "session share self-test" bash self/tests/session-share.sh
+record "session claims self-test" bash self/tests/session-claims.sh
 record "direct timing self-test" bash self/tests/direct-timing.sh
 record "stale failed sidecars self-test" bash self/tests/stale-failed-sidecars.sh
 record "stream capture self-test" bash self/tests/stream-capture.sh
@@ -195,6 +202,7 @@ record "usage limit kill self-test" bash self/tests/usage-limit-kill.sh
 record "batch sigpipe self-test" bash self/tests/batch-sigpipe.sh
 record "report footnotes self-test" bash self/tests/report-footnotes.sh
 record "feature lifecycle self-test" bash self/tests/feature-lifecycle.sh
+record "worktree claims self-test" bash self/tests/worktree-claims.sh
 record "recover at close self-test" bash self/tests/recover-at-close.sh
 record "recover duration self-test" bash self/tests/recover-duration.sh
 record "check plans self-test" bash self/tests/check-plans.sh
@@ -204,12 +212,20 @@ record "sweep self-test" bash self/tests/sweep.sh
 # reason as the rest: a template body edited without a version bump reports `in-sync` in
 # every consuming repo while their seeded copies are stale (self/tests/README.md).
 record "template versions self-test" bash self/tests/template-versions.sh
+# The auto-approve hook and its wiring (hooks/README.md). Blocking: every case in the
+# first is a bypass that once approved a read outside the tree, a write, or an
+# execution, and the second asserts the wiring never removes a repo's own settings.
+record "allow repo commands self-test" bash self/tests/allow-repo-commands.sh
+record "hook wiring self-test" bash self/tests/hook-wiring.sh
 
 echo "=== gate: python syntax ==="
 # Compiles each file independently — it does NOT exercise the bare cross-imports
 # (`from pricing import …`), which only resolve when a script is run directly and
 # python puts its own directory on sys.path.
 record "py_compile analysis" python3 -m py_compile analysis/*.py
+# The hook keeps a .sh name so its settings.json entry reads as a hook script; it is
+# Python, and this is the one place its syntax is checked without running it.
+record "py_compile hooks" python3 -m py_compile hooks/wire-settings.py hooks/allow-repo-commands.sh
 
 echo "=== gate: rate table ==="
 # analysis/README.md makes this step 1 of the weekly flow. Informational by design:

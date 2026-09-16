@@ -1,20 +1,20 @@
 {
   "slug": "recovered-duration-lower-bound",
-  "generated_at": "2026-09-07T20:03:41.797466+00:00",
+  "generated_at": "2026-09-09T22:37:00.070776+00:00",
   "cost": {
     "method": "direct",
     "planning": 0.0,
-    "implementer": 69.39377875,
-    "build": 69.39377875,
+    "implementer": 22.35543455982143,
+    "build": 22.35543455982143,
     "verify": 0.0,
     "review": 3.1853444999999994,
-    "total": 72.57912325,
+    "total": 25.54077905982143,
     "planning_pct": 0.0,
-    "build_pct": 95.6112111067696,
+    "build_pct": 87.5283972640799,
     "verify_pct": 0.0,
-    "review_pct": 4.388788893230395,
-    "cost_per_plan": 72.57912325,
-    "cost_per_file": 18.1447808125,
+    "review_pct": 12.471602735920108,
+    "cost_per_plan": 25.54077905982143,
+    "cost_per_file": 6.385194764955357,
     "total_is_partial": false,
     "missing_usage_plans": [],
     "unpriced_plans": [],
@@ -24,19 +24,41 @@
     "recovered": 0.0,
     "unrecoverable_attempts": [],
     "partially_recovered_attempts": [],
-    "shared_sessions": []
+    "shared_sessions": [
+      {
+        "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+        "cost_usd": 3.6692888098214285,
+        "also_claimed_by": [
+          "agentTooling/tooling-backlog-2026-09-06",
+          "humanNetworkMap/delete-error-surface",
+          "humanNetworkMap/error-surface-completion",
+          "humanNetworkMap/mediacore-0-3-0",
+          "humanNetworkMap/validation-and-fetch-error-surface",
+          "musicMap/integration-test-database",
+          "musicMap/mediacore-0-3-0",
+          "musicMap/ruff-format-gate",
+          "vinylCatalogue/backlog-assertions-2026-09",
+          "vinylCatalogue/bundle-track-artist",
+          "vinylCatalogue/fold-duplicated-rows",
+          "vinylCatalogue/keyed-promotion-pairing",
+          "vinylCatalogue/show-selected-and-refetch-flake",
+          "vinylCatalogue/staged-commit-journal"
+        ],
+        "session_cost_usd": 70.49682075
+      }
+    ]
   },
   "time": {
     "method": "direct",
-    "planning_sessions_s": 78746,
+    "planning_sessions_s": 2583,
     "planning_subagents_s": 2694,
     "planning_s": 0.0,
-    "implementer_s": 81440,
-    "build_s": 81440.0,
+    "implementer_s": 5277,
+    "build_s": 5277.0,
     "verify_s": 0.0,
     "review_s": 419.265,
-    "executor_s": 81859.265,
-    "total_s": 81859.265,
+    "executor_s": 5696.265,
+    "total_s": 5696.265,
     "total_is_partial": false,
     "missing_duration_plans": [],
     "recovered_duration_plans": [],
@@ -62,7 +84,7 @@
   },
   "planning_cost_split": {
     "subagents": 18.68614575,
-    "sessions": 50.707632999999994
+    "sessions": 3.6692888098214276
   },
   "cold_start_tax_tokens": 135231,
   "model_fit": [
