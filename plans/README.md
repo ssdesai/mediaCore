@@ -50,6 +50,27 @@ to the machinery is made once and pulled everywhere.
   points at whichever tree ran it last), `npm install`, a dev port no other worktree
   uses. It ships as a no-op skeleton whose comments list those; a non-zero exit stops the
   start with the worktree left in place.
+- `open-session.sh` — *seeded once, then repo-owned* — how this repo opens a coordinator
+  session inside a new feature worktree. `../agentTooling/feature-start.sh --open` runs it
+  with the worktree's absolute path as its only argument; a session launched there is
+  billed to the feature's branch and needs no pin, while the session that ran the start
+  stays a router and is never pinned (`../agentTooling/LIFECYCLE.md`, rule 1). It ships
+  opening a Terminal.app window running `claude`; swap in a tmux window, an iTerm profile
+  or an editor. Advisory: a non-zero exit is reported and the feature is already started.
+  It is the one file in the tree that may spell `cd <path> && <command>`, because that
+  string is handed to Terminal.app and not to the Bash tool — and the path is
+  single-quoted inside it, since the shell Terminal.app starts word-splits what it gets
+  and a checkout under a path with a space would otherwise open the session in the wrong
+  directory, which bills it to the wrong branch. Keep that quoting in any replacement body.
+- `routing/` — one JSON record per **router** session (the session that ran
+  `feature-start.sh`), at `routing/<session-id>.json`, written by that script from the
+  router's own transcript and committed in the `<slug>: start` commit. It is the link from
+  router to feature, in git before the transcript can expire:
+  `{ session_id, launched_in, git_branch, model, started_at, ended_at, duration_s,
+  cost_usd, features_started[{slug, at}], captured_at }`. The router's spend is routing
+  overhead, reported per repo by `../agentTooling/analysis/report.py --all` and never
+  attributed to or split across the features it opened. Committed, small, and rewritten
+  whole by each refresh. Absent until the repo starts a feature under this rule.
 - `review-report.md` — the review executor's verdict, and the body of the PR `pr.sh`
   opens. Gitignored and regenerated every batch, like `gate-report.txt`.
 - `.gitignore` — *generated, overwritten every sync* — the four patterns whose files are
