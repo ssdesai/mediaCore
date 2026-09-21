@@ -106,8 +106,12 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   is clean, deleting that branch with `git branch -D`, while a dirty merged one and an
   unmerged one survive and the bare remote's refs are untouched — including the case a
   second clone builds, where the merge happened on `origin/main` and this checkout's own
-  `main` still lags, which is where `git branch -d` refuses and leaves a removed worktree
-  whose branch the output claimed was gone; that `--open` runs the repo's
+  `main` lags, which is where `git branch -d` refuses and leaves a removed worktree
+  whose branch the output claimed was gone. There the first start only fast-forwards
+  `main`, starts and prunes nothing, and exits 3 with the rerun command; the rerun
+  prunes. A diverged `main`, a primary behind while off `main`, and a fast-forward git
+  itself refuses (an untracked file in its way) are refused with nothing moved or started
+  (S4h–S4n). It also asserts that `--open` runs the repo's
   `open-session.sh` with the worktree path as its only argument (a recording stub — the
   seeded script talks to Terminal.app, and `open-session.sh` in this directory is what
   runs its body) and that both copies of that script pass the path through **both**

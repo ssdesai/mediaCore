@@ -44,6 +44,16 @@ is committed or pushed by it — creates branch `S` and worktree
 feature directory — the manifest with its fence filled, and a review-brief stub carrying
 `@@TODO@@` — and commits it as `S: start`.
 
+**Start before you edit.** A session asked to change something runs this first and then
+edits inside the worktree; nothing is written in the primary to be moved across later.
+
+**A primary behind `origin/main` is updated, not started from.** The script runs from the
+primary's copy of this directory but branches from `origin/<base>`, so a stale primary
+would have old code write into a new branch. When `main` lags `origin/main` the script
+fast-forwards it, starts nothing, and exits 3 with the command to run again — the rerun
+is the new code. A primary off `main`, diverged, or with a local change in the way is
+refused untouched.
+
 **The session that runs it is a router, and a router is never pinned.** Its spend is
 routing overhead, a category of its own: it opens several features and belongs to none of
 them, so pinning it would bill one transcript to every feature it started. What goes into
