@@ -17,7 +17,10 @@
       "date": "2026-09-09",
       "started_at": "2026-09-09T22:01:55.069000+00:00",
       "ended_at": "2026-09-10T03:28:41.494000+00:00",
-      "duration_s": 19606
+      "duration_s": 19606,
+      "also_claimed_by": [
+        "agentTooling/bounded-opening-stretch"
+      ]
     }
   ],
   "subagents": [

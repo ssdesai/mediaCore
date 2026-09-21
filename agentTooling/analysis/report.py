@@ -2,7 +2,10 @@
 
 Reads a feature's frozen cost figures and its plans' execution records and
 writes the committed report: cost roll-up, waste metrics, and tripwires for
-one feature, plus a `--all` cross-feature trend view.
+one feature, plus a `--all` cross-feature trend view. `--all` first writes the
+report of every feature that has a `planning.json` and no `report.json` — the
+table reads `report.json` alone, so such a feature is otherwise missing from it
+without a word — and says how many it filled in.
 
 No-recompute contract: this script must NOT call `compute_cost` or recompute
 any dollar figure. Every cost number in the output comes from a `usage.json`'s
@@ -20,6 +23,7 @@ something worth reading by hand, not a hard failure.
 Usage:
     python3 agentTooling/analysis/report.py <slug>
     python3 agentTooling/analysis/report.py --all
+    python3 agentTooling/analysis/report.py <slug> --rounds-md
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
@@ -35,6 +40,22 @@ from pricing import RATES_VERIFIED, is_rates_stale
 from roots import add_self_flag, artifact_root, features_root
 from routing import load_records, routers_of, started_slugs
 from transcript import to_utc
+
+# Uncaptured feature (B1, lifecycle-records-and-numbering): run_single_feature used to
+# read planning.json unconditionally, so a feature with a manifest but no captured cost —
+# every feature between its start and its close (or its capture, once merged) — raised a
+# bare FileNotFoundError with a full traceback. That is not a bug; the feature just has
+# not been closed or captured yet, so it gets one line pointing at the fix instead of a
+# stack trace. `run_rounds_md` (`--rounds-md`) is unaffected — it already treats a missing
+# planning.json as optional input, since `feature-close.sh` calls it BEFORE the capture
+# that writes the file — and `--all` never reaches this path either, since
+# `fill_missing_reports` globs `*/planning.json` and so only visits features that have one.
+UNCAPTURED_FEATURE_EXIT_CODE = 1
+UNCAPTURED_FEATURE_MESSAGE = (
+    "{path}: feature not captured yet — run 'feature-close.sh [--self] {slug}' from the "
+    "worktree to capture it on the branch, or 'feature-capture.sh [--self] {slug}' for a "
+    "feature already merged"
+)
 
 # Turn-count flags. The first two are model-fit — the plan ran on the wrong model.
 # The third is scope: the model was right, the plan was too big.
@@ -160,12 +181,12 @@ def build_usage_index(feature_dir):
          run and every machine.
 
     The losers are returned as `priors` rather than dropped: their dollars are real
-    (a killed attempt the sweep later recovers writes recovered_cost_usd into exactly
+    (a killed attempt `recover_attempts.py` later prices writes recovered_cost_usd into exactly
     that file) and compute_cost_rollup adds them back. Before this, the dict simply
     kept whichever file rglob reached last, which on vinylCatalogue's
     group-commit-all-adjudication was the `failed/` twin — and compute_plan_length_vs_loc
     then read a plan file beside it that the retry had moved away, ending the run in a
-    FileNotFoundError that stopped feature-close.sh.
+    FileNotFoundError that stopped the close (now feature-capture.sh).
 
     Scoped to a single feature, never the whole features/ tree. Plan numbers
     restart per feature (AGENT_PLANS.md: "Because numbers now repeat across
@@ -521,7 +542,7 @@ def missing_duration_reason(usage_data):
 
 
 def recovery_note(attempts, unrecovered=0):
-    """What recover_attempts.py made of a plan's unpriced attempts. feature-close.sh runs
+    """What recover_attempts.py made of a plan's unpriced attempts. feature-capture.sh runs
     it immediately before this report, so an absent recovered figure means the session
     transcript was gone — not that recovery has yet to run. `unrecovered` is how many
     attempts it could not price, which is what keeps a partly-recovered plan from reading
@@ -539,7 +560,7 @@ def recovery_note(attempts, unrecovered=0):
 
 
 def cost_bucket_cell(name, amount, pct, unpriced):
-    """One bucket of the cost line feature-close.sh prints. A bucket holding an unpriced
+    """One bucket of the cost line feature-capture.sh prints. A bucket holding an unpriced
     plan never prints a bare `$0.0000`: it names the plan, why no figure exists and what
     recovery made of it. The number alone cannot tell "this cost nothing" from "nobody
     recorded what this cost", and the close commits whichever it prints."""
@@ -611,12 +632,32 @@ def unpriced_footnote_entry(entry):
     return f"unpriced {entry['plan']} — {entry['reason']}, {entry['recovery']}"
 
 
+def attempt_span_clause(numbers, count, verb):
+    """"attempt 2 of 2 <verb>" / "attempts 1, 3 of 3 <verb>", or "" when the entry
+    predates the counts. Singular or plural on how many numbers there are, since a
+    resumed plan with one bad attempt is the common case and "attempts 2" reads as a
+    typo."""
+    if not numbers or not count:
+        return ""
+    label = "attempt" if len(numbers) == 1 else "attempts"
+    return f"{label} {', '.join(str(n) for n in numbers)} of {count} {verb}"
+
+
 def missing_duration_footnote_entry(entry):
     """One untimed plan in the Time table's footnote. Deliberately not "unpriced": the
     plan may be fully priced and merely untimed, which is the common case — duration_ms
     and total_cost_usd come from the same result event, but recovery can refill one of
-    them and not the other."""
-    return f"no duration for {entry['plan']} — {entry['reason']}"
+    them and not the other.
+
+    Names WHICH attempt of how many nobody timed, because a plan's minutes are now the
+    sum over its attempts and the row may be short by one of several. Read with `.get`:
+    a report.json written before the counts existed carries neither, and the clause is
+    simply absent rather than a crash."""
+    line = f"no duration for {entry['plan']} — {entry['reason']}"
+    clause = attempt_span_clause(
+        entry.get("unmeasured_attempts"), entry.get("attempt_count"), "unmeasured"
+    )
+    return f"{line}; {clause}" if clause else line
 
 
 def recovered_duration_footnote_entry(entry):
@@ -625,11 +666,24 @@ def recovered_duration_footnote_entry(entry):
     transcript span rather than the executor's own clock — so nobody quotes it as a
     measurement. `reason` is why the measured figure is absent, the same string
     missing_duration_footnote_entry carries, because "recovered" is only half the story
-    without it."""
-    return (
+    without it.
+
+    Says how many of the plan's attempts the span covers, because the cell holds the
+    whole sum and `recovered_s` is only the part of it that is a bound — without the
+    counts a reader cannot tell a wholly recovered figure from one where a single killed
+    attempt out of five was bounded. Read with `.get`, like the missing entry's clause:
+    a report.json written before the counts existed simply has none."""
+    line = (
         f"recovered {entry['recovered_s']:.1f}s for {entry['plan']} — "
-        f"{entry['reason']}; transcript span, a lower bound"
+        f"{entry['reason']}"
     )
+    measured = entry.get("measured_attempts")
+    recovered = entry.get("recovered_attempts")
+    if recovered is not None and measured is not None:
+        line += (
+            f"; {recovered} of {measured + recovered} attempts recovered from transcript"
+        )
+    return f"{line} — transcript span, a lower bound"
 
 
 KNOWN_METHODS = ("plans", "direct", "hand")
@@ -669,7 +723,87 @@ def attempt_figure(attempt):
     return None, None
 
 
-def prior_attempt_cost(stem, live_usage_data, usage_index, warnings):
+def attempt_copies(stem, live_usage_data, usage_index, warnings):
+    """`(attempts, legacy_prior_cost)` — every copy of every attempt at `stem`, grouped.
+
+    `attempts` is one list per attempt, in the order the walk meets them: the live
+    sidecar's attempts first, in their own order, then any attempt only a prior sidecar
+    holds. Within a group the copies run live first, then priors in the index's order —
+    the precedence ATTEMPT_FIGURE_FIELDS' comment describes — so **the first copy
+    carrying the figure a caller wants is the copy that wins**, whichever figure it is.
+
+    That last clause is why this is one walk with two readers rather than two walks. The
+    dollars and the minutes ask different questions of the same attempts, and the copy
+    that answers one need not be the copy that answers the other: a killed attempt's live
+    sidecar may carry neither figure while the `failed/` pair it left behind carries
+    both, and recovery can refill a cost and not a duration. Grouping the copies and
+    letting each roll-up pick keeps the ATTEMPT ORDER and the live-before-prior rule in
+    one place, which is the whole of what the two have to agree about — and the minutes
+    not walking the attempts at all is the defect this closes
+    (../self/DESIGN-2026-09-18-minutes-slug-and-quoting.md §1).
+
+    Attempts are keyed by `session_id`; a copy carrying none matches nothing and becomes
+    a group of its own, there being no way to say which attempt it is another copy of. A
+    `session_id` repeated WITHIN the live sidecar keeps its own group too — only the
+    first is addressable by that id — so nothing the runner wrote is silently merged.
+
+    `legacy_prior_cost` is the dollars of a prior sidecar written before `attempts[]`
+    existed: its top-level `total_cost_usd` is all there is, it names no session, and it
+    joins no group. Returned apart so `prior_attempt_cost` can add it and the time walk
+    can ignore it — such a file carries no per-attempt duration either.
+
+    A prior sidecar that will not parse is a warning, not a crash: it is by definition
+    not the file the report is built on. **Call this once per plan** and share the
+    result; calling it twice would append that warning twice.
+    """
+    groups = []
+    group_of_session = {}
+    for attempt in (live_usage_data.get("attempts") or []):
+        groups.append([attempt])
+        session_id = attempt.get("session_id")
+        if session_id is not None:
+            group_of_session.setdefault(session_id, len(groups) - 1)
+
+    legacy_prior_cost = 0.0
+    for prior_path in usage_index[stem].priors if stem in usage_index else ():
+        try:
+            data = json.loads(prior_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            warnings.append(
+                f"prior attempt sidecar for {stem} at {prior_path} could not be read; "
+                "any cost it holds is excluded from this roll-up"
+            )
+            continue
+        prior_attempts = data.get("attempts") or []
+        if not prior_attempts:
+            # Pre-attempts[] sidecar: the top-level figure is all there is, and there is
+            # no session id to group on. Counted whole, as it always was.
+            cost = data.get("total_cost_usd")
+            if cost is not None:
+                legacy_prior_cost += cost
+            continue
+        for attempt in prior_attempts:
+            session_id = attempt.get("session_id")
+            index = group_of_session.get(session_id) if session_id is not None else None
+            if index is not None:
+                groups[index].append(attempt)
+                continue
+            groups.append([attempt])
+            if session_id is not None:
+                group_of_session[session_id] = len(groups) - 1
+    return groups, legacy_prior_cost
+
+
+def attempts_for(stem, usage_data, usage_index, warnings, plan_attempts):
+    """One plan's attempt groups, from the shared walk when the caller did it once for
+    every plan (run_single_feature) and freshly otherwise (run_rounds_md, a direct
+    call). The shared dict is the normal path — see attempt_copies on calling it once."""
+    if plan_attempts is not None and stem in plan_attempts:
+        return plan_attempts[stem]
+    return attempt_copies(stem, usage_data, usage_index, warnings)
+
+
+def prior_attempt_cost(stem, live_usage_data, usage_index, warnings, plan_attempts=None):
     """`(measured, recovered, attempts)` — what the sidecars an earlier attempt at
     `stem` left behind add to the live file's own dollars, and this plan's attempts
     deduplicated by `session_id` across every copy of them. The priors are
@@ -694,7 +828,7 @@ def prior_attempt_cost(stem, live_usage_data, usage_index, warnings):
       - **A session priced by ANY copy is priced.** Where the live copy carries neither
         figure and a prior copy carries one, the prior takes the seat and its dollars
         are counted; the live null copy is not returned beside it, so a session the
-        sweep recovered into the file that lost the index cannot be called unrecoverable
+        recovery wrote into the file that lost the index cannot be called unrecoverable
         at the same time. Skipping the prior unread lost that money twice over — it was
         not summed, and the null copy then marked the total a lower bound for an attempt
         that had in fact been priced (self/features/tooling-backlog-2026-09-06, the
@@ -717,58 +851,39 @@ def prior_attempt_cost(stem, live_usage_data, usage_index, warnings):
     `recovered_cost_usd` only where `total_cost_usd` is null.
 
     A prior sidecar that will not parse is a warning, not a crash — it is by definition
-    not the file the report is built on."""
-    # The live sidecar's attempts, in order, are the seats every prior copy is
-    # deduplicated against. A copy with no session id matches nothing and is appended.
-    merged = list(live_usage_data.get("attempts") or [])
-    seat_of_session = {}
-    for seat, attempt in enumerate(merged):
-        session_id = attempt.get("session_id")
-        if session_id is not None:
-            seat_of_session.setdefault(session_id, seat)
-    measured = 0.0
+    not the file the report is built on.
+
+    The walk itself is `attempt_copies`, which the time roll-up shares; what is left here
+    is the choice of copy (the first carrying a cost figure) and the sum."""
+    groups, legacy_prior_cost = attempts_for(
+        stem, live_usage_data, usage_index, warnings, plan_attempts
+    )
+    live_count = len(live_usage_data.get("attempts") or [])
+    measured = legacy_prior_cost
     recovered = 0.0
-    for prior_path in usage_index[stem].priors if stem in usage_index else ():
-        try:
-            data = json.loads(prior_path.read_text())
-        except (OSError, json.JSONDecodeError):
-            warnings.append(
-                f"prior attempt sidecar for {stem} at {prior_path} could not be read; "
-                "any cost it holds is excluded from this roll-up"
-            )
-            continue
-        prior_attempts = data.get("attempts") or []
-        if not prior_attempts:
-            # Pre-attempts[] sidecar: the top-level figure is all there is, and there is
-            # no session id to deduplicate on. Counted whole, as it always was.
-            cost = data.get("total_cost_usd")
-            if cost is not None:
-                measured += cost
-            continue
-        for attempt in prior_attempts:
-            session_id = attempt.get("session_id")
-            seat = seat_of_session.get(session_id) if session_id is not None else None
-            field, dollars = attempt_figure(attempt)
-            if seat is not None:
-                if attempt_figure(merged[seat])[0] is not None:
-                    # The seated copy — the live sidecar's, or an earlier prior's —
-                    # already carries this session's dollars and outranks this one.
-                    continue
-                if field is None:
-                    # Neither copy carries a figure. The seated copy keeps its seat, so
-                    # the caller calls the session unrecoverable exactly once.
-                    continue
-                merged[seat] = attempt
-            else:
-                if session_id is not None:
-                    seat_of_session[session_id] = len(merged)
-                merged.append(attempt)
+    merged = []
+    for index, copies in enumerate(groups):
+        # A group past the live sidecar's own attempts exists only because a prior holds
+        # it, so whatever figure it carries is money this function is here to add.
+        from_prior_file = index >= live_count
+        seat = copies[0]
+        for offset, copy in enumerate(copies):
+            field, dollars = attempt_figure(copy)
             if field is None:
                 continue
-            if field == ATTEMPT_RECOVERED_FIELD:
-                recovered += dollars
-            else:
-                measured += dollars
+            # The first copy with a figure takes the seat and its dollars are counted
+            # once. A figure the LIVE copy carries is already in the caller's own totals
+            # (`cost` and `plan_recovered`), so only a prior's adds anything here.
+            seat = copy
+            if offset > 0 or from_prior_file:
+                if field == ATTEMPT_RECOVERED_FIELD:
+                    recovered += dollars
+                else:
+                    measured += dollars
+            break
+        # No copy carries a figure: the live copy (or the prior that opened the group)
+        # keeps the seat, so the caller calls the session unrecoverable exactly once.
+        merged.append(seat)
     return measured, recovered, merged
 
 
@@ -877,7 +992,8 @@ def compute_shared_sessions(planning_data):
 
 def compute_cost_rollup(
     plan_stems, plans_recovered, planning_data, loaded_plans, warnings, orphan_plans=(),
-    method="plans", skipped_plans=(), usage_index=None,
+    method="plans", skipped_plans=(), usage_index=None, plan_usd_out=None,
+    plan_attempts=None,
 ):
     # For a planned feature, planning.json is what it says: the architect and the
     # sessions around it. For a direct feature there is no architect — the transcripts
@@ -932,7 +1048,7 @@ def compute_cost_rollup(
         # figure, and classified below beside the live ones — an attempt with no figure
         # in ANY copy is a hole in the total wherever its sidecar happens to sit.
         prior_measured, prior_recovered, all_attempts = prior_attempt_cost(
-            stem, usage_data, usage_index, warnings
+            stem, usage_data, usage_index, warnings, plan_attempts
         )
         prior_total = prior_measured + prior_recovered
         if cost is None and not plan_recovered and not prior_total:
@@ -1021,6 +1137,12 @@ def compute_cost_rollup(
             )
         queue = find_queue_segment(usage_path)
         queue_total = (cost or 0.0) + plan_recovered + prior_measured + prior_recovered
+        # The Rounds table's share of this plan's dollars, collected here rather than
+        # derived again there: one arithmetic, so a round's figure cannot drift from the
+        # bucket figure it is part of. A plan that took the unpriced `continue` above
+        # leaves no entry, exactly as it contributes to no bucket.
+        if plan_usd_out is not None:
+            plan_usd_out[stem] = queue_total
         if queue == "auto":
             build_cost += queue_total
         elif queue == "verify":
@@ -1123,6 +1245,89 @@ def recovered_duration_from_usage(usage_data):
         if a.get("recovered_duration_s") is not None
     ]
     return sum(spans) if spans else None
+
+
+# The two duration figures an attempt can carry, in the order the walk prefers them —
+# the twin of ATTEMPT_FIGURE_FIELDS for the minutes. `duration_ms` is the CLI's own
+# measurement, out of the same `result` event the dollars come from; `recovered_duration_s`
+# is the span recover_attempts.py derived from the session transcript, and is a lower
+# bound. Which of the two an attempt's figure came from decides the bucket its plan lands
+# in, so the walk returns the kind beside the number.
+ATTEMPT_DURATION_FIELD = "duration_ms"
+ATTEMPT_RECOVERED_DURATION_FIELD = "recovered_duration_s"
+MS_PER_SECOND = 1000.0
+DURATION_MEASURED = "measured"
+DURATION_RECOVERED = "recovered"
+
+
+class PlanDuration(NamedTuple):
+    """One plan's minutes, decomposed.
+
+    `seconds` is the plan's whole figure — the sum over its attempts, measured and
+    recovered alike. `recovered_s` is the part of that sum which is a transcript span,
+    and is what the `‡` footnote quotes: a cell holding both a measurement and a
+    recovered span is one figure carrying the lower-bound mark, and the footnote is
+    where a reader learns how much of it is the bound.
+
+    `unmeasured_attempts` holds 1-based attempt NUMBERS rather than a count, because the
+    footnote names them ("attempt 2 of 2 unmeasured") and a bare count could not.
+    """
+
+    seconds: float
+    recovered_s: float
+    measured_attempts: int
+    recovered_attempts: int
+    unmeasured_attempts: tuple
+
+
+def attempt_duration(copies):
+    """`(seconds, kind)` for one attempt: the first copy carrying a measured
+    `duration_ms` wins, else the first carrying a recovered span, else `(None, None)`.
+
+    The same live-before-prior order the dollars are taken in (attempt_copies), asked a
+    different question — which is exactly why the two roll-ups share the walk and not the
+    answer. A measured figure in ANY copy outranks a recovered one in every copy: the
+    recovered span exists to stand in for a measurement, never to replace one."""
+    for copy in copies:
+        duration_ms = copy.get(ATTEMPT_DURATION_FIELD)
+        if duration_ms is not None:
+            return duration_ms / MS_PER_SECOND, DURATION_MEASURED
+    for copy in copies:
+        span = copy.get(ATTEMPT_RECOVERED_DURATION_FIELD)
+        if span is not None:
+            return span, DURATION_RECOVERED
+    return None, None
+
+
+def plan_duration(groups, usage_data):
+    """One plan's PlanDuration, summed over the attempts `attempt_copies` grouped.
+
+    A sidecar with no `attempts[]` at all — written before the array existed — has no
+    attempt to walk, so its top-level `duration_ms` is read as the whole plan's, which is
+    what duration_from_usage has always done with it. Such a plan reports one measured
+    attempt, or one unmeasured one when it has no top-level figure either; never a
+    recovered span, since the top-level `recovered_duration_s` is deliberately not read
+    (recovered_duration_from_usage says why)."""
+    if not groups:
+        top_level = duration_from_usage(usage_data)
+        if top_level is None:
+            return PlanDuration(0.0, 0.0, 0, 0, (1,))
+        return PlanDuration(top_level, 0.0, 1, 0, ())
+    seconds = recovered_s = 0.0
+    measured = recovered = 0
+    unmeasured = []
+    for number, copies in enumerate(groups, 1):
+        figure, kind = attempt_duration(copies)
+        if figure is None:
+            unmeasured.append(number)
+            continue
+        seconds += figure
+        if kind == DURATION_RECOVERED:
+            recovered_s += figure
+            recovered += 1
+        else:
+            measured += 1
+    return PlanDuration(seconds, recovered_s, measured, recovered, tuple(unmeasured))
 
 
 def load_timing_events(feature_dir, warnings):
@@ -1272,13 +1477,18 @@ def compute_checkpoint_spans(events, warnings):
     return spans
 
 
-def compute_time_rollup(planning_data, loaded_plans, events, warnings, method="plans"):
+def compute_time_rollup(
+    planning_data, loaded_plans, events, warnings, method="plans", plan_seconds_out=None,
+    usage_index=None, plan_attempts=None,
+):
     """The Cost table's twin: seconds per bucket from the same two sources the dollars
     come from — planning.json's `duration_s` (sessions and delegates kept apart, see
     capture_planning.duration_seconds for why) and each usage.json's attempts[] — plus
     the runner's wall clock from timing.jsonl where it exists. Executor time sums over
     plans, so two plans run in parallel count twice; `wall_clock` is the figure that
     does not."""
+    if usage_index is None:
+        usage_index = {}
     planning = planning_data.get("duration_s") or {}
     planning_sessions = planning.get("sessions")
     planning_subagents = planning.get("subagents")
@@ -1295,48 +1505,82 @@ def compute_time_rollup(planning_data, loaded_plans, events, warnings, method="p
     # bucket's minutes to distrust or why, so the Time table printed `0.0` for a plan
     # that ran for eight minutes with nothing beside it while the dollars in the next
     # column explained themselves.
+    # ...plus `unmeasured_attempts` and `attempt_count`, so the footnote can say WHICH
+    # attempt of how many nobody timed. A plan is here whenever ANY of its attempts
+    # carries neither figure, however many of the others were measured: the bucket's
+    # minutes are then short by whatever that attempt ran for, which is the one thing a
+    # reader quoting the cell has to know.
     missing = []
-    # The same shape plus `recovered_s`: a plan whose measured duration is missing but
-    # whose attempts carry a transcript span. It contributes that span to its bucket —
-    # a lower bound is worth more than the `0.0` it replaces — and is listed here rather
-    # than in `missing`, since the two say different things and one row can hold both.
+    # The same shape plus `recovered_s` and the two attempt counts: a plan none of whose
+    # attempts is unmeasured but at least one of which was bounded from its transcript.
+    # Its cell holds the whole sum — a lower bound is worth more than the `0.0` it
+    # replaces, and a sum with a lower-bound term is a lower bound — and `recovered_s`
+    # says how much of that sum is the bound. Listed here rather than in `missing`,
+    # since the two say different things and one row can hold both.
     recovered = []
     for stem, usage_data, usage_path in loaded_plans:
         queue = find_queue_segment(usage_path)
-        seconds = duration_from_usage(usage_data)
-        if seconds is None:
-            # Only where the measured figure is absent altogether: a plan with one
-            # measured attempt keeps its measured sum, since blending a wall clock with
-            # a transcript span inside one cell produces a figure that is neither.
-            seconds = recovered_duration_from_usage(usage_data)
-            entry = {
-                "plan": stem,
-                "queue": queue,
-                "reason": missing_duration_reason(usage_data),
-            }
-            if seconds is None:
-                missing.append(entry)
-                continue
-            entry["recovered_s"] = seconds
+        # The same walk the dollars take, asked for durations: per attempt, keyed by
+        # session, live sidecar before prior ones, measured before recovered. Before
+        # this the minutes read `attempts[].duration_ms` off the live file alone, so a
+        # resumed plan whose first attempt was killed reported the second's minutes as
+        # the whole and sat in neither bucket (design 2026-09-18 §1).
+        groups, _ = attempts_for(stem, usage_data, usage_index, warnings, plan_attempts)
+        duration = plan_duration(groups, usage_data)
+        entry = {
+            "plan": stem,
+            "queue": queue,
+            "reason": missing_duration_reason(usage_data),
+        }
+        if duration.unmeasured_attempts:
+            entry["unmeasured_attempts"] = list(duration.unmeasured_attempts)
+            entry["attempt_count"] = (
+                duration.measured_attempts
+                + duration.recovered_attempts
+                + len(duration.unmeasured_attempts)
+            )
+            missing.append(entry)
+        elif duration.recovered_attempts:
+            entry["recovered_s"] = duration.recovered_s
+            entry["measured_attempts"] = duration.measured_attempts
+            entry["recovered_attempts"] = duration.recovered_attempts
             recovered.append(entry)
+        if not (duration.measured_attempts or duration.recovered_attempts):
+            # No attempt carried a figure of any kind, so the plan contributes nothing
+            # and leaves no entry in the Rounds table's share — as it always has.
+            continue
+        # The Rounds table's share of this plan's minutes, for the reason
+        # compute_cost_rollup collects its dollars: one arithmetic.
+        if plan_seconds_out is not None:
+            plan_seconds_out[stem] = duration.seconds
         if queue == "auto":
-            build_s += seconds
+            build_s += duration.seconds
         elif queue == "verify":
-            verify_s += seconds
+            verify_s += duration.seconds
         elif queue == "review":
-            review_s += seconds
+            review_s += duration.seconds
     if missing:
-        detail = ", ".join(f"{m['plan']} ({m['reason']})" for m in missing)
+        detail = ", ".join(
+            "{plan} (attempt(s) {which} of {count}: {reason})".format(
+                plan=m["plan"],
+                which=", ".join(str(n) for n in m["unmeasured_attempts"]),
+                count=m["attempt_count"],
+                reason=m["reason"],
+            )
+            for m in missing
+        )
         warnings.append(
-            f"no duration_ms for plan(s) {detail}; excluded from the time roll-up"
+            f"no duration for attempt(s) of plan(s) {detail}; the time roll-up is short "
+            "by whatever those attempts ran for"
         )
     if recovered:
         detail = ", ".join(
-            f"{r['plan']} ({r['recovered_s']:.1f}s)" for r in recovered
+            f"{r['plan']} ({r['recovered_s']:.1f}s of {r['recovered_attempts']} "
+            f"attempt(s))" for r in recovered
         )
         warnings.append(
-            f"no duration_ms for plan(s) {detail}; a transcript span stands in, and the "
-            "roll-up is a lower bound for it"
+            f"no duration_ms for some attempt(s) of plan(s) {detail}; a transcript span "
+            "stands in, and the roll-up is a lower bound for it"
         )
     planning_total = (planning_sessions or 0) + (planning_subagents or 0)
     # Mirrors compute_cost_rollup: a direct feature's transcript spans are its build.
@@ -1375,6 +1619,224 @@ def compute_time_rollup(planning_data, loaded_plans, events, warnings, method="p
     # byte-identical to what it was before these keys existed.
     rollup.update(checkpoint_spans)
     return rollup
+
+
+# ── Rounds ───────────────────────────────────────────────────────────────────
+# A feature is a sequence of rounds — build → gate → verify → review, ending in the
+# review's verdict — and the close is the only way out
+# (../self/DESIGN-2026-09-17-close-and-review-rounds.md §2). Every event a runner pass
+# stamps carries its round (`stamp_timing`, plan-runner-roots.sh, which holds it in
+# TIMING_ROUND for the whole pass), and the review plan's `plan_end` carries the verdict
+# the round ended in and the `head` it judged. The Rounds table is the first quality
+# measure the record collects: what each round cost, and how it ended. The escalation
+# brief is model-written, so it is linked and never parsed (design §4).
+ROUND_KEY = "round"
+VERDICT_KEY = "verdict"
+# A line with NO `round` key is round 1. Every timing.jsonl written before this feature
+# existed therefore reads as a single round, which is what it was.
+DEFAULT_ROUND = 1
+# The stamps that name a plan, and so say which round a plan's sidecar belongs to.
+PLAN_STAMP_EVENTS = ("plan_start", "plan_end")
+# Every event a pass stamps. A round any of them names gets a row even when no plan of
+# that round left a sidecar — an escalated round whose rework is still in flight is a
+# real round.
+ROUND_STAMP_EVENTS = ("pass_start", "pass_end", CHECKPOINT_EVENT) + PLAN_STAMP_EVENTS
+# The two verdicts that leave a rework brief behind (run-review.sh's VERDICT_ESCALATED
+# and VERDICT_UNREADABLE — a report carrying no readable verdict line is treated exactly
+# like an escalated one, fail closed, design §3). `clean` leaves none.
+BRIEF_VERDICTS = ("escalated", "unreadable")
+# Where run-review.sh copies an escalated review's report: <features>/<slug>/escalations/
+# <review-stem>.md, the same directory the tier ladder writes NN.md into. Recorded
+# relative to the feature directory, so the path reads the same in the worktree, in the
+# primary checkout and in the PR body.
+ESCALATIONS_DIR = "escalations"
+ESCALATION_BRIEF_SUFFIX = ".md"
+# The three executor columns a round row carries, in render order. Each is a bucket
+# QUEUE_COST_BUCKETS maps a queue to, so a round's dollars are the Cost table's dollars.
+ROUND_BUCKETS = ("build", "verify", "review")
+SECONDS_PER_MINUTE = 60.0
+# Why a bucket's figure could not be divided by round, in the words the footnote prints.
+# A figure nobody can attribute sits in round DEFAULT_ROUND and the column is marked in
+# every row — the same `†` the Cost and Time tables use for a figure nobody recorded,
+# because it means the same thing here: do not quote this cell on its own.
+BUILD_NOT_CAPTURED_REASON = (
+    "the build is the implementer's transcript and no `planning.json` has frozen it yet "
+    "— `feature-capture.sh` writes it after the PR opens, so the figure above is only "
+    "the plans"
+)
+BUILD_NO_CHECKPOINT_REASON = (
+    "the build is the implementer's transcript, priced as one figure, and this feature "
+    "stamped no `checkpoint` event — nothing divides it by round, so all of it sits in "
+    f"round {DEFAULT_ROUND}"
+)
+BUILD_SPANS_ROUNDS_REASON = (
+    "the build is the implementer's transcript, priced as one figure, and its "
+    "`checkpoint` stamps span rounds {rounds} — one figure cannot be divided between "
+    f"them, so all of it sits in round {DEFAULT_ROUND}"
+)
+
+
+def event_round(event, warnings):
+    """The round a timing.jsonl event belongs to. Every detail value in that file is a
+    string, so `"round":"2"` is the shape on disk; an event with no `round` key at all is
+    round 1 (see DEFAULT_ROUND), and one whose value is not a number is reported and read
+    as round 1 rather than dropping the event out of the table."""
+    raw = event.get(ROUND_KEY)
+    if raw is None:
+        return DEFAULT_ROUND
+    try:
+        return int(str(raw))
+    except ValueError:
+        warnings.append(
+            f"timing.jsonl {event.get('event')!r} stamp carries an unreadable "
+            f"{ROUND_KEY} {raw!r}; read as round {DEFAULT_ROUND}"
+        )
+        return DEFAULT_ROUND
+
+
+def plan_stamp_rounds(events, warnings):
+    """{plan stem: round} from the plan_start/plan_end stamps.
+
+    Last stamp wins. A plan re-run in a later round has ONE sidecar whose
+    `total_cost_usd` sums every attempt, so its figure cannot be split between the
+    rounds it ran in — the round it last ran in is the round that figure describes."""
+    rounds = {}
+    for event in events:
+        if event.get("event") not in PLAN_STAMP_EVENTS:
+            continue
+        plan = event.get("plan")
+        if plan:
+            rounds[plan] = event_round(event, warnings)
+    return rounds
+
+
+def round_verdicts(events, warnings):
+    """{round: {"verdict", "plan"}} from every `plan_end` carrying a `verdict` key —
+    which run-review.sh stamps for the review plan alone (design §3). Last wins, so a
+    review pass re-run within one round is judged by its latest verdict. A round with no
+    such stamp is absent, which is what leaves its row's verdict null."""
+    verdicts = {}
+    for event in events:
+        if event.get("event") != "plan_end" or VERDICT_KEY not in event:
+            continue
+        verdicts[event_round(event, warnings)] = {
+            "verdict": event.get(VERDICT_KEY) or None,
+            "plan": event.get("plan"),
+        }
+    return verdicts
+
+
+def checkpoint_rounds(events, warnings):
+    """The rounds a direct build's `checkpoint` stamps carry, ascending. `[]` when it
+    stamped none — every planned feature, and every direct one built before
+    stamp-timing.sh computed a round."""
+    return sorted(
+        {
+            event_round(event, warnings)
+            for event in events
+            if event.get("event") == CHECKPOINT_EVENT
+        }
+    )
+
+
+def compute_rounds(
+    feature_dir, loaded_plans, events, method, cost, time, plan_usd, plan_seconds,
+    warnings, build_is_frozen=True,
+):
+    """`(rounds, unpartitioned)` — one row per round, ascending, and the columns whose
+    figure could not be divided by round.
+
+    A row is `{round, build_usd, build_min, verify_usd, verify_min, review_usd,
+    review_min, review_plan, verdict, escalations_file}` (design §4). The dollars and the
+    minutes are the ones the Cost and Time tables already computed — `plan_usd` and
+    `plan_seconds`, collected by the two roll-ups themselves — partitioned by the round
+    each plan's stamps carry.
+
+    A transcript-priced build (`method` direct or hand: planning.json IS the build) is
+    one undivided figure, so it is attributed by the round its `checkpoint` stamps carry.
+    Where those stamps confine it to exactly one round it belongs to that round outright.
+    Where there are none, or where they span several, it cannot be divided at all: the
+    whole figure sits in round DEFAULT_ROUND and the build column is marked in every row,
+    the same way the Cost and Time tables mark a figure nobody recorded. `build_is_frozen`
+    is False before the first capture — no planning.json exists yet — which is the same
+    kind of hole and is marked the same way.
+
+    `verdict` comes from the review plan's own `plan_end` stamp and is null when it
+    carries none: "unknown" must never render as "clean", which is the one verdict
+    `feature-close.sh` lets a feature ship on. `escalations_file` is the brief's path
+    relative to the feature directory when the verdict left one and the file is on disk,
+    else null."""
+    plan_rounds = plan_stamp_rounds(events, warnings)
+    verdicts = round_verdicts(events, warnings)
+    rows = {}
+
+    def row_for(number):
+        if number not in rows:
+            row = {"round": number}
+            for bucket in ROUND_BUCKETS:
+                row[f"{bucket}_usd"] = 0.0
+                row[f"{bucket}_min"] = 0.0
+            row.update({"review_plan": None, "verdict": None, "escalations_file": None})
+            rows[number] = row
+        return rows[number]
+
+    for event in events:
+        if event.get("event") in ROUND_STAMP_EVENTS:
+            row_for(event_round(event, warnings))
+
+    for stem, _, usage_path in loaded_plans:
+        bucket = QUEUE_COST_BUCKETS.get(find_queue_segment(usage_path))
+        if bucket is None:
+            # A plan whose queue segment is unreadable belongs to no column, exactly as
+            # it belongs to no Cost row (group_by_bucket's NO_QUEUE_BUCKET_LABEL). It is
+            # already named in the warnings and in the tables above.
+            continue
+        row = row_for(plan_rounds.get(stem, DEFAULT_ROUND))
+        row[f"{bucket}_usd"] += plan_usd.get(stem) or 0.0
+        row[f"{bucket}_min"] += (plan_seconds.get(stem) or 0.0) / SECONDS_PER_MINUTE
+        if bucket == "review":
+            row["review_plan"] = stem
+
+    for number, found in verdicts.items():
+        row = row_for(number)
+        row["verdict"] = found["verdict"]
+        if found["plan"]:
+            row["review_plan"] = found["plan"]
+        if row["verdict"] in BRIEF_VERDICTS and row["review_plan"]:
+            brief = Path(
+                ESCALATIONS_DIR, row["review_plan"] + ESCALATION_BRIEF_SUFFIX
+            ).as_posix()
+            if (feature_dir / brief).is_file():
+                row["escalations_file"] = brief
+            else:
+                warnings.append(
+                    f"round {number}'s review ended {row['verdict']!r} and {brief} is "
+                    "not on disk; the round's escalations_file is null and the rework "
+                    "has no brief to read"
+                )
+
+    unpartitioned = []
+    if method in BUILD_BY_TRANSCRIPT_METHODS:
+        stamped = checkpoint_rounds(events, warnings)
+        target = stamped[0] if len(stamped) == 1 else DEFAULT_ROUND
+        row = row_for(target)
+        row["build_usd"] += cost.get("implementer") or 0.0
+        row["build_min"] += (time.get("implementer_s") or 0.0) / SECONDS_PER_MINUTE
+        if not build_is_frozen:
+            unpartitioned.append({"bucket": "build", "reason": BUILD_NOT_CAPTURED_REASON})
+        elif len(rows) > 1 and len(stamped) != 1:
+            unpartitioned.append({
+                "bucket": "build",
+                "reason": (
+                    BUILD_SPANS_ROUNDS_REASON.format(
+                        rounds=", ".join(str(n) for n in stamped)
+                    )
+                    if stamped
+                    else BUILD_NO_CHECKPOINT_REASON
+                ),
+            })
+
+    return [rows[number] for number in sorted(rows)], unpartitioned
 
 
 def compute_cold_start_tax(loaded_plans):
@@ -1880,6 +2342,84 @@ def render_time_section(lines, data):
     lines.append("")
 
 
+# ── The Rounds table ─────────────────────────────────────────────────────────
+# Rendered into report.md and, by `--rounds-md`, printed on its own for
+# `feature-close.sh` to compose the PR body out of (design §5.2). One renderer, so the
+# body of the PR and the committed record cannot disagree about what a round cost.
+ROUNDS_TABLE_TITLE = "Rounds"
+ROUNDS_TABLE_HEADER = (
+    "| round | build usd | build min | verify usd | verify min | review usd "
+    "| review min | review plan | verdict | escalation brief |"
+)
+ROUNDS_TABLE_RULE = "|---|---|---|---|---|---|---|---|---|---|"
+# A figure nobody recorded, the cell every other table here prints for one.
+ROUNDS_UNKNOWN_CELL = "n/a"
+# A value that does not exist rather than one that is unknown: a round with no review
+# plan, no verdict, or no brief because it needed none. Deliberately not `n/a` — a clean
+# round's empty brief cell is not a missing measurement.
+ROUNDS_ABSENT_CELL = "—"
+ROUNDS_NOTE = (
+    "A round is build → gate → verify → review, ending in that review's verdict "
+    "(`agentTooling/LIFECYCLE.md`). Dollars and minutes are the same figures the Cost "
+    "and Time tables carry, partitioned by the `round` each stamp in `timing.jsonl` "
+    "records; a stamp written before rounds existed is round 1. The verdict is the "
+    "review plan's own `plan_end` stamp, and an escalated round links the brief the "
+    "rework was written from."
+)
+
+
+def rounds_dollars_cell(usd):
+    return ROUNDS_UNKNOWN_CELL if usd is None else f"${usd:.4f}"
+
+
+def rounds_minutes_cell(minutes):
+    return ROUNDS_UNKNOWN_CELL if minutes is None else f"{minutes:.1f}"
+
+
+def rounds_footnote_entry(entry):
+    """One unpartitionable column in the Rounds table's footnote. The reason is composed
+    where the attribution is decided (compute_rounds), because what a reader needs is
+    why the figure could not be divided, not that it could not."""
+    return entry.get("reason") or "no figure for this column"
+
+
+def render_rounds_section(lines, data):
+    """The Rounds table, from `rounds[]` and `rounds_unpartitioned[]`. Both are read with
+    a default like every key added after the fact: a report.json written before they
+    existed carries neither, and re-rendering one must not raise. The table is emitted
+    even with no rows — header alone — because `--rounds-md` is called by the close
+    before any round of a legacy feature has been stamped, and a missing table there
+    would read as a missing section rather than as no rounds."""
+    rounds = data.get("rounds") or []
+    # Keyed by column label, so `bucket_mark` marks that column in EVERY row: an
+    # undivided figure is not round 1's to quote either, and one footnote under the table
+    # says where it went.
+    grouped = {}
+    for entry in data.get("rounds_unpartitioned") or []:
+        grouped.setdefault(entry.get("bucket"), []).append(entry)
+    lines.append(f"## {ROUNDS_TABLE_TITLE}")
+    lines.append("")
+    lines.append(ROUNDS_TABLE_HEADER)
+    lines.append(ROUNDS_TABLE_RULE)
+    for row in rounds:
+        cells = [str(row.get("round"))]
+        for bucket in ROUND_BUCKETS:
+            mark = bucket_mark(bucket, grouped)
+            cells.append(f"{rounds_dollars_cell(row.get(f'{bucket}_usd'))}{mark}")
+            cells.append(f"{rounds_minutes_cell(row.get(f'{bucket}_min'))}{mark}")
+        cells.append(row.get("review_plan") or ROUNDS_ABSENT_CELL)
+        cells.append(row.get("verdict") or ROUNDS_ABSENT_CELL)
+        cells.append(row.get("escalations_file") or ROUNDS_ABSENT_CELL)
+        lines.append("| " + " | ".join(cells) + " |")
+    footnotes = bucket_footnote_lines(grouped, rounds_footnote_entry)
+    if footnotes:
+        lines.append("")
+        lines.extend(footnotes)
+    lines.append("")
+    lines.append(ROUNDS_NOTE)
+    lines.append("")
+
+
 def render_report_md(data):
     lines = [f"# {data['slug']} — cost and waste report", ""]
     lines.append(f"Generated {data['generated_at']}.")
@@ -2064,6 +2604,7 @@ def render_report_md(data):
         lines.append("")
 
     render_time_section(lines, data)
+    render_rounds_section(lines, data)
 
     lines.append("## Cold-start tax")
     lines.append("")
@@ -2175,13 +2716,60 @@ def render_report_md(data):
 # --------------------------------------------------------------------------
 
 
+# ── Writing a record only when it says something new ─────────────────────────
+# `report.py` re-rendered `report.md` and `report.json` on every run, so a READ of an
+# unchanged corpus still moved `generated_at` and left the file modified. A merged
+# worktree whose report anyone had looked at was therefore dirty, and `feature-start.sh`'s
+# prune kept it — "merged into origin/main but has uncommitted changes", which is how
+# `policy-module` and `lifecycle-records-and-numbering` both survived their prune on
+# 2026-09-18 over one timestamp line each
+# (../self/DESIGN-2026-09-18-minutes-slug-and-quoting.md §4).
+#
+# ONE regex, anchored on the key and on the word that precede the instant in the two
+# files — never a bare ISO-timestamp pattern, which would also mask the wall-clock
+# instants the Time table renders and so hide a real change as readily as a spurious one.
+GENERATED_AT_MASK_RE = re.compile(
+    r'(?:"generated_at":\s*"[^"]*")|(?:^Generated [^\n]*$)', re.MULTILINE
+)
+GENERATED_AT_MASK = "<generated_at>"
+
+
+def masked_body(text):
+    """`text` with its `generated_at` blanked — what two renderings are compared by."""
+    return GENERATED_AT_MASK_RE.sub(GENERATED_AT_MASK, text)
+
+
+def write_record(path, text):
+    """Write `text` to `path` unless what is there already says the same thing.
+
+    Returns whether it wrote. A record that does not exist yet is always written, and so
+    is one whose body differs anywhere but in `generated_at`; a file that cannot be read
+    is treated as absent, since the answer to "is this already right?" is then no."""
+    try:
+        existing = path.read_text()
+    except OSError:
+        existing = None
+    if existing is not None and masked_body(existing) == masked_body(text):
+        return False
+    path.write_text(text)
+    return True
+
+
 def run_single_feature(repo_dir, features_dir, slug):
     warnings = []
     feature_dir = Path(features_dir, slug)
+    planning_path = feature_dir / "planning.json"
+    if not planning_path.exists():
+        print(
+            UNCAPTURED_FEATURE_MESSAGE.format(path=planning_path, slug=slug),
+            file=sys.stderr,
+        )
+        sys.exit(UNCAPTURED_FEATURE_EXIT_CODE)
+
     manifest = parse_manifest(feature_dir / "README.md")
     method = manifest_method(manifest, warnings)
 
-    planning_data = json.loads((feature_dir / "planning.json").read_text())
+    planning_data = json.loads(planning_path.read_text())
 
     usage_index = build_usage_index(feature_dir)
     skipped_stems = build_skipped_index(feature_dir)
@@ -2191,6 +2779,17 @@ def run_single_feature(repo_dir, features_dir, slug):
     )
     orphan_plans = find_orphan_usage(plan_stems, usage_index, warnings)
 
+    # Filled by the two roll-ups as they walk the plans, and read by compute_rounds:
+    # a round's dollars and minutes are the bucket's own, partitioned, never re-derived.
+    plan_usd = {}
+    plan_seconds = {}
+    # One walk over each plan's attempts, shared by both roll-ups. The dollars and the
+    # minutes have to agree about which attempts a plan has and which copy of each wins,
+    # and walking twice would also append every unreadable-prior warning twice.
+    plan_attempts = {
+        stem: attempt_copies(stem, usage_data, usage_index, warnings)
+        for stem, usage_data, _ in loaded_plans
+    }
     cost = compute_cost_rollup(
         plan_stems,
         plans_recovered,
@@ -2201,9 +2800,20 @@ def run_single_feature(repo_dir, features_dir, slug):
         method=method,
         skipped_plans=skipped_stems,
         usage_index=usage_index,
+        plan_usd_out=plan_usd,
+        plan_attempts=plan_attempts,
     )
     timing_events = load_timing_events(feature_dir, warnings)
-    time = compute_time_rollup(planning_data, loaded_plans, timing_events, warnings, method=method)
+    time = compute_time_rollup(
+        planning_data, loaded_plans, timing_events, warnings, method=method,
+        plan_seconds_out=plan_seconds,
+        usage_index=usage_index,
+        plan_attempts=plan_attempts,
+    )
+    rounds, rounds_unpartitioned = compute_rounds(
+        feature_dir, loaded_plans, timing_events, method, cost, time, plan_usd,
+        plan_seconds, warnings,
+    )
     # The planning dollars split the same way the planning minutes are: delegates'
     # transcripts versus the sessions' own turns (inline sidechains included), so the
     # Time table can put each row's cost beside it. Absent keys are old captures.
@@ -2229,6 +2839,7 @@ def run_single_feature(repo_dir, features_dir, slug):
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "cost": cost,
         "time": time,
+        "rounds": rounds,
         "planning_cost_split": planning_cost_split,
         "cold_start_tax_tokens": cold_start_tax_tokens,
         "model_fit": model_fit,
@@ -2239,13 +2850,18 @@ def run_single_feature(repo_dir, features_dir, slug):
         "edit_overlap": edit_overlap,
         "warnings": warnings,
     }
+    # Only when some column could not be divided by round, so a report whose every
+    # figure has a round is byte-identical to one written before this key existed.
+    if rounds_unpartitioned:
+        data["rounds_unpartitioned"] = rounds_unpartitioned
 
-    with open(feature_dir / "report.json", "w") as f:
-        json.dump(data, f, indent=2)
+    # Written only when the body other than `generated_at` has moved, so reading a
+    # report never dirties the tree it sits in. Both files are still PRINTED below
+    # either way — a read reports, it just does not rewrite.
+    write_record(feature_dir / "report.json", json.dumps(data, indent=2))
+    write_record(feature_dir / "report.md", render_report_md(data))
 
-    (feature_dir / "report.md").write_text(render_report_md(data))
-
-    # This one line is what feature-close.sh shows before it commits the cost records, so
+    # This one line is what feature-capture.sh shows before it commits the cost records, so
     # a bucket holding a plan nothing priced says so here rather than printing a zero the
     # commit then makes permanent. A plan whose queue segment did not resolve is left out
     # of the buckets — it is still named in the warnings and in report.md, and guessing a
@@ -2272,6 +2888,69 @@ def run_single_feature(repo_dir, features_dir, slug):
     render_routed_by(features_dir, slug)
     for warning in warnings:
         print(f"WARN: {warning}")
+
+
+def run_rounds_md(repo_dir, features_dir, slug):
+    """Print the Rounds table, and nothing else, writing no file.
+
+    `feature-close.sh` calls exactly this to compose the PR body (design §5.2) — which
+    happens BEFORE the capture that writes `planning.json` and `report.json`. So every
+    input here is optional: a feature whose first PR is being opened has no frozen
+    planning cost, and the build column is marked rather than printed as a bare zero
+    (`build_is_frozen`). Nothing about this call may leave a file behind, and the
+    warnings it collects are dropped — a PR body is not the place for them, and the
+    report the capture writes minutes later carries every one of them."""
+    warnings = []
+    feature_dir = Path(features_dir, slug)
+    try:
+        manifest = parse_manifest(feature_dir / "README.md")
+    except (OSError, ValueError, json.JSONDecodeError):
+        manifest = {}
+    method = manifest_method(manifest, warnings)
+    try:
+        planning_data = json.loads((feature_dir / "planning.json").read_text())
+        build_is_frozen = True
+    except (OSError, json.JSONDecodeError):
+        # The shape compute_cost_rollup requires, with nothing in it: before the capture
+        # there is no planning figure at all, which is not the same as a zero and is why
+        # build_is_frozen goes with it.
+        planning_data = {"cost_usd": {"total": 0.0, "total_is_partial": True}}
+        build_is_frozen = False
+
+    usage_index = build_usage_index(feature_dir)
+    skipped_stems = build_skipped_index(feature_dir)
+    plan_stems, plans_recovered = manifest_plan_stems(manifest, usage_index, warnings)
+    loaded_plans = load_manifest_plans(
+        repo_dir, plan_stems, usage_index, warnings, skipped_stems=skipped_stems
+    )
+    plan_usd = {}
+    plan_seconds = {}
+    cost = compute_cost_rollup(
+        plan_stems,
+        plans_recovered,
+        planning_data,
+        loaded_plans,
+        warnings,
+        method=method,
+        skipped_plans=skipped_stems,
+        usage_index=usage_index,
+        plan_usd_out=plan_usd,
+    )
+    events = load_timing_events(feature_dir, warnings)
+    time = compute_time_rollup(
+        planning_data, loaded_plans, events, warnings, method=method,
+        plan_seconds_out=plan_seconds,
+        usage_index=usage_index,
+    )
+    rounds, rounds_unpartitioned = compute_rounds(
+        feature_dir, loaded_plans, events, method, cost, time, plan_usd, plan_seconds,
+        warnings, build_is_frozen=build_is_frozen,
+    )
+    lines = []
+    render_rounds_section(
+        lines, {"rounds": rounds, "rounds_unpartitioned": rounds_unpartitioned}
+    )
+    print("\n".join(lines))
 
 
 # ── Routing overhead ──────────────────────────────────────────────────────────
@@ -2356,19 +3035,56 @@ def render_routing_table(features_dir, feature_total):
 
 
 def render_routed_by(features_dir, slug):
-    """The "routed by" line under one feature's summary, or nothing at all when no
-    routing record names this slug. Never a split: the router's dollars stay the
+    """The "routed by" line under one feature's summary, or nothing at all when the
+    feature has no routing record. Never a split: the router's dollars stay the
     router's (design §3.4).
 
-    The "does this record name my slug" predicate is `routing.routers_of` and is not
-    repeated here — one scan, and one place that can be wrong. `load_records` already
-    returns the records sorted by session id, so the order below is stable."""
+    Which record is this feature's is `routing.routers_of` and is not repeated here —
+    it reads `<slug>/routing.json`, the feature's own copy, and nothing else (design
+    2026-09-18 §1), so "alongside" names the slugs that copy had seen when it was last
+    written, which may be fewer than the router's latest copy in the Routing table."""
     for record in routers_of(features_dir, slug):
         line = ROUTED_BY_LINE.format(session=record.get("session_id"))
         others = [name for name in started_slugs(record) if name != slug]
         if others:
             line += ROUTED_ALONGSIDE.format(slugs=ROUTING_SLUG_SEPARATOR.join(others))
         print(line)
+
+
+# What `--all` says about the gaps it filled before ranking anything, printed on every
+# run so that "nothing was missing" is a statement rather than a silence.
+GAP_FILL_LINE = "{count} report(s) written — every planning.json that had no report.json"
+
+
+def fill_missing_reports(repo_dir, features_dir):
+    """Render every feature holding a frozen `planning.json` with no `report.json` beside
+    it, and return how many were written.
+
+    The trend table below reads `*/report.json` and nothing else, so a feature whose cost
+    was captured but never reported is simply absent from it — not marked partial, not
+    warned about, absent. Three of this repo's own corpus were
+    (`../self/DESIGN-2026-09-16-lifecycle-restructure.md` §1: `killed-attempt-cost-recovery`,
+    `recovered-totals-stay-honest`, `review-pass-and-cost-attribution`), and a ranking
+    that quietly omits rows is worse than one that refuses to print. Filling them here is
+    free of any risk the capture carries: `report.py` reads only what is already on disk
+    and re-prices nothing (the no-recompute contract above).
+
+    One feature's failure is not the run's: a manifest that will not parse, or a
+    `planning.json` a report cannot be built from, is named and skipped, and the table
+    still prints for everything else."""
+    written = 0
+    for planning_path in sorted(features_dir.glob("*/planning.json")):
+        feature_dir = planning_path.parent
+        if (feature_dir / "report.json").exists():
+            continue
+        try:
+            run_single_feature(repo_dir, features_dir, feature_dir.name)
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+            print(f"WARN: {feature_dir.name}: no report written ({exc})")
+            continue
+        written += 1
+    print(GAP_FILL_LINE.format(count=written))
+    return written
 
 
 def run_trend_mode(features_dir):
@@ -2422,13 +3138,36 @@ def main():
     parser.add_argument(
         "--all",
         action="store_true",
-        help="print a cross-feature trend table to stdout instead of writing one feature's report",
+        help="write the report of every feature that has a planning.json and no "
+        "report.json, then print a cross-feature trend table to stdout, instead of "
+        "writing one feature's report",
+    )
+    parser.add_argument(
+        "--rounds-md",
+        action="store_true",
+        help="print one feature's Rounds table as markdown to stdout and write no "
+        "file — what feature-close.sh composes the PR body from",
     )
     add_self_flag(parser)
     args = parser.parse_args()
 
+    if args.rounds_md:
+        if args.all:
+            parser.error(
+                "--rounds-md reports one feature's rounds; it cannot be combined "
+                "with --all"
+            )
+        if not args.slug:
+            parser.error("slug is required with --rounds-md")
+        run_rounds_md(
+            artifact_root(args.self_mode), features_root(args.self_mode), args.slug
+        )
+        return
+
     if args.all:
-        run_trend_mode(features_root(args.self_mode))
+        features_dir = features_root(args.self_mode)
+        fill_missing_reports(artifact_root(args.self_mode), features_dir)
+        run_trend_mode(features_dir)
         return
 
     if not args.slug:

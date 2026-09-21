@@ -1,6 +1,6 @@
 # self-corpus-identity — cost and waste report
 
-Generated 2026-09-10T03:28:49.367089+00:00.
+Generated 2026-09-17T17:36:58.193501+00:00.
 
 ## Cost
 
@@ -11,6 +11,8 @@ Generated 2026-09-10T03:28:49.367089+00:00.
 | verify | $0.0000 | 0.0% |
 | review | $2.0293 | 11.1% |
 | **total** | **$18.2728** | 100.0% |
+
+Sessions this feature does not count alone: `e21abdc0-6f3b-4306-a18e-81272cadb107` ($8.9489), also counted by agentTooling/bounded-opening-stretch. Each is priced here in full and in full there: a transcript cannot say which feature a message served, so nothing is apportioned, and summing these features' totals counts it once per feature.
 
 Built direct (`AGENT_DIRECT.md`): build is the implementer's transcript(s), $16.2434, read from `planning.json`; there are no build plans, and the coordinator's minutes on the brief are not separated from it.
 

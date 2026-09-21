@@ -12,7 +12,8 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
 
 - Shared machinery at the top level: `run-plans.sh`, `run-verify.sh`, `run-review.sh`,
   `run-batch.sh`, `run-escalation-plan.sh`, `plan-runner-lib.sh`, `plan-runner-roots.sh`,
-  `check-plans.sh`, `sync-plans.sh`, `sweep.sh`, `update.sh`, `stamp-timing.sh`, `feature-start.sh`, `feature-close.sh`.
+  `check-plans.sh`, `sync-plans.sh`, `update.sh`, `stamp-timing.sh`, `feature-start.sh`,
+  `feature-close.sh` and `feature-capture.sh`.
 - Doctrine at the top level too: `LIFECYCLE.md`, `CONVENTIONS.md`, `AGENT_PLANS.md`,
   `AGENT_DIRECT.md`, `ORCHESTRATION.md`, `RUNNER.md`, `README.md`. `EXPERIMENTS.md` lives
   with its tool, under `harness/`.
@@ -21,12 +22,18 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
   six are seeded once and then repo-owned (`PROJECT_FACTS.md`, `BACKLOG.md`, `gate.sh`,
   `pr.sh`, `worktree-setup.sh`, `open-session.sh`). Nothing repo-specific ever goes in here.
 - `analysis/` — stdlib-only Python 3 cost tooling.
-- `hooks/` — the permission policy: the `PreToolUse` hook and the helper that wires it.
-  This checkout has its own committed `.claude/settings.json` at the top level, written
+- `hooks/` — the permission policy: the `PreToolUse` hook, the `policy.py` table both it
+  and the wiring read (the git deny's constants and the `bash_deny_rules()` that renders
+  their `permissions.deny` twin), and the helper that wires them.
+  This checkout has its own committed `.claude/settings.json` at the top level, generated
   by `python3 -B hooks/wire-settings.py --self --repo <root> --write` and never by hand;
-  `self/gate.sh` records the matching `--check` as a blocking check, so editing the
-  constants without re-running the write fails the gate. It carries no allow rules, and
-  its `Edit(/.claude/**)` deny rule means the file cannot be changed with the Edit tool.
+  `self/gate.sh` records the matching `--check` as a blocking check, and under `--self`
+  that check is **byte for byte**, so editing the
+  constants without re-running the write fails the gate — and so does editing the file.
+  It carries no allow rules;
+  its `Edit(/.claude/**)` deny rule means the file cannot be changed with the Edit tool,
+  and `hooks/` itself is an `Edit` **ask** rule, which prompts an attended session and
+  refuses a headless one.
 - `self/` — this corpus. Not generated from `templates/`. `self/tests/` holds the
   harness's own behavioural checks, run by `self/gate.sh`.
 
@@ -36,27 +43,49 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
   from
   the primary checkout — it makes branch `<slug>` and worktree `<repo>/.worktrees/<slug>`
   (inside the primary, ignored through the common git dir's `info/exclude`) and writes
-  `self/features/<slug>/` there, plus the routing record `self/routing/<session-id>.json`
-  for the session that ran it. That session is a **router** and is never pinned: coordinate
+  `self/features/<slug>/` there, the routing record `self/features/<slug>/routing.json`
+  for the session that ran it among them. That session is a **router** and is never pinned: coordinate
   the feature from a session launched inside the worktree, which `--open` does for you
   through `self/open-session.sh`. `--pin` is the opt-in for the rare case where the
   starting session really is the feature's coordinator. Each start also prunes the feature
   worktrees whose branches have merged into `origin/main`. A feature started before that layout has the sibling
-  `<repo>-<slug>` instead, and closes and captures the same way. Close it after the PR merges:
-  `./feature-close.sh --self <slug>`, which captures, reports, stamps the window shut,
-  commits the cost records and removes the worktree. Both refuse to run from a worktree.
-  See `../LIFECYCLE.md`.
+  `<repo>-<slug>` instead, and captures the same way. `feature-start.sh` refuses to run
+  from a worktree.
+- Close a feature: `./feature-close.sh --self <slug> [--no-push]`, **from the feature's
+  worktree, on its branch** — the only way out, and what `run-batch.sh --self` calls on a
+  clean round. It refuses unless the latest completed review's `plan_end` carries
+  `verdict=clean` and `HEAD` is the `head` that stamp names (or that sha followed only by
+  `<slug>: cost records` / `<slug>: PR`), then: `self/pr.sh` → the `pr_opened` stamp →
+  `./feature-capture.sh` → `self/pr.sh --merge-request`, in that order. Under `self/pr.sh`
+  the merge is never requested (`AUTO_MERGE=0`). See `../LIFECYCLE.md` → step 6.
+- Capture a feature's cost: `./feature-capture.sh --self <slug>`, **from the feature's
+  worktree, on its branch** — `./feature-close.sh --self <slug>` runs it after `self/pr.sh`,
+  so by hand it is only a re-run after a refusal. It stamps
+  `to`, captures, reports, refreshes the router's routing record, commits the cost records
+  on the branch and pushes the branch. Merging the PR is the last step; nothing runs
+  after it. From the primary after a merge it captures a feature merged under the old flow
+  and never closed, or repairs one with `--recapture`, writing locally and committing and
+  pushing nothing. See `../LIFECYCLE.md`.
 - Mechanical gate: `./self/gate.sh [NN]` — writes `self/gate-report.txt`, plus
   `self/gate-report.NN.txt` when given a level label.
 - Lint: `./check-plans.sh --self <slug>` — run by `./run-batch.sh --self <slug>` first,
   exits 1 on lint failures.
 - Build: `./run-plans.sh --self <slug>`; verify: `./run-verify.sh --self <slug>`;
-  review: `./run-review.sh --self <slug>`; all three: `./run-batch.sh --self <slug>`.
-- Sweep: `./sweep.sh --self` — the weekly cadence; rates, backfill, recover, capture `--all`, report, then unclaimed delegates and sessions.
+  review: `./run-review.sh --self <slug>`; all three plus the close on a clean round:
+  `./run-batch.sh --self <slug>`. The review pass records the round's verdict — the first
+  line of `self/review-report.md`, `Verdict: clean` or `Verdict: escalated` — and stops;
+  an escalated round's rework is briefed from
+  `self/features/<slug>/escalations/<review-stem>.md` and is a new round.
+- **There is no sweep.** `sweep.sh` is retired: the rates line, the corpus-wide unclaimed
+  listings and the frozen-record annotation are printed or run by `./feature-capture.sh`,
+  and what is left are repair tools (`analysis/README.md` → "Repair tools").
 - Cost: `python3 analysis/backfill_usage.py --self`,
   `python3 analysis/capture_planning.py --self --all` (captures features with no
   `planning.json`; a single `<slug>` works too, and `--recapture` rebuilds one that is
-  already captured), `python3 analysis/report.py --self <slug>`,
+  already captured), `python3 analysis/capture_planning.py --self --annotate-frozen`
+  (refresh the corpus's `also_claimed_by` from the claims ledger; the capture runs it),
+  `python3 analysis/report.py --self <slug>`, `python3 analysis/report.py --self --all`
+  (writes any missing `report.json` first, then the trend table),
   `python3 analysis/manifest.py [--self] <slug> set-plans <stem>...`.
 - `--self` is always the **first** argument, before any slug.
 
@@ -68,9 +97,10 @@ with. What `self/gate.sh` runs is:
 - `bash -n <script>` parses every shell script.
 - `shellcheck` if it happens to be installed; it is not a dependency and `self/gate.sh`
   skips it when absent.
-- `python3 -m py_compile analysis/*.py`.
+- `python3 -m py_compile analysis/*.py`, and `hooks/{policy.py,wire-settings.py,
+  allow-repo-commands.sh}` — the hook keeps a `.sh` name and is Python.
 - `python3 -B hooks/wire-settings.py --self --repo <root> --check` — the committed
-  `.claude/settings.json` still matches the constants that generate it.
+  `.claude/settings.json` is byte for byte what the constants generate.
 - `self/tests/*.sh` — plain bash scripts the gate `record`s directly, each exiting
   non-zero on a failed assertion. They stand up a throwaway checkout in a `mktemp -d`
   with a stub `claude` and a stub gate, so they assert runner *behaviour* without calling
@@ -156,14 +186,19 @@ say to run by hand, along with what "passing" looks like.
 - **`git subtree` needs a clean working tree** for add, pull and push — including for
   changes unrelated to the prefix. Push, then pull straight back to record the split, or
   the next push is rejected. `../README.md` → "Updating" has the full explanation.
-- **Plan numbers run as one sequence across this corpus** and are never reused within it:
+- **Plan numbers are per feature, from `01`, here as everywhere** —
+  `AGENT_PLANS.md` → "Plan file format" is the general rule, and nothing in `list_plans`
+  compares numbers across features. This corpus ran one shared sequence across every
+  feature instead until `lifecycle-records-and-numbering` retired it on 2026-09-17: two
+  features started from the same base both saw the same highest number and both got
+  highest-plus-one, because the sequence assumed only one feature would ever be
+  mid-start. Features issued before the retirement keep the numbers they were issued —
   `plan-analytics` is `48`–`58`, `agenttooling-self-host` `59`–`64`, `test-first-levels`
-  `65`–`70`. This is a local convention, not the general rule — `AGENT_PLANS.md` → "Plan
-  file format" numbers **per feature**, from `01`, and nothing in `list_plans` compares
-  numbers across features. Continuing the sequence here is compatible with it (it is
-  always ≥ the per-feature minimum) and is worth keeping only because this corpus is small
-  enough that a global number identifies a plan unambiguously in a commit message. Do not
-  carry the convention into a consuming repo, and do not read it as licence to number a
-  consuming repo's feature from that repo's plan-history count.
+  `65`–`70`, and so on through the rest of `self/features/README.md`'s list — as history,
+  not as a convention to continue: the ranges quoted there were issued under the retired
+  sequence, and a new feature starts at `01` regardless of what the highest number
+  anywhere else in the corpus happens to be. Because two features can now both hold, say,
+  a `01-review-opus`, qualify a cross-feature reference with the slug
+  (`AGENT_PLANS.md` already says this for a consuming repo).
 - A file named `NN-gate.md` in `auto/incomplete/` is a level sentinel, never executed;
   `run-plans.sh` exits 64 (`LEVEL_PAUSE_RC`) at one when a verify plan numbered ≤ `NN` is queued and the gate is not green. 64 is reserved: `finalize_plan` and `run_level_gate` remap a child that exits 64 to 1.

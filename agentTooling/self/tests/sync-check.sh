@@ -14,7 +14,7 @@ set -uo pipefail
 # Fixture A — a consuming repo at $TMP/consumer, git initted with one commit, holding
 # copies of sync-plans.sh, update.sh, templates/ and hooks/ under agentTooling/. Asserts
 # the --check contract: a fresh seed reports the five generated stubs, the three
-# repo-owned scripts in-sync (template-version 2, 2, 1 in that order) and the hook
+# repo-owned scripts in-sync (template-version 2, 4, 1 in that order) and the hook
 # wiring it just wrote in-sync, with only
 # PROJECT_FACTS.md unfilled, rc 1, "needs attention: 1 item(s)"; the seeded BACKLOG.md
 # is in-sync rather than a second unfilled item, since an empty backlog is a correct
@@ -58,6 +58,45 @@ check() { if eval "$2"; then ok "$1"; else fail "$1"; fi; }
 # tv <file> — the template-version integer, or empty if the line is absent.
 tv() { sed -n 's/^# template-version:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$1" 2>/dev/null | head -n 1; }
 
+# ── Fixture C constants: the routing-migration fixture used by phases 13-14 below ──
+# One session id and instant, reused by every consumer built for those phases.
+ROUTING_LABEL_WIDTH=11                                       # sync-plans.sh's own STATUS_COL_WIDTH
+ROUTING_FIXTURE_SESSION_ID="r0000000-0000-0000-0000-0000000000aa"
+ROUTING_FIXTURE_CAPTURED_AT="2026-09-11T09:00:00Z"
+
+# routing_line <rest> — one "routing" status line exactly as sync-plans.sh's own
+# printf "  %-${STATUS_COL_WIDTH}s%s\n" prints it.
+routing_line() { printf "  %-${ROUTING_LABEL_WIDTH}s%s" "routing" "$1"; }
+
+# write_legacy_routing_record <legacy-dir> <analysis-dir> <launched-in> — a legacy
+# record naming slugs a and b in features_started, serialized with routing.py's own
+# routing.serialize so the byte-equality checks in phases 13-14 compare against the
+# exact bytes the migration itself would produce, not a hand-typed guess at the
+# format.
+write_legacy_routing_record() {
+  local dir="$1" analysis_dir="$2" launched_in="$3"
+  mkdir -p "$dir"
+  python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import routing
+record = {
+    "captured_at": sys.argv[4],
+    "cost_usd": 1.0,
+    "duration_s": 60,
+    "ended_at": sys.argv[4],
+    "features_started": [{"slug": "a", "at": None}, {"slug": "b", "at": None}],
+    "git_branch": "main",
+    "launched_in": sys.argv[2],
+    "model": "claude-opus-5",
+    "session_id": sys.argv[3],
+    "started_at": sys.argv[4],
+}
+sys.stdout.write(routing.serialize(record))
+' "$analysis_dir" "$launched_in" "$ROUTING_FIXTURE_SESSION_ID" "$ROUTING_FIXTURE_CAPTURED_AT" \
+    > "$dir/$ROUTING_FIXTURE_SESSION_ID.json"
+}
+
 echo "sync-check"
 
 # ── Fixture A: a consuming repo ─────────────────────────────────────────────────
@@ -85,10 +124,10 @@ for rel in README.md interactive/README.md features/README.md features/TEMPLATE.
   check "1b. in-sync stub $rel" "grep -qF \"  in-sync    plans/$rel\" <<<\"\$out\""
 done
 check "1c. gate.sh in-sync (template-version 2)" 'grep -qF "  in-sync    plans/gate.sh (template-version 2)" <<<"$out"'
-check "1d. pr.sh in-sync (template-version 2)" 'grep -qF "  in-sync    plans/pr.sh (template-version 2)" <<<"$out"'
+check "1d. pr.sh in-sync (template-version 4)" 'grep -qF "  in-sync    plans/pr.sh (template-version 4)" <<<"$out"'
 check "1e. worktree-setup.sh in-sync (template-version 1)" 'grep -qF "  in-sync    plans/worktree-setup.sh (template-version 1)" <<<"$out"'
 check "1f. gate.sh, pr.sh, worktree-setup.sh lines appear in that order" \
-  '[[ "$out" == *"plans/gate.sh (template-version 2)"*"plans/pr.sh (template-version 2)"*"plans/worktree-setup.sh (template-version 1)"* ]]'
+  '[[ "$out" == *"plans/gate.sh (template-version 2)"*"plans/pr.sh (template-version 4)"*"plans/worktree-setup.sh (template-version 1)"* ]]'
 check "1g. unfilled PROJECT_FACTS.md" 'grep -qF "  unfilled   plans/PROJECT_FACTS.md" <<<"$out"'
 check "1h. last line: needs attention 1 item(s)" '[[ "$(tail -1 <<<"$out")" == "needs attention: 1 item(s) above." ]]'
 # BACKLOG.md, seeded beside PROJECT_FACTS.md. An EMPTY backlog is the correct steady
@@ -125,12 +164,12 @@ check "3e. --check rc 0 again (got $rc3)" '[[ $rc3 -eq 0 ]]'
 awk '!/^# template-version:/' "$CONSUMER/plans/pr.sh" > "$TMP/pr.sh.stripped" && mv "$TMP/pr.sh.stripped" "$CONSUMER/plans/pr.sh"
 out="$("$S" --check 2>&1)"; rc=$?
 check "4a. --check rc 1 after stripping pr.sh's version line (got $rc)" '[[ $rc -eq 1 ]]'
-line="$(grep -F 'plans/pr.sh (template-version 0 < 2' <<<"$out")"
-check "4b. DRIFT line for pr.sh" '[[ "$line" == "  DRIFT      plans/pr.sh (template-version 0 < 2;"* ]]'
+line="$(grep -F 'plans/pr.sh (template-version 0 < 4' <<<"$out")"
+check "4b. DRIFT line for pr.sh" '[[ "$line" == "  DRIFT      plans/pr.sh (template-version 0 < 4;"* ]]'
 out2="$("$S" 2>&1)"; rc2=$?
 check "4c. plain sync also rc 1" '[[ $rc2 -eq 1 ]]'
-line2="$(grep -F 'plans/pr.sh (template-version 0 < 2' <<<"$out2")"
-check "4d. plain sync also prints the DRIFT line" '[[ "$line2" == "  DRIFT      plans/pr.sh (template-version 0 < 2;"* ]]'
+line2="$(grep -F 'plans/pr.sh (template-version 0 < 4' <<<"$out2")"
+check "4d. plain sync also prints the DRIFT line" '[[ "$line2" == "  DRIFT      plans/pr.sh (template-version 0 < 4;"* ]]'
 check "4e. plain sync still prints kept pr.sh" 'grep -qF "  kept       plans/pr.sh" <<<"$out2"'
 cp "$CONSUMER/agentTooling/templates/plans/pr.sh" "$CONSUMER/plans/pr.sh"
 chmod +x "$CONSUMER/plans/pr.sh"
@@ -265,6 +304,88 @@ check "11b. output mentions source checkout" 'grep -qF "source checkout" <<<"$ou
 # ── 12. usage ──────────────────────────────────────────────────────────────────
 "$CONSUMER2/agentTooling/update.sh" --bogus >/dev/null 2>&1; rc=$?
 check "12a. update.sh --bogus: exit 2 (got $rc)" '[[ $rc -eq 2 ]]'
+
+# ── Fixture C: the routing migration (self/features/ledger-and-routing/escalations/
+# 01-review-opus.md) ─────────────────────────────────────────────────────────────
+# sync-plans.sh's write path is the only place a consuming repo's legacy
+# plans/routing/<id>.json ever moves: migrate_routing (sync-plans.sh:194) is called
+# only at :284, after the stub and script copies, and never from the --check branch
+# above it. Fixture A's $CONSUMER never copied analysis/{routing,pricing,roots,
+# transcript}.py, so migrate_routing's own guard
+# (`[[ -f "$ROUTING_MODULE" ]] || return 0`) always returned before routing.py
+# --migrate was ever run — none of dropping the call, moving it to --check, or a
+# features root that disagrees with sync-plans.sh's own PLANS_DIR would have turned
+# this file red. A scaffold of its own, copying those four modules in.
+
+# ── 13. the write path moves the legacy record ──────────────────────────────────
+RC_CONSUMER="$TMP/consumer-routing"
+mkdir -p "$RC_CONSUMER/agentTooling/analysis"
+cp "$AT/sync-plans.sh" "$RC_CONSUMER/agentTooling/sync-plans.sh" 2>/dev/null || true
+cp -r "$AT/templates" "$RC_CONSUMER/agentTooling/templates" 2>/dev/null || true
+cp -r "$AT/hooks" "$RC_CONSUMER/agentTooling/hooks" 2>/dev/null || true
+for f in routing.py pricing.py roots.py transcript.py; do
+  cp "$AT/analysis/$f" "$RC_CONSUMER/agentTooling/analysis/$f" 2>/dev/null || true
+done
+chmod +x "$RC_CONSUMER/agentTooling/sync-plans.sh" 2>/dev/null || true
+RC_S="$RC_CONSUMER/agentTooling/sync-plans.sh"
+
+mkdir -p "$RC_CONSUMER/plans/features/a" "$RC_CONSUMER/plans/features/b"
+write_legacy_routing_record "$RC_CONSUMER/plans/routing" "$RC_CONSUMER/agentTooling/analysis" "$RC_CONSUMER"
+RC_LEGACY="$RC_CONSUMER/plans/routing/$ROUTING_FIXTURE_SESSION_ID.json"
+RC_TARGET_A="$RC_CONSUMER/plans/features/a/routing.json"
+RC_TARGET_B="$RC_CONSUMER/plans/features/b/routing.json"
+cp "$RC_LEGACY" "$TMP/routing-legacy.before"
+RC_EXPECT_MOVED_A="$(routing_line "moved  $RC_LEGACY -> $RC_TARGET_A")"
+RC_EXPECT_MOVED_B="$(routing_line "moved  $RC_LEGACY -> $RC_TARGET_B")"
+
+out="$("$RC_S" 2>&1)"
+check "13a. write path leaves plans/features/a/routing.json byte-equal to the legacy record" \
+  'cmp -s "$TMP/routing-legacy.before" "$RC_TARGET_A"'
+check "13b. ...and plans/features/b/routing.json too" \
+  'cmp -s "$TMP/routing-legacy.before" "$RC_TARGET_B"'
+check "13c. plans/routing/ is removed entirely" '[[ ! -d "$RC_CONSUMER/plans/routing" ]]'
+check "13d. one routing 'moved' line for slug a, naming source and target" \
+  'grep -qF "$RC_EXPECT_MOVED_A" <<<"$out"'
+check "13e. one routing 'moved' line for slug b, naming source and target" \
+  'grep -qF "$RC_EXPECT_MOVED_B" <<<"$out"'
+check "13f. exactly two routing-migration 'moved' lines printed" \
+  '[[ "$(grep -c "^  routing    moved  " <<<"$out")" -eq 2 ]]'
+
+# ── 13g-h. a second write-path sync over the same corpus is a no-op ─────────────
+out2="$("$RC_S" 2>&1)"
+check "13g. a second write-path sync prints no routing line" \
+  '! grep -q "^  routing    " <<<"$out2"'
+check "13h. ...and changes nothing" \
+  'cmp -s "$TMP/routing-legacy.before" "$RC_TARGET_A" && cmp -s "$TMP/routing-legacy.before" "$RC_TARGET_B" && [[ ! -d "$RC_CONSUMER/plans/routing" ]]'
+
+# ── 14. --check never migrates ───────────────────────────────────────────────────
+# A fresh copy of the same fixture: --check (sync-plans.sh's MODE == "check" branch)
+# never calls migrate_routing, which sits below it, on the write path only.
+RC_CHECK="$TMP/consumer-routing-check"
+mkdir -p "$RC_CHECK/agentTooling/analysis"
+cp "$AT/sync-plans.sh" "$RC_CHECK/agentTooling/sync-plans.sh" 2>/dev/null || true
+cp -r "$AT/templates" "$RC_CHECK/agentTooling/templates" 2>/dev/null || true
+cp -r "$AT/hooks" "$RC_CHECK/agentTooling/hooks" 2>/dev/null || true
+for f in routing.py pricing.py roots.py transcript.py; do
+  cp "$AT/analysis/$f" "$RC_CHECK/agentTooling/analysis/$f" 2>/dev/null || true
+done
+chmod +x "$RC_CHECK/agentTooling/sync-plans.sh" 2>/dev/null || true
+RC_CHECK_S="$RC_CHECK/agentTooling/sync-plans.sh"
+"$RC_CHECK_S" >/dev/null 2>&1
+mkdir -p "$RC_CHECK/plans/features/a" "$RC_CHECK/plans/features/b"
+write_legacy_routing_record "$RC_CHECK/plans/routing" "$RC_CHECK/agentTooling/analysis" "$RC_CHECK"
+RC_CHECK_LEGACY="$RC_CHECK/plans/routing/$ROUTING_FIXTURE_SESSION_ID.json"
+cp "$RC_CHECK_LEGACY" "$TMP/routing-check-legacy.before"
+
+out3="$("$RC_CHECK_S" --check 2>&1)"
+check "14a. --check leaves plans/routing/<id>.json in place" '[[ -f "$RC_CHECK_LEGACY" ]]'
+check "14b. ...byte-identical" 'cmp -s "$TMP/routing-check-legacy.before" "$RC_CHECK_LEGACY"'
+check "14c. --check writes no routing.json into plans/features/a" \
+  '[[ ! -e "$RC_CHECK/plans/features/a/routing.json" ]]'
+check "14d. ...nor plans/features/b" \
+  '[[ ! -e "$RC_CHECK/plans/features/b/routing.json" ]]'
+check "14e. --check output names no routing migration" \
+  '! grep -q "^  routing    " <<<"$out3" && ! grep -q "moved  " <<<"$out3"'
 
 echo
 if (( fails > 0 )); then echo "sync-check: $fails assertion(s) FAILED"; exit 1; fi

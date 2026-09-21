@@ -15,48 +15,114 @@ of this file during plan generation.
 
 ## Shell commands
 
-The Bash tool's working directory persists between calls. Never chain `cd` with another
-command — not with `&&`, not with `;`. A relative path that follows a `cd` in the same
-command resolves only at run time, which the read block
-(`permissions.blockReadsOutsideWorkingDirectories`) cannot check, so the call stops for
-approval. This happens even for built-in read-only commands (`ls`, `cat`, `sed`, `grep`),
-even when the target is inside the repository, and even when an allow rule already covers
-the command — so it cannot be fixed by adding permissions.
+Every Bash call meets one of three outcomes. Which one it meets is decided by what the
+policy could learn from reading it, not by what the command does:
 
-Instead:
+1. **Approved silently** — the whole line is read-only and confined to the project root.
+   No prompt, no cost to anyone.
+2. **Sent back with a rewrite** — the policy could not read the command, and there is a
+   rewrite that always works. It is denied, and the denial's reason *is* the rewrite.
+3. **Handed to you** — the policy read the command and cannot vouch for what it does: a
+   write, an unknown program, a path outside the root. Nothing is printed, the ordinary
+   permission flow runs, and the human approves a command that has been read.
 
-- Issue `cd <absolute path>` as its own Bash call, then run the commands that follow
-  relative to it. The directory persists.
-- Or name every path absolutely in a single call and omit the `cd` entirely.
+The second outcome is the one worth writing for. A command that cannot be read costs an
+approval and teaches nothing, and the rules below are the whole of what makes a command
+readable. Where `hooks/allow-repo-commands.sh` is wired they are enforced; where it is
+not, they are still the difference between a call that runs and a call that stops.
 
-This applies to worktrees. Run `cd /abs/path/to/.worktrees/<branch>/frontend` on its own,
-then `npx playwright test tests/foo.spec.ts` as the next call — not the two joined by `&&`.
+### What is approved silently
 
-Delegated agents and batch runs inherit this rule. A brief that pastes a `cd X && ...`
+Reads and tests, confined to the project root: `ls`, `cat`, `head`, `tail`, `wc`, `grep`,
+`rg`, `find`, `sed -n …p`, `stat`, `du`, a read-only `git` (`status`, `log`, `diff`,
+`show`, `branch --show-current`, `worktree list` — behind `-C <path inside the root>` as
+well), the test and lint runners (pytest, ruff, mypy, `npx playwright test`, the named
+`npm run` scripts), and the harness's own read-only entry points (`gate.sh`,
+`check-plans.sh`, `bash -n`, `shellcheck`, `py_compile`, `report.py`, a listing
+`capture_planning.py`, `manifest.py get`). A standalone `cd <absolute path>` inside the
+root is approved, and the directory persists into the next call.
+
+### What is sent back with a rewrite
+
+Each of these is a command nothing can read, and each has one mechanical answer. The
+denial names the member and the fix; rewrite it as the reason says rather than retrying
+it, and do not work around it with `pushd` or a subshell, which are denied too.
+
+| Shape | Example | The rewrite |
+|---|---|---|
+| a `cd` or `pushd` chained with another command | `cd src && ls` | `cd <absolute path>` as its own call, then the command |
+| an assignment whose own `$NAME` is used later on the line | `X=/p; cat $X/f` | inline the literal — you still have it, two words earlier |
+| a `$NAME` or `${NAME}` the shell will expand, anywhere in a word | `grep x $FILE`, `ls "$HOME/f"` | inline the literal |
+| a `~` | `ls ~/x` | write the absolute path |
+| a `..` component in a path | `cat ../x`, `ls a/../b` | write the path from the project root |
+| a bare or relative `cd` | `cd src`, `cd` | `cd <absolute path>` |
+| a line break outside a quote or a heredoc, or a `\` continuation | two commands on two lines | one call per line |
+| a brace group the expansion refuses (a quote or backslash mixed into an unquoted brace group, nesting, past the cap) | `cat {a,{b,c}}` | expand it yourself, or write a script |
+| a heredoc feeding anything but `cat` | `python3 - <<'EOF'`, `bash <<EOF` | write the script to the scratchpad and run it by name |
+| code handed to an interpreter as a string, including behind `xargs` and `find -exec` | `python3 -c`, `bash -c`, `node -e`, `perl -ne`, `eval` | the same |
+| a pipe into an interpreter with no script file | `… \| sh`, `… \| python3` | the same |
+| a program decided at run time | `$CMD …`, `$(which x) …` | the same |
+| a `$(…)` or backtick inside a word that is a path | `ls $(cd dir && pwd)/src` | inline the literal |
+| a one-line `for`, `while`, `until`, `if` or `case` | | write the script and run it by name |
+| a line that does not tokenize | `cat 'x` | close the quote |
+| a sequence mixing approved reads with one command the human must judge | `grep x f && git commit -m m` | run the reads on their own — they are approved — and the other alone |
+
+The rewrite is always one of four: **write the script to the scratchpad with the Write
+tool and run it by name** (`bash <path>`, `python3 <path>`); use the Read, Grep, Write or
+Edit tool instead of a one-liner; inline the literal you already have; or split the line
+into one call each.
+
+This is one rule seen from several sides: **every path a literal, every program named,
+nothing decided at run time.** A command whose paths only exist once it runs is a command
+the reads fence (`permissions.blockReadsOutsideWorkingDirectories`) cannot check, whatever
+it turns out to do — so `R=/abs/path; sed -n 1,40p $R/src/a.py; grep -n thing $R/src/b.py`
+stops for approval where the same two calls with the path written out are approved with no
+prompt at all. The chained `cd` is the commonest case: a relative path after it resolves
+only at run time, so the call stops even for `ls` inside the repository, and even where an
+allow rule already covers it — it cannot be fixed by adding permissions. This applies to
+worktrees. Run `cd /abs/path/to/.worktrees/<branch>/frontend` on its own, then
+`npx playwright test tests/foo.spec.ts` as the next call — not the two joined by `&&`.
+Delegated agents and batch runs inherit the rule; a brief that pastes a `cd X && ...`
 command teaches the wrong shape.
 
-The chained `cd` is one case of the general rule: **every path a literal, every program
-named, nothing decided at run time.** No variables in paths, no `$(…)` in paths, no
-heredocs into an interpreter, one line per call. A command whose paths only exist once it
-runs is a command the reads fence cannot check, whatever it turns out to do — so
-`R=/abs/path; sed -n 1,40p $R/src/a.py; grep -n thing $R/src/b.py` stops for approval
-where the same two `sed` and `grep` calls with the path written out are approved with no
-prompt at all. Write the literal you already have. When the work genuinely needs a
-computed value — a loop over files, a multi-step transformation — the answer is not a
-cleverer one-liner but a script: `Write` it to the scratchpad and run that one named
-program.
+**Exempt.** A heredoc feeding `cat` is a literal string, not code —
+`git commit -m "$(cat <<'EOF' … EOF)"` is the shape Claude Code itself uses for a commit
+message — as is a `$(…)` that is a whole argument rather than part of a path
+(`x=$(cd dir && pwd)`): there is no literal to inline, so the human judges it. The
+exemption covers the heredoc's **body** and not the rest of its first line:
+`cat <<'EOF' | python3` and `bash -c "$(cat <<'EOF' … EOF)"` still hand an interpreter its
+code, and are denied like any other spelling of it.
 
-Where `hooks/allow-repo-commands.sh` is wired, a chained `cd` is **denied**, and so is an
-assignment at command position whose own `$NAME` is used later on the same line
-(`X=/p; cat $X/f`) — the one case where the literal is provably still in hand and the fix
-is a substitution. The denial's reason is the correction. Rewrite the command as the
-reason says; do not retry it, and do not work around it with `pushd` or a subshell, which
-are denied too. The rest of the rule is not enforced and is no less binding.
+After two such denials in one session the policy stops correcting and asks the human
+instead, so a shape it cannot read and you cannot rewrite is not a loop. Under a batch
+runner it prints nothing at that point, since nobody is there to answer; the runner's
+executors are given a scratch directory of their own and told where it is
+(`RUNNER.md` → "The executor's environment").
+
+### What reaches the human, and how to make it cheap
+
+A write, a program outside the read-only list, a path outside the root, an environment
+prefix: the policy prints nothing and the human decides. It is a command they can read,
+so the only thing left to get right is how much they are being asked to approve.
+
+**One write per Bash call, and nothing else on the line.** Reads go in their own calls,
+where they are approved with no prompt at all; the write goes alone, so the one thing the
+human is agreeing to is the thing they were shown. `git add -A && git commit -m x && git
+push` is three approvals bought with one, and a sequence mixing approved reads with a
+write is sent back for exactly this reason.
+
+- `cd <absolute path>` as its own call rather than `git -C <another tree> …`. A `git -C`
+  whose path is inside the root is approved; one that points at another checkout is not,
+  and the human then has to work out which tree the command was for.
+- The **Read, Grep, Write and Edit tools** rather than `sed -n`, `cp`, `cat > file` — the
+  tools are checked against the repo's own allow and deny rules, and a subprocess write is
+  not (see "Writing files" below).
+- Nothing else on the line with a `git commit`, a `mv`, an `rm` or a redirect into a file.
 
 ### Writing files
 
 Author files with the Edit and Write tools, never by shelling out — not `cat > file`, not
-a `python3 <<'PY'` heredoc, not `sed -i`. A write made from inside a subprocess is
+`cp`, not a `python3 <<'PY'` heredoc, not `sed -i`. A write made from inside a subprocess is
 invisible to the permission system. It is not covered by the repo's `Edit` allow rules, so
 it stops for approval even where an ordinary edit would not; and it is not checked against
 the repo's `Edit` deny rules, so the carve-outs guarding `.git/`, `.claude/`, the

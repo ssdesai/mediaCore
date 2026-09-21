@@ -12,6 +12,7 @@ Every feature this repo works on gets one directory here, named by its slug:
       interactive/       bash-heavy steps run by hand, belonging to THIS feature
       NOTES.md           the architect's or implementer's rulings, deviations and resume commands
       CHECKPOINT.md      direct features only: the implementer's slice list and state, for a resume
+      routing.json       the router session that started this feature, written by feature-start.sh
       timing.jsonl       appended by the runners: batch, pass, plan, gate and PR instants
       planning.json      written later by the analysis tooling
       report.md / report.json

@@ -1,0 +1,41 @@
+{
+  "captured_at": "2026-09-18T13:27:59Z",
+  "cost_usd": 55.695161,
+  "duration_s": 70607,
+  "ended_at": "2026-09-18T13:27:59Z",
+  "features_started": [
+    {
+      "at": "2026-09-17T17:55:04Z",
+      "slug": "tooling-backlog-2026-09-17"
+    },
+    {
+      "at": "2026-09-17T18:18:47Z",
+      "slug": "feature-close-and-review-rounds"
+    },
+    {
+      "at": "2026-09-17T21:17:44Z",
+      "slug": "lifecycle-records-and-numbering"
+    },
+    {
+      "at": "2026-09-18T04:00:00Z",
+      "slug": "policy-module"
+    },
+    {
+      "at": "2026-09-18T12:02:53Z",
+      "slug": "ledger-and-routing"
+    },
+    {
+      "at": "2026-09-18T12:50:05Z",
+      "slug": "minutes-slug-and-quoting"
+    },
+    {
+      "at": "2026-09-18T12:54:24Z",
+      "slug": "from"
+    }
+  ],
+  "git_branch": "main",
+  "launched_in": "/Users/sahildesai/dev/agentTooling",
+  "model": "claude-fable-5-1",
+  "session_id": "654e3f53-28b4-426c-aa7c-f81632764698",
+  "started_at": "2026-09-17T17:51:12Z"
+}

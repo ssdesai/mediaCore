@@ -99,27 +99,41 @@ code itself — the defects that are still there while every check is green.
   respects an invariant nobody wrote down is the adversarial-reasoning case verify's
   own model note reserves for opus. `run-review.sh` reads the model from
   `NN-review-MODEL.md` exactly as the other runners do.
-- **Budgeted separately.** `--max-budget-usd` defaults to `$5.00`
+- **Budgeted separately.** `--max-budget-usd` defaults to `$7.00`
   (`REVIEW_BUDGET_USD`), higher than verify's `$3.00` because the default model is more
-  expensive. That figure is an estimate, not a measurement — re-derive it from the first
-  few real runs the way verify's was.
-- **It writes a verdict, and that verdict becomes a PR.** The executor writes its
-  findings to `plans/review-report.md`; on a clean pass `run-review.sh` then runs the
-  repo-owned `plans/pr.sh`, which branches if needed, commits, pushes, and opens a pull
-  request with that report as its body. So the batch ends at something a human approves
-  in a browser rather than at a terminal summary.
-- **The PR step is a script, not a prompt instruction.** Branching, committing, pushing
-  and calling a forge CLI is deterministic work with a real exit code — the same reason
-  the mechanical checks live in `gate.sh` rather than in a verify brief. The model's
-  contribution is the review; the plumbing around it is not model work. `pr.sh` is
-  repo-owned for the same reason `gate.sh` is: `gh` is GitHub's, `glab` is GitLab's, and
-  the shared harness must not pin every consuming repo to one forge.
-- **The PR step is gated and advisory.** It runs only when the pass finished with
-  nothing left in `failed/`, `inprogress/` or `incomplete/` — a budget-capped review has
-  not finished judging the batch, and a PR opened on its behalf would carry a
-  half-written verdict past a human who assumes otherwise. If `pr.sh` itself fails, the
-  runner reports the exit code and still exits with the review pass's own status: a
-  review that succeeded is not made wrong by a push that didn't.
+  expensive. It supersedes a starting estimate that no measured run fitted inside: the
+  first two measured opus runs cost `$4.53` and `$5.11` (the second capped after it had
+  written its report), so the figure is the median doubled and rounded down. Re-derive it
+  again after a few more.
+- **It writes a verdict, and the verdict ends a round.** The executor writes its findings
+  to `plans/review-report.md`, whose **first line** is `Verdict: clean` or
+  `Verdict: escalated` (`AGENT_PLANS.md` → "Review plans"). `run-review.sh` reads that
+  line — and only that line, with its case folded and its surrounding space and `\r`
+  trimmed before the `Verdict:` label is matched — after the plan completes, commits the pass's own output as
+  `<slug>: review round N` (only on a branch that is not the feature's base), and stamps
+  the round's `plan_end` with `verdict=<clean|escalated|unreadable>` and `head=<sha of
+  that commit>`, then `pass_end`. A first line the harness cannot read is `unreadable` and
+  is treated exactly like `escalated` — **fail closed** — with a line saying the report
+  carried no verdict.
+- **It opens no PR and runs no capture.** A runner is a runner. The step that opens the
+  PR, captures the cost and asks for the merge is `feature-close.sh`, which refuses
+  anything but the tree a clean review judged (`LIFECYCLE.md` → step 6) — so a rework
+  after an escalated review cannot happen behind a PR body and a frozen record that
+  describe the tree before it, which is what used to happen. The pass's last lines name
+  the next step: **clean** → the close's exact command; **escalated** → the rework brief
+  the runner has just written to `plans/features/<slug>/escalations/<review-stem>.md`, and
+  the three steps of the next round (brief the rework, queue `NN+1-review-<model>.md`,
+  `manifest.py set-plans`, run the pass again).
+- **Every stamp carries its round**, computed once per pass as the number of review plans
+  in `review/complete/` plus one and held in `TIMING_ROUND` (`plan-runner-roots.sh`), so
+  `analysis/report.py` can show what each round cost and what it decided.
+- **The verdict step is gated and advisory.** It runs only when the pass finished with
+  nothing left in `failed/`, `inprogress/` or `incomplete/` — a review that failed or was
+  interrupted has not finished judging the batch, and a verdict recorded on its behalf
+  would be half-written. The exception is a budget cap that fired *after* the report was
+  written: the verdict is complete, so it is recorded with a banner in the report saying
+  the pass was capped. A git failure while committing is reported and leaves the pass's
+  exit status alone: a review that succeeded is not made wrong by a commit that didn't.
 - **Optional per feature.** An empty `review/incomplete/` is a clean no-op that exits 0,
   so features authored before this queue existed still run unchanged under
   `run-batch.sh`.
@@ -208,6 +222,14 @@ stopped early leaves a half-fixed tree, and reviewing a state nobody intends to 
 produces findings nobody wants. The skip prints the `run-review.sh` command to run once
 verify is settled.
 
+**And the batch ends the round the review decided.** After a review pass that exits 0 it
+reads the latest round's verdict exactly as `feature-close.sh` does — the same
+`latest_review_plan` and `review_plan_end` in `plan-runner-roots.sh`, so an unattended
+batch and a coordinator at a terminal can never disagree about what a round decided.
+Clean, it runs `feature-close.sh`, so the unattended path still ends in a PR with the cost
+record on the branch. Escalated or unreadable, it prints the path of the rework brief the
+review runner wrote and exits 1 — a round that escalated is not a batch that succeeded.
+
 Exit code **64** (`LEVEL_PAUSE_RC`, `plan-runner-roots.sh`) from `run-plans.sh` means
 paused at a level boundary with a level-verify plan queued **and the level's gate not
 green**; `run-batch.sh` handles it by climbing the tier ladder (next section) and
@@ -275,9 +297,12 @@ the old escalation plan out of `verify/failed/` by hand.
 recognises the `NN-escalation-<model>` stem and rolls it in with a warning instead of
 excluding it as an orphan.
 
-**Review after a cap.** `run-review.sh` opens the PR when the budget cap fired *after*
-the report was written (content fingerprint before/after), appending a banner saying so,
-and still exits non-zero. A cap before the report still opens nothing.
+**Review after a cap.** `run-review.sh` records the round's verdict when the budget cap
+fired *after* the report was written (content fingerprint before/after), appending a
+banner saying so, and still exits non-zero. A cap before the report records nothing. The
+capped plan is filed to `failed/`, and `latest_review_plan` reads `failed/` as well as
+`complete/` for exactly this case — a complete report with a verdict is a verdict — while
+only `complete/` counts toward the round.
 
 `self/tests/tiered-gates.sh` asserts every row of this table against a throwaway checkout.
 
@@ -290,10 +315,14 @@ The feature directory also gains one `timing.jsonl`, appended to by every runner
 goes (`stamp_timing`, `plan-runner-roots.sh`): a UTC-stamped line at each batch, pass,
 plan and gate boundary and when the PR opens — plus, for a direct feature, the
 `checkpoint status=…` lines its implementer appends by hand with the top-level
-`stamp-timing.sh` (`AGENT_DIRECT.md` → "Checkpoint and resume"). A plan's own duration is in its
+`stamp-timing.sh` (`AGENT_DIRECT.md` → "Checkpoint and resume"). Every line also carries
+its **`round`** (a string, like every other detail), and a review plan's `plan_end`
+carries that round's `verdict` and the `head` it judged; a line written before rounds
+existed carries no `round` and is read as round 1. A plan's own duration is in its
 `usage.json`; this is the record of everything between plans — the gates, how much
 parallelism a batch got, first plan to PR — which `analysis/report.py` turns into the
-report's wall-clock figures. Small and committed, like the usage sidecars.
+report's wall-clock figures and its Rounds table. Small and committed, like the usage
+sidecars.
 
 Every finished plan — complete or failed — lands with four files, not two:
 
@@ -359,7 +388,7 @@ toplevel, which is the consuming repo when agentTooling is a subtree. See
 ## The run budget
 
 `run-verify.sh` passes `--max-budget-usd` (default `$3.00`, override with
-`VERIFY_BUDGET_USD`) and `run-review.sh` passes its own (default `$5.00`, override with
+`VERIFY_BUDGET_USD`) and `run-review.sh` passes its own (default `$7.00`, override with
 `REVIEW_BUDGET_USD`); `run-plans.sh` sets no cap. It is a circuit breaker, not a budget —
 it should fire rarely, and firing means the brief asked for more than that pass should
 do. Every other rule in `AGENT_PLANS.md` → "Verify plans" / "Review plans" is an
@@ -367,9 +396,10 @@ instruction the executor can talk itself out of mid-run with a plausible reason;
 the one limit that does not depend on it judging its own scope correctly.
 
 The two caps differ because the two passes default to different models. Verify's `$3.00`
-was derived from measured sonnet runs; review's `$5.00` is a starting estimate for an
-opus pass and has not been measured yet — re-derive it from the first few real runs the
-same way (median of the honest runs, doubled).
+was derived from measured sonnet runs; review's `$7.00` is the same derivation over the
+first two measured opus runs (`$4.53` and `$5.11`, the second capped after writing its
+report) — the median doubled, rounded down. Re-derive both the same way as more runs
+land, and keep `run-review.sh`'s `REVIEW_BUDGET_USD` and this figure in step.
 
 `claude -p` exits 1 for a budget stop, a usage limit, *and* a genuine failure, so the three
 are told apart by the captured stream: `subtype == "error_max_budget_usd"` on the final
@@ -426,6 +456,36 @@ milestone is also stamped into `timing.jsonl` (`stamp-timing.sh <slug> checkpoin
 status=<status>`); that append is what survives the rewrite and what
 `analysis/report.py` reads. The review pass that follows is an ordinary `review/` queue
 and resumes as above.
+
+## The executor's environment
+
+`plan-runner-lib.sh` exports two variables into the `claude -p` it launches, at that one
+site, and `agentTooling/hooks/allow-repo-commands.sh` is the only thing that reads either
+(`hooks/README.md` → "Headless runners and the scratch directory"):
+
+- **`AGENTTOOLING_HEADLESS=1`** — the permission policy denies a command it cannot read
+  with the rewrite as the reason (a heredoc into an interpreter, a `-c` string, a `$(…)`
+  inside a path, and the rest of the REWRITE class — `CONVENTIONS.md` § Shell commands
+  has the table) and, after two
+  such denials in one session, escalates to `permissionDecision: "ask"`. There is nobody
+  at a terminal in a batch to answer one, so with this set it prints **nothing** at that
+  point and the run's own non-interactive policy decides. The counter still advances.
+- **`AGENTTOOLING_SCRATCH=<dir>`** — a per-pass directory the policy approves scripts
+  from by name (`bash <dir>/x.sh`, `python3 [-B] <dir>/x.py`), which is where a denied
+  heredoc is meant to become a file. It lives inside the run's capture directory
+  (`CAPTURE_TMPDIR`, a `mktemp -d` under `$TMPDIR`), so the teardown that removes that
+  removes this — including on the interrupt paths — and there is no second temp
+  directory to leak. Every executor prompt carries one line naming it, appended to
+  whatever the runner's own `build_prompt` composed, because the directory does not
+  exist until `run_plan` has made the capture directory and the policy that reads it is
+  one policy rather than three. The same launch passes **`--add-dir <dir>`** for it:
+  `--permission-mode acceptEdits` auto-accepts a Write only under the executor's working
+  directory, so without that flag the script the deny asks for could not be written at
+  all.
+
+Both are asserted end to end in `self/tests/stream-capture.sh` phase 10, through a stub
+`claude` that records its own environment and prompt — the only way to see what the
+launch site really handed the executor.
 
 ## Capturing the stream
 

@@ -16,7 +16,9 @@ that repo's own origin is the identity of the corpus under it.
 sessions still ran from the enclosing repo, so the session root is the nearest
 ancestor holding .git. That is the consuming repo when agentTooling is vendored as a
 subtree, and agentTooling itself in a standalone clone — one rule covering both, and
-the reason nothing here takes a repo path argument.
+the reason nothing here takes a repo path argument. When that ancestor is a linked
+worktree (a feature's `<primary>/.worktrees/<slug>`), the session root is the primary
+checkout it belongs to, so a worktree's copy resolves what the primary's copy does.
 
 The self corpus's identity, though, is DECLARED rather than derived, because neither
 root can be asked for it: `self/features` can only ever belong to agentTooling, and a
@@ -39,6 +41,16 @@ AGENT_TOOLING_DIR = Path(__file__).resolve().parents[1]
 # The same URL is `update.sh`'s DEFAULT_REMOTE and the remote `README.md` -> "Updating"
 # names in its `git subtree` commands; all three have to move together.
 SELF_CORPUS_IDENTITY = "https://github.com/ssdesai/agentTooling.git"
+
+# How a linked worktree points home (`worktree_primary`). Its `.git` is a file holding one
+# line, `gitdir: <path>` — `<common git dir>/worktrees/<name>`, absolute unless
+# `worktree.useRelativePaths` wrote it relative to the worktree — and that per-worktree
+# directory holds `commondir`, the path of the common git dir relative to itself. A
+# submodule's `.git` file points into `<super>/.git/modules/<name>`, which has no
+# `commondir`, and is left as the root it always was.
+GIT_ENTRY = ".git"
+GITDIR_PREFIX = "gitdir:"
+COMMONDIR_FILE = "commondir"
 
 
 def add_self_flag(parser):
@@ -79,12 +91,42 @@ def all_features_roots():
 
 
 def session_root(self_mode):
-    """The cwd sessions ran from: nearest ancestor (inclusive) holding .git.
+    """The cwd sessions ran from: nearest ancestor (inclusive) holding .git — and, when
+    that ancestor is a linked WORKTREE, the primary checkout it belongs to.
 
-    .exists() rather than .is_dir(): .git is a file in a worktree or submodule.
+    .exists() rather than .is_dir(): .git is a file in a worktree or submodule. A
+    worktree's copy of these scripts is the copy `feature-capture.sh` runs, on the
+    feature's branch, before the merge, so it has to resolve the same session root the
+    primary's own copy does: the claim roots, the fence around other features' worktrees
+    and the transcript-directory scan are all derived from it, and a root that stopped at
+    the worktree left every session filed under the primary out of view.
     """
     start = artifact_root(self_mode)
     for candidate in (start, *start.parents):
-        if (candidate / ".git").exists():
-            return candidate
+        if (candidate / GIT_ENTRY).exists():
+            return worktree_primary(candidate) or candidate
     return start
+
+
+def worktree_primary(checkout):
+    """The primary checkout a linked worktree at `checkout` belongs to, or None when
+    `checkout` is not one — its `.git` a directory, or a file that is not a worktree's.
+    Read from the files git itself writes, with no subprocess, so a copy of these
+    scripts vendored into a repo with no `git` on PATH resolves exactly as before."""
+    entry = checkout / GIT_ENTRY
+    if not entry.is_file():
+        return None
+    try:
+        first = entry.read_text().strip().splitlines()[0]
+    except (OSError, IndexError):
+        return None
+    if not first.startswith(GITDIR_PREFIX):
+        return None
+    gitdir = (checkout / first[len(GITDIR_PREFIX):].strip()).resolve()
+    try:
+        common = (gitdir / (gitdir / COMMONDIR_FILE).read_text().strip()).resolve()
+    except OSError:
+        return None
+    if common.name != GIT_ENTRY:
+        return None
+    return common.parent

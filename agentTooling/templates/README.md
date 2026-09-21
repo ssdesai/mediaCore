@@ -44,9 +44,12 @@ once and then owned by the repo. The gate
 skeleton takes an optional level label (`gate.sh NN`) and writes `gate-report.NN.txt`
 beside `gate-report.txt`; the PR skeleton creates **no branch at all** — the feature
 already ran on its own, in the worktree `../feature-start.sh` made — and opens the PR
-from whatever is checked out against `FEATURE_BASE`, which `../run-review.sh` exports
+from whatever is checked out against `FEATURE_BASE`, which `../feature-close.sh` exports
 from the manifest's `base`, so a stacked feature targets the one beneath it without
-waiting for a merge. `worktree-setup.sh` is a no-op skeleton whose comments list the common steps —
+waiting for a merge. That skeleton is at `template-version: 4`, which is the version with
+its **second entry point**, `pr.sh --merge-request <slug>`: the close calls it after the
+cost record has been committed and pushed, and it is the only place `PR_AUTO_MERGE` is
+read, so nothing can ask a forge to merge a branch whose record is not on it yet. `worktree-setup.sh` is a no-op skeleton whose comments list the common steps —
 a venv per worktree (never shared: an editable install points at whichever tree ran it
 last), `npm install`, a per-worktree dev port; `../feature-start.sh` runs it inside
 every new feature worktree and stops the start if it exits non-zero

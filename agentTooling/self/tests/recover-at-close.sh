@@ -13,7 +13,8 @@ set -uo pipefail
 # stream carried no `result` event was recorded at $0, and the close committed that zero.
 # Nothing on disk told the difference between "this cost nothing" and "nobody recorded
 # what this cost", and recovery — which can price it from the session transcript — was
-# only ever run by the weekly sweep, never by the close.
+# only ever run by the weekly cost sweep — a cadence nothing scheduled — never by the
+# close. Recovery now runs at the capture, on the branch, and the sweep is retired.
 #
 # Asserts, in order:
 #   A. write_usage_sidecar records whether the stream held a result event at all:
@@ -34,24 +35,26 @@ set -uo pipefail
 #             must price — and leaves every other feature's sidecar byte-identical;
 #      B3.    reports one attempt recovered, not two;
 #      B4.    an unknown slug is a refusal (non-zero) that writes nothing;
-#      B5.    without --for the whole-tree walk is unchanged — sweep.sh passes no --for.
-#   C. feature-close.sh recovers before it captures:
+#      B5.    without --for the whole-tree walk is unchanged — the repair run over a
+#             whole corpus (analysis/README.md → "Repair tools") passes no --for.
+#   C. feature-capture.sh recovers before it captures, on the branch in the worktree:
 #      C1-C5. with the transcript present the review bucket carries real dollars instead
 #             of $0.0000, the rewritten usage.json is inside the `<slug>: cost records`
-#             commit (not named as a stray, which would refuse the close), and
-#             report.json agrees;
-#      C6-C9. with the transcript gone the close still exits 0 — recovery is reported,
+#             commit on the branch (not named as a stray, which would refuse the
+#             capture), and the worktree is left clean;
+#      C6-C9. with the transcript gone the capture still exits 0 — recovery is reported,
 #             never fatal — names the plan as unrecoverable, and the printed cost line
 #             reads `review $0.0000 (0.0%, unpriced: <stem> — no result event, transcript
 #             not found)` rather than the bare `review $0.0000 (0.0%)` the defect printed;
-#      C10-C12. `--recapture` closes an already-closed feature again with its worktree and
-#             local branch gone — the repair path for the features whose zero is already
-#             committed — re-committing the cost records without moving session_window.to;
+#      C10-C12. after the merge, with the worktree and local branch gone, `--recapture`
+#             from the primary re-captures — the repair path for the features whose zero
+#             is already committed — writing locally, committing nothing, and leaving
+#             session_window.to where the branch capture put it;
 #      C13-C17. ...and again with the REMOTE branch gone too, which is what a forge with
-#             delete-on-merge leaves: `--recapture` proceeds on the manifest being on
-#             main and the `<slug>: start` commit being an ancestor of it, while a plain
-#             close still refuses "nothing to close" and so does `--recapture` for a
-#             feature that was never started.
+#             delete-on-merge leaves: both a plain capture and `--recapture` proceed on
+#             the manifest being on main and the `<slug>: start` commit being an ancestor
+#             of it, committing nothing, while a feature that was never started still
+#             refuses "nothing to capture".
 #   D. report.py's unpriced_reason and the queue->bucket mapping:
 #      D1-D4. each of the three reason strings, from a sidecar of that shape — no
 #             `result_event` at all (the shape EVERY sidecar on disk has today, so the
@@ -60,21 +63,21 @@ set -uo pipefail
 #      D5-D6. `set(QUEUE_COST_BUCKETS) == QUEUE_DIRS`, and that report.py refuses to
 #             import when it does not — the cheap guard against a queue whose dollars are
 #             summed while its unpriced plans vanish from the printed line.
-#   E. rollback_recovery, the mirror of feature-lifecycle.sh's C5f for rollback_carry: a
-#      capture that refuses AFTER recovery rewrote a sidecar leaves the primary clean and
-#      the sidecar as it was, and the re-run refuses for the same reason rather than for
-#      dirt this run made.
-#   F. a `.usage.json` outside a queue is a stranger: the worktree holding one is kept
-#      with a warning rather than force-removed, while one inside a queue is the
-#      harness's own and the worktree comes away.
+#   E. the recovery rollback: a capture that refuses AFTER recovery rewrote a sidecar
+#      leaves the worktree clean and the sidecar as it was, and the re-run refuses for
+#      the same reason rather than for dirt this run made.
+#   F. a `.usage.json` outside a queue is a stranger: a capture on the branch with one
+#      dirty in the worktree refuses up front, naming it and writing nothing, while one
+#      inside a queue is the harness's own and rides the cost commit.
 #
 # A, B and C were RED until the feature landed: A on the absent `result_event` field, B on
-# the absent `--for` flag, C on both plus the close's new step. D5-D6 and F1-F2 were RED
+# the absent `--for` flag, C on both plus the close's new step. D5-D6 and F were RED
 # until the rework (the import guard, and narrowing the sidecar match to known queues);
 # D1-D4 and E are the missing assertions that rework added for behaviour already shipped,
-# which is what the review escalated. A missing script or flag fails its own assertions
-# loudly rather than aborting the run — the convention cost-recovery.sh uses (no `set -e`,
-# and every cp below tolerates absence).
+# which is what the review escalated. C, E and F moved from feature-close.sh to
+# feature-capture.sh with capture-on-branch, and were RED again until it landed. A missing
+# script or flag fails its own assertions loudly rather than aborting the run — the
+# convention cost-recovery.sh uses (no `set -e`, and every cp below tolerates absence).
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP="$(mktemp -d)"
@@ -261,16 +264,16 @@ check "B4. --for an unknown slug is refused (got $bad_rc), naming it, and writes
 
 all_out="$(python3 "$CA/analysis/recover_attempts.py" --self 2>&1)"; all_rc=$?
 two_recovered="$(jf "$U_TWO" 'd["attempts"][0].get("recovered_cost_usd")')"
-check "B5. without --for the whole-tree walk is unchanged — sweep.sh's call still reaches feattwo (rc $all_rc, got ${two_recovered:-<absent>})" '[[ $all_rc -eq 0 && -n "$two_recovered" && "$two_recovered" != "None" ]]'
+check "B5. without --for the whole-tree walk is unchanged — the corpus-wide repair run still reaches feattwo (rc $all_rc, got ${two_recovered:-<absent>})" '[[ $all_rc -eq 0 && -n "$two_recovered" && "$two_recovered" != "None" ]]'
 
-# ── C. the close recovers before it captures ─────────────────────────────────
+# ── C. the capture recovers before it captures ───────────────────────────────
 # A real git repo with a bare origin beside it, the way feature-lifecycle.sh builds one:
-# feature-close.sh refuses anywhere else, and the assertions here are about the commit it
-# makes and the line it prints.
+# the assertions here are about the commit feature-capture.sh makes on the branch and the
+# line it prints.
 LA="$TMP/close/agentTooling"
 LORIGIN="$TMP/close/origin.git"
 mkdir -p "$LA/analysis" "$LA/self/features" "$LA/templates/plans/features"
-for f in feature-start.sh feature-close.sh plan-runner-roots.sh plan-runner-lib.sh stamp-timing.sh; do
+for f in feature-start.sh feature-capture.sh plan-runner-roots.sh plan-runner-lib.sh stamp-timing.sh; do
   cp "$HERE/$f" "$LA/$f" 2>/dev/null || true
 done
 for f in pricing.py roots.py transcript.py capture_planning.py report.py manifest.py recover_attempts.py routing.py; do
@@ -292,36 +295,45 @@ git init -q --bare "$LORIGIN"
 git -C "$LA" remote add origin "$LORIGIN"
 git -C "$LA" push -q -u origin main 2>/dev/null
 
-# feature_stem <slug> — the review stub's stem, read back from the manifest fence on
-# main. feature-start.sh numbers it from the global sequence, so it is not knowable in
-# advance; and close_fixture runs in a command substitution, so it cannot hand a variable
-# back.
-feature_stem() { fence "$LA/self/features/$1/README.md" 'd["plans"][0]'; }
+# wt_of <slug> — where feature-start.sh put the feature's worktree.
+wt_of() { echo "$LA/$WORKTREES_DIR/$1"; }
+# feature_stem <slug> — the review stub's stem, read back from the manifest fence in the
+# worktree. feature-start.sh numbers it from the global sequence, so it is not knowable in
+# advance; and capture_fixture runs in a command substitution, so it cannot hand a
+# variable back.
+feature_stem() { fence "$(wt_of "$1")/self/features/$1/README.md" 'd["plans"][0]'; }
+# run_capture <checkout> <slug> [flags] — that checkout's feature-capture.sh, from outside
+# every checkout, so nothing cwd-relative inside it can reach the repo running this test.
+run_capture() {
+  local checkout="$1"; shift
+  (
+    cd "$TMP/close"
+    "$checkout/feature-capture.sh" --self "$@" 2>&1
+  )
+}
 
-# close_fixture <slug> <review session id> <plant review transcript: yes|no>
-#               [<plant planning transcript: yes|no>, default yes] [<extra dirty paths>]
+# capture_fixture <slug> <review session id> <plant review transcript: yes|no>
+#                 [<plant planning transcript: yes|no>, default yes] [<extra dirty paths>]
 # Starts the feature, plants the unpriced review sidecar its manifest already lists,
-# merges it, gives the capture one session to find, and closes it. Returns the close's
-# combined output.
+# commits it on the branch as the review pass's pr.sh would, gives the capture one session
+# to find, and captures from the worktree. Returns the capture's combined output.
 #
 # The fourth argument withholds the one session the capture can claim, which is how E
 # reaches the capture-refusal path with recovery having already rewritten a file. The
-# fifth writes untracked files at those feature-relative paths in the WORKTREE before the
-# close, which is how F puts a .usage.json outside any queue in front of stray_paths. The
-# worktree rather than the primary: an untracked file in the primary trips the
-# dirty-primary refusal in step 1, long before the stray test in steps 9 and 10 runs.
-close_fixture() {
+# fifth writes untracked files at those feature-relative paths in the worktree before the
+# capture, which is how F puts a .usage.json in front of stray_paths.
+capture_fixture() {
   local slug="$1" review_sid="$2" plant="$3"
   local plant_session="${4:-yes}" extra="${5:-}" rel
-  local wt="$LA/$WORKTREES_DIR/$slug" fd
-  # --session pins the planning session by id, which claims it "regardless of branch,
-  # window or cwd". Without the pin this fixture rides a real boundary: `in_window`'s
-  # `to` is EXCLUSIVE, feature-close.sh stamps `to` seconds after the transcript is
-  # written, and roughly one run in six landed both in the same second — so the second
-  # close (C10) refused "no session matched" at random. The window is not what this
+  local wt fd stem
+  wt="$(wt_of "$slug")"
+  # --session names a planning session and --pin pins it by id, which claims it
+  # "regardless of branch, window or cwd". Without the pin this fixture rides a real
+  # boundary: `in_window`'s `to` is EXCLUSIVE, the capture stamps `to` seconds after the
+  # transcript is written, and roughly one run in six landed both in the same second — so
+  # a later capture refused "no session matched" at random. The window is not what this
   # test is about; capture-guard.sh owns it.
-  ( cd "$TMP/close" && "$LA/feature-start.sh" --self "$slug" --no-gate --session "planning-$slug" >/dev/null 2>&1 )
-  local stem
+  "$LA/feature-start.sh" --self "$slug" --no-gate --pin --session "planning-$slug" >/dev/null 2>&1
   fd="$wt/self/features/$slug"
   stem="$(fence "$fd/README.md" 'd["plans"][0]')"
   [[ -n "$stem" ]] || return 1
@@ -330,14 +342,10 @@ close_fixture() {
   mkdir -p "$fd/review/complete"
   mv "$fd/review/incomplete/$stem.md" "$fd/review/complete/$stem.md"
   write_unpriced_usage_json "$fd/review/complete/$stem.usage.json" "$review_sid" opus
-  git -C "$wt" add -A && git -C "$wt" commit -q -m "$slug: review pass"
-  # The branch itself goes to origin, as plans/pr.sh pushes it before opening the PR:
-  # feature-close.sh resolves `<slug>` locally or as `origin/<slug>`, and after a close
-  # the remote ref is the only one left — which is what C10 re-closes against.
-  git -C "$wt" push -q -u origin "$slug" 2>/dev/null
-  git -C "$LA" merge -q --no-ff -m "Merge $slug" "$slug" && git -C "$LA" push -q origin main 2>/dev/null
+  git -C "$wt" add -A
+  git -C "$wt" commit -q -m "$slug: review pass"
   # One session launched in the worktree, on the branch, so the capture has something to
-  # claim — a capture that matches nothing refuses and the close never reaches its report.
+  # claim — a capture that matches nothing refuses and never reaches its report.
   if [[ "$plant_session" == "yes" ]]; then
     mkdir -p "$(project_dir "$wt")"
     session_line "planning-$slug" "$wt" "$slug" "msg-$slug" "$MODEL" "$(now_z)" 100 500 0 0 0 \
@@ -348,76 +356,82 @@ close_fixture() {
   fi
   # Unquoted on purpose: the argument is a space-separated list of paths.
   for rel in $extra; do
-    mkdir -p "$(dirname "$wt/self/features/$slug/$rel")"
-    printf '{"plan":"a stranger","attempts":[]}\n' > "$wt/self/features/$slug/$rel"
+    mkdir -p "$(dirname "$fd/$rel")"
+    printf '{"plan":"a stranger","attempts":[]}\n' > "$fd/$rel"
   done
-  ( cd "$TMP/close" && "$LA/feature-close.sh" --self "$slug" 2>&1 )
+  run_capture "$wt" "$slug"
 }
 
-# C1-C5: the transcript survives, so recovery prices the review and the close commits it.
+# C1-C5: the transcript survives, so recovery prices the review and the capture commits it.
 SLUG_OK="close-recovers"
-out_ok="$(close_fixture "$SLUG_OK" "sess-close-recovers" yes)"; rc_ok=$?
+WT_OK="$(wt_of "$SLUG_OK")"
+out_ok="$(capture_fixture "$SLUG_OK" "sess-close-recovers" yes)"; rc_ok=$?
 STEM_OK="$(feature_stem "$SLUG_OK")"
-FD_OK="$LA/self/features/$SLUG_OK"
-U_OK="$FD_OK/review/complete/$STEM_OK.usage.json"
-check "C1. the close exits 0 (got $rc_ok)" '[[ $rc_ok -eq 0 ]]'
+U_OK="$WT_OK/self/features/$SLUG_OK/review/complete/$STEM_OK.usage.json"
+check "C1. the capture exits 0 (got $rc_ok)" '[[ $rc_ok -eq 0 ]]'
 ok_recovered="$(jf "$U_OK" 'd["attempts"][0].get("recovered_cost_usd")')"
-check "C2. the review sidecar on main carries a recovered cost (got ${ok_recovered:-<absent>})" '[[ -n "$ok_recovered" && "$ok_recovered" != "None" ]]'
+check "C2. the review sidecar on the branch carries a recovered cost (got ${ok_recovered:-<absent>})" '[[ -n "$ok_recovered" && "$ok_recovered" != "None" ]]'
 check "C3. the printed cost line is not a bare \$0.0000 review bucket" '! grep -q "review \$0.0000" <<<"$out_ok"'
-commit_files="$(git -C "$LA" show --name-only --format= HEAD | tr "\n" " ")"
-check "C4. the rewritten usage.json is inside the '$SLUG_OK: cost records' commit (got: $commit_files)" '[[ "$(git -C "$LA" log -1 --format=%s)" == "$SLUG_OK: cost records" ]] && grep -q "self/features/$SLUG_OK/review/complete/$STEM_OK.usage.json" <<<"$commit_files"'
-check "C5. ... and it was never named as a stray path, which would have refused the close" '! grep -q "are not $SLUG_OK.s cost records" <<<"$out_ok" && [[ -z "$(git -C "$LA" status --porcelain)" ]]'
+commit_files="$(git -C "$WT_OK" show --name-only --format= HEAD | tr "\n" " ")"
+check "C4. the rewritten usage.json is inside the '$SLUG_OK: cost records' commit on the branch (got: $commit_files)" '[[ "$(git -C "$WT_OK" log -1 --format=%s)" == "$SLUG_OK: cost records" ]] && grep -q "self/features/$SLUG_OK/review/complete/$STEM_OK.usage.json" <<<"$commit_files"'
+check "C5. ... and it was never named as a stray path, which would have refused the capture" '! grep -q "are not $SLUG_OK.s cost records" <<<"$out_ok" && [[ -z "$(git -C "$WT_OK" status --porcelain)" ]]'
 
 # C6-C9: the transcript is gone. Recovery fails, and that must be reported, not fatal —
 # and the bucket must say so instead of printing a bare zero.
 SLUG_GONE="close-unpriced"
-out_gone="$(close_fixture "$SLUG_GONE" "sess-close-unpriced" no)"; rc_gone=$?
+out_gone="$(capture_fixture "$SLUG_GONE" "sess-close-unpriced" no)"; rc_gone=$?
 STEM_GONE="$(feature_stem "$SLUG_GONE")"
-check "C6. a close whose recovery finds no transcript still exits 0 — reported, never fatal (got $rc_gone)" '[[ $rc_gone -eq 0 ]]'
+check "C6. a capture whose recovery finds no transcript still exits 0 — reported, never fatal (got $rc_gone)" '[[ $rc_gone -eq 0 ]]'
 check "C7. ... naming the plan whose transcript is gone" 'grep -q "$STEM_GONE" <<<"$out_gone" && grep -qi "unrecoverable\|no surviving transcript" <<<"$out_gone"'
 check "C8. ... and the review bucket names the plan, why it is unpriced, and what recovery did" 'grep -q "unpriced: $STEM_GONE — no result event, transcript not found" <<<"$out_gone"'
 check "C9. ... so the bare '\''review \$0.0000 (0.0%);'\'' the defect printed is gone" '! grep -q "review \$0.0000 (0.0%);" <<<"$out_gone"'
 
-# C10-C12: --recapture over an already-closed feature. This is the repair path for the
-# features whose zero is already committed, and the close must not need the worktree for
-# it — C1 removed both the worktree and the local branch, leaving only `origin/<slug>`,
-# which is exactly the state a merged-and-closed feature is left in.
+# C10-C12: --recapture after the merge. This is the repair path for the features whose
+# zero is already committed, and it must not need the worktree: the PR merged, and the
+# next feature-start.sh pruned the worktree and the local branch, leaving only
+# `origin/<slug>` — removed here by hand, exactly as the prune removes them.
+git -C "$LA" merge -q --no-ff -m "Merge $SLUG_OK" "$SLUG_OK"
+git -C "$LA" push -q origin main 2>/dev/null
+git -C "$LA" worktree remove "$WT_OK"
+git -C "$LA" branch -q -D "$SLUG_OK"
 TO_BEFORE="$(fence "$LA/self/features/$SLUG_OK/README.md" 'd["session_window"]["to"]')"
 head_before="$(git -C "$LA" rev-parse HEAD)"
-out_re="$( cd "$TMP/close" && "$LA/feature-close.sh" --self "$SLUG_OK" --recapture 2>&1 )"; rc_re=$?
-check "C10. --recapture closes again with the worktree and local branch gone (got $rc_re)" '[[ $rc_re -eq 0 && ! -d "$LA/$WORKTREES_DIR/$SLUG_OK" ]] && ! git -C "$LA" show-ref --quiet "refs/heads/$SLUG_OK"'
-check "C11. ... re-committing the cost records" '[[ "$(git -C "$LA" rev-parse HEAD)" != "$head_before" && "$(git -C "$LA" log -1 --format=%s)" == "$SLUG_OK: cost records" ]]'
+out_re="$(run_capture "$LA" "$SLUG_OK" --recapture)"; rc_re=$?
+check "C10. --recapture from the primary re-captures with the worktree and local branch gone (got $rc_re)" '[[ $rc_re -eq 0 && ! -d "$WT_OK" ]] && ! git -C "$LA" show-ref --quiet "refs/heads/$SLUG_OK"'
+check "C11. ... writing locally and committing nothing" '[[ "$(git -C "$LA" rev-parse HEAD)" == "$head_before" && -n "$(git -C "$LA" status --porcelain)" ]]'
 TO_AFTER="$(fence "$LA/self/features/$SLUG_OK/README.md" 'd["session_window"]["to"]')"
-check "C12. ... and leaving session_window.to where the first close put it (was $TO_BEFORE, now $TO_BEFORE)" '[[ -n "$TO_BEFORE" && "$TO_BEFORE" != "None" && "$TO_AFTER" == "$TO_BEFORE" ]]'
+check "C12. ... and leaving session_window.to where the branch capture put it (was $TO_BEFORE, now $TO_AFTER)" '[[ -n "$TO_BEFORE" && "$TO_BEFORE" != "None" && "$TO_AFTER" == "$TO_BEFORE" ]]'
+git -C "$LA" add -A
+git -C "$LA" commit -q -m "$SLUG_OK: the repair's records"
 
-# C13-C17: the remote branch is gone too. C10 worked only because plans/pr.sh had pushed
-# `<slug>` and the fixture's origin kept it; a forge with delete-on-merge takes that ref
-# as soon as the PR merges, and then the repair path for an already-closed feature
-# refuses "nothing to close" — self/BACKLOG.md's delete-on-merge entry. The merge commit
-# is in main either way, so the ancestry the refusal exists to check is knowable without
-# the branch. Both refs are removed here: the bare repo's, so a fetch cannot restore it,
-# and the remote-tracking one, since the close's fetch does not prune.
+# C13-C17: the remote branch is gone too. A forge with delete-on-merge takes that ref as
+# soon as the PR merges. The merge commit is in main either way, so the ancestry the
+# refusal exists to check is knowable without the branch. Both refs are removed here: the
+# bare repo's, so a fetch cannot restore it, and the remote-tracking one.
 git -C "$LORIGIN" update-ref -d "refs/heads/$SLUG_OK" 2>/dev/null
 git -C "$LA" update-ref -d "refs/remotes/origin/$SLUG_OK" 2>/dev/null
 check "C13. the fixture really has neither ref left" \
   '! git -C "$LA" show-ref --verify --quiet "refs/heads/$SLUG_OK" && ! git -C "$LA" show-ref --verify --quiet "refs/remotes/origin/$SLUG_OK"'
 
-# The non-recapture path is unchanged: without --recapture there is nothing to repair
-# and no reason to relax the refusal.
-out_plain="$( cd "$TMP/close" && "$LA/feature-close.sh" --self "$SLUG_OK" 2>&1 )"; rc_plain=$?
-check "C14. a plain close with both refs gone still refuses (got $rc_plain)" '[[ $rc_plain -ne 0 ]] && grep -q "nothing to close" <<<"$out_plain"'
+# A plain capture proceeds too: a feature merged under the old flow and never closed is
+# exactly this shape once the forge has deleted its branch, and it must stay capturable.
+head_before_plain="$(git -C "$LA" rev-parse HEAD)"
+out_plain="$(run_capture "$LA" "$SLUG_OK")"; rc_plain=$?
+check "C14. a plain capture with both refs gone proceeds on the manifest and the start commit (got $rc_plain)" \
+  '[[ $rc_plain -eq 0 ]] && grep -q "no branch left" <<<"$out_plain" && [[ "$(git -C "$LA" rev-parse HEAD)" == "$head_before_plain" ]]'
 
 head_before_re2="$(git -C "$LA" rev-parse HEAD)"
-out_re2="$( cd "$TMP/close" && "$LA/feature-close.sh" --self "$SLUG_OK" --recapture 2>&1 )"; rc_re2=$?
+out_re2="$(run_capture "$LA" "$SLUG_OK" --recapture)"; rc_re2=$?
 check "C15. --recapture proceeds on the manifest and the start commit alone (got $rc_re2)" \
   '[[ $rc_re2 -eq 0 ]] && grep -q "no branch left" <<<"$out_re2"'
-check "C16. ... re-committing the cost records" \
-  '[[ "$(git -C "$LA" rev-parse HEAD)" != "$head_before_re2" && "$(git -C "$LA" log -1 --format=%s)" == "$SLUG_OK: cost records" ]]'
+check "C16. ... committing nothing" '[[ "$(git -C "$LA" rev-parse HEAD)" == "$head_before_re2" ]]'
+git -C "$LA" add -A
+git -C "$LA" commit -q -m "$SLUG_OK: the second repair's records" >/dev/null
 # And the refusal survives where it should: a slug with no branch AND no manifest on
 # main is the case the message was written for, and --recapture must not swallow it.
-out_none="$( cd "$TMP/close" && "$LA/feature-close.sh" --self never-started --recapture 2>&1 )"; rc_none=$?
+out_none="$(run_capture "$LA" never-started --recapture)"; rc_none=$?
 check "C17. --recapture on a feature that was never started still refuses (got $rc_none)" \
-  '[[ $rc_none -ne 0 ]] && grep -q "nothing to close" <<<"$out_none"'
+  '[[ $rc_none -ne 0 ]] && grep -q "nothing to capture" <<<"$out_none"'
 
 # ── D. unpriced_reason's three branches, and the queue->bucket guard ─────────
 # The reason string is what the close prints and the repair procedure is read off, and
@@ -448,8 +462,8 @@ if what == "reason":
 elif what == "buckets":
     print(set(report.QUEUE_COST_BUCKETS) == report.QUEUE_DIRS)
 PYEOF
-# -B, like every python feature-close.sh runs: a __pycache__ left in the primary is
-# untracked, and the next close refuses on a dirty primary.
+# -B, like every python feature-capture.sh runs: a __pycache__ left in a checkout is
+# untracked dirt, which a capture on the branch refuses as a stranger's work.
 R() { python3 -B "$TMP/reason.py" "$LA/analysis" "$@" 2>&1; }
 
 # The pre-field shape: no `result_event` at all, which is not the same as "missing".
@@ -485,43 +499,45 @@ sed -i.bak 's/^QUEUE_DIRS = {"auto", "verify", "review"}$/QUEUE_DIRS = {"auto", 
 drift_out="$(python3 -B -c "import sys; sys.path.insert(0, sys.argv[1]); import report" "$TMP/drift" 2>&1)"; drift_rc=$?
 check "D6. ... and a queue added to QUEUE_DIRS but not to the dict fails at import (got $drift_rc)" '[[ $drift_rc -ne 0 ]] && grep -q "QUEUE_COST_BUCKETS" <<<"$drift_out" && grep -q "escalate" <<<"$drift_out"'
 
-# ── E. rollback_recovery ─────────────────────────────────────────────────────
-# The mirror of feature-lifecycle.sh's C5f, which pins rollback_carry the same way. The
-# capture refuses AFTER recovery has already rewritten a sidecar in the primary; if the
-# rollback regresses, the primary is left dirty with files this script wrote and step 1
-# of the NEXT close refuses on that dirt — the two-close cascade the step-6 comment says
-# the rollback exists to prevent. Withholding the planning transcript is what makes the
-# capture refuse; planting the review one is what gives recovery something to undo.
+# ── E. the recovery rollback ─────────────────────────────────────────────────
+# The capture refuses AFTER recovery has already rewritten a sidecar in the worktree; if
+# the rollback regresses, the worktree is left dirty with a file this script wrote, and
+# the NEXT capture refuses on that dirt as a stranger's work — a cascade whose second
+# refusal names a record the human must not simply discard. Withholding the planning
+# transcript is what makes the capture refuse; planting the review one is what gives
+# recovery something to undo.
 SLUG_ROLL="close-rolls-back"
-out_roll="$(close_fixture "$SLUG_ROLL" "sess-close-rolls-back" yes no)"; rc_roll=$?
+WT_ROLL="$(wt_of "$SLUG_ROLL")"
+out_roll="$(capture_fixture "$SLUG_ROLL" "sess-close-rolls-back" yes no)"; rc_roll=$?
 STEM_ROLL="$(feature_stem "$SLUG_ROLL")"
-U_ROLL="$LA/self/features/$SLUG_ROLL/review/complete/$STEM_ROLL.usage.json"
-check "E1. a close whose capture refuses exits non-zero (got $rc_roll)" '[[ $rc_roll -ne 0 ]] && grep -q "capture refused" <<<"$out_roll"'
+U_ROLL="$WT_ROLL/self/features/$SLUG_ROLL/review/complete/$STEM_ROLL.usage.json"
+check "E1. a capture that refuses exits non-zero (got $rc_roll)" '[[ $rc_roll -ne 0 ]] && grep -q "capture refused" <<<"$out_roll"'
 check "E2. ... and recovery really had something to undo first" 'grep -q "1 attempt(s) recovered" <<<"$out_roll" && grep -q "rolled back the 1 recovered sidecar" <<<"$out_roll"'
 roll_recovered="$(jf "$U_ROLL" 'd["attempts"][0].get("recovered_cost_usd")')"
 check "E3. ... the recovered figure is gone from the sidecar again (got ${roll_recovered:-<absent>})" '[[ "$roll_recovered" == "None" ]]'
-check "E4. ... the primary is clean, so the next close is not blocked by this one's dirt" '[[ -z "$(git -C "$LA" status --porcelain)" ]]'
-out_roll2="$(cd "$TMP/close" && "$LA/feature-close.sh" --self "$SLUG_ROLL" 2>&1)"; rc_roll2=$?
-check "E5. ... and the re-run refuses for the same reason, not for a dirty primary (got $rc_roll2)" '[[ $rc_roll2 -ne 0 ]] && ! grep -qi "is dirty" <<<"$out_roll2" && grep -q "capture refused" <<<"$out_roll2"'
+check "E4. ... the worktree is clean, so the next capture is not blocked by this one's dirt" '[[ -z "$(git -C "$WT_ROLL" status --porcelain)" ]]'
+out_roll2="$(run_capture "$WT_ROLL" "$SLUG_ROLL")"; rc_roll2=$?
+check "E5. ... and the re-run refuses for the same reason, not for stray dirt (got $rc_roll2)" '[[ $rc_roll2 -ne 0 ]] && ! grep -q "cost records:" <<<"$out_roll2" && grep -q "capture refused" <<<"$out_roll2"'
 
 # ── F. a .usage.json outside a queue is a stranger ───────────────────────────
 # is_cost_usage_path matches <queue>/<state>/…, with both names read from the runner's own
 # sets, so a sidecar a human left somewhere else under the feature directory is not the
-# harness's to commit or to discard. Before it, `*/*.usage.json` asked only for SOME
-# directory above the file, so `notes/left-behind.usage.json` qualified.
-# Asserted at the teardown, the other caller of stray_paths, because that is where a
-# fixture can reach it: an untracked file in the PRIMARY trips step 1's dirty refusal
-# before step 9 ever runs, while the same file in the worktree is exactly the question
-# step 10 asks — are these leftovers the harness's own, or somebody's work?
+# harness's to commit. Before it, `*/*.usage.json` asked only for SOME directory above the
+# file, so `notes/left-behind.usage.json` qualified. A capture on the branch commits cost
+# records and nothing else, so it asks the question up front, before it writes anything.
 SLUG_STRAY="close-stray-usage"
-out_stray="$(close_fixture "$SLUG_STRAY" "sess-close-stray" yes yes "notes/left-behind.usage.json")"; rc_stray=$?
-check "F1. a worktree holding a .usage.json outside a queue is kept, not force-removed (got $rc_stray)" '[[ $rc_stray -eq 0 && -d "$LA/$WORKTREES_DIR/$SLUG_STRAY" ]]'
-check "F2. ... and the close says so instead of discarding it" 'grep -q "uncommitted or untracked files that are not" <<<"$out_stray"'
-# The complement, so F1 cannot pass by the close simply never force-removing anything: the
-# same file INSIDE a queue is the harness's own, and the worktree comes away.
+WT_STRAY="$(wt_of "$SLUG_STRAY")"
+out_stray="$(capture_fixture "$SLUG_STRAY" "sess-close-stray" yes yes "notes/left-behind.usage.json")"; rc_stray=$?
+check "F1. a capture with a .usage.json outside a queue dirty in the worktree refuses (got $rc_stray)" '[[ $rc_stray -ne 0 ]]'
+check "F2. ... naming it, and writing nothing" \
+  'grep -q "notes/left-behind.usage.json" <<<"$out_stray" && [[ ! -e "$WT_STRAY/self/features/$SLUG_STRAY/planning.json" && "$(git -C "$WT_STRAY" log -1 --format=%s)" == "$SLUG_STRAY: review pass" ]]'
+# The complement, so F1 cannot pass by the capture simply refusing every dirty sidecar:
+# the same file INSIDE a queue is the harness's own, and rides the cost commit.
 SLUG_OWNED="close-owned-usage"
-out_owned="$(close_fixture "$SLUG_OWNED" "sess-close-owned" yes yes "review/complete/99-extra-sonnet.usage.json")"; rc_owned=$?
-check "F3. ... while one inside a queue is the harness's own and the worktree comes away (got $rc_owned)" '[[ $rc_owned -eq 0 && ! -d "$LA/$WORKTREES_DIR/$SLUG_OWNED" ]] && grep -q "discarding uncommitted records already carried home" <<<"$out_owned"'
+WT_OWNED="$(wt_of "$SLUG_OWNED")"
+out_owned="$(capture_fixture "$SLUG_OWNED" "sess-close-owned" yes yes "review/complete/99-extra-sonnet.usage.json")"; rc_owned=$?
+check "F3. ... while one inside a queue is the harness's own and rides the cost commit (got $rc_owned)" \
+  '[[ $rc_owned -eq 0 ]] && git -C "$WT_OWNED" show --name-only --format= HEAD | grep -qx "self/features/$SLUG_OWNED/review/complete/99-extra-sonnet.usage.json"'
 
 echo
 if (( fails > 0 )); then echo "recover-at-close: $fails assertion(s) FAILED"; exit 1; fi

@@ -63,8 +63,9 @@ paste the spec.
    must keep, anything decided already. Decisions the spec settles are not reopened.
 5. **The procedure** (next section), by reference to this file plus whatever this
    feature adds to it.
-6. **The finish.** Commit on the branch; do not push or open the PR — the review pass
-   does that (see "The review is not optional").
+6. **The finish.** Commit on the branch; do not push or open the PR — the review runs
+   next, and `feature-close.sh` after a clean one opens the PR (see "The review is not
+   optional, and it is a round").
 7. **The report.** Terse: the gate's verdict line and counts, files added/changed,
    each design call and where it is recorded, anything in scope left undone and why.
 
@@ -183,18 +184,40 @@ build row in the report is their sum (see "Cost and time").
 **Model: opus.** This is the judgment case. A feature small enough that sonnet would do
 is one where `AGENT_PLANS.md` step 4 already says to do it by hand.
 
-## The review is not optional
+## The review is not optional, and it is a round
 
 An independent review from a brief written **before** the build, from the spec — never
 from the implementer's report or by the implementer. Author it as a review plan
 (`AGENT_PLANS.md` → "Review plans": what the feature was supposed to do, the base to
-diff against, the contracts to hold it to, "no findings" a legitimate verdict) in
+diff against, the contracts to hold it to, the `Verdict:` line it must open with, "no
+findings" a legitimate verdict) in
 `plans/features/<slug>/review/incomplete/NN-review-opus.md`, and run
-`./agentTooling/run-review.sh <slug>` once the implementer has committed. On a clean
-pass the runner calls `plans/pr.sh`, which opens the PR with the verdict as its body —
-the same PR the plan workflow would have opened. Local findings are fixed there;
-structural ones are a rework one-shot briefed with the findings file only, or the next
-feature.
+`./agentTooling/run-review.sh <slug>` once the implementer has committed.
+
+A direct build is **round 1**, and the review's verdict is what ends it. The runner
+commits its own output (`<slug>: review round N`), stamps that round's verdict and the sha
+it judged, and stops — it opens no PR and captures nothing:
+
+- **Clean** → `./agentTooling/feature-close.sh <slug>`, from the worktree, on the branch,
+  which the runner prints. It opens the PR with the verdict as its body and the Rounds
+  table under it, stamps it, captures the cost on the branch so the PR carries the record,
+  and asks for the merge last (`LIFECYCLE.md` → step 6). **Merging the PR is the last
+  step**, and the next `feature-start.sh` prunes the worktree.
+- **Escalated** — or a report whose first line carries no verdict, which is treated the
+  same way — → the round stops at the review, and the report *is* the rework brief, at
+  `plans/features/<slug>/escalations/<review-stem>.md`. Local findings the review could
+  fix are already fixed; what is left is structural. Route the rework as you would a build
+  — a second one-shot briefed with that file only, plans, or by hand — then queue the
+  re-review, which may be **scoped to the escalations and run at a cheaper model**
+  (`NN+1-review-sonnet.md`), add its stem with `analysis/manifest.py <slug> set-plans …`,
+  and run the review pass again. That is round N+1. There is no by-hand capture of a
+  reworked tree any more: the close refuses a tree no clean review has judged, so a rework
+  is reviewed rather than captured around.
+
+The round is the number of review plans that have completed, so a rework's own stamps say
+so with nobody passing anything: a checkpoint stamp during it reads round 2
+(`stamp-timing.sh`), and `analysis/report.py`'s Rounds table shows what each round cost
+and what it decided.
 
 ## The feature directory
 
@@ -210,15 +233,19 @@ branch), so `capture_planning.py` freezes its dollars and its transcript span in
 `analysis/report.py` the difference: it files everything in that file under **build**
 — the row reads "build: implementer" — and the review plan's `usage.json` under review.
 Planning proper, the coordinator's minutes on the two briefs, is not separated out.
-Pin the implementer's id while its transcript exists (`capture_planning.py
---list-subagents --unclaimed`), and a rework one-shot's the same way. A feature that
-was resumed pins every implementer that touched it; the build row is their sum.
+An implementer spawned by a coordinator launched inside the worktree is claimed with its
+parent and needs no pin; one spawned from anywhere else is pinned while its transcript
+exists (`capture_planning.py --list-subagents --unclaimed`), and a rework one-shot's the
+same way — `feature-capture.sh` warns, naming the id, about any delegate briefed for the
+feature that neither route claims. A feature that was resumed claims every implementer
+that touched it; the build row is their sum.
 
 ## Checklist before spawning
 
 `feature-start.sh` is the checklist (`LIFECYCLE.md` → step 2): it refuses a base whose
 gate is not green, and it writes the worktree, the manifest with `session_window.from`
-set for the pins to go in, and the review-brief stub that `run-review.sh` refuses to run
-until a real brief replaces it. What no script checks is the reading list: the READMEs
+set, and the review-brief stub that `run-review.sh` refuses to run until a real brief
+replaces it. Spawn the implementer from a coordinator launched inside that worktree, so
+it is claimed by branch with no pin, and the close's capture prices it. What no script checks is the reading list: the READMEs
 of the folders in scope have to exist and be current, or the one-shot spends its context
 re-deriving them.

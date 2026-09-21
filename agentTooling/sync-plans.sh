@@ -19,6 +19,10 @@ set -euo pipefail
 # below is unchanged and ends with that same repo-owned report, since the stubs it just
 # wrote are always in sync.
 #
+# The write path also runs `analysis/routing.py --migrate`, which empties the old
+# `plans/routing/` into the features its records name and says what it moved for the human
+# to commit — idempotent, silent once there is nothing there, and never a failure.
+#
 # Beyond plans/, one file in .claude/ is maintained: the PreToolUse hook entry pointing at
 # hooks/allow-repo-commands.sh, which approves repo-confined reads and tests and denies a
 # chained `cd`. It is merged, never copied — see hooks/README.md.
@@ -42,6 +46,14 @@ STATUS_COL_WIDTH=11
 # copied from a template: that file is repo-owned and may hold unrelated settings, so the
 # helper appends one PreToolUse entry when absent and touches nothing else.
 WIRE_SETTINGS="$SCRIPT_DIR/hooks/wire-settings.py"
+
+# The routing-record migration. A record used to live at plans/routing/<session-id>.json,
+# one file per router shared by every feature that router started, and lives inside the
+# feature it links now — plans/features/<slug>/routing.json
+# (agentTooling/analysis/routing.py, self/DESIGN-2026-09-18-ledger-and-routing.md §1). A
+# repo that pulls this subtree still has its records in the old place, so the write path
+# empties it below.
+ROUTING_MODULE="$SCRIPT_DIR/analysis/routing.py"
 
 # The stubs that are regenerated every run. PROJECT_FACTS.md is deliberately absent.
 #
@@ -170,6 +182,36 @@ sync_hook() {
   return "$rc"
 }
 
+# migrate_routing — empty plans/routing/ into the features its records name, and say what
+# moved. Run on the write path only, which is the path a `git subtree pull` is followed
+# by; `--check` reports drift and writes nothing, and a migration is not drift.
+#
+# Advisory in both directions: it is idempotent and silent once the directory is gone, so
+# every later sync costs one exit-0 process, and a failure is reported without failing the
+# sync — a record left in the old place is a record nobody reads, not a broken repo. The
+# moves are NOT committed: this script never commits, so they are handed to the human who
+# ran the pull, beside everything else that run wrote.
+migrate_routing() {
+  local out line rc=0
+  [[ -f "$ROUTING_MODULE" ]] || return 0
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "SKIPPED" "plans/routing/ (python3 not found; routing records not migrated)"
+    return 0
+  fi
+  out="$(python3 -B "$ROUTING_MODULE" --migrate 2>&1)" || rc=$?
+  if (( rc != 0 )); then
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "WARN" "plans/routing/ (routing.py --migrate exited $rc; the records are as they were)"
+    return 0
+  fi
+  [[ -n "$out" ]] || return 0
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "routing" "$line"
+  done <<<"$out"
+  echo "  commit the routing records above — each one now lives in the feature it links."
+  return 0
+}
+
 # finish <count> — the last line and exit code, shared by --check and the write path.
 finish() {
   local count="$1"
@@ -238,6 +280,8 @@ for f in "${REPO_OWNED_SCRIPTS[@]}"; do
     printf "  %-${STATUS_COL_WIDTH}s%s\n" "created" "plans/$f — $(repo_owned_created_hint "$f")"
   fi
 done
+
+migrate_routing
 
 hook_rc=0
 sync_hook --write || hook_rc=$?

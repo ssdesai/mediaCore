@@ -427,11 +427,11 @@ check "7b. also_claimed_by names the enclosing repo's claim-there" \
 check "7c. the run separately warns naming the slug, the session, and predating the share rule" \
   "grep -q 'claim-here' '$TMP/out7-all.txt' && grep -q '$SESSION' '$TMP/out7-all.txt' && grep -qi 'predates' '$TMP/out7-all.txt' && grep -qi 'recapture' '$TMP/out7-all.txt'"
 
-# The sweep runs weekly and the annotation converges on its first pass, so a warning that
-# fires only on the run that CHANGED something is a warning nobody sees again while the
-# stale full-count figure is still sitting there — `check_empty_window`'s doctrine a few
+# The annotation converges on the first pass over a corpus, so a warning that fires only
+# on the run that CHANGED something is a warning nobody sees again while the stale
+# full-count figure is still sitting there — `check_empty_window`'s doctrine a few
 # hundred lines up the same file is the opposite ("worth hearing about on every pass, not
-# only on the run that would rewrite it"). The second sweep writes nothing and must still
+# only on the run that would rewrite it"). The second run writes nothing and must still
 # ask for the repair.
 cp "$PLANNING_HERE" "$TMP/claim-here-annotated.json"
 capture_all > "$TMP/out7-all2.txt"
@@ -625,9 +625,10 @@ vcapture() {
   HOME="$VFAKE_HOME" python3 "$VAT/analysis/capture_planning.py" --self claim-here --recapture 2>&1
 }
 
-# The annotate-only path's runner: a corpus-wide sweep with no --recapture, which is what
-# `sweep.sh` runs and the only route that reaches `register_frozen_claims` and the
-# `annotate_frozen_record` call (10h-10j).
+# The annotate-only path's runner: a corpus-wide run with no --recapture — the repair
+# tool (analysis/README.md → "Repair tools"), and the route that reaches
+# `register_frozen_claims` as well as the `annotate_frozen_record` call (10h-10j) that
+# `feature-capture.sh --annotate-frozen` reaches on its own.
 vcapture_all() {
   HOME="$VFAKE_HOME" python3 "$VAT/analysis/capture_planning.py" --self --all 2>&1
 }
