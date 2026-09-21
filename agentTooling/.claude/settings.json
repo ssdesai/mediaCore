@@ -22,7 +22,6 @@
       "Edit(**/.venv/**)",
       "Edit(**/venv/**)",
       "Edit(**/node_modules/**)",
-      "Edit(/hooks/**)",
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
       "Bash(git push --force-with-lease:*)",
@@ -33,14 +32,24 @@
       "Bash(git worktree add:*)",
       "Bash(git worktree remove:*)",
       "Bash(git worktree prune:*)",
+      "Bash(git worktree move:*)",
+      "Bash(git worktree lock:*)",
+      "Bash(git worktree unlock:*)",
+      "Bash(git worktree repair:*)",
       "Bash(git checkout -b:*)",
       "Bash(git checkout -B:*)",
       "Bash(git switch -c:*)",
       "Bash(git switch -C:*)",
       "Bash(git branch -d:*)",
       "Bash(git branch -D:*)",
+      "Bash(git branch --delete:*)",
       "Bash(git branch -m:*)",
-      "Bash(git branch -M:*)"
+      "Bash(git branch -M:*)",
+      "Bash(git branch --move:*)"
+    ],
+    "ask": [
+      "Edit(**/hooks/**)",
+      "Edit(/hooks/**)"
     ]
   }
 }

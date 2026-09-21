@@ -7,9 +7,17 @@ manifest: one coordinator session per feature, launched in that feature's worktr
 the session that opened the feature is overhead of its own kind. Its spend is reported
 as routing overhead (§3.4), per repo, never attributed to or split across features.
 
-The link from router to feature is this record, written by `feature-start.sh` into
-`plans/routing/<session-id>.json` (`self/routing/` under `--self`) and committed in the
-`S: start` commit — so the link is in git before any transcript can expire.
+The link from router to feature is this record, written by `feature-start.sh` into the
+feature directory it links — `plans/features/<slug>/routing.json` (`self/features/`
+under `--self`) — and committed in the `S: start` commit, so the link is in git before
+any transcript can expire.
+
+**A record of a link lives in the feature it links** (`self/DESIGN-2026-09-18-ledger-and-routing.md`
+§1). A router that starts three features leaves three copies, each derived from the same
+transcript at its own `captured_at`; no two features ever write one path, so two branches
+cut from the same `main` cannot conflict, and a reader that wants one row per router keeps
+the copy with the latest `captured_at` (`load_records`). Records written under the old
+rule — one shared `<corpus>/routing/<session-id>.json` — are moved by `--migrate`.
 
     {
       "captured_at":      the instant the content is current as of (see below),
@@ -25,15 +33,11 @@ The link from router to feature is this record, written by `feature-start.sh` in
     }
 
 **The output is byte-identical for identical input** — sorted keys, a fixed float
-format, timestamps truncated to the second. That is what lets two feature branches each
-refresh the same router's record without conflicting *when the router has not grown in
-between* — two starts by one router do differ, and their branches are an add/add conflict
-whose resolution is the side with the later `captured_at`, the superset (design §3.4) —
-and it is why `captured_at` is
-*derived* (the transcript's last instant) rather than taken from the wall clock: a
-wall-clock stamp would make every refresh a conflict. It answers "how current is this
-record", which is the question a reader of a stale one asks, and it moves only when the
-router itself grows.
+format, timestamps truncated to the second — and `captured_at` is *derived* (the
+transcript's last instant) rather than taken from the wall clock, so a refresh that finds
+the router unchanged rewrites the same bytes and shows up in no diff. It answers "how
+current is this record", which is the question a reader of a stale one asks, it moves only
+when the router itself grows, and it is what `load_records` ranks one router's copies by.
 
 **Nothing here imports `capture_planning`** — that module imports *this* one, for router
 detection in `--list-sessions --unclaimed`, so the dependency can only run one way. A
@@ -46,8 +50,16 @@ A missing transcript is never a refusal: the record is written with the current 
 null figures, and one warning on stderr. `feature-start.sh` must not fail because a
 transcript has not been flushed or has aged out.
 
+`feature-capture.sh` refreshes it (`--refresh-for <slug>`): the record of the feature it
+captures, and only that one, is re-derived from its router's transcript as it stands then,
+keeping the prior record's slugs the transcript never carried, and rides the capture
+commit. Another feature's copy of the same router's record is not this capture's to write.
+A record whose transcript has aged out is left as it is.
+
 Usage: python3 agentTooling/analysis/routing.py [--self] --session ID --slug SLUG \\
            [--primary DIR]
+       python3 agentTooling/analysis/routing.py [--self] --refresh-for SLUG
+       python3 agentTooling/analysis/routing.py [--self] --migrate
 """
 
 from __future__ import annotations
@@ -56,18 +68,24 @@ import argparse
 import json
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from pricing import compute_cost
 from roots import add_self_flag, features_root
 from transcript import add_usage, iter_billable_messages, to_utc
 
-# Where the records live, beside the feature corpus rather than inside it: a router is
-# not a feature, and `capture_planning.feature_slugs` walks every directory under the
-# features root. `self/routing/` under --self, `plans/routing/` otherwise, derived from
-# the features root so the two modes cannot drift apart.
-ROUTING_DIR_NAME = "routing"
-RECORD_SUFFIX = ".json"
+# Where a record lives: inside the feature directory it links, one copy per feature, so
+# that no two features ever write one path. `capture_planning.feature_slugs` walks the
+# features root by `README.md`, so a file beside a manifest is not a feature of its own.
+RECORD_NAME = "routing.json"
+
+# Where records written before design 2026-09-18 §1 live — one shared file per router,
+# beside the features root (`self/routing/` under --self, `plans/routing/` otherwise) —
+# and what one is named. Read by `--migrate` and by nothing else: there is one location
+# for a record now, and one reader of it.
+LEGACY_DIR_NAME = "routing"
+LEGACY_RECORD_SUFFIX = ".json"
 
 # Every field of the record, in the order the docstring lists them. Written sorted, so
 # this tuple is the documentation and the serializer's contract, not its key order.
@@ -108,13 +126,23 @@ FEATURE_START_SCRIPT = "feature-start.sh"
 # feature-start.sh hooks` as a start whose slug was `hooks`, which turned an ordinary
 # maintenance session on `main` into a router and dropped it out of `--list-sessions
 # --unclaimed` — the one listing whose job is to surface cost nobody has claimed.
-# MULTILINE because a Bash tool call is often several lines, each its own command.
+#
+# Matched against ONE LINE at a time, which is why it carries no `re.MULTILINE`. A Bash
+# tool call is often several commands, one per line, and under a multiline match the
+# regex landed on one line while the argument scan that followed it ran on into the next:
+# `./feature-start.sh --self` with `ls` under it recorded a feature named `ls`
+# (self/DESIGN-2026-09-18-minutes-slug-and-quoting.md §2).
 COMMAND_POSITION_RE = re.compile(
     r"(?:^|[;|&])[ \t]*(?:bash[ \t]+)?(?:[^\s;|&]*/)?"
     + FEATURE_START_SCRIPT.replace(".", r"\.")
     + r"(?=[\s;|&]|$)",
-    re.MULTILINE,
 )
+# A backslash at the end of a line continues the command onto the next one, so the two
+# lines are one command and a start split that way carries its slug on the far side of
+# the break. Joined before anything is matched, since from there on a match is per line.
+# Both spellings, because a transcript may carry CRLF.
+LINE_CONTINUATIONS = ("\\\r\n", "\\\n")
+LINE_BREAK_RE = re.compile(r"[\r\n]")
 # Tokens that end the command the match started: whatever follows one of these belongs to
 # the next command, not to this start's argument list.
 COMMAND_SEPARATORS = frozenset(["&&", "||", ";", "|", "&"])
@@ -134,14 +162,38 @@ ROUTER_BRANCH = "main"
 WARN_PREFIX = "WARN:"
 USAGE_RC = 2
 
+# The floor a record with no readable `captured_at` ranks at — a record that cannot say
+# how current it is loses to one that can, and two of them keep their path order.
+UNDATED = datetime.min.replace(tzinfo=timezone.utc)
 
-def routing_dir(features_dir):
-    """`<corpus>/routing/` for the corpus whose features are at `features_dir`."""
-    return Path(features_dir).parent / ROUTING_DIR_NAME
+# What `--migrate` prints, one line per decision, so a human reading a `sync-plans.sh`
+# run knows exactly what to commit and what was left alone.
+MIGRATE_MOVED = "moved  {source} -> {target}"
+MIGRATE_SKIPPED_ABSENT = (
+    "skipped {source} -> {slug}: no feature directory under {features_dir} — a record is "
+    "never a reason to create one"
+)
+MIGRATE_SKIPPED_NEWER = (
+    "skipped {source} -> {target}: it already holds a record captured at {captured} or "
+    "later"
+)
+MIGRATE_REMOVED = "removed {source}"
+MIGRATE_KEPT_ORPHAN = (
+    "kept   {source}: no feature directory for any slug it names ({slugs}) — deleting it "
+    "would destroy the only copy of that record"
+)
+MIGRATE_KEPT_UNREADABLE = "kept   {source}: not a routing record — left for a human"
+MIGRATE_REMOVED_DIR = "removed {directory} — the legacy routing directory is empty"
 
 
-def record_path(features_dir, session_id):
-    return routing_dir(features_dir) / (session_id + RECORD_SUFFIX)
+def record_path(features_dir, slug):
+    """`<features root>/<slug>/routing.json` — the record of the feature `slug`."""
+    return Path(features_dir) / slug / RECORD_NAME
+
+
+def legacy_routing_dir(features_dir):
+    """`<corpus>/routing/` — where records lived before design 2026-09-18 §1."""
+    return Path(features_dir).parent / LEGACY_DIR_NAME
 
 
 def projects_root():
@@ -209,21 +261,22 @@ def bash_commands(lines):
     return calls
 
 
-def slug_of_start_command(command):
-    """The slug a `feature-start.sh` command names, or None when it is not one.
+def slug_of_start_line(line):
+    """The slug a single LINE's `feature-start.sh` call names, or None.
 
-    The script token is found by `COMMAND_POSITION_RE`, so only a command that *runs*
+    The script token is found by `COMMAND_POSITION_RE`, so only a line that *runs*
     `feature-start.sh` counts — a `grep`, a `diff` or a `cat` that merely names the file
     is not a start. Past it the tokens are read positionally: `--self` and the other bare
     flags are dropped, a value-taking flag takes the token after it, a separator ends the
     command, and the first token left is the slug. Anything that is not a slug by
     `feature-start.sh`'s own pattern yields None — a record must never invent a feature
-    name.
+    name. A line whose start has no argument at all yields None for the same reason: the
+    tokens run out and there is nothing to read.
     """
-    match = COMMAND_POSITION_RE.search(command)
+    match = COMMAND_POSITION_RE.search(line)
     if match is None:
         return None
-    rest = command[match.end():].split()
+    rest = line[match.end():].split()
     position = 0
     while position < len(rest):
         word = rest[position]
@@ -236,6 +289,34 @@ def slug_of_start_command(command):
             position += 1
             continue
         return word if SLUG_RE.match(word) else None
+    return None
+
+
+def slug_of_start_command(command):
+    """The slug a `feature-start.sh` command names, or None when it is not one.
+
+    **The slug is on the start's own line** (design 2026-09-18 §2). A Bash tool call is
+    usually several commands, one per line, so the text is first joined at its
+    `\\`-newline continuations — which really are one command — and then read a line at a
+    time. Before that, `re.MULTILINE` let the script token match on one line while the
+    positional scan ran past the break into the next, which went wrong both ways: a start
+    with no slug on its line took the following line's first word (`./feature-start.sh
+    --self` above `ls` recorded a feature named `ls`, and turned an ordinary maintenance
+    session into a router), and a start continued with a trailing `\\` found no slug at
+    all, so that router was never recorded as one.
+
+    Several lines may run the script; the first that names a slug wins. A slugless start
+    is not an answer — it names no feature — so the scan passes over it and keeps looking
+    for one that does, but only at another line that RUNS the script, never at an
+    arbitrary word.
+    """
+    joined = command
+    for continuation in LINE_CONTINUATIONS:
+        joined = joined.replace(continuation, "")
+    for line in LINE_BREAK_RE.split(joined):
+        slug = slug_of_start_line(line)
+        if slug is not None:
+            return slug
     return None
 
 
@@ -337,28 +418,64 @@ def serialize(record):
     return json.dumps(record, indent=JSON_INDENT, sort_keys=True) + "\n"
 
 
-def write_record(features_dir, record):
-    path = record_path(features_dir, record["session_id"])
+def write_record(features_dir, slug, record):
+    """Write `record` as the routing record of the feature `slug`.
+
+    The parent is created when it is absent, which is the start's own case: the record is
+    written moments after `manifest.py init` made the directory, and a start must not fail
+    on the order of two writes. `--migrate` is the opposite case and creates nothing (see
+    `migrate`): there the missing directory means the feature is not in this corpus.
+    """
+    path = record_path(features_dir, slug)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(serialize(record))
     return path
 
 
+def read_record(path):
+    """One record read off disk, or None — unreadable, unparseable, or not a record.
+    Quiet about all three: a report must not fail on one bad file."""
+    try:
+        data = json.loads(Path(path).read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if isinstance(data, dict) and data.get("session_id"):
+        return data
+    return None
+
+
+def record_rank(record):
+    """How two copies of ONE router's record are ordered: by `captured_at`, and then by
+    how many features they name.
+
+    The instant is the rule (design 2026-09-18 §1) — a router only grows, so the later
+    capture's `features_started` is a superset of the earlier one's, and taking the older
+    copy would drop a feature out of the Routing table with nothing to restore it. The
+    count breaks a tie, which is the case of two copies written from one transcript in the
+    same second: the start that had already flushed is in both, the one still running is
+    in only the copy written for it, and more is again the later read of that instant.
+    """
+    captured = to_utc(record.get("captured_at"))
+    return (captured or UNDATED, len(record.get("features_started") or []))
+
+
 def load_records(features_dir):
-    """Every routing record of one corpus, sorted by session id. Read-only, and quiet
-    about a file that will not parse — a report must not fail on one bad record."""
-    directory = routing_dir(features_dir)
-    if not directory.is_dir():
-        return []
-    records = []
-    for path in sorted(directory.glob("*" + RECORD_SUFFIX)):
-        try:
-            data = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError):
+    """One routing record per router across a corpus, sorted by session id.
+
+    Every feature keeps its own copy (`<slug>/routing.json`), so one router that started
+    three features is on disk three times; the copy with the latest `captured_at` wins
+    (`record_rank`) and the others are dropped. That is the rule a human used to apply by
+    hand at an add/add conflict, written once, here, rather than at each renderer.
+    """
+    latest = {}
+    for path in sorted(Path(features_dir).glob("*/" + RECORD_NAME)):
+        record = read_record(path)
+        if record is None:
             continue
-        if isinstance(data, dict) and data.get("session_id"):
-            records.append(data)
-    return records
+        held = latest.get(record["session_id"])
+        if held is None or record_rank(record) > record_rank(held):
+            latest[record["session_id"]] = record
+    return [latest[session_id] for session_id in sorted(latest)]
 
 
 def started_slugs(record):
@@ -366,24 +483,175 @@ def started_slugs(record):
 
 
 def routers_of(features_dir, slug):
-    """Every routing record naming `slug` — the "routed by" lookup, design §3.4: the
-    router owns the list, and a feature that wants to know scans for its own name rather
-    than carrying a second copy in its fence."""
-    return [record for record in load_records(features_dir) if slug in started_slugs(record)]
+    """The routing record of one feature — the "routed by" lookup (design 2026-09-16
+    §3.4), one file and nothing else.
+
+    A list of at most one, because a feature has exactly one router and may have none (it
+    was started before this rule, or by a shell rather than by a session). It stayed a list
+    when the record moved into the feature: `report.render_routed_by` and
+    `refresh_for` both read it as one, and the empty case is the one that carries meaning.
+    """
+    record = read_record(record_path(features_dir, slug))
+    return [record] if record is not None else []
+
+
+def refresh_record(record, lines):
+    """A router's record re-derived from its transcript as it stands now, keeping every
+    entry of the prior `record` the transcript does not carry.
+
+    What the transcript cannot supply is exactly the slug each start was written for: the
+    start's own tool call had not flushed when `build_record` ran, so it went in with a
+    null `at`, and a transcript read later may still lack it. Re-deriving from the
+    transcript alone would drop it — and with it that feature's "routed by" line — so the
+    prior entries are unioned in, in their prior order, after the transcript's own, and an
+    entry the transcript now dates takes the transcript's instant. Deterministic in its
+    inputs, like `build_record`, so a second refresh writes the same bytes.
+    """
+    fresh = build_record(record["session_id"], None, lines)
+    known = [entry["slug"] for entry in fresh["features_started"]]
+    for entry in record.get("features_started") or []:
+        if entry.get("slug") and entry["slug"] not in known:
+            fresh["features_started"].append(
+                {"slug": entry["slug"], "at": entry.get("at")}
+            )
+            known.append(entry["slug"])
+    if fresh["launched_in"] is None:
+        fresh["launched_in"] = record.get("launched_in")
+    return fresh
+
+
+def refresh_for(features_dir, slug):
+    """Rewrite this feature's own routing record (`routers_of`) from its router's
+    transcript — what `feature-capture.sh` runs, so the record that rides a feature's PR
+    is as current as the capture beside it (design 2026-09-16 §3.2 step 4). Returns
+    `(paths rewritten, warnings)`. **Only this feature's copy**: another feature's copy of
+    the same router's record belongs to that feature's own capture, and writing it here
+    would put a file this run has no claim on into this branch's cost commit. A record
+    whose transcript is gone is left exactly as it is: a record written while the
+    transcript existed is the better one, and the transcript will not come back."""
+    rewritten, warnings = [], []
+    for record in routers_of(features_dir, slug):
+        transcript = find_transcript(record["session_id"])
+        lines = load_lines(transcript) if transcript is not None else []
+        if not lines:
+            warnings.append(
+                f"{WARN_PREFIX} no transcript for router {record['session_id']} under "
+                f"{projects_root()} — its routing record is left as it is"
+            )
+            continue
+        rewritten.append(write_record(features_dir, slug, refresh_record(record, lines)))
+    return rewritten, warnings
+
+
+def migrate(features_dir):
+    """Empty the legacy `<corpus>/routing/` into the features its records name.
+
+    Each legacy record is copied verbatim into `<slug>/routing.json` for every slug its
+    `features_started` names, and the legacy file is then deleted; the copies carry the
+    whole record, so nothing about the router is lost by the move. Returns the lines to
+    print, one per decision. Idempotent — a second run finds no legacy file, prints
+    nothing and writes nothing — and nothing at all to do when the directory is absent,
+    which is every corpus that never ran under the old rule.
+
+    Three cases are not moves, and each says so rather than passing in silence:
+
+    - **a slug with no feature directory here.** The feature never merged, or was
+      deleted. The record is not written, and no directory is created to hold it: a
+      directory under the features root with no manifest is a feature to every walker of
+      that tree (`capture_planning.feature_slugs`, `report.py --all`), so inventing one
+      would be inventing a feature. The router is named in the copies its other slugs
+      received, `features_started` and all, so the fact that it started that slug survives
+      wherever anything about it survives at all.
+    - **a target that already holds a record captured as late or later.** The feature's
+      own capture has refreshed it since, and the legacy file is the stale side. It is
+      skipped rather than overwritten — the same latest-wins rule `load_records` applies —
+      and still counts as linked, since nothing is lost by deleting the older copy.
+    - **a record none of whose slugs has a directory** (or that will not parse at all).
+      The legacy file is KEPT. Deleting it would destroy the only copy of that record,
+      which is the one thing a migration must not do; the line naming it is the standing
+      notice, and a human decides.
+    """
+    features_dir = Path(features_dir)
+    legacy = legacy_routing_dir(features_dir)
+    lines = []
+    if not legacy.is_dir():
+        return lines
+    for source in sorted(legacy.glob("*" + LEGACY_RECORD_SUFFIX)):
+        record = read_record(source)
+        if record is None:
+            lines.append(MIGRATE_KEPT_UNREADABLE.format(source=source))
+            continue
+        slugs = started_slugs(record)
+        linked = 0
+        for slug in slugs:
+            if not (features_dir / slug).is_dir():
+                lines.append(MIGRATE_SKIPPED_ABSENT.format(
+                    source=source, slug=slug, features_dir=features_dir))
+                continue
+            target = record_path(features_dir, slug)
+            held = read_record(target)
+            if held is not None and record_rank(held) >= record_rank(record):
+                lines.append(MIGRATE_SKIPPED_NEWER.format(
+                    source=source, target=target, captured=record.get("captured_at")))
+                linked += 1
+                continue
+            write_record(features_dir, slug, record)
+            lines.append(MIGRATE_MOVED.format(source=source, target=target))
+            linked += 1
+        if not linked:
+            lines.append(MIGRATE_KEPT_ORPHAN.format(
+                source=source, slugs=", ".join(slugs) or "none"))
+            continue
+        source.unlink()
+        lines.append(MIGRATE_REMOVED.format(source=source))
+    try:
+        legacy.rmdir()
+    except OSError:
+        return lines
+    lines.append(MIGRATE_REMOVED_DIR.format(directory=legacy))
+    return lines
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     add_self_flag(parser)
-    parser.add_argument("--session", required=True, metavar="ID",
+    parser.add_argument("--session", metavar="ID",
                         help="the router session's id — $CLAUDE_CODE_SESSION_ID")
-    parser.add_argument("--slug", required=True,
+    parser.add_argument("--slug",
                         help="the feature being started now, unioned into features_started")
     parser.add_argument("--primary", metavar="DIR",
                         help="the primary checkout, used for launched_in when the "
                              "transcript cannot be read")
+    parser.add_argument("--refresh-for", metavar="SLUG", dest="refresh_for",
+                        help="instead of writing one router's record, rewrite SLUG's own "
+                             "record from its router's transcript, printing the path "
+                             "rewritten — what feature-capture.sh runs")
+    parser.add_argument("--migrate", action="store_true",
+                        help="move every legacy <corpus>/routing/<id>.json into the "
+                             "directory of each feature it names and delete it, printing "
+                             "each move — what sync-plans.sh runs after a pull")
     args = parser.parse_args()
+
+    if args.migrate:
+        if args.session or args.slug or args.refresh_for:
+            parser.error("--migrate takes no --session, --slug or --refresh-for")
+        for line in migrate(features_root(args.self_mode)):
+            print(line)
+        return 0
+    if args.refresh_for is not None:
+        if args.session or args.slug:
+            parser.error("--refresh-for takes no --session and no --slug")
+        paths, warnings = refresh_for(features_root(args.self_mode), args.refresh_for)
+        for warning in warnings:
+            print(warning, file=sys.stderr)
+        for path in paths:
+            print(path)
+        return 0
+    if not (args.session and args.slug):
+        parser.error(
+            "--session and --slug are required unless --refresh-for or --migrate is given"
+        )
 
     transcript = find_transcript(args.session)
     lines = load_lines(transcript) if transcript is not None else []
@@ -395,7 +663,7 @@ def main():
             file=sys.stderr,
         )
     record = build_record(args.session, args.slug, lines, primary=args.primary)
-    path = write_record(features_root(args.self_mode), record)
+    path = write_record(features_root(args.self_mode), args.slug, record)
     print(path)
     return 0
 

@@ -28,7 +28,8 @@ that picks between the two is in that file, from the measurements in `harness/EX
   slice keeping the checkpoint and `NOTES.md` current, gates to green, commits and
   **terminates**. Its context is never resumed: if it dies, a fresh one is briefed to
   resume from the checkpoint (`AGENT_DIRECT.md` → "Checkpoint and resume"). The
-  coordinator then runs `run-review.sh`, which opens the PR.
+  coordinator then runs `run-review.sh`, and `feature-close.sh` on the round it reports
+  clean — an escalated round is a rework and a second review, routed like any other build.
 - **Judgment one-shot** — spawned only for a failure the red-gate tier ladder could
   not settle. Briefed with `NOTES.md`, the failed plan's `.progress.md`, and the one
   relevant spec section — never "read the design doc". Dies on delivery.
@@ -65,10 +66,13 @@ warm context, persisted, at a fraction of the cost.
   brief. If a delegate must die early anyway, its handoff contains only what is not
   recoverable from disk.
 - The manifest's fence is the lifecycle scripts' to write, not a coordinator's
-  (`LIFECYCLE.md`): `feature-start.sh` opens the window, records the base a stacked
-  feature branched from, and pins the session that ran it; `feature-close.sh` stamps
-  the window shut after the capture and refuses to close while a delegate whose brief
-  names this feature is still unpinned. One branch, one worktree and one window per
+  (`LIFECYCLE.md`): `feature-start.sh` opens the window and records the base a stacked
+  feature branched from, pinning nothing unless asked; `feature-capture.sh`, which
+  `feature-close.sh` runs on the branch after it opens the PR, stamps the window's
+  provisional end and warns about a delegate whose brief names this feature and that no
+  route claims. The close is the coordinator's last command — it refuses any tree a clean
+  review has not judged — and merging the PR is the step after it, after which the next
+  `feature-start.sh` prunes the worktree. One branch, one worktree and one window per
   feature is what the naming rule buys — a coordinator that finds itself hand-editing
   those fields is working around a step it skipped.
 - A delegate's transcript inherits the coordinator's `gitBranch`, so an architect

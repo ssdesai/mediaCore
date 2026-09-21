@@ -1,6 +1,6 @@
 # in-repo-worktrees — cost and waste report
 
-Generated 2026-09-11T15:14:43.940061+00:00.
+Generated 2026-09-17T17:36:58.144344+00:00.
 
 ## Cost
 
@@ -11,6 +11,8 @@ Generated 2026-09-11T15:14:43.940061+00:00.
 | verify | $0.0000 | 0.0% |
 | review | $1.3053 | 5.3% |
 | **total** | **$24.6925** | 100.0% |
+
+Sessions this feature does not count alone: `d561930d-cc5c-4acd-9b54-d222e9f66c16` ($17.1940), also counted by vinylCatalogue/discogs-credit-pairing, vinylCatalogue/discogs-merge-unconfirm-delete. Each is priced here in full and in full there: a transcript cannot say which feature a message served, so nothing is apportioned, and summing these features' totals counts it once per feature.
 
 Built direct (`AGENT_DIRECT.md`): build is the implementer's transcript(s), $23.3872, read from `planning.json`; there are no build plans, and the coordinator's minutes on the brief are not separated from it.
 

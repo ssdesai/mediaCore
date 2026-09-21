@@ -64,7 +64,8 @@ esac
 # The tier-1 charge lives further down the verify prompt; detect it anywhere.
 if [[ "$prompt" == *"THIS IS A LEVEL-VERIFY"* ]]; then tier=tier1; echo "tier1-charge:$plan_line" >> "$CLAUDE_STUB_CALLS"; fi
 if [[ "${CLAUDE_STUB_FIX_AT:-}" == "$tier" ]]; then echo "all checks passed" > "$CLAUDE_STUB_VERDICT"; fi
-if [[ -n "${CLAUDE_STUB_REPORT:-}" ]]; then echo "# verdict: no findings" > "$CLAUDE_STUB_REPORT"; fi
+# The report's FIRST LINE is the verdict run-review.sh reads back; the rest is the body.
+if [[ -n "${CLAUDE_STUB_REPORT:-}" ]]; then printf 'Verdict: clean\n\n# verdict: no findings\n' > "$CLAUDE_STUB_REPORT"; fi
 if [[ "${CLAUDE_STUB_BUDGET_CAP:-0}" == 1 ]]; then
   printf '{"type":"result","subtype":"error_max_budget_usd","is_error":true,"total_cost_usd":7,"num_turns":9,"session_id":"stub","usage":{}}\n'
   exit 1
@@ -229,19 +230,27 @@ check "expectations: gate saw deferred labels" 'grep -q "^deferred: npm run type
 check "expectations: level green → no tier ran, batch exits 0 (got $rc)" '[[ $rc -eq 0 && -f "$F/verify/complete/05-level-x-sonnet.md" ]] && ! grep -q "tier 1" <<<"$out"'
 check "expectations: final gate saw none" 'grep -q "^expected-red: $" "$AT/self/gate-report.txt" && grep -q "^level: final" "$AT/self/gate-report.txt"'
 
-# ── 5: review capped after writing its report still opens the PR ───────────
+# ── 5: a review capped after writing its report still records the round's verdict ──
+# A complete report with a verdict is a verdict, whatever the cap did to the turns after
+# it (self/DESIGN-2026-09-17-close-and-review-rounds.md §3). What the pass does NOT do any
+# more is open a PR: that is feature-close.sh's, and the capped plan is filed to failed/,
+# which `latest_review_plan` reads for exactly this case.
 reset_feature
 echo "brief" > "$F/review/incomplete/11-review-opus.md"
 out="$(cd "$AT" && CLAUDE_STUB_BUDGET_CAP=1 CLAUDE_STUB_REPORT="$AT/self/review-report.md" ./run-review.sh --self "$SLUG" 2>&1)"; rc=$?
 check "capped review: exits non-zero (got $rc)" '[[ $rc -ne 0 ]]'
 check "capped review: plan filed to failed/" '[[ -f "$F/review/failed/11-review-opus.md" ]]'
-check "capped review: PR opened" '[[ -f "$AT/self/pr-opened" ]]'
+check "capped review: the round's verdict is stamped from the report it did write" \
+  'grep -q "\"event\":\"plan_end\",\"plan\":\"11-review-opus\",\"queue\":\"review\",\"rc\":\"3\",\"verdict\":\"clean\"" "$F/timing.jsonl"'
+check "capped review: no PR is opened — the close does that, on the verdict above" \
+  '[[ ! -f "$AT/self/pr-opened" ]]'
 check "capped review: report carries the cap banner" 'grep -q "reached its budget cap" "$AT/self/review-report.md"'
 rm -f "$AT/self/pr-opened" "$AT/self/review-report.md"
 reset_feature
 echo "brief" > "$F/review/incomplete/11-review-opus.md"
 out="$(cd "$AT" && CLAUDE_STUB_BUDGET_CAP=1 ./run-review.sh --self "$SLUG" 2>&1)"; rc=$?
-check "capped review with NO report: no PR" '[[ ! -f "$AT/self/pr-opened" ]]'
+check "capped review with NO report: no verdict is recorded at all" \
+  '! grep -q "verdict" "$F/timing.jsonl" && [[ ! -f "$AT/self/pr-opened" ]]'
 
 if (( fails > 0 )); then echo "tiered-gates: $fails assertion(s) FAILED"; exit 1; fi
 echo "tiered-gates: all assertions passed"

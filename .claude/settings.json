@@ -40,7 +40,16 @@
       "Bash(git branch -d:*)",
       "Bash(git branch -D:*)",
       "Bash(git branch -m:*)",
-      "Bash(git branch -M:*)"
+      "Bash(git branch -M:*)",
+      "Bash(git worktree move:*)",
+      "Bash(git worktree lock:*)",
+      "Bash(git worktree unlock:*)",
+      "Bash(git worktree repair:*)",
+      "Bash(git branch --delete:*)",
+      "Bash(git branch --move:*)"
+    ],
+    "ask": [
+      "Edit(**/agentTooling/hooks/**)"
     ]
   }
 }

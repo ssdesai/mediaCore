@@ -20,7 +20,10 @@ set -uo pipefail
 #   a missing feature directory FAILs check 1 but still ends with a "check-plans: " line;
 #   the fourteen checks in order — feature directory exists, manifest present, fence
 #     parses, fence slug matches directory, method known, branches non-empty, window
-#     bounds carry a zone, plan filenames well-formed, plan numbers padded alike, no
+#     bounds carry a zone and `to` follows `from` (null `to` is in flight and passes; a
+#     `to` at or before `from` is an empty window and FAILs, naming both bounds; the two
+#     are compared as instants, so bounds in different zones order correctly),
+#     plan filenames well-formed, plan numbers padded alike, no
 #     @@TODO@@ stubs queued, every plan file listed in plans[], every plans[] entry has a
 #     file, every queued plan names the feature, plans method has a queue — each FAILing
 #     on the input built to trip it and passing otherwise, with the offending path or stem
@@ -48,6 +51,10 @@ fails=0
 ok()   { echo "  ok    $1"; }
 fail() { echo "  FAIL  $1"; fails=$((fails + 1)); }
 check() { if eval "$2"; then ok "$1"; else fail "$1"; fi; }
+
+# Check 7's label, as check-plans.sh prints it — one check over both bounds, asserted in
+# several cases below.
+WINDOW_LABEL="window bounds carry a zone and to follows from"
 
 # mkfeature <features-root> <slug> <plans-json-array> [<branches-json-array>] [<from>] [<method>]
 mkfeature() {
@@ -129,13 +136,43 @@ mkfeature "$PLANS" c06 '[]' '[]'
 out="$("$AT/check-plans.sh" c06 2>&1)"; rc=$?
 check "6a. empty branches: FAIL branches non-empty" 'grep -q "^  FAIL  branches non-empty" <<<"$out"'
 
-# ── 7. window bounds carry a zone ─────────────────────────────────────────────
+# ── 7. window bounds carry a zone, and `to` follows `from` ────────────────────
 mkfeature "$PLANS" c07a '[]' "" "2026-09-04T00:00:00"
 out="$("$AT/check-plans.sh" c07a 2>&1)"; rc=$?
-check "7a. naive from: FAIL window bounds carry a zone" 'grep -q "^  FAIL  window bounds carry a zone" <<<"$out"'
+check "7a. naive from: FAIL $WINDOW_LABEL" 'grep -q "^  FAIL  $WINDOW_LABEL" <<<"$out"'
 mkfeature "$PLANS" c07b '[]' "" "2026-09-04T00:00:00+05:30"
 out="$("$AT/check-plans.sh" c07b 2>&1)"; rc=$?
-check "7b. offset from: ok window bounds carry a zone" 'grep -q "^  ok    window bounds carry a zone" <<<"$out"'
+check "7b. offset from: ok $WINDOW_LABEL" 'grep -q "^  ok    $WINDOW_LABEL" <<<"$out"'
+# The ordering half of the same check. `recovered-totals-stay-honest` carries a `to`
+# 13 minutes BEFORE its `from` and reports $0.00 — an empty window owns nothing, and
+# nothing said so before a paid run (design §1, §3.8).
+# mkwindow <slug> <from-json> <to-json> — a feature whose only interesting field is its
+# window. `method: direct` so check 14 does not fail it for having no auto/ queue, and
+# the exit code below is check 7's alone.
+mkwindow() {
+  local slug="$1" from="$2" to="$3"
+  mkdir -p "$PLANS/$slug"
+  printf '# %s\n\n```json\n{"slug": "%s", "plans": [], "branches": ["%s"], "method": "direct", "session_window": {"from": %s, "to": %s}}\n```\n' \
+    "$slug" "$slug" "$slug" "$from" "$to" > "$PLANS/$slug/README.md"
+}
+mkwindow c07c '"2026-09-04T17:00:00Z"' '"2026-09-04T16:46:31Z"'
+out="$("$AT/check-plans.sh" c07c 2>&1)"; rc=$?
+check "7c. to before from: FAIL $WINDOW_LABEL" 'grep -q "^  FAIL  $WINDOW_LABEL" <<<"$out"'
+check "7c2. ... naming both bounds" \
+  'grep "^  FAIL  $WINDOW_LABEL" <<<"$out" | grep -q "2026-09-04T17:00:00Z" && grep "^  FAIL  $WINDOW_LABEL" <<<"$out" | grep -q "2026-09-04T16:46:31Z"'
+mkwindow c07d '"2026-09-04T17:00:00Z"' '"2026-09-04T17:00:00Z"'
+out="$("$AT/check-plans.sh" c07d 2>&1)"; rc=$?
+check "7d. to exactly at from is empty too: FAIL $WINDOW_LABEL" 'grep -q "^  FAIL  $WINDOW_LABEL" <<<"$out"'
+mkwindow c07e '"2026-09-04T17:00:00Z"' 'null'
+out="$("$AT/check-plans.sh" c07e 2>&1)"; rc=$?
+check "7e. a null to is in flight, not out of order: ok $WINDOW_LABEL (got $rc)" \
+  '[[ $rc -eq 0 ]] && grep -q "^  ok    $WINDOW_LABEL" <<<"$out"'
+# 14:00-04:00 is 18:00Z — an hour AFTER the `from`, though the string sorts before it.
+# Two bounds in different zones are the case a string comparison gets wrong.
+mkwindow c07f '"2026-09-04T17:00:00Z"' '"2026-09-04T14:00:00-04:00"'
+out="$("$AT/check-plans.sh" c07f 2>&1)"; rc=$?
+check "7f. bounds are compared as instants, not as strings: ok $WINDOW_LABEL (got $rc)" \
+  '[[ $rc -eq 0 ]] && grep -q "^  ok    $WINDOW_LABEL" <<<"$out"'
 
 # ── 8. plan filenames well-formed ─────────────────────────────────────────────
 mkfeature "$PLANS" c08a '["01-build-haiku"]'

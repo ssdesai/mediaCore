@@ -97,7 +97,7 @@ check() { if eval "$2"; then ok "$1"; else fail "$1"; fi; }
 # The two figures every phase is built from. Distinct, and distinct from each other's
 # sums, so no assertion below can pass by coincidence.
 LIVE_COST="2.5"          # the successful retry, in complete/
-STALE_RECOVERED="1.25"   # what the sweep recovers into the failed/ sidecar
+STALE_RECOVERED="1.25"   # what recovery wrote into the failed/ sidecar
 DECOY_COST="9.75"        # a rank fixture's losing candidate, and the prior copy's
                          # disagreeing figure in phase 13
 NO_COST="0.0"            # what a bucket holds when no copy of its attempt was priced

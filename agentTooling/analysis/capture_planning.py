@@ -38,10 +38,14 @@ changes no dollar, duration or `captured_at` (`annotate_frozen_record`). That ru
 reports the feature as `annotated` rather than `skipped`, and is how a feature closed
 before another feature claimed its coordinator session ever comes to say so.
 `--recapture` rebuilds from transcripts anyway; `--all` walks every feature, skipping any
-whose `session_window.to` is still null — in flight, and `feature-close.sh`'s to capture.
+whose `session_window.to` is still null — in flight, and `feature-capture.sh`'s to capture.
+`--annotate-frozen` is that refresh on its own, over the whole corpus, printing the slug
+of each record it changed: what `feature-capture.sh` runs after its own capture, so the
+annotation is a step of the capture rather than of a weekly sweep.
 
 Usage: python3 agentTooling/analysis/capture_planning.py <slug>
        python3 agentTooling/analysis/capture_planning.py --all [--recapture]
+       python3 agentTooling/analysis/capture_planning.py --annotate-frozen [--except <slug>]
        python3 agentTooling/analysis/capture_planning.py --list-subagents [--since YYYY-MM-DD]
        python3 agentTooling/analysis/capture_planning.py --list-subagents --unclaimed --for <repo>/<slug>
        python3 agentTooling/analysis/capture_planning.py --last-branch-instant <slug>
@@ -53,6 +57,7 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -67,8 +72,8 @@ from routing import is_router_lines
 from transcript import add_usage, iter_billable_messages, iter_billable_messages_at, to_utc
 
 # Feature worktree layout (LIFECYCLE.md): the directory under the primary checkout that
-# holds every feature's worktree. feature-start.sh and feature-close.sh each hold the same
-# name in one constant of their own; the three move together.
+# holds every feature's worktree. feature-start.sh holds the same name in a constant of
+# its own; the two move together.
 WORKTREES_DIR_NAME = ".worktrees"
 
 # Claude Code's project-directory naming: every one of these characters in the launch cwd
@@ -318,7 +323,7 @@ def subagent_transcript_paths(transcript_dir, session_id):
 def feature_worktree_path(primary, slug):
     """The feature's worktree as `feature-start.sh` creates it, `<primary>/.worktrees/<slug>`
     (LIFECYCLE.md). Derived from the slug rather than looked up, so it still resolves after
-    `feature-close.sh` has removed the worktree."""
+    `feature-start.sh`'s prune has removed the worktree."""
     return f"{primary}/{WORKTREES_DIR_NAME}/{slug}"
 
 
@@ -651,16 +656,26 @@ def check_claims(agent_ids, repo, slug, claims):
     return conflicts
 
 
-def record_claims(claims, agent_costs, agent_selected_by, repo, repo_name, slug):
-    """Replace this (repo, slug)'s ledger entries with the subagents priced now — an
-    id no longer pinned or selected drops out and shows up as unclaimed again."""
+def record_claims(claims, agent_ids, agent_costs, agent_selected_by, repo, repo_name, slug):
+    """Replace this (repo, slug)'s ledger entries with the subagents CAPTURED now — an
+    id no longer pinned or selected drops out and shows up as unclaimed again.
+
+    **The ledger records claims, not prices** (design §3). `agent_ids` is every entry in
+    the capture's `subagents[]`, and its `cost_usd` is `agent_costs.get(id, 0.0)` — 0
+    when nothing in that transcript was billable. Written from the priced rows alone, a
+    pinned delegate whose transcript holds no `assistant` line reached no `priced[]` row,
+    so it never entered the ledger and `--list-subagents --unclaimed` listed it forever,
+    telling the human to write a pin that was already written. A pin is a claim whether or
+    not it cost anything, and the claim is what the ledger is for: the double-claim
+    refusal (`check_claims`) has always read the whole selected set for the same reason."""
     for agent_id in [
         aid for aid, claim in claims.items()
         if (claim.get("repo"), claim.get("slug")) == (repo, slug)
     ]:
         del claims[agent_id]
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    for agent_id, cost in agent_costs.items():
+    for agent_id in agent_ids:
+        cost = agent_costs.get(agent_id, 0.0)
         claims[agent_id] = {
             "repo": repo,
             "repo_name": repo_name,
@@ -745,8 +760,8 @@ def add_session_claims(session_claims, session_costs, session_selected_by, repo,
     The difference from `record_session_claims`, which REPLACES this feature's claims
     wholesale: that one is written by a capture that has just re-derived every figure
     from transcripts, this one by the annotate-only path over a record it must not touch.
-    So an existing claim keeps its own `claimed_at` and its own dollars, and a second
-    sweep over an unchanged corpus writes nothing at all — the ledger file included.
+    So an existing claim keeps its own `claimed_at` and its own dollars, and a second run
+    over an unchanged corpus writes nothing at all — the ledger file included.
 
     `window` is this feature's own normalized `session_window`, read from its manifest
     since this path runs no transcript scan of its own; see `record_session_claims` for
@@ -823,8 +838,8 @@ def annotate_frozen_record(output_path, record, session_claims, repo, slug):
     run write" are different questions, and returning `annotated or None` answered only
     the second: the caller's `predates the share rule` WARN sat in the `else` of `if
     annotated is None`, so it fired on the first `--all` that converged the annotation and
-    never again, while the stale full-count figure was still sitting there. `sweep.sh`
-    runs `--all` weekly, so that warning was seen once per corpus. The annotation converges
+    never again, while the stale full-count figure was still sitting there — the warning
+    was seen once per corpus and then never. The annotation converges
     on the first pass by design (`register_frozen_claims`), which makes "changed" exactly
     the wrong condition to key a standing repair request off — `check_empty_window` states
     the same doctrine a few hundred lines up this file: worth hearing about on every pass,
@@ -867,6 +882,119 @@ def annotate_frozen_record(output_path, record, session_claims, repo, slug):
     return annotated, changed
 
 
+def frozen_provisional_claims(record):
+    """`[(session_id, feature, provisional_to)]` for every `share_basis` claim this record
+    froze while that claimant was still open — the bounds this capture derived rather
+    than read (`build_claimant_index`). Empty for every record written before open
+    co-claimants were bounded, and for every record no open claimant touched."""
+    out = []
+    for entry in record.get("sessions") or []:
+        for basis in entry.get("share_basis") or []:
+            if basis.get("open") and basis.get("provisional_to"):
+                out.append((entry.get("session_id"), basis.get("feature"), basis["provisional_to"]))
+    return out
+
+
+def check_provisional_drift(slug, record, claimant_windows):
+    """WARN lines for each claimant this record bounded provisionally whose manifest now
+    carries a DIFFERENT `to` — the case where that feature kept working after this
+    capture, so the share this record froze is no longer the share the same arithmetic
+    would produce.
+
+    Compared as instants, not strings, for the reason `in_window` is: the stamped bound
+    and the derived one are written by different hands. A claimant still open has nothing
+    stamped to disagree with and is passed over; so is one whose manifest neither corpus
+    holds, since a bound that cannot be read cannot be shown to have moved.
+
+    One line per (record, claimant), naming `--recapture` — the only thing that moves a
+    frozen figure. A warning, never a refusal: the record is right about what it saw."""
+    lines = []
+    said = set()
+    for session_id, feature, provisional_to in frozen_provisional_claims(record):
+        claimant = claimant_windows.get(feature)
+        if claimant is None or claimant["open"]:
+            continue
+        stamped = claimant["window"]["to"]
+        if stamped is None or stamped == to_utc(provisional_to):
+            continue
+        if (feature, provisional_to) in said:
+            continue
+        said.add((feature, provisional_to))
+        lines.append(
+            f"WARN: {slug}: planning.json bounded {feature} at {provisional_to} while it "
+            f"was still open, and its manifest now stamps {_iso_or_none(stamped)} — the "
+            f"share frozen for session {session_id} was computed against the older bound; "
+            "--recapture rebuilds it while the transcripts still exist"
+        )
+    return lines
+
+
+def annotate_corpus(features_dir, except_slug=None):
+    """Refresh `sessions[].also_claimed_by` on every already-captured record in this
+    corpus from the claims ledger, and return the slugs whose record changed.
+
+    **What `feature-capture.sh` runs at the end of a capture** (`--annotate-frozen`), in
+    place of the weekly `--all` sweep that used to be the only path to it
+    (`../self/DESIGN-2026-09-16-lifecycle-restructure.md` §3.5). A capture has just
+    recorded this feature's claims in the ledger, and the features that froze their
+    records *before* it cannot say so about themselves — `killed-attempt-cost-recovery`
+    and its six siblings, closed on one day, each frozen before any of the others had
+    claimed the coordinator they shared.
+
+    **It reads the ledger and the manifests, and nothing else.** No transcript is opened,
+    no dollar, duration, `captured_at` or `share_basis` moves; only this one key on one
+    record, and only where the ledger disagrees with it (`annotate_frozen_record`). That
+    is what makes it safe to run on every capture over a corpus whose transcripts are
+    expiring, and why the caller's cost commit can carry another feature's
+    `planning.json` without the record being re-derived.
+
+    The manifests are read for the other half of the pass, which writes nothing at all:
+    a record that bounded an open co-claimant provisionally is compared against the bound
+    that claimant's own close has since stamped, and a disagreement is one WARN on stderr
+    naming the record and `--recapture` (`check_provisional_drift`). It belongs here
+    because this is what every capture already runs over the corpus, and the drift only
+    becomes visible once the other feature closes.
+
+    Scoped to the corpus this checkout can see — on a feature branch, the records merged
+    into it. Convergence is unchanged and is stated where the cadence is
+    (`../analysis/README.md`): a record names the claimants already in the ledger, so a
+    feature captured later is named on the next capture that looks, and cross-repo it
+    takes the other repo's next capture.
+
+    `except_slug` is the feature whose capture is running: its own record was written by
+    that capture moments ago, already carrying the same annotation from the same ledger,
+    and re-opening it here would say a record changed that this run itself had just
+    written."""
+    features_dir = Path(features_dir)
+    repo = corpus_identity(features_dir)
+    session_claims = load_ledger()[LEDGER_SESSIONS_KEY]
+    # The windows as the manifests stand NOW, across both corpora — no `sessions_dir`, so
+    # nothing is bounded and no transcript is opened: this is the "what has been stamped
+    # since" half of the drift check, and the frozen record is the other.
+    claimant_windows = {
+        f"{entry['repo_name']}/{entry['slug']}": entry
+        for entry in build_claimant_index(all_features_roots())
+    }
+    changed_slugs = []
+    for slug in feature_slugs(features_dir):
+        if slug == except_slug:
+            continue
+        output_path = Path(features_dir, slug, "planning.json")
+        record = load_frozen_record(output_path)
+        if record is None:
+            continue
+        # stderr, not stdout: `feature-capture.sh` reads this function's stdout as a list
+        # of slugs, one per line, and a WARN among them would be read as a feature.
+        for line in check_provisional_drift(slug, record, claimant_windows):
+            print(line, file=sys.stderr)
+        _, changed = annotate_frozen_record(
+            output_path, record, session_claims, repo, slug
+        )
+        if changed:
+            changed_slugs.append(slug)
+    return changed_slugs
+
+
 def register_frozen_claims(slugs, features_dir, skip_in_flight):
     """Phase one of the annotate-only path: every frozen record this run will annotate
     registers its own session claims in the ledger BEFORE any of them is annotated.
@@ -875,16 +1003,16 @@ def register_frozen_claims(slugs, features_dir, skip_in_flight):
     folded into `capture_feature`. The ledger is the only seam between features and
     `capture_feature` annotates one at a time, so registering and annotating in the same
     step would leave the first of N frozen features sharing one coordinator naming none
-    of the others and the last naming all of them — an artefact of the sweep's ordering
-    rather than a fact about the corpus. Registering all N first makes a single `--all`
-    converge, which is what item 3's motivating case needs: seven features closed on the
-    same day, each frozen before any of the others had claimed the session.
+    of the others and the last naming all of them — an artefact of the order the corpus
+    happened to be walked in rather than a fact about it. Registering all N first makes a
+    single `--all` converge, which is what item 3's motivating case needs: seven features
+    closed on the same day, each frozen before any of the others had claimed the session.
 
-    Convergence ACROSS repos still takes two sweeps and cannot take fewer: each repo
-    sweeps its own corpus and writes the one shared ledger, so a record can only name
-    the claimants whose repos have already registered. Sweep every repo once and the
-    ledger is complete; the second sweep is the one whose annotations are final. This is
-    stated in `analysis/README.md` where the cadence is.
+    Convergence ACROSS repos still takes two corpus-wide runs and cannot take fewer: each
+    repo walks its own corpus and writes the one shared ledger, so a record can only name
+    the claimants whose repos have already registered. Run it once in every repo and the
+    ledger is complete; the second run over each is the one whose annotations are final.
+    This is stated in `analysis/README.md` under the repair tools.
 
     Reads `planning.json`, and the manifest only for the in-flight test `--all` applies
     below — never a transcript. `skip_in_flight` mirrors that loop exactly: a feature
@@ -913,7 +1041,7 @@ def register_frozen_claims(slugs, features_dir, skip_in_flight):
         except (ValueError, OSError, json.JSONDecodeError):
             # Same reasoning as the skip_in_flight guard above: this path has no
             # transcript scan to fall back on, so an unreadable manifest here just
-            # means this record is not registered this sweep.
+            # means this record is not registered on this run.
             continue
         costs, selected_by = frozen_session_costs(record)
         added |= add_session_claims(
@@ -947,7 +1075,7 @@ def manifest_pinned_subagents(features_dirs, slug, preferred_dir=None):
     manifest for the slug it is the only one read. Two features may share a slug across
     the two corpora, and reading both would let the OTHER corpus's pin suppress a
     genuinely unpinned delegate from `--unclaimed --for` — which silences
-    `feature-close.sh`'s stop-on-unpinned guard, whose entire job is to stop on exactly
+    `feature-capture.sh`'s unclaimed-delegate warning, whose entire job is to name exactly
     that delegate, and loses its cost with nothing said. Low likelihood, and the failure
     is silent.
 
@@ -1162,14 +1290,14 @@ def list_subagents(
 
     `only_feature`, a `(repo, slug)` pair (`--for`, which the caller pairs with
     `unclaimed`), keeps only the rows whose brief names exactly that feature, compared
-    as the pair `brief_feature_of` returns. It exists because `feature-close.sh`'s
-    stray-delegate guard reads this list: matching text in the printed table instead
+    as the pair `brief_feature_of` returns. It exists because `feature-capture.sh`'s
+    unclaimed-delegate warning reads this list: matching text in the printed table instead
     both over-fired on `<slug>-two` and under-fired on a `<repo>/<slug>` too long for
     the pin column. For the same caller, the agent-id column is never truncated. A
     delegate that feature's own manifest already pins is not unclaimed and is dropped
     from the list (`manifest_pinned_subagents`, read from `features_dirs`, preferring
     `preferred_features_dir` — the corpus this run is for — when a same-slug feature
-    exists in both), so the advice line below — and `feature-close.sh`'s stray guard,
+    exists in both), so the advice line below — and `feature-capture.sh`'s warning,
     which reads these rows — speak only about pins still to write."""
     everywhere = everywhere or unclaimed
     claims = load_claims() if unclaimed else {}
@@ -1586,13 +1714,20 @@ def prior_capture(output_path):
     return captured_at, (prior.get("cost_usd") or {}).get("total") or 0.0
 
 
-def window_is_open(features_dir, slug):
-    """True when the manifest's `session_window` exists and its `to` is null — the shape
-    `feature-start.sh` writes and `feature-close.sh` stamps shut, so the feature is still
-    in flight. A manifest with no `session_window` at all is a legacy one, not in flight."""
-    manifest = parse_manifest(Path(features_dir, slug, "README.md"))
+def manifest_window_is_open(manifest):
+    """True when this manifest's `session_window` exists and its `to` is null — the shape
+    `feature-start.sh` writes and `feature-capture.sh` stamps, so the feature is still in
+    flight. A manifest with no `session_window` at all is a legacy one, unbounded on both
+    sides rather than in flight, and `normalize_window` cannot tell the two apart: it
+    reads a missing key and an explicit null alike as `None`. This is the one place the
+    distinction is made, so `window_is_open` and `build_claimant_index` cannot drift."""
     window = manifest.get("session_window")
     return isinstance(window, dict) and "to" in window and window["to"] is None
+
+
+def window_is_open(features_dir, slug):
+    """`manifest_window_is_open` for a slug's manifest on disk — what `--all` skips on."""
+    return manifest_window_is_open(parse_manifest(Path(features_dir, slug, "README.md")))
 
 
 def feature_slugs(features_dir):
@@ -1606,11 +1741,49 @@ def feature_slugs(features_dir):
     return sorted(path.parent.name for path in features_dir.glob("*/README.md"))
 
 
-def build_claimant_index(features_dirs):
+# An open co-claimant with no branch session of its own has nothing to bound it by, so
+# its claim is written as an EMPTY window and dropped by the empty-claim rule in
+# `session_claim_intervals`. Emptiness is `from >= to` with BOTH bounds present
+# (`is_empty_window`), so a claimant whose manifest carries no `from` either needs an
+# instant to write both with: this is the earliest one there is, which makes the window
+# empty however it is compared and can never be mistaken for a real bound.
+NO_EVIDENCE_INSTANT = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def build_claimant_index(features_dirs, sessions_dir=None, capturing=None):
     """Every manifest under `features_dirs` — both corpora, in practice — reduced to the
     facts a claim decision needs: `{features_dir, repo, repo_name, slug, window, pins,
-    branches, excluded}`, in the order `sorted(glob("*/README.md"))` yields them per
-    directory.
+    branches, excluded, open, provisional_to}`, in the order
+    `sorted(glob("*/README.md"))` yields them per directory.
+
+    **An open co-claimant is bounded by its own evidence** (design §2). A feature that
+    has not been captured yet carries `to: null`, and read as written that is a claim
+    running to the end of every transcript: on a shared coordinator the in-flight feature
+    took an equal share of every response from its `from` onwards, for as long as the
+    coordinator kept running. So every claimant other than the one being captured
+    (`capturing`, the `(features_dir, slug)` pair) whose window is open is bounded
+    provisionally by `last_branch_instant(slug, ITS OWN features_dir, sessions_dir)` —
+    the identical function its own close will call, so the two figures agree whenever
+    the transcripts do, which is the objection that kept this derivation out of here.
+    The entry keeps `open: True` and the `provisional_to` it was bounded with, so
+    `share_basis` can say the bound was derived here rather than stamped, and
+    `annotate_corpus` can compare it against the bound that feature's close eventually
+    writes.
+
+    When there is no evidence — no branch session yet, the shape of a feature started an
+    hour ago — the claim's window is made empty and the empty-claim rule drops it with a
+    warning naming it as open with no evidence. That is the conservative answer: a
+    claimant that cannot show it was working on the branch owns none of another feature's
+    coordinator.
+
+    The capturing feature is exempt because its own claim is `intervals[0]` by contract
+    and its `to` is stamped from this same evidence by `feature-capture.sh` moments
+    before the capture — bounding it here would be deriving the same bound twice and
+    would silently overrule a `to` the author stamped by hand.
+
+    `sessions_dir` is what the bounding needs; without it (the manifest-only lookups —
+    `annotate_corpus`, and any reader that wants the windows as written) the index is the
+    pure manifest reduction it has always been and no transcript is opened.
 
     Built ONCE per capture, where `share_ctx` is (`capture_feature`), because
     `session_claim_intervals` is called once per selected session and used to re-glob and
@@ -1620,15 +1793,16 @@ def build_claimant_index(features_dirs):
     roughly 1200 manifest parses and 60 subprocesses for one capture, all of them
     answering the same question. `corpus_identity` is computed once per features dir here
     for the same reason — and under `--self` it answers from the declared constant and
-    runs no subprocess at all.
+    runs no subprocess at all. The provisional bound is derived here for the same reason:
+    one transcript walk per open co-claimant per capture, not one per selected session.
 
     A README whose fence will not parse is skipped rather than raising: a broken manifest
     somewhere else in either corpus must not end this capture. That is the same tolerance
     the per-call scan had, moved.
 
-    Read-only, and derived from the manifests alone — no transcript, no ledger. The
-    session-specific tests (`pins`, `branches`, `excluded`, `window`) are applied by
-    `session_claim_intervals` in memory.
+    Read-only, and — apart from the provisional bound above — derived from the manifests
+    alone. The session-specific tests (`pins`, `branches`, `excluded`, `window`) are
+    applied by `session_claim_intervals` in memory.
     """
     index = []
     for features_dir in features_dirs:
@@ -1639,15 +1813,31 @@ def build_claimant_index(features_dirs):
                 manifest = parse_manifest(readme_path)
             except (ValueError, OSError, json.JSONDecodeError):
                 continue
+            slug = readme_path.parent.name
+            window = normalize_window(manifest)
+            is_open = manifest_window_is_open(manifest)
+            provisional_to = None
+            if is_open and sessions_dir is not None and (features_dir, slug) != capturing:
+                provisional_to = last_branch_instant(slug, features_dir, sessions_dir)
+                if provisional_to is not None:
+                    window["to"] = provisional_to
+                else:
+                    mark = window["from"] if window["from"] is not None else NO_EVIDENCE_INSTANT
+                    window = {"from": mark, "to": mark}
             index.append({
                 "features_dir": features_dir,
                 "repo": repo,
                 "repo_name": repo_name,
-                "slug": readme_path.parent.name,
-                "window": normalize_window(manifest),
+                "slug": slug,
+                "window": window,
                 "pins": set(manifest.get("sessions") or []),
                 "branches": set(manifest.get("branches") or []),
                 "excluded": set(manifest.get("exclude_sessions") or []),
+                # Open as the manifest stands, whether or not it was bounded here: a
+                # reader that passes no `sessions_dir` still needs to know which
+                # claimants have no stamped `to` (`annotate_corpus`).
+                "open": is_open,
+                "provisional_to": provisional_to,
             })
     return index
 
@@ -1661,7 +1851,7 @@ EVIDENCE_OFFSET_SECONDS = 1
 
 
 def last_branch_instant(slug, features_dir, sessions_dir):
-    """The bound `feature-close.sh` stamps as `session_window.to`: one second past the
+    """The bound `feature-capture.sh` stamps as `session_window.to`: one second past the
     last instant of every session this feature's `branches` + `session_window` select and
     of those sessions' own subagents. None when the feature has no branch-selected
     session, which is the caller's cue to fall back to its own clock and say so.
@@ -1766,7 +1956,10 @@ def session_claim_intervals(session_id, session_start, session_branches, share_c
         under any directory in `share_ctx["features_dirs"]`), other than this capture's
         own `(features_dir, slug)`, which either pins `session_id`, or shares a branch
         with `session_branches` and whose normalized window contains `session_start`;
-        and which does not list `session_id` in `exclude_sessions`.
+        and which does not list `session_id` in `exclude_sessions`. Such a claim carries
+        `open: True` and `provisional_to` when that feature's own `to` is still null:
+        the window it is matched and split by is then the one the index derived from its
+        branch evidence, not the unbounded one the manifest states.
       - **ledger** — every entry in `share_ctx["session_claims"].get(session_id)` whose
         `(repo, slug)` is not already contributed above, read from its `window` key.
         This is the only route that reaches a repo neither corpus holds a manifest for.
@@ -1803,11 +1996,20 @@ def session_claim_intervals(session_id, session_start, session_branches, share_c
         if not (pins or (shares_branch and in_window(session_start, other_window))):
             continue
         seen.add((other["repo"], other_slug))
-        claims.append({
+        claim = {
             "feature": f"{other['repo_name']}/{other_slug}",
             "from": other_window["from"], "to": other_window["to"],
             "source": "manifest",
-        })
+        }
+        # A claimant whose own `to` is still null was bounded provisionally by
+        # `build_claimant_index` from its own branch evidence, or has none and is about
+        # to be dropped below. Either way the record must say the bound was derived here
+        # rather than stamped by that feature's close, so a reader — and
+        # `annotate_corpus` — can tell the two apart later.
+        if other["open"]:
+            claim["open"] = True
+            claim["provisional_to"] = other["provisional_to"]
+        claims.append(claim)
 
     for claim in share_ctx["session_claims"].get(session_id) or []:
         key = (claim.get("repo"), claim.get("slug"))
@@ -1840,12 +2042,25 @@ def session_claim_intervals(session_id, session_start, session_branches, share_c
     kept = []
     for claim in claims[1:]:
         if is_empty_window(claim):
-            warnings.append(
-                f"claim {claim['feature']!r} on session {session_id} has an empty window "
-                f"(`from` {_iso_or_none(claim['from'])} is not before `to` "
-                f"{_iso_or_none(claim['to'])}) — it can own no part of any session, so it "
-                "is not counted as a claimant here; fix that feature's `session_window`"
-            )
+            if claim.get("open") and claim.get("provisional_to") is None:
+                # The same drop, for the one cause that is not a malformed manifest: a
+                # feature still in flight whose `branches` and `session_window` select no
+                # session at all, so `last_branch_instant` found nothing to bound it by.
+                # Advice about fixing `session_window` would be wrong here — the manifest
+                # is exactly what `feature-start.sh` wrote.
+                warnings.append(
+                    f"claim {claim['feature']!r} on session {session_id} is still open "
+                    "(`to` is null) and has no branch session of its own to bound it by — "
+                    "open with no evidence, so it is not counted as a claimant here; it "
+                    "will be once it has one, and its own capture stamps the same bound"
+                )
+            else:
+                warnings.append(
+                    f"claim {claim['feature']!r} on session {session_id} has an empty window "
+                    f"(`from` {_iso_or_none(claim['from'])} is not before `to` "
+                    f"{_iso_or_none(claim['to'])}) — it can own no part of any session, so it "
+                    "is not counted as a claimant here; fix that feature's `session_window`"
+                )
             continue
         kept.append(claim)
 
@@ -2005,8 +2220,8 @@ def head_bound(intervals):
 
     `None` — an unbounded head, today's behaviour — when the earliest claimant's `to` is
     still `null`. A window with no end has no length to bound by, and a feature in flight
-    is the case where the opening stretch really is its own planning. `feature-close.sh`
-    stamps `to` at close and the recapture that follows applies the bound.
+    is the case where the opening stretch really is its own planning. `feature-capture.sh`
+    stamps `to` on the branch and the capture that follows applies the bound.
 
     Returned rather than applied here so that `share_owners` and `partition_seconds` can
     each ask the same question once — the dollars and the seconds are split by one rule
@@ -2265,10 +2480,11 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         # Not simply "skipped" any more. A frozen record still has its shared-session
         # annotation refreshed from the claims ledger — `annotate_frozen_record`, which
         # opens no transcript and changes no figure. Without it item 3's motivating case
-        # is unreachable by any automated path at all: `sweep.sh` runs `--all` with no
-        # `--recapture`, so the seven features closed on 2026-09-07 would never name each
-        # other's share, and the only way to get it would be a `--recapture` that
-        # rebuilds their frozen dollars from transcripts that are expiring.
+        # is unreachable from here at all: a corpus-wide run carries no `--recapture`, so
+        # the seven features closed on 2026-09-07 would never name each other's share, and
+        # the only way to get it would be a `--recapture` that rebuilds their frozen
+        # dollars from transcripts that are expiring. `--annotate-frozen` is the same
+        # refresh on its own, which is what `feature-capture.sh` runs.
         #
         # `register_frozen_claims` (in `main`) has already put every frozen record in
         # this run into the ledger, so what is read here is the whole run's claims and
@@ -2297,7 +2513,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         # An annotated session carrying no `share_basis` was frozen before the share rule
         # existed: its figure still counts that session in full, not by concurrent share.
         # The annotation only says who else claims it now; it does not, and must not,
-        # touch the number. Printed on EVERY sweep that finds the record in that state,
+        # touch the number. Printed on EVERY run that finds the record in that state,
         # not only on the one that changed the annotation — the annotation converges on
         # the first `--all` and the stale figure does not, so keying this off `changed`
         # asked for the repair once and then went quiet for as long as the transcript had
@@ -2319,8 +2535,8 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         for warning in warnings:
             print(f"WARN: {warning}")
         # "annotated" versus "skipped" is the write, not the warning: `main` counts these
-        # and `sweep.sh` reports them, and a run that wrote nothing must not read as one
-        # that did.
+        # into the summary line a corpus-wide run ends with, and a run that wrote nothing
+        # must not read as one that did.
         return "annotated" if changed else "skipped"
 
     excluded_ids = collect_excluded_session_ids(both_corpora, manifest)
@@ -2408,7 +2624,12 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         # Both corpora's manifests, read once. `session_claim_intervals` filters this in
         # memory for every session `select_parent` selects; before the index it re-globbed
         # and re-parsed every README, and re-ran `corpus_identity`, on each of those calls.
-        "claimants": build_claimant_index(both_corpora),
+        # `sessions_dir` is what bounds an open co-claimant by its own branch evidence,
+        # and this feature is exempt from that: its own `to` was stamped from the same
+        # evidence moments ago, by `feature-capture.sh`.
+        "claimants": build_claimant_index(
+            both_corpora, sessions_dir, capturing=(features_dir, slug)
+        ),
     }
     # session_id -> {"intervals", "session_tokens", "unclaimed_tokens"} for every
     # multiply-claimed session `select_parent` selects — absent for a session with one
@@ -2697,6 +2918,11 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             session_share_cost.get(row["session_id"], 0.0) + (row["cost_usd"] or 0.0)
         )
 
+    # Which claimants had no stamped `to` when this record was frozen — filled in by the
+    # loop below from the claims it actually split against, and written to the record so
+    # it says on its face that some of its bounds were derived rather than stamped.
+    open_claimant_features = set()
+
     for entry in sessions:
         sid = entry.get("session_id")
         detail = share_detail.get(sid) if sid else None
@@ -2739,15 +2965,25 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                 continue
             unclaimed_head_cost += cost
 
-        entry["share_basis"] = [
-            {
+        share_basis = []
+        for claim in intervals:
+            basis = {
                 "feature": claim["feature"],
                 "from": _iso_or_none(claim["from"]),
                 "to": _iso_or_none(claim["to"]),
                 "source": claim["source"],
             }
-            for claim in intervals
-        ]
+            # A co-claimant that had not been captured yet when this record was frozen.
+            # `to` is the bound derived from its own branch evidence and `provisional_to`
+            # repeats it under a name that says so, which is what `annotate_corpus`
+            # compares against the bound that feature's close eventually stamps. Absent
+            # on every other claim, so a record with no open co-claimant is unchanged.
+            if claim.get("open"):
+                basis["open"] = True
+                basis["provisional_to"] = _iso_or_none(claim["provisional_to"])
+                open_claimant_features.add(claim["feature"])
+            share_basis.append(basis)
+        entry["share_basis"] = share_basis
         entry["session_cost_usd"] = session_cost
         entry["session_duration_s"] = duration_seconds(session_start[sid], session_end[sid])
         # This feature's SHARE of the span, replacing the whole-span default set above —
@@ -2808,14 +3044,24 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                     "to the feature it belongs to, to have it counted"
                 )
             head_remedy_lead = "For the head, pin" if rest_clause else "Pin"
+            # The head's second remedy has a tool now (design §4). Naming it with the
+            # session id and the instant to move to is the whole of the repair: the head
+            # begins at the session's own first instant, which is also the earliest
+            # instant `set-window-from` will accept for this session, so the command
+            # printed here is the one that covers the whole of it. Said as "by hand" it
+            # asked for the one edit every manifest says not to make.
+            earliest = earliest_dated_claim(intervals)
+            earliest_slug = earliest["feature"].split("/")[-1] if earliest else slug
+            head_from = _iso_or_none(session_start[sid])
             warnings.append(
                 f"session {sid} has ${unclaimed_cost:.4f} ({unclaimed_seconds:.0f}s) "
                 f"unclaimed by any feature, of which ${unclaimed_head_cost:.4f} "
                 f"({unclaimed_head_seconds:.0f}s) is the opening stretch — further before "
                 "the earliest claimant's `from` than that claimant's own window is long"
                 f"{rest_clause}. {head_remedy_lead} the session to the feature that "
-                "planning belongs to, or move the earliest claimant's `from` back by hand "
-                f"(there is no `set-window-to` for `from`){rest_remedy}"
+                "planning belongs to, or move the earliest claimant's `from` back over it: "
+                f"manifest.py [--self] {earliest_slug} set-window-from {head_from} "
+                f"--session {sid}{rest_remedy}"
             )
         elif unclaimed_cost or unclaimed_seconds:
             warnings.append(
@@ -2881,6 +3127,12 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         "manifest_subagents": sorted(pinned_agent_ids),
         "sessions": sessions,
         "subagents": subagents,
+        # The co-claimants that were still in flight when this record was frozen, as
+        # `<repo>/<slug>`. Their `to` in `share_basis` is `provisional_to`, derived here
+        # from their own branch evidence by the function their close will call; if that
+        # close stamps a different bound, this feature's share moved and `annotate_corpus`
+        # says so at the next capture. Empty on a record no open claimant touched.
+        "open_claimants": sorted(open_claimant_features),
         "excluded_session_ids": sorted(excluded_ids_encountered),
         "excluded_agent_ids": sorted(excluded_agent_ids_encountered),
         "priced": priced,
@@ -3007,7 +3259,14 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             session_costs[entry["session_id"]] = (
                 session_costs.get(entry["session_id"], 0.0) + (entry["cost_usd"] or 0.0)
             )
-    record_claims(claims, agent_costs, agent_selected_by, repo, repo_name, slug)
+    # Every entry of the record's own `subagents[]`, in its order — pinned or
+    # parent-selected, priced or not (see `record_claims`). The carried entries are in it
+    # too: `carry_lost_entries` appends them to `subagents` and to `agent_selected_by`
+    # together, and a carried delegate is as claimed as any other.
+    record_claims(
+        claims, [entry["agent_id"] for entry in subagents], agent_costs,
+        agent_selected_by, repo, repo_name, slug,
+    )
     record_session_claims(
         session_claims, session_costs, session_selected_by, repo, repo_name, slug, window
     )
@@ -3069,7 +3328,7 @@ def main():
     parser.add_argument(
         "--last-branch-instant",
         metavar="SLUG",
-        help="print the bound feature-close.sh stamps as session_window.to for this "
+        help="print the bound feature-capture.sh stamps as session_window.to for this "
         "feature — one second past the last instant of the sessions its `branches` and "
         "`session_window` select, and of their subagents — as ISO 8601 UTC with a Z, or "
         "nothing at all (exit 0) when it has no branch-selected session. Pins are not "
@@ -3084,6 +3343,23 @@ def main():
         "subagent pin to a feature whose own sessions are gone. Implies --recapture",
     )
     parser.add_argument(
+        "--annotate-frozen",
+        action="store_true",
+        help="refresh every already-captured record in this corpus's "
+        "sessions[].also_claimed_by from the claims ledger and print the slug of each "
+        "record that changed, one per line, instead of capturing anything. Opens no "
+        "transcript and changes no figure. What feature-capture.sh runs after its own "
+        "capture, so a feature frozen earlier can say who else claims its sessions; "
+        "--except is the feature whose capture is running",
+    )
+    parser.add_argument(
+        "--except",
+        dest="except_slug",
+        metavar="SLUG",
+        help="with --annotate-frozen: the one feature to leave alone — its own capture "
+        "wrote the same annotation from the same ledger moments ago",
+    )
+    parser.add_argument(
         "--unclaimed",
         action="store_true",
         help="with --list-subagents or --list-sessions: only those no feature has claimed in the "
@@ -3096,8 +3372,8 @@ def main():
         metavar="REPO/SLUG",
         help="with --list-subagents --unclaimed: keep only the delegates whose brief "
         "names exactly this feature, compared as the (repo, slug) pair the brief "
-        "carries and never as text in the printed table. What feature-close.sh's "
-        "stray-delegate guard reads",
+        "carries and never as text in the printed table. What feature-capture.sh's "
+        "unclaimed-delegate warning reads",
     )
     parser.add_argument(
         "--everywhere",
@@ -3141,6 +3417,17 @@ def main():
             parser.error("--list-sessions takes no slug and no --all")
         list_sessions(session_root(args.self_mode), args.since, args.unclaimed, all_features_roots())
         return
+    if args.annotate_frozen:
+        if args.slug or args.all_features:
+            parser.error("--annotate-frozen takes no slug and no --all")
+        # Slugs only, one per line: feature-capture.sh loops over them to re-render each
+        # report and to name each record in its own output, the way it reads
+        # `routing.py --refresh-for`.
+        for slug in annotate_corpus(features_root(args.self_mode), args.except_slug):
+            print(slug)
+        return
+    if args.except_slug is not None:
+        parser.error("--except takes --annotate-frozen")
     if args.last_branch_instant:
         if args.slug or args.all_features:
             parser.error("--last-branch-instant takes its own slug and no --all")
@@ -3149,7 +3436,7 @@ def main():
             session_root(args.self_mode),
         )
         # Nothing, exit 0, when there is no branch-selected session: an empty answer is a
-        # fact about the feature, not a failure, and feature-close.sh reads it as its cue
+        # fact about the feature, not a failure, and feature-capture.sh reads it as its cue
         # to stamp at its own clock and announce that it did.
         if moment is not None:
             print(_iso_or_none(moment))
@@ -3183,13 +3470,13 @@ def main():
     }
     for slug in slugs:
         try:
-            # A sweep must not freeze a feature that is still being built: its first
-            # capture is feature-close.sh's, after the PR merged and every session ended.
-            # A record frozen here would make that close skip as "already captured" and
-            # report the premature figure. Only --all skips; naming the slug still captures.
+            # A corpus-wide run must not freeze a feature that is still being built: its first
+            # capture is feature-capture.sh's, on its branch, which stamps `to` first. A
+            # record frozen here would be a premature figure that capture then has to
+            # replace. Only --all skips; naming the slug still captures.
             if args.all_features and window_is_open(features_dir, slug):
                 print(
-                    f"{slug}: in flight — session_window.to is null, so feature-close.sh has "
+                    f"{slug}: in flight — session_window.to is null, so feature-capture.sh has "
                     "not run yet; skipped (name the slug to capture it anyway)"
                 )
                 counts["in_flight"] += 1

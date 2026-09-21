@@ -15,7 +15,7 @@ set -uo pipefail
 # this one about what the two tables say when a figure is missing.
 #
 # The defect (self/BACKLOG.md, both raised by `recover-cost-at-close`):
-#   - `recover-cost-at-close` fixed the cost line `feature-close.sh` PRINTS
+#   - `recover-cost-at-close` fixed the cost line the close (now `feature-capture.sh`) PRINTS
 #     (`review $0.0000 (0.0%, unpriced: <stem> — …)`) and added an **Unpriced plans**
 #     paragraph below the Cost table, but the table cell itself stayed a bare `$0.0000`.
 #     Anyone quoting a bucket figure out of the table — which the close's own closing
@@ -48,7 +48,25 @@ set -uo pipefail
 #      span. `total_is_partial` stays true: a transcript span is not a wall clock
 #      (self/features/recovered-duration-lower-bound/README.md, item 1 points 3 and 4);
 #   7. a plan whose transcript is gone renders exactly as it did before item 1 — `†`,
-#      the missing-duration footnote, and no `‡` anywhere.
+#      the missing-duration footnote, and no `‡` anywhere;
+#   8. the minutes walk the ATTEMPTS the way the dollars do
+#      (self/DESIGN-2026-09-18-minutes-slug-and-quoting.md §1): a resumed plan whose
+#      first attempt was killed and later bounded from its transcript and whose second
+#      was measured reports the SUM, sits in `recovered_duration_plans[]` with
+#      `measured_attempts` and `recovered_attempts`, carries `‡` and no `†`, and its
+#      footnote says how much of the figure is a lower bound;
+#   9. ...while an attempt carrying neither figure puts the plan in
+#      `missing_duration_plans[]` naming attempt k of n, marks the row `†`, and still
+#      contributes the attempts that WERE measured — a sum short by one attempt is
+#      nearer the truth than a zero, as long as the mark says so;
+#  10. a plan whose only duration is in a PRIOR sidecar — the `failed/` pair a killed
+#      attempt left behind, which the cost roll-up has always read — is measured from it
+#      and is in neither bucket — and `--rounds-md`, the PR body's own copy of the Rounds
+#      table, reads it too and prints the very row report.md holds (10e, 10f);
+#  11. a READ of the report does not rewrite it (§4): two consecutive runs over an
+#      unchanged corpus leave `report.md` and `report.json` byte-identical, `--all`
+#      leaves them alone too, a feature with no record gets one, and a run after
+#      `planning.json` changed rewrites both.
 #
 # RED until items 5 and 6 land: phase 1 finds a bare `| review | $0.0000 | 0.0% |` and
 # an **Unpriced plans** paragraph, phase 4 finds a bare `| review | 0.0 |` and a list of
@@ -89,6 +107,18 @@ RECOVERED_MARK="‡"
 # the wrong fixture.
 RECOVERED_S="450.0"
 RECOVERED_MIN="7.5"
+# The resumed plan of phases 8–10: one attempt the CLI measured (PRICED_MS) and one
+# bounded from its transcript (RECOVERED_S). Its cell is their SUM and carries the
+# lower-bound mark — a sum with a lower-bound term is a lower bound.
+MIXED_S="930.0"
+MIXED_MIN="15.5"
+# Phases 9 and 10 both report the measured attempt's eight minutes alone: 9 because the
+# other attempt has no figure anywhere, 10 because the only figure is in a prior sidecar.
+MEASURED_S="480.0"
+MEASURED_MIN="8.0"
+# The two sessions a resumed plan's attempts are keyed by, live sidecar and prior alike.
+SESSION_FIRST="sess-first-attempt"
+SESSION_SECOND="sess-second-attempt"
 
 # ── Fixture helpers ───────────────────────────────────────────────────────────
 
@@ -191,6 +221,39 @@ recovered_usage_json() {
 JSONEOF
 }
 
+# resumed_usage_json <path> <attempt-1 fields> <attempt-2 fields> — the sidecar a RESUMED
+# plan leaves: `attempts[]` holding one entry per `claude -p` run, keyed by session, and a
+# top-level `duration_ms` of null because the last attempt reported none. The two attempt
+# bodies are passed whole so each phase below can say exactly which figure each attempt
+# carries; everything else is the shape write_usage_sidecar writes.
+resumed_usage_json() {
+  local path="$1" first="$2" second="$3"
+  cat > "$path" <<JSONEOF
+{
+  "plan": "01-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "$SESSION_SECOND",
+  "result_event": "missing",
+  "subtype": null,
+  "is_error": null,
+  "num_turns": null,
+  "duration_ms": null,
+  "total_cost_usd": $PRICED_COST,
+  "usage": {"input_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "output_tokens": 0},
+  "model_usage": {},
+  "permission_denials": 0,
+  "tool_counts": {},
+  "files_edited": [],
+  "edit_count": 0,
+  "attempts": [
+    $first,
+    $second
+  ]
+}
+JSONEOF
+}
+
 # review_feature <slug> <cost|null> <duration_ms|null> <result_event|null> — a feature
 # whose ONLY plan is a review plan the runner filed complete, with the four files it
 # leaves behind. Prints the feature directory.
@@ -277,8 +340,8 @@ rc4=$?
 check "4a. a null-duration review plan reports cleanly (report.py exit $rc4)" '(( rc4 == 0 ))'
 R4="$D4/report.json"
 M4="$D4/report.md"
-r4b="$(V field_equals "$R4" time.missing_duration_plans '[{"plan": "01-review-opus", "queue": "review", "reason": "no result event"}]')"
-check "4b. time.missing_duration_plans carries the {plan, queue, reason} shape (got $r4b)" '[[ "$r4b" == "True" ]]'
+r4b="$(V field_equals "$R4" time.missing_duration_plans '[{"plan": "01-review-opus", "queue": "review", "reason": "no result event", "unmeasured_attempts": [1], "attempt_count": 1}]')"
+check "4b. time.missing_duration_plans carries the {plan, queue, reason} shape plus which attempts (got $r4b)" '[[ "$r4b" == "True" ]]'
 check "4c. the Time table's review row carries the mark" 'grep -qF "| review | 0.0 $MARK |" "$M4"'
 check "4d. ...and a footnote names the bucket, the plan and the reason" 'grep -qF "$MARK review: no duration for 01-review-opus — no result event" "$M4"'
 check "4e. ...while the Cost table's review row is priced and unmarked" 'grep -qF "| review | \$2.5000 | 100.0% |" "$M4"'
@@ -288,7 +351,7 @@ check "4e. ...while the Cost table's review row is priced and unmarked" 'grep -q
 # return value satisfies both.
 D4B="$(review_feature rf-noduration-unrecorded "$PRICED_COST" null null)"
 report_for rf-noduration-unrecorded
-r4f="$(V field_equals "$D4B/report.json" time.missing_duration_plans '[{"plan": "01-review-opus", "queue": "review", "reason": "no duration reported, cause not recorded"}]')"
+r4f="$(V field_equals "$D4B/report.json" time.missing_duration_plans '[{"plan": "01-review-opus", "queue": "review", "reason": "no duration reported, cause not recorded", "unmeasured_attempts": [1], "attempt_count": 1}]')"
 check "4f. a sidecar with no result_event field at all says its cause is unrecorded (got $r4f)" '[[ "$r4f" == "True" ]]'
 
 # ── 5: a feature whose plans carry durations is unmarked ──────────────────────
@@ -311,8 +374,8 @@ rc6=$?
 R6="$D6/report.json"
 M6="$D6/report.md"
 check "6a. a recovered-duration feature reports cleanly (report.py exit $rc6)" '(( rc6 == 0 ))'
-r6b="$(V field_equals "$R6" time.recovered_duration_plans '[{"plan": "01-review-opus", "queue": "review", "reason": "no result event", "recovered_s": 450.0}]')"
-check "6b. time.recovered_duration_plans carries {plan, queue, reason} plus recovered_s (got $r6b)" '[[ "$r6b" == "True" ]]'
+r6b="$(V field_equals "$R6" time.recovered_duration_plans '[{"plan": "01-review-opus", "queue": "review", "reason": "no result event", "recovered_s": 450.0, "measured_attempts": 0, "recovered_attempts": 1}]')"
+check "6b. time.recovered_duration_plans carries {plan, queue, reason} plus recovered_s and the two counts (got $r6b)" '[[ "$r6b" == "True" ]]'
 r6c="$(V field_equals "$R6" time.missing_duration_plans '[]')"
 check "6c. ...and the plan is NOT also listed as missing (got $r6c)" '[[ "$r6c" == "True" ]]'
 r6d="$(V field_equals "$R6" time.review_s '450.0')"
@@ -333,6 +396,146 @@ r7a="$(V field_equals "$R4" time.recovered_duration_plans '[]')"
 check "7a. a plan with no recovered span has an empty recovered_duration_plans (got $r7a)" '[[ "$r7a" == "True" ]]'
 check "7b. ...its row still carries the missing-figure mark and a bare 0.0" 'grep -qF "| review | 0.0 $MARK |" "$M4"'
 check "7c. ...and no recovered mark appears anywhere in its report" '! grep -qF "$RECOVERED_MARK" "$M4"'
+
+# ── 8: a resumed plan's minutes are the sum over its attempts ─────────────────
+# The defect (self/BACKLOG.md, raised by recovered-duration-lower-bound): the time
+# roll-up summed `attempts[].duration_ms` and stopped, so a plan with one measured
+# attempt reported that attempt's minutes as the whole — the killed attempt's recovered
+# span was on the record and no table read it, and the row was in NEITHER footnote list.
+# The dollars had walked the attempts individually all along.
+ATTEMPT_MEASURED="{\"session_id\": \"$SESSION_FIRST\", \"outcome\": \"complete\", \"total_cost_usd\": $PRICED_COST, \"num_turns\": null, \"duration_ms\": $PRICED_MS}"
+ATTEMPT_RECOVERED="{\"session_id\": \"$SESSION_SECOND\", \"outcome\": \"killed\", \"total_cost_usd\": null, \"recovered_cost_usd\": 1.0, \"num_turns\": null, \"duration_ms\": null, \"recovered_duration_s\": $RECOVERED_S, \"recovered_from\": \"transcript\"}"
+ATTEMPT_UNMEASURED="{\"session_id\": \"$SESSION_SECOND\", \"outcome\": \"killed\", \"total_cost_usd\": null, \"recovered_cost_usd\": 1.0, \"num_turns\": null, \"duration_ms\": null}"
+
+D8="$(feature_dir rf-mixed)"
+mkdir -p "$D8/review/complete"
+plan_md "$D8/review/complete/01-review-opus.md"
+echo "review pass complete" > "$D8/review/complete/01-review-opus.progress.md"
+resumed_usage_json "$D8/review/complete/01-review-opus.usage.json" \
+  "$ATTEMPT_MEASURED" "$ATTEMPT_RECOVERED"
+report_for rf-mixed
+rc8=$?
+R8="$D8/report.json"
+M8="$D8/report.md"
+check "8a. a mixed-attempt feature reports cleanly (report.py exit $rc8)" '(( rc8 == 0 ))'
+r8b="$(V field_equals "$R8" time.review_s "$MIXED_S")"
+check "8b. the bucket's minutes are the SUM over attempts, measured plus recovered (got $r8b)" \
+  '[[ "$r8b" == "True" ]]'
+r8c="$(V field_equals "$R8" time.recovered_duration_plans "[{\"plan\": \"01-review-opus\", \"queue\": \"review\", \"reason\": \"no result event\", \"recovered_s\": $RECOVERED_S, \"measured_attempts\": 1, \"recovered_attempts\": 1}]")"
+check "8c. recovered_duration_plans carries both attempt counts beside recovered_s (got $r8c)" \
+  '[[ "$r8c" == "True" ]]'
+r8d="$(V field_equals "$R8" time.missing_duration_plans '[]')"
+check "8d. ...and the plan is NOT also listed as missing (got $r8d)" '[[ "$r8d" == "True" ]]'
+check "8e. the Time row carries the sum and the lower-bound mark, not the missing one" \
+  'grep -qF "| review | $MIXED_MIN $RECOVERED_MARK |" "$M8"'
+check "8f. ...its footnote says how much of the figure is a lower bound" \
+  'grep -qF "$RECOVERED_MARK review: recovered $RECOVERED_S" "$M8" && grep -qF "1 of 2 attempts recovered" "$M8"'
+r8g="$(V field_equals "$R8" time.total_is_partial 'true')"
+check "8g. a sum with a lower-bound term is a lower bound (got $r8g)" '[[ "$r8g" == "True" ]]'
+
+# ── 9: an attempt with neither figure names itself ────────────────────────────
+D9="$(feature_dir rf-unmeasured-attempt)"
+mkdir -p "$D9/review/complete"
+plan_md "$D9/review/complete/01-review-opus.md"
+echo "review pass complete" > "$D9/review/complete/01-review-opus.progress.md"
+resumed_usage_json "$D9/review/complete/01-review-opus.usage.json" \
+  "$ATTEMPT_MEASURED" "$ATTEMPT_UNMEASURED"
+report_for rf-unmeasured-attempt
+rc9=$?
+R9="$D9/report.json"
+M9="$D9/report.md"
+check "9a. an unmeasured-attempt feature reports cleanly (report.py exit $rc9)" '(( rc9 == 0 ))'
+r9b="$(V field_equals "$R9" time.missing_duration_plans '[{"plan": "01-review-opus", "queue": "review", "reason": "no result event", "unmeasured_attempts": [2], "attempt_count": 2}]')"
+check "9b. missing_duration_plans names WHICH attempt of how many is unmeasured (got $r9b)" \
+  '[[ "$r9b" == "True" ]]'
+r9c="$(V field_equals "$R9" time.review_s "$MEASURED_S")"
+check "9c. the attempt that WAS measured still contributes its minutes (got $r9c)" \
+  '[[ "$r9c" == "True" ]]'
+check "9d. the row carries the missing-figure mark" \
+  'grep -qF "| review | $MEASURED_MIN $MARK |" "$M9"'
+check "9e. ...and the footnote names attempt k of n" \
+  'grep -qF "$MARK review: no duration for 01-review-opus" "$M9" && grep -qF "attempt 2 of 2 unmeasured" "$M9"'
+r9f="$(V field_equals "$R9" time.recovered_duration_plans '[]')"
+check "9f. an unmeasured attempt outranks a recovered one for the bucket (got $r9f)" \
+  '[[ "$r9f" == "True" ]]'
+
+# ── 10: a figure that lives only in a prior sidecar is read ───────────────────
+# The `failed/` pair a killed attempt leaves behind, which the plan's retry moved away
+# from. compute_cost_rollup has read those dollars since prior_attempt_cost landed; the
+# minutes are read from the same place now, by the same walk.
+D10="$(feature_dir rf-prior-only)"
+mkdir -p "$D10/review/complete" "$D10/review/failed"
+plan_md "$D10/review/complete/01-review-opus.md"
+echo "review pass complete" > "$D10/review/complete/01-review-opus.progress.md"
+# Live: the retry's own sidecar, priced and untimed. Prior: the first attempt's, for the
+# SAME session, carrying the duration the CLI reported before the retry lost it.
+usage_json "$D10/review/complete/01-review-opus.usage.json" "$PRICED_COST" null missing
+python3 - "$D10/review/complete/01-review-opus.usage.json" \
+         "$D10/review/failed/01-review-opus.usage.json" "$PRICED_MS" <<'PYEOF'
+import json
+import sys
+
+live_path, prior_path, duration_ms = sys.argv[1], sys.argv[2], int(sys.argv[3])
+live = json.loads(open(live_path).read())
+session = live["attempts"][0]["session_id"]
+prior = dict(live)
+prior["attempts"] = [dict(live["attempts"][0], total_cost_usd=None, duration_ms=duration_ms)]
+prior["total_cost_usd"] = None
+prior["session_id"] = session
+open(prior_path, "w").write(json.dumps(prior, indent=2))
+PYEOF
+report_for rf-prior-only
+rc10=$?
+R10="$D10/report.json"
+check "10a. a prior-sidecar feature reports cleanly (report.py exit $rc10)" '(( rc10 == 0 ))'
+r10b="$(V field_equals "$R10" time.review_s "$MEASURED_S")"
+check "10b. the duration in the prior sidecar is the bucket's minutes (got $r10b)" \
+  '[[ "$r10b" == "True" ]]'
+r10c="$(V field_equals "$R10" time.missing_duration_plans '[]')"
+check "10c. ...so the plan is not missing a duration (got $r10c)" '[[ "$r10c" == "True" ]]'
+r10d="$(V field_equals "$R10" time.recovered_duration_plans '[]')"
+check "10d. ...and it is not a lower bound either — the prior MEASURED it (got $r10d)" \
+  '[[ "$r10d" == "True" ]]'
+# `--rounds-md` is the PR body's copy of the Rounds table and is built by its own function,
+# which has to hand the time roll-up the same sidecar index the report's does — without it
+# the minutes read the live sidecar alone and the two tables disagree about a resumed plan.
+rounds_md10="$(python3 "$AT/analysis/report.py" --self rf-prior-only --rounds-md 2>/dev/null)"
+rounds_row10="$(grep -m1 '^| 1 |' <<<"$rounds_md10")"
+check "10e. --rounds-md reads the prior sidecar's minutes: its round row carries them (got $rounds_row10)" \
+  '[[ "$rounds_row10" == *" $MEASURED_MIN "* ]]'
+check "10f. ...and is the very row report.md's Rounds table holds" \
+  '[[ -n "$rounds_row10" ]] && grep -qxF "$rounds_row10" "$D10/report.md"'
+
+# ── 11: a read of the report does not rewrite it ──────────────────────────────
+# `report.py` re-rendered both files on every run, so the only difference after a read of
+# an unchanged corpus was `generated_at` — enough to leave a merged worktree dirty and
+# make feature-start.sh's prune keep it ("merged into origin/main but has uncommitted
+# changes"). The record is written only when its body other than that one field differs.
+D11="$(review_feature rf-stable "$PRICED_COST" "$PRICED_MS" seen)"
+report_for rf-stable
+rc11=$?
+check "11a. the first run writes the record (report.py exit $rc11)" \
+  '(( rc11 == 0 )) && [[ -f "$D11/report.json" && -f "$D11/report.md" ]]'
+cp "$D11/report.json" "$TMP/stable.json.before"
+cp "$D11/report.md" "$TMP/stable.md.before"
+report_for rf-stable
+check "11b. a second run over an unchanged corpus leaves report.json byte-identical" \
+  'cmp -s "$TMP/stable.json.before" "$D11/report.json"'
+check "11c. ...and report.md byte-identical" 'cmp -s "$TMP/stable.md.before" "$D11/report.md"'
+python3 "$AT/analysis/report.py" --self --all >/dev/null 2>&1
+check "11d. --all leaves an existing record alone too" \
+  'cmp -s "$TMP/stable.json.before" "$D11/report.json" && cmp -s "$TMP/stable.md.before" "$D11/report.md"'
+D11B="$(review_feature rf-norecord "$PRICED_COST" "$PRICED_MS" seen)"
+python3 "$AT/analysis/report.py" --self --all >/dev/null 2>&1
+check "11e. a feature that has no record still gets one" \
+  '[[ -f "$D11B/report.json" && -f "$D11B/report.md" ]]'
+cat > "$D11/planning.json" <<'JSONEOF'
+{"cost_usd": {"total": 9.25, "total_is_partial": false}}
+JSONEOF
+report_for rf-stable
+check "11f. a run after planning.json changed rewrites report.json" \
+  '! cmp -s "$TMP/stable.json.before" "$D11/report.json"'
+check "11g. ...and report.md" '! cmp -s "$TMP/stable.md.before" "$D11/report.md"'
 
 echo
 if (( fails > 0 )); then echo "report-footnotes: $fails assertion(s) FAILED"; exit 1; fi

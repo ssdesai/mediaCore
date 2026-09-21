@@ -4,7 +4,7 @@ The harness's own test double, and the reason `harness/tests/smoke.sh` can run t
 pipeline with no network and no money. It calls no model.
 
 - `run.sh` — writes `plans/null-method-marker.md` (the brief, verbatim, inside a fence),
-  commits it, and calls the repo's own `plans/pr.sh` — the same hook `run-review.sh`
+  commits it, and calls the repo's own `plans/pr.sh` — the same hook `feature-close.sh`
   uses, so the PR step is exercised rather than mocked away. Exits 0, or 1 if the brief
   is missing, nothing was committed, or the hook fails.
 - `template.md` — filled like any other method's, and copied into the marker. Nothing

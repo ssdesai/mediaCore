@@ -331,10 +331,12 @@ the capture stage runs and records `0`, not a dollar figure.
   machine: vinylCatalogue's gate resolves `<tree>/.venv/bin/python`, hence
   `fixture.setup`. The pytest run rewrites `frontend/test-fixtures/contracts/*.json`;
   a diff there belongs in the commit.
-- **`pr.sh` runs even when the review queue is empty** (`run-review.sh` treats an
-  empty queue as a clean pass) and commits with `git add -A` — never leave scratch
-  files in a tree before it runs; redirect logs outside the tree or into a
-  `.gitignore`d path.
+- **`pr.sh` is run by `feature-close.sh`, on a clean review verdict** (since
+  `close-and-review-rounds`; `run-review.sh` itself opens nothing, and an empty review
+  queue leaves no verdict to close on). The close refuses a dirty path outside the
+  corpus's own directories, and `pr.sh`'s fallback commit still uses `git add -A` — never
+  leave scratch files in a tree before either runs; redirect logs outside the tree or
+  into a `.gitignore`d path.
 - **`run-batch.sh <slug>` resumes** from `inprogress/` on re-run; a tier-3 stop leaves
   `escalations/NN.md`; a failed plan sits in `failed/`.
 - **Worktrees:** never branch or run git/pip/npm in a repo's main checkout

@@ -3,11 +3,21 @@ set -uo pipefail
 
 # BATCH runner: fire-and-forget wrapper that runs the full delegated-plan cycle in
 # order — the build pass (run-plans.sh, Bash disabled), then the verify pass
-# (run-verify.sh, Bash enabled), then the review pass (run-review.sh) — so a batch
-# of build plans plus its verify and review plans can be executed with a single
-# command. Each stage IS the real runner; this script only sequences them and gates
-# each pass on the one before it. A corpus lint (check-plans.sh) runs first, at no
-# model cost, and stops the batch before the build pass on any FAIL.
+# (run-verify.sh, Bash enabled), then the review pass (run-review.sh), and then, on the
+# verdict that pass recorded, either feature-close.sh or a stop — so a batch of build
+# plans plus its verify and review plans can be executed with a single command and still
+# end where an attended run would. Each stage IS the real runner; this script only
+# sequences them and gates each pass on the one before it.
+#
+# The tail is the round's end (self/DESIGN-2026-09-17-close-and-review-rounds.md §6): a
+# clean verdict is closed — PR, capture, merge request, in that order — and an escalated
+# or unreadable one stops the batch non-zero with the rework brief's path, because
+# nothing after an escalated review runs. The verdict is read with the same two functions
+# feature-close.sh reads it with (plan-runner-roots.sh), so the unattended path and a
+# coordinator at a terminal can never disagree about what a round decided. A corpus lint (check-plans.sh) runs once per batch, at
+# no model cost, and stops it on any FAIL: before the build pass when the slug was given,
+# and otherwise as soon as the build pass has resolved the slug — before the gate and the
+# verify and review passes.
 #
 # The build pass may pause at a level boundary rather than finish or fail outright,
 # signaled by exit code 64 (LEVEL_PAUSE_RC, plan-runner-roots.sh): run-plans.sh exits
@@ -119,15 +129,29 @@ export LEVEL_PAUSE_NN_OUT="$LEVEL_PAUSE_NN_FILE"
 stamp_timing batch_start
 
 # The lint runs before anything is spent. A malformed corpus — a plan without a model
-# suffix, a stem missing from plans[], a review stub still carrying its marker — is
-# otherwise found by a runner mid-batch or by a cost report that omits a plan.
-if [[ -n "$FEATURE_SLUG" && -x "$SCRIPT_DIR/check-plans.sh" ]]; then
+# suffix, a stem missing from plans[], a review stub still carrying its marker, a
+# session_window whose `to` precedes its `from` — is otherwise found by a runner
+# mid-batch or by a cost report that omits a plan.
+#
+# It runs ONCE per batch, on whichever slug this run is about: the explicit one here,
+# before any pass, and otherwise the one the build pass resolves (below). Gating it on
+# the argument alone, as it was, meant a batch run with no slug — the ordinary way to
+# drain the single feature that has queued work — bought every remaining pass with no
+# lint at all (self/DESIGN-2026-09-16-lifecycle-restructure.md §3.8).
+LINTED=0
+run_corpus_lint() {
+  local slug="$1"
+  [[ -n "$slug" && -x "$SCRIPT_DIR/check-plans.sh" ]] || return 0
+  (( LINTED )) && return 0
+  LINTED=1
   echo "########## BATCH: check-plans ##########"
-  if ! "$SCRIPT_DIR/check-plans.sh" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} "$FEATURE_SLUG"; then
-    echo "########## BATCH: check-plans failed — nothing run; fix the corpus and re-run ##########"
-    exit 1
+  if ! "$SCRIPT_DIR/check-plans.sh" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} "$slug"; then
+    echo "########## BATCH: check-plans failed — fix the corpus and re-run ##########"
+    return 1
   fi
-fi
+  return 0
+}
+run_corpus_lint "$FEATURE_SLUG" || exit 1
 
 # Did level NN's gate report a fully green tree? Same rule as level_gate_green in
 # plan-runner-lib.sh (this script does not source the lib): the line under "# VERDICT"
@@ -293,6 +317,12 @@ fi
 unset FEATURE_SLUG_OUT
 FEATURE_SLUG="$(resolve_batch_slug "${1:-}")"
 
+# The inferred slug's lint, at the first moment there is a slug to lint. A no-op when the
+# slug was explicit (it was linted before the build pass), and a stop before the gate and
+# the two remaining passes when it fails — the build pass is the one this cannot come
+# before, since it is what resolves the slug.
+run_corpus_lint "$FEATURE_SLUG" || exit 1
+
 if [[ -x "$GATE_SCRIPT" ]]; then
   echo ""
   echo "########## BATCH: mechanical gate (${GATE_SCRIPT#$REPO_DIR/}) ##########"
@@ -334,7 +364,54 @@ review_rc=$?
 echo ""
 if (( review_rc != 0 )); then
   echo "########## BATCH: review pass stopped (exit $review_rc) ##########"
-else
-  echo "########## BATCH: complete — build + verify + review all finished ##########"
+  exit "$review_rc"
 fi
-exit "$review_rc"
+
+# --- The round the review just finished ends here, one way or the other. ---
+#
+# The verdict is read exactly as feature-close.sh reads it — the same two functions in
+# plan-runner-roots.sh, so an unattended batch and a coordinator at a terminal can never
+# disagree about what a round decided (design §6). Clean, the batch calls the close and
+# still ends in a PR; escalated or unreadable, nothing after the review runs and the batch
+# says which file the rework is briefed from and stops non-zero, because a round that
+# escalated is not a batch that succeeded.
+CLOSE_SCRIPT="$SCRIPT_DIR/feature-close.sh"
+batch_feature="${batch_feature:-${FEATURE_SLUG:-}}"
+if [[ -z "$batch_feature" ]]; then
+  echo "########## BATCH: complete — build + verify + review all finished (no feature resolved, so nothing to close) ##########"
+  exit 0
+fi
+FEATURE_SLUG="$batch_feature"
+review_plan="$(latest_review_plan "$batch_feature")"
+
+# A feature with no review plan at all is the case the review queue has always allowed —
+# an empty queue is a clean no-op — and there is no round for this script to end. Say so
+# and exit 0, exactly as this script did before there was a close to call.
+if [[ -z "$review_plan" ]]; then
+  echo "########## BATCH: complete — build + verify + review all finished; no review plan has run, so there is no verdict to close on ##########"
+  exit 0
+fi
+
+verdict="$(review_plan_end "$batch_feature" "$review_plan" verdict)"
+
+if [[ "$verdict" != "$VERDICT_CLEAN" ]]; then
+  echo "########## BATCH: round verdict '${verdict:-none recorded}' — nothing after the review runs ##########"
+  echo "########## BATCH: the rework is briefed from $FEATURES_LABEL/$batch_feature/$ESCALATIONS_DIR_NAME/$review_plan.md, and is a new round: queue the re-review, then run-batch.sh $SELF_ARG$batch_feature again ##########"
+  exit 1
+fi
+
+echo "########## BATCH: round verdict clean — closing (feature-close.sh) ##########"
+if [[ ! -x "$CLOSE_SCRIPT" ]]; then
+  echo "########## BATCH: no feature-close.sh beside this script — close by hand ##########"
+  exit 1
+fi
+"$CLOSE_SCRIPT" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} "$batch_feature"
+close_rc=$?
+
+echo ""
+if (( close_rc != 0 )); then
+  echo "########## BATCH: the close exited $close_rc — see its refusal above ##########"
+else
+  echo "########## BATCH: complete — build + verify + review + close all finished; merge the PR ##########"
+fi
+exit "$close_rc"

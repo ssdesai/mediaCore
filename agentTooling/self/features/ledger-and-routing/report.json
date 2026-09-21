@@ -1,0 +1,167 @@
+{
+  "slug": "ledger-and-routing",
+  "generated_at": "2026-09-18T13:28:00.847670+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 45.2219425,
+    "build": 45.2219425,
+    "verify": 0.0,
+    "review": 4.043795599999999,
+    "total": 49.26573809999999,
+    "planning_pct": 0.0,
+    "build_pct": 91.79187046423243,
+    "verify_pct": 0.0,
+    "review_pct": 8.208129535767576,
+    "cost_per_plan": 24.632869049999996,
+    "cost_per_file": 12.316434524999998,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 0,
+    "planning_subagents_s": 5082,
+    "planning_s": 0.0,
+    "implementer_s": 5082,
+    "build_s": 5082.0,
+    "verify_s": 0.0,
+    "review_s": 365.918,
+    "executor_s": 5447.918,
+    "total_s": 5447.918,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-18T12:45:54+00:00",
+      "last_at": "2026-09-18T13:27:59+00:00",
+      "batch_span_s": 2525.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 371.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 371.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-09-18T13:27:59+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/52"
+    },
+    "tests_s": null,
+    "direct_build_s": null,
+    "gate_s": null
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 45.2219425,
+      "build_min": 84.7,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 3.4781999999999993,
+      "review_min": 3.5191,
+      "review_plan": "01-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/01-review-opus.md"
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.5655956,
+      "review_min": 2.579533333333333,
+      "review_plan": "02-review-sonnet",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 45.2219425,
+    "sessions": 0.0
+  },
+  "cold_start_tax_tokens": 190176,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 41,
+      "total_cost_usd": 3.4781999999999993,
+      "total_duration_s": 211.146,
+      "flags": []
+    },
+    {
+      "model": "sonnet",
+      "plan_count": 1,
+      "total_turns": 24,
+      "total_cost_usd": 0.5655956,
+      "total_duration_s": 154.772,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 6,
+      "files_edited": 4,
+      "churn_ratio": 1.5
+    },
+    {
+      "plan": "02-review-sonnet",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 136,
+      "loc_changed": 119
+    },
+    {
+      "plan": "02-review-sonnet",
+      "plan_md_lines": 51,
+      "loc_changed": 71
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "README.md",
+        "analysis/report.py",
+        "self/PROJECT_FACTS.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-sonnet",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "self/review-report.md",
+      "earlier_plan": "01-review-opus",
+      "later_plan": "01-review-opus",
+      "overlap_chars": 87
+    }
+  ],
+  "warnings": []
+}

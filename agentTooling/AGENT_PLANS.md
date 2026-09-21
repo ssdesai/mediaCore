@@ -233,13 +233,14 @@ The manifest ends with a machine-readable fence:
   either drops a real session or double-counts one. Derive each bound from the gap between
   the adjacent sessions' actual timestamps rather than picking a plausible day.
 
-  **`feature-close.sh` sets `to`, from evidence — do not hand-write one.** `"to": null`
-  means "still in flight", and the close is what shuts it: one second past the last
-  instant of the sessions this feature's `branches` and `session_window` select and of
-  their subagents, stamped before the capture so the share split runs against the real
-  bound (`LIFECYCLE.md` → step 6). Write one by hand only for a feature the close will
-  never run over, and never widen one already set — `analysis/manifest.py set-window-to
-  --tighten` is the only path that may move it, and only inwards. What still goes wrong
+  **`feature-capture.sh` sets `to`, from evidence — do not hand-write one.** `"to": null`
+  means "still in flight", and the capture on the branch is what shuts it: one second past
+  the last instant of the sessions this feature's `branches` and `session_window` select
+  and of their subagents, stamped before the capture so the share split runs against the
+  real bound (`LIFECYCLE.md` → step 5). Until the merge the bound is provisional and a
+  re-capture moves it either way; after it, never widen one already set —
+  `analysis/manifest.py set-window-to --tighten` is the only path that may move it, and
+  only inwards. Write one by hand only for a feature no capture will ever run over. What still goes wrong
   is a window left open after the work is done: two open-ended windows on a shared branch
   each claim
   the other's sessions, and the cost lands in both totals with nothing visibly wrong —
@@ -248,7 +249,7 @@ The manifest ends with a machine-readable fence:
   `analysis/capture_planning.py` now warns when two manifests share a branch *and* their
   windows intersect; a `to` bound is how you answer it. Because `to` is exclusive, the
   next feature's `from` may be the same instant — chained windows are exactly disjoint,
-  which is what stamping from evidence is for: a `to` taken from the close's own clock
+  which is what stamping from evidence is for: a `to` taken from the capture's own clock
   makes every feature started from one coordinator end at the same instant, so the windows
   nest instead of chaining.
   An open `to` on a session another manifest also claims now takes a **share** of
@@ -498,7 +499,9 @@ The pass after verify, and the last one in a batch. Build wrote the code, the ga
 - **The highest-value output is a missing assertion.** "This invariant has no test, here is the assertion" costs the next batch a haiku-priced plan and then `gate.sh` runs it forever. A finding phrased as a permanent check beats one phrased as an observation about this diff.
 - **Same fix policy as verify: local fixes, structural escalations** — see that section's "Budget the fix loop". Expect to escalate more often here, because a defect found by reading skews structural.
 - **Ask for a verdict, and make "no findings" a legitimate one.** A pass that must produce findings will produce speculative ones, and the next batch then spends turns disproving each. Say this in the brief.
-- **The verdict is the PR body — write the brief knowing that.** `run-review.sh`'s prompt already tells the executor to write `plans/review-report.md`, and `plans/pr.sh` uses that file verbatim as the body of the pull request it opens. So the audience for the verdict is the human approving the PR, not the harness: ask for what the batch was supposed to do, whether it does it, and two separate lists (fixed here / escalated to the next batch). Don't ask for a transcript of the investigation.
+- **The report's first line is `Verdict: clean` or `Verdict: escalated`, and it decides what happens next.** `run-review.sh`'s prompt already requires that line and reads it back, so a brief never has to restate the spelling — but it must not undercut it: `clean` means the escalated list is *empty*, and nothing else does. A clean round is closed by `feature-close.sh` (PR, capture, merge request); an escalated one stops at the review, and the report becomes the rework brief at `plans/features/<slug>/escalations/<review-stem>.md`, which is round N+1 (`LIFECYCLE.md` → steps 5 and 6). A first line the harness cannot read counts as escalated. So a brief that invites a hedged verdict — "flag anything you are unsure about" — buys a whole extra round; ask instead for findings phrased as assertions, and for the two lists below.
+- **The verdict is the PR body — write the brief knowing that.** `run-review.sh`'s prompt tells the executor to write `plans/review-report.md`, and `feature-close.sh` uses that file verbatim as the body of the pull request it opens, with the report's Rounds table under it. So the audience for the verdict is the human approving the PR, not the harness: ask for what the batch was supposed to do, whether it does it, and two separate lists (fixed here / escalated to the next round). Don't ask for a transcript of the investigation.
+- **A re-review may be scoped and cheaper.** Round N+1's brief is the escalations file plus what the rework changed, and it can run at a cheaper model (`NN+1-review-sonnet.md`) when the findings are precise. Add its stem to the manifest's `plans` like any other plan.
 - **List the review plan in the manifest's `plans` array**, like every other plan. `analysis/report.py` rolls cost up by walking that list, so an omitted review plan runs and bills into a cost record that never mentions it.
 
 ## The mechanical gate

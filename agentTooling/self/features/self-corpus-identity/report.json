@@ -1,6 +1,6 @@
 {
   "slug": "self-corpus-identity",
-  "generated_at": "2026-09-10T03:28:49.367089+00:00",
+  "generated_at": "2026-09-17T17:36:58.193501+00:00",
   "cost": {
     "method": "direct",
     "planning": 0.0,
@@ -24,7 +24,15 @@
     "recovered": 0.0,
     "unrecoverable_attempts": [],
     "partially_recovered_attempts": [],
-    "shared_sessions": []
+    "shared_sessions": [
+      {
+        "session_id": "e21abdc0-6f3b-4306-a18e-81272cadb107",
+        "cost_usd": 8.9489415,
+        "also_claimed_by": [
+          "agentTooling/bounded-opening-stretch"
+        ]
+      }
+    ]
   },
   "time": {
     "method": "direct",

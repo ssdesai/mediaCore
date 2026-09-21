@@ -13,7 +13,7 @@ set -uo pipefail
 #
 # Inside rather than beside R because a session launched in R can then reach the worktree
 # with no access outside its own folder. Features started before this layout keep their
-# sibling R-S until they close; feature-close.sh and capture handle both.
+# sibling R-S until they merge; feature-capture.sh and the capture tooling handle both.
 #
 # Everything cost capture needs is then derived from the slug — the branch to match, the
 # worktree path, the transcript directory a session launched there is filed under — with
@@ -22,8 +22,8 @@ set -uo pipefail
 #   1. refuses a slug that fails the pattern, a branch or worktree that already exists,
 #      and being run from a worktree's copy (the worktree's copy is the wrong copy);
 #   2. makes sure the common git dir's info/exclude ignores /.worktrees/ — so the
-#      primary's `git status` stays clean with the worktree inside it, which is what
-#      feature-close.sh's dirty-primary refusal needs — then fetches origin;
+#      primary's `git status` stays clean with the worktree inside it — then fetches
+#      origin;
 #   3. prunes the features that have merged: every worktree under R/.worktrees/ whose
 #      branch is an ancestor of origin/main is removed and its local branch deleted
 #      (`git branch -D` — ancestry against origin/main is the check, and `-d` would
@@ -42,10 +42,10 @@ set -uo pipefail
 #      filled (branches [S], base, `from` now in UTC with a Z, `to` null, and no pin),
 #      and a review-brief stub carrying @@TODO@@ that run-review.sh refuses to run until
 #      it is replaced;
-#   8. writes the ROUTING RECORD for the session that ran it —
-#      plans/routing/<session-id>.json, self/routing/ under --self — through
+#   8. writes the ROUTING RECORD for the session that ran it, INSIDE that feature
+#      directory — plans/features/S/routing.json, self/features/ under --self — through
 #      analysis/routing.py, from that session's own transcript;
-#   9. commits the feature directory and the routing record on S as `S: start`;
+#   9. commits the feature directory, routing record and all, on S as `S: start`;
 #  10. with `--open`, runs the repo's plans/open-session.sh (self/open-session.sh under
 #      --self) with the worktree path as its only argument, which is how the coordinator
 #      session is launched INSIDE the worktree;
@@ -76,8 +76,8 @@ DEFAULT_METHOD="direct"
 DEFAULT_BASE="main"
 TODO_MARKER="@@TODO@@"
 # The directory under the primary checkout that holds every feature worktree
-# (LIFECYCLE.md). feature-close.sh and analysis/capture_planning.py each hold the same
-# name in one constant of their own; the three move together.
+# (LIFECYCLE.md). analysis/capture_planning.py holds the same name in a constant of its
+# own; the two move together.
 WORKTREES_DIR_NAME=".worktrees"
 # The ref a worktree's branch must be an ancestor of to count as merged. `origin/main`
 # and not the feature's own `--base`: a stacked feature's base is itself a branch that has
@@ -90,8 +90,11 @@ PRUNE_MERGED_INTO="origin/main"
 # laggier question (see prune_one).
 PRUNE_DELETE_FLAG="-D"
 # The module that derives and writes the routing record, run from the new worktree's copy
-# so the record lands in the worktree's corpus and rides the `S: start` commit.
+# so the record lands in the worktree's corpus and rides the `S: start` commit, and the
+# name it writes it under inside the feature directory (analysis/routing.py's
+# RECORD_NAME; this script only prints it, and the two move together).
 ROUTING_MODULE="analysis/routing.py"
+ROUTING_RECORD_NAME="routing.json"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/plan-runner-roots.sh"
@@ -146,9 +149,6 @@ HOOK_LABEL="${GATE_SCRIPT_LABEL%/gate.sh}/worktree-setup.sh"
 # The repo-owned hook --open runs. Seeded like worktree-setup.sh and resolved the same
 # way, so plans/open-session.sh and self/open-session.sh are one rule.
 OPEN_HOOK_LABEL="${GATE_SCRIPT_LABEL%/gate.sh}/open-session.sh"
-# Where the routing record goes, beside the feature corpus rather than inside it —
-# analysis/routing.py derives the same path from the features root.
-ROUTING_LABEL="${FEATURES_LABEL%/features}/routing"
 WORKTREES_ROOT="$PRIMARY/$WORKTREES_DIR_NAME"
 REPO_NAME="$(basename "$PRIMARY")"
 # The session that ran this script: the router. It names the routing record always, and
@@ -160,8 +160,8 @@ git -C "$PRIMARY" show-ref --verify --quiet "refs/heads/$SLUG" && refuse "branch
 
 # ── Keep the worktrees directory out of git ───────────────────────────────────
 # The worktree sits inside the primary checkout, so without an ignore entry the primary's
-# `git status` lists `.worktrees/` as untracked — and feature-close.sh refuses a dirty
-# primary, so every close would stop on it. The entry goes in the COMMON git dir's
+# `git status` lists `.worktrees/` as untracked, and a post-merge capture or any other
+# tool reading the primary's status would see it as work. The entry goes in the COMMON git dir's
 # info/exclude: per clone, exactly as the worktree is, and nothing any repo tracks
 # changes, so a consuming repo has nothing to commit or hand-merge. Idempotent: appended
 # only when no line already equals it, and an unterminated last line is closed first so
@@ -279,20 +279,14 @@ fi
 NOW="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 SESSION=""
 if (( PIN )); then SESSION="$ROUTER_SESSION"; fi
-if (( SELF_MODE )); then
-  # The self corpus numbers plans as one sequence (self/PROJECT_FACTS.md); a consuming
-  # repo numbers per feature from 01.
-  # A leading run of digits of ANY length, sorted numerically. Matching two digits only
-  # made every plan past 99 invisible: with 101-104 on disk the highest seen was 99 or
-  # nothing at all, and the corpus was handed 100 a second time.
-  last_nn="$(find "$WT_FEATURES" -name '[0-9]*-*.md' 2>/dev/null | sed 's|.*/||; s|^\([0-9][0-9]*\).*|\1|' | sort -n | tail -1)"
-  # 10#: the sequence is zero-padded, and bash reads a leading zero as octal — `08` and
-  # `09` are then "value too great for base" and the manifest never gets written.
-  # %02d pads below 10 only, so a three-digit number passes through unchanged.
-  NN="$(printf '%02d' $(( 10#${last_nn:-0} + 1 )))"
-else
-  NN="01"
-fi
+# One rule, both modes: a new feature's stub is always 01 (self/PROJECT_FACTS.md,
+# AGENT_PLANS.md → "Plan file format"). This corpus used to number its plans as one
+# sequence across every feature instead, read off the corpus with `find | sed | sort -n`;
+# two features started from the same base both saw the same highest number and both got
+# it, twice, on 2026-09-17 — the sequence assumed only one feature would ever be
+# mid-start. Numbering is per feature from here on, exactly as a consuming repo already
+# did.
+NN="01"
 STEM="$NN-review-opus"
 session_args=()
 if [[ -n "$SESSION" ]]; then session_args=(--session "$SESSION"); fi
@@ -329,19 +323,18 @@ echo "  manifest  ${FEATURE_DIR#"$WORKTREE"/}/README.md  (method $METHOD, from $
 echo "  review    ${FEATURE_DIR#"$WORKTREE"/}/review/incomplete/$STEM.md  (stub — $TODO_MARKER)"
 
 # ── The routing record ────────────────────────────────────────────────────────
-# Written for THIS session — the router — and committed with the feature directory, so
-# the router-to-feature link is in git before the transcript it is derived from can
-# expire. Never a refusal: a transcript that has not been flushed, or has aged out,
-# yields a record with this slug and no figures plus one warning, and the start goes on.
+# Written for THIS session — the router — INSIDE the feature directory the commit below
+# already adds, so the router-to-feature link is in git before the transcript it is
+# derived from can expire, and no two features ever write one path
+# (self/DESIGN-2026-09-18-ledger-and-routing.md §1; it took a path of its own, and a
+# `git add` of its own, until then). Never a refusal: a transcript that has not been
+# flushed, or has aged out, yields a record with this slug and no figures plus one
+# warning, and the start goes on.
 # -B, for the reason the manifest call gives: no analysis/__pycache__ in the new worktree.
-ROUTING_PATHS=()
 if [[ -n "$ROUTER_SESSION" ]]; then
   if python3 -B "$WT_AT/$ROUTING_MODULE" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} \
       --session "$ROUTER_SESSION" --slug "$SLUG" --primary "$PRIMARY" >/dev/null; then
-    # Relative to $WORKTREE, where the commit below runs — so it carries REL_REPO, as the
-    # feature directory does, for a --self start from a vendored agentTooling.
-    ROUTING_PATHS=("${REL_REPO:+$REL_REPO/}$ROUTING_LABEL/$ROUTER_SESSION.json")
-    echo "  routing   ${ROUTING_PATHS[0]}  (router $ROUTER_SESSION, not pinned)"
+    echo "  routing   ${FEATURE_DIR#"$WORKTREE"/}/$ROUTING_RECORD_NAME  (router $ROUTER_SESSION, not pinned)"
   else
     echo "  warn      could not write the routing record for session $ROUTER_SESSION"
   fi
@@ -350,7 +343,7 @@ else
 fi
 
 ( cd "$WORKTREE" && git add "${FEATURE_DIR#"$WORKTREE"/}" \
-    ${ROUTING_PATHS[@]+"${ROUTING_PATHS[@]}"} && git commit -q -m "$SLUG: start" ) \
+    && git commit -q -m "$SLUG: start" ) \
   || refuse "could not commit the feature directory in $WORKTREE"
 echo "  commit    $SLUG: start"
 
@@ -392,4 +385,10 @@ if [[ -n "$SESSION" ]]; then
   echo "     \"subagents\" while its transcript exists."
 fi
 echo "  3. Every delegate brief opens with:  feature: $REPO_NAME/$SLUG"
-echo "  4. After the PR merges, from the primary checkout:  feature-close.sh ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} $SLUG"
+# The review pass only records the round's verdict and stops; feature-close.sh is what
+# opens the PR and captures the cost on the branch now (LIFECYCLE.md → steps 5 and 6),
+# and the next start prunes this worktree once the branch has merged.
+echo "  4. Review: run-review.sh ${SELF_FLAG[@]+"${SELF_FLAG[@]} "}$SLUG records the verdict and stops. On a"
+echo "     clean verdict, run feature-close.sh ${SELF_FLAG[@]+"${SELF_FLAG[@]} "}$SLUG from the worktree — it opens"
+echo "     the PR, captures the cost on the branch, and requests the merge last."
+echo "     Merge the PR — that is the last step; nothing runs after it."

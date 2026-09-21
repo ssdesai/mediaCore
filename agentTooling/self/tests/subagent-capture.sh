@@ -44,9 +44,16 @@ set -uo pipefail
 #      outright from any project directory regardless of branch, window or cwd, with
 #      `selected_by: "pinned"` (branch-selected entries say "branch"); a pin that is also
 #      excluded warns and wins; and --list-sessions prints the top-level sessions under
-#      this repo's directories, --unclaimed keeping only those no planning.json lists.
+#      this repo's directories, --unclaimed keeping only those no planning.json lists;
+#  19. a pin is a claim whether or not it cost anything: a pinned transcript with no
+#      `assistant` line in it is captured into `subagents[]` all the same, earns no
+#      priced row, and is written to the ledger under this feature with `cost_usd` 0, so
+#      --list-subagents --unclaimed stops listing it — with the listing BEFORE the pin as
+#      the guard, since a delegate the list never held would satisfy the last check on
+#      its own.
 #
-# All RED until the subagent walk landed in analysis/capture_planning.py.
+# All RED until the subagent walk landed in analysis/capture_planning.py; 19c-19e were RED
+# until the ledger was written from `subagents[]` rather than from the priced rows.
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP="$(mktemp -d)"
@@ -342,7 +349,7 @@ write_manifest "[\"$AGENT_3\"]"
 
 # ── 18. --for narrows --unclaimed to exactly one feature ──────────────────────
 # Numbered last, placed here because it reuses phase 13's fixtures — phase 17 clears
-# $PROJECTS. This list is what feature-close.sh's stray-delegate guard reads, and a
+# $PROJECTS. This list is what feature-capture.sh's unclaimed-delegate warning reads, and a
 # substring test over the printed table got it wrong both ways: a delegate briefed for
 # `<slug>-two` matched (and the human was sent to pin it into the wrong manifest), while a
 # `<repo>/<slug>` longer than the 26-character pin column matched nothing — a silent miss,
@@ -502,6 +509,49 @@ list_sess --since 2026-07-02 > "$TMP/out17j.txt"
 check "17j. --since drops the earlier one" \
   "grep -q '$SESSION_Q' '$TMP/out17j.txt' && ! grep -q '$SESSION_P' '$TMP/out17j.txt'"
 write_manifest "[\"$AGENT_3\"]"
+
+# ── 19. a pin is a claim whether or not it cost anything ──────────────────────
+# Design §3. The ledger used to be written from the priced rows, so a pinned delegate
+# whose transcript holds no `assistant` line — a brief, and then a kill, or a run that
+# billed nothing — reached no `priced[]` row, entered the ledger under no feature, and
+# `--list-subagents --unclaimed` went on listing it forever, telling the human to write a
+# pin that was already written. The ledger records claims: every entry of the capture's
+# own `subagents[]`, with `cost_usd` 0 when nothing was billable.
+#
+# The transcript is the prompt line alone — no `assistant` line at all, which is the
+# first half of the rule and is asserted rather than assumed (19a): the capture must still
+# list it in `subagents[]`, since `agent_start_of` reads timestamps and not usage.
+AGENT_ZERO="a0000000000000000"
+rm -rf "$PROJECTS"/* "$PLANNING"
+write_parent "$SESSION_P" "$BRANCH" "2026-07-01T10:00:00.000Z" 5000
+mkdir -p "$PROJECTS/$SESSION_M/subagents"
+subagent_prompt_line "$SESSION_M" "$AGENT_ZERO" "$AT" "main" "2026-07-03T09:00:00.000Z" \
+  "feature: $REPO_NAME/$SLUG\\nDelegate that billed nothing" \
+  > "$PROJECTS/$SESSION_M/subagents/agent-$AGENT_ZERO.jsonl"
+write_parent "$SESSION_M" "main" "2026-07-03T09:00:00.000Z" 5000
+
+# The guard, and it has to come first: before the pin, this delegate IS unclaimed and is
+# listed. Without it the assertion below could pass because the listing never had a row
+# for an unbilled transcript in the first place.
+list_subs --unclaimed > "$TMP/out19-before.txt"
+check "19. an unpinned, unbilled delegate is listed as unclaimed (the guard)" \
+  "grep -q '$AGENT_ZERO' '$TMP/out19-before.txt'"
+
+write_manifest "[\"$AGENT_ZERO\"]"
+capture > "$TMP/out19.txt"
+check "19a. a pinned transcript with no assistant line is still captured into subagents[]" \
+  "[ \"\$(field \"[(s['agent_id'], s['selected_by']) for s in d['subagents']]\")\" = \"[('$AGENT_ZERO', 'pinned')]\" ]"
+check "19b. it earns no priced row, having nothing billable in it" \
+  "[ \"\$(field \"[p['agent_id'] for p in d['priced'] if p['agent_id']]\")\" = '[]' ]"
+check "19c. the ledger names this feature for it all the same" \
+  "[ \"$(claim $AGENT_ZERO)\" = \"('$REPO_NAME', '$SLUG', 'pinned')\" ]"
+zero_cost="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['subagents'][sys.argv[2]]['cost_usd'])" "$LEDGER" "$AGENT_ZERO")"
+check "19d. with cost_usd 0 — a claim, not a price (got ${zero_cost:-<absent>})" "[ \"$zero_cost\" = 0.0 ]"
+list_subs --unclaimed > "$TMP/out19-after.txt"
+check "19e. and --unclaimed no longer lists it, by the same ledger lookup as any other" \
+  "! grep -q '$AGENT_ZERO' '$TMP/out19-after.txt'"
+check "19f. and the capture's own result line counts it among the subagents" \
+  "grep -q '1 subagents' '$TMP/out19.txt'"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "subagent-capture: all ok"; else echo "subagent-capture: $fails FAIL"; exit 1; fi
