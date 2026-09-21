@@ -45,8 +45,10 @@ set -uo pipefail
 #   S4. the prune: a start removes every worktree under .worktrees/ whose branch is an
 #       ancestor of origin/main and whose tree is clean, deletes that local branch, leaves
 #       a dirty merged one and an unmerged one alone, and pushes nothing — including when
-#       the merge happened on the REMOTE and the primary's own main still lags, which is
-#       the case `git branch -d` refuses and `-D` (ancestry already proven) does not;
+#       the merge happened on the REMOTE and the primary's own main lags, where the first
+#       start only fast-forwards main and exits 3 with the rerun command, and the rerun
+#       prunes; a diverged main, a primary behind while off main, and a fast-forward git
+#       refuses (an untracked file in its way) are refused with nothing moved or started;
 #   S5. --open runs the repo's open-session.sh hook with the worktree path as its only
 #       argument, a start without it runs nothing, and both copies of the hook read as
 #       text (S5d–S5f) to send that path through both escaping layers — the shell quoting,
@@ -627,22 +629,56 @@ git -C "$FORGE_CLONE" config user.name "forge"
 git -C "$FORGE_CLONE" merge -q --no-ff -m "Merge $PRUNE_REMOTE" "origin/$PRUNE_REMOTE"
 git -C "$FORGE_CLONE" push -q origin main 2>/dev/null
 git -C "$FORGE_CLONE" push -q origin --delete "$PRUNE_REMOTE" 2>/dev/null
-main_before="$(git -C "$AT" rev-parse main)"
-out="$(start lifecycle-prunes-remote --no-gate)"
-check "S4h. the primary's own main still lags origin/main — the case under test" \
-  '[[ "$(git -C "$AT" rev-parse main)" == "$main_before" ]] && ! git -C "$AT" merge-base --is-ancestor "$(git -C "$AT" rev-parse origin/main)" main'
+# A primary behind origin/main is fast-forwarded and the run stops (exit 3) before
+# anything is pruned or created: the process that ran is the old copy of the script. The
+# rerun is the prune.
+out="$(start lifecycle-prunes-remote --no-gate)"; rc=$?
+check "S4h. a primary behind origin/main: main fast-forwarded, exit 3 (got $rc)" \
+  '[[ $rc -eq 3 && "$(git -C "$AT" rev-parse main)" == "$(git -C "$AT" rev-parse origin/main)" ]]'
+check "S4h2. ... nothing started or pruned, and the rerun command printed" \
+  '[[ ! -e "$(wt_path lifecycle-prunes-remote)" && -e "$(wt_path "$PRUNE_REMOTE")" ]] && ! git -C "$AT" show-ref --quiet refs/heads/lifecycle-prunes-remote && grep -q "Run it again" <<<"$out" && grep -q -- "--self lifecycle-prunes-remote --no-gate" <<<"$out"'
+out="$(start lifecycle-prunes-remote --no-gate)"; rc=$?
+check "S4h3. the rerun starts the feature (got $rc)" '[[ $rc -eq 0 && -d "$(wt_path lifecycle-prunes-remote)" ]]'
 check "S4i. the worktree merged only on the remote is removed" \
   '[[ ! -e "$(wt_path "$PRUNE_REMOTE")" ]]'
 check "S4j. ... and its local branch is gone, though -d would have refused it" \
   '! git -C "$AT" show-ref --quiet "refs/heads/$PRUNE_REMOTE"'
 check "S4k. ... and the printed line says the branch was deleted, not kept" \
   'grep -q "pruned .*$PRUNE_REMOTE and branch $PRUNE_REMOTE" <<<"$out" && ! grep -q "kept branch $PRUNE_REMOTE" <<<"$out"'
-# Level the primary's main with origin/main again and drop the prune config: the phases
-# below push main from this checkout, and a main left lagging would fail that push for a
-# reason none of them is about.
-git -C "$AT" fetch -q origin 2>/dev/null
-git -C "$AT" merge -q --ff-only origin/main 2>/dev/null
 git -C "$AT" config --unset fetch.prune
+
+# A primary that cannot simply be fast-forwarded is refused, touching nothing: one whose
+# main has diverged from origin/main, and one that is behind while not on main at all.
+git -C "$FORGE_CLONE" pull -q origin main 2>/dev/null
+git -C "$FORGE_CLONE" commit -q --allow-empty -m "forge moves on"
+git -C "$FORGE_CLONE" push -q origin main 2>/dev/null
+main_before="$(git -C "$AT" rev-parse main)"
+git -C "$AT" commit -q --allow-empty -m "local only"
+diverged_head="$(git -C "$AT" rev-parse main)"
+out="$(start lifecycle-diverged --no-gate)"; rc=$?
+check "S4l. a diverged main is refused (got $rc), main and the start untouched" \
+  '[[ $rc -eq 1 && "$(git -C "$AT" rev-parse main)" == "$diverged_head" && ! -e "$(wt_path lifecycle-diverged)" ]] && grep -q "diverged" <<<"$out"'
+git -C "$AT" reset -q --hard "$main_before"
+git -C "$AT" checkout -q -b off-main
+out="$(start lifecycle-offmain --no-gate)"; rc=$?
+check "S4m. behind while off main is refused (got $rc), nothing moved or started" \
+  '[[ $rc -eq 1 && "$(git -C "$AT" rev-parse main)" == "$main_before" && ! -e "$(wt_path lifecycle-offmain)" ]] && grep -q "not main" <<<"$out"'
+git -C "$AT" checkout -q main
+git -C "$AT" branch -q -D off-main
+# ... and one on main and behind whose fast-forward git itself refuses: an untracked file
+# where origin/main adds one.
+IN_THE_WAY="in-the-way.txt"
+printf 'forge\n' > "$FORGE_CLONE/$IN_THE_WAY"
+git -C "$FORGE_CLONE" add "$IN_THE_WAY"
+git -C "$FORGE_CLONE" commit -q -m "forge adds a file"
+git -C "$FORGE_CLONE" push -q origin main 2>/dev/null
+printf 'local\n' > "$AT/$IN_THE_WAY"
+out="$(start lifecycle-inway --no-gate)"; rc=$?
+check "S4n. a fast-forward git refuses is refused (got $rc), nothing moved or started" \
+  '[[ $rc -eq 1 && "$(git -C "$AT" rev-parse main)" == "$main_before" && ! -e "$(wt_path lifecycle-inway)" ]] && grep -q "could not fast-forward" <<<"$out"'
+rm -f "$AT/$IN_THE_WAY"
+# Level the primary with origin/main for the phases below, which push main from here.
+git -C "$AT" merge -q --ff-only origin/main 2>/dev/null
 
 # ── S5. --open runs the repo's hook with the worktree path ────────────────────
 rm -f "$OPEN_ARG_OUT"
