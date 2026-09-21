@@ -135,9 +135,10 @@ A git command that moves a ref, rewrites history or throws work away, **wherever
 on the line** — after a `&&`, `;`, `|` or `&`, inside a `(…)` subshell or a `$(…)`
 substitution, behind `-C <path>`, `--git-dir=…` or `-c k=v`. The reason names
 `LIFECYCLE.md` → "The three rules", rule 2, and **both ends of the sanctioned route**:
-`feature-start.sh` is the way in — it makes the branch and the worktree, is run by the
-human from the primary checkout, and its next run prunes away the ones whose work has
-merged — and `feature-close.sh` is the way out, run from the feature's worktree, on its
+`feature-start.sh` is the way in — it makes the branch and the worktree, is run from the
+primary checkout by the human or by the session itself (with the command spelled out, and
+the instruction to start the feature *before* editing and then edit only inside the
+worktree), and its next run prunes away the ones whose work has merged — and `feature-close.sh` is the way out, run from the feature's worktree, on its
 branch, after a clean review and *before* the merge. Merging the PR is the last step and
 nothing runs after it (`self/DESIGN-2026-09-17-close-and-review-rounds.md`;
 `LIFECYCLE.md` → step 6). `self/tests/allow-repo-commands.sh` asserts both names are in

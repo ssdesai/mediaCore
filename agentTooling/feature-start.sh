@@ -23,7 +23,8 @@ set -uo pipefail
 #      and being run from a worktree's copy (the worktree's copy is the wrong copy);
 #   2. makes sure the common git dir's info/exclude ignores /.worktrees/ — so the
 #      primary's `git status` stays clean with the worktree inside it — then fetches
-#      origin;
+#      origin, and when the primary's main is BEHIND origin/main, fast-forwards it and
+#      exits asking to be run again (see "A stale primary" below);
 #   3. prunes the features that have merged: every worktree under R/.worktrees/ whose
 #      branch is an ancestor of origin/main is removed and its local branch deleted
 #      (`git branch -D` — ancestry against origin/main is the check, and `-d` would
@@ -61,15 +62,28 @@ set -uo pipefail
 # session — for the record always, and for the pin when `--pin` is given. `--no-pin` is
 # accepted and does nothing, so a brief or a note written under the old default still runs.
 #
-# The primary checkout's tracked tree is never touched: nothing here checks out, stashes
-# or commits in it, so it need not be clean and nothing else running in it is disturbed.
-# Its one write outside the new worktree is the info/exclude entry, which no repo tracks.
-# On a refusal after step 4 the worktree is left in place for inspection.
+# **A stale primary.** This script runs from the primary's copy of agentTooling but
+# branches from origin/<base>, so a primary whose main lags origin/main runs OLD code that
+# writes and commits into a branch carrying NEW code — on 2026-09-21 an old copy
+# `git add`-ed a routing-record path the branch's routing.py no longer wrote, and the
+# start commit failed half-way. So before anything is pruned or created, a primary behind
+# origin/main is fast-forwarded to it and the run stops: the process still executing is
+# the old code, and only a fresh run is the new. It prints the command to run again and
+# exits $UPDATED_RC. The check is against origin/main whatever --base is, because main is
+# what the primary tracks and so what this copy came from. A primary that is not on main,
+# has diverged from origin/main, or has a local change in the fast-forward's way is
+# refused, untouched. With no origin, a failed fetch, or no origin/main, nothing is checked.
 #
-# Exit codes: 2 usage; 1 any refusal.
+# Otherwise the primary checkout's tracked tree is never touched: nothing here checks out,
+# stashes or commits in it, so it need not be clean and nothing else running in it is
+# disturbed. Its one other write outside the new worktree is the info/exclude entry, which
+# no repo tracks. On a refusal after step 4 the worktree is left in place for inspection.
+#
+# Exit codes: 2 usage; 1 any refusal; 3 main was fast-forwarded — run the same command again.
 
 USAGE_RC=2
 REFUSED_RC=1
+UPDATED_RC=3
 SLUG_PATTERN='^[a-z0-9]+(-[a-z0-9]+)*$'
 KNOWN_METHODS="direct plans hand"
 DEFAULT_METHOD="direct"
@@ -79,11 +93,15 @@ TODO_MARKER="@@TODO@@"
 # (LIFECYCLE.md). analysis/capture_planning.py holds the same name in a constant of its
 # own; the two move together.
 WORKTREES_DIR_NAME=".worktrees"
+# The branch the primary checkout stays on (LIFECYCLE.md), and the remote ref it must not
+# lag when a feature starts ("A stale primary" above).
+PRIMARY_BRANCH="main"
+PRIMARY_UPSTREAM="origin/$PRIMARY_BRANCH"
 # The ref a worktree's branch must be an ancestor of to count as merged. `origin/main`
 # and not the feature's own `--base`: a stacked feature's base is itself a branch that has
 # to reach main before its stack does, so this is the one ref that means "merged" for
 # every worktree under .worktrees/. With no such ref the prune does nothing at all.
-PRUNE_MERGED_INTO="origin/main"
+PRUNE_MERGED_INTO="$PRIMARY_UPSTREAM"
 # How the prune deletes a pruned worktree's local branch. `-D` because ancestry against
 # $PRUNE_MERGED_INTO is proven before the delete is attempted; `-d` would re-decide
 # "merged" against the branch's upstream or the primary's HEAD, which is a different and
@@ -97,6 +115,8 @@ ROUTING_MODULE="analysis/routing.py"
 ROUTING_RECORD_NAME="routing.json"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The command as typed, for the "run it again" line a stale primary ends on.
+RERUN_CMD="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")$(printf ' %q' "$@")"
 source "$SCRIPT_DIR/plan-runner-roots.sh"
 resolve_roots "${1:-}"
 SELF_FLAG=()
@@ -182,8 +202,34 @@ if ! grep -qxF -- "$EXCLUDE_ENTRY" "$EXCLUDE_FILE" 2>/dev/null; then
 fi
 
 # ── Branch and worktree ───────────────────────────────────────────────────────
+FETCHED=0
 if git -C "$PRIMARY" remote get-url origin >/dev/null 2>&1; then
-  git -C "$PRIMARY" fetch -q origin 2>/dev/null || echo "  warn  git fetch origin failed; branching from the local $BASE"
+  if git -C "$PRIMARY" fetch -q origin 2>/dev/null; then
+    FETCHED=1
+  else
+    echo "  warn  git fetch origin failed; branching from the local $BASE"
+  fi
+fi
+# ── A stale primary ───────────────────────────────────────────────────────────
+# See the header. Before the prune and the worktree, so a run that stops here has changed
+# nothing but main.
+if (( FETCHED )) && git -C "$PRIMARY" show-ref --verify --quiet "refs/remotes/$PRIMARY_UPSTREAM"; then
+  primary_head="$(git -C "$PRIMARY" rev-parse HEAD)"
+  upstream_head="$(git -C "$PRIMARY" rev-parse "$PRIMARY_UPSTREAM")"
+  if [[ "$primary_head" != "$upstream_head" ]] \
+      && ! git -C "$PRIMARY" merge-base --is-ancestor "$upstream_head" "$primary_head"; then
+    primary_branch="$(git -C "$PRIMARY" branch --show-current)"
+    [[ "$primary_branch" == "$PRIMARY_BRANCH" ]] \
+      || refuse "the primary checkout $PRIMARY is on '${primary_branch:-a detached HEAD}', not $PRIMARY_BRANCH, and is behind $PRIMARY_UPSTREAM — this copy of feature-start.sh may be stale. Put the primary back on $PRIMARY_BRANCH and run it again"
+    git -C "$PRIMARY" merge-base --is-ancestor "$primary_head" "$upstream_head" \
+      || refuse "$PRIMARY_BRANCH in $PRIMARY has diverged from $PRIMARY_UPSTREAM; reconcile it by hand, then run this again"
+    git -C "$PRIMARY" merge -q --ff-only "$PRIMARY_UPSTREAM" \
+      || refuse "could not fast-forward $PRIMARY_BRANCH in $PRIMARY to $PRIMARY_UPSTREAM (git's reason is above); nothing was started"
+    echo "  updated   $PRIMARY_BRANCH ${primary_head:0:8}..${upstream_head:0:8} in $PRIMARY — it was behind $PRIMARY_UPSTREAM"
+    echo "            This run was the old copy of feature-start.sh; nothing was started. Run it again:"
+    echo "              $RERUN_CMD"
+    exit "$UPDATED_RC"
+  fi
 fi
 # ── Prune the features that have merged ───────────────────────────────────────
 # The whole of post-merge teardown, done here rather than by a close step, because the

@@ -94,12 +94,14 @@ ASSIGN_DENY_REASON = (
 GIT_DENY_REASON = (
     "allow-repo-commands: this git command moves a ref, rewrites history or throws work "
     "away, and agents never do that (LIFECYCLE.md § The three rules, rule 2). "
-    "feature-start.sh is the way in — it makes the branch and the worktree, run by the "
-    "human from the primary checkout, and its next run prunes away the ones whose work "
-    "has merged. feature-close.sh is the way out — run from the feature's worktree, on "
-    "its branch, after a clean review and BEFORE the merge; merging the PR is the last "
-    "step and nothing runs after it. Commit on the branch you are on and say what you "
-    "need instead.")
+    "feature-start.sh is the way in — it makes the branch and the worktree, and you may "
+    "run it yourself from the primary checkout (`./agentTooling/feature-start.sh <slug> "
+    "--method … [--pin]`, `--pin` when this session will coordinate the feature); its "
+    "next run prunes away the ones whose work has merged. Start the feature BEFORE editing "
+    "anything, then edit inside .worktrees/<slug>, never in the primary. feature-close.sh "
+    "is the way out — run from the feature's worktree, on its branch, after a clean review "
+    "and BEFORE the merge; merging the PR is the last step and nothing runs after it. "
+    "Commit on the branch you are on and say what you need instead.")
 OPAQUE_DENY_REASON = (
     "allow-repo-commands: this command hides code from anyone reading the command line — "
     "a heredoc into an interpreter, code passed as a string, a program or a path decided "
