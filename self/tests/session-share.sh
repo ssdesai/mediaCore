@@ -82,6 +82,23 @@ set -uo pipefail
 #      paid to the earliest claimant, in its cost_usd.total and in the `[bound, from)`
 #      segment of its duration_s. Ruling 1 is `<=`; nothing else pins which side of the
 #      edge the instant falls on.
+#  18. an open co-claimant (`to: null`) is bounded provisionally by `last_branch_instant`
+#      over ITS OWN branch evidence, not read as running to the end of the transcript: the
+#      record names it in `open_claimants`, its `share_basis` entry carries `open: true`
+#      and the `provisional_to` the split used, and the capturing feature's share is the
+#      bounded one rather than the smaller share an unbounded claim would leave it;
+#  19. the corpus annotation is where that provisional bound is answered for: a claimant
+#      still open says nothing, one whose close stamped the same bound says nothing, and
+#      one that stamped a different bound is a single WARN naming the record, both bounds
+#      and `--recapture` — on stderr, since feature-capture.sh reads the pass's stdout as
+#      a list of slugs;
+#  20. and the whole point of deriving it with the function the close calls: with the
+#      co-claimant closed at exactly that bound, a re-capture reports the same dollars.
+#
+# The other side of 18 is phase 15f, where head-a is in flight and its `branches` match no
+# transcript: `last_branch_instant` finds nothing, its claim is empty, and the empty-claim
+# rule drops it naming it as open with no evidence — which is why head-b's own record went
+# from a 1800s share to the whole 18000s session there.
 #
 # Phases 1-5 and 7-8 are RED until analysis/capture_planning.py learns to share a
 # multiply-claimed session — a run against today's code is expected to FAIL them, not
@@ -157,10 +174,14 @@ mkdir -p "$PROJECTS"
 # capture reads. `branches` names a branch no transcript carries, so SESSION_ID's pin in
 # `sessions` is the only route in.
 # A `to` of the literal string `null` is written as the JSON null a manifest carries while
-# its feature is still in flight — `feature-close.sh` stamps a real bound at close. Phase
+# its feature is still in flight — `feature-capture.sh` stamps a real bound. Phase
 # 15f needs one; every other caller passes an instant.
+# A fifth argument overrides `branches`, which is otherwise the branch no transcript
+# carries. Phase 18 needs one claimant whose branch a transcript DOES carry: an open
+# co-claimant is bounded by `last_branch_instant`, which selects by branch alone (a pin
+# is never evidence — the coordinator a manifest pins outlives the feature).
 write_manifest() {
-  local slug="$1" frm="$2" to="$3" session_id="$4"
+  local slug="$1" frm="$2" to="$3" session_id="$4" branch="${5:-$MANIFEST_BRANCH}"
   local to_json="\"$to\""
   if [ "$to" = null ]; then to_json=null; fi
   local dir="$AT/self/features/$slug"
@@ -173,7 +194,7 @@ Fixture feature for self/tests/session-share.sh.
 \`\`\`json
 {
   "slug": "$slug",
-  "branches": ["$MANIFEST_BRANCH"],
+  "branches": ["$branch"],
   "session_window": {"from": "$frm", "to": $to_json},
   "sessions": ["$session_id"],
   "exclude_sessions": []
@@ -530,7 +551,7 @@ check "12g. on the share path the same warning says they are not counted" \
   "grep -q 'may span the window boundary' \"$TMP/capture-a2.txt\" && grep -q 'not counted' \"$TMP/capture-a2.txt\""
 
 # ── 13. a claimant whose `to` moves earlier loses the responses past it ───────────────
-# `feature-close.sh` now stamps `to` from evidence instead of from its own wall clock,
+# `feature-capture.sh` stamps `to` from evidence instead of from its own wall clock,
 # and `manifest.py set-window-to --tighten` is the repair for a bound already written.
 # share-d's window is 16:00-18:00 and its only response is r4 at 16:30; tightening the
 # bound to 16:15 must leave it owning nothing, with the session's own cost still whole
@@ -664,12 +685,22 @@ check "15e-rest. ... and what is left after it, the 3600s gap that is not head" 
   "grep -q '(3600s) is the rest' \"$TMP/capture-head-a.txt\""
 check "15e-remedy-pin. ... naming the pin remedy for the head" \
   "grep -q 'pin the session to the feature that planning belongs to' \"$TMP/capture-head-a.txt\""
-check "15e-remedy-from. ... and that the earliest claimant's from must be moved by hand, there being no set-window-to for it" \
-  "grep -q 'back by hand' \"$TMP/capture-head-a.txt\" && grep -q 'set-window-to' \"$TMP/capture-head-a.txt\""
+# The head's second remedy has a tool now (design §4), and the warning hands it over
+# ready to run: the command, the earliest claimant's slug, the instant to move `from` to
+# — the session's own first instant, which is the whole of the head and the earliest bound
+# `set-window-from` will accept — and the session id it is being moved over. RED against
+# the sentence this replaced, which said "move the earliest claimant's `from` back by
+# hand (there is no `set-window-to` for `from`)": the one edit every manifest says not to
+# make, offered because there was nothing else to offer.
+check "15e-remedy-from. ... and the from remedy as the command that performs it, with slug, instant and session" \
+  "grep -q 'set-window-from 2026-06-01T08:00:00Z --session $SESSION_HEAD' \"$TMP/capture-head-a.txt\" \
+     && grep -q 'manifest.py \[--self\] head-a set-window-from' \"$TMP/capture-head-a.txt\""
+check "15e-remedy-by-hand. ... and no longer tells the reader to edit the manifest by hand" \
+  "! grep -q 'back by hand' \"$TMP/capture-head-a.txt\""
 
 # 15f. an earliest claimant still in flight keeps the unbounded head. Its `to` is null
-# until `feature-close.sh` stamps it, and a window with no end has no length to bound by;
-# the recapture that follows the close applies the bound. head-a then owns r0 and r1
+# until `feature-capture.sh` stamps it, and a window with no end has no length to bound by;
+# the capture that follows the stamp applies the bound. head-a then owns r0 and r1
 # outright, r2, and half of r3 (which head-b's window also covers): 8500 of 10000.
 write_manifest head-a "2026-06-01T10:00:00Z" null "$SESSION_HEAD"
 recapture head-a > "$TMP/capture-head-a2.txt"
@@ -687,15 +718,29 @@ check "15f-unclaimed. ... and unclaimed_usd holds none of it" "[ \"$has_unclaime
 # gets `head_edge = None` and adds no cut point at all, so it is where "the dollars and
 # the seconds cannot disagree" is least protected — and 15f above asserts only dollars.
 # Derived from the same fixture: 08:00-10:00 (the unbounded head) and 10:00-12:00 (its own
-# open-ended window) are head-a's whole, and the 12:00-13:00 stretch head-b's window also
-# covers is halved — 7200 + 7200 + 1800 = 16200, against head-b's 1800 and nothing left.
+# open-ended window) are head-a's whole, and the 12:00-13:00 stretch is halved with
+# head-b — 7200 + 7200 + 1800 = 16200, with nothing left over.
+#
+# The exemption is the CAPTURING feature's alone, which is what head-b's own record says
+# below. head-a is in flight and its `branches` (`$MANIFEST_BRANCH`) match no transcript,
+# so from head-b's side it is an open co-claimant with no branch evidence:
+# `build_claimant_index` can derive no provisional bound for it, its window is empty and
+# the empty-claim rule drops it, naming it (15f-open-no-evidence). head-b is then the
+# session's only claimant and is priced and timed whole, which is the unshared path and
+# not a share of 1800s. Before design §2 this read 1800, head-a's `to: null` being taken
+# at face value — the in-flight feature claiming to the end of every transcript, which is
+# the defect that rule removes.
 dur_head_a_f="$(field "$PLANNING_HEAD_A" "d['sessions'][0]['duration_s']")"
 dur_head_b_f="$(field "$PLANNING_HEAD_B" "d['sessions'][0]['duration_s']")"
 has_undur_f="$(field "$PLANNING_HEAD_A" "'unclaimed_duration_s' in d['sessions'][0]")"
+shared_head_b_f="$(field "$PLANNING_HEAD_B" "'share_basis' in d['sessions'][0]")"
 check "15f-duration. ... and the seconds follow the dollars: head-a's duration_s is the unbounded 16200 (got ${dur_head_a_f:-<absent>})" \
   "[ \"$dur_head_a_f\" = 16200 ]"
-check "15f-duration-b. ... head-b's is its half of the 12:00-13:00 overlap alone, 1800 (got ${dur_head_b_f:-<absent>})" \
-  "[ \"$dur_head_b_f\" = 1800 ]"
+check "15f-duration-b. ... while head-b, whose open co-claimant has no evidence, owns the session's whole 18000s (got ${dur_head_b_f:-<absent>})" \
+  "[ \"$dur_head_b_f\" = 18000 ] && [ \"$shared_head_b_f\" = False ]"
+check "15f-open-no-evidence. ... the drop being announced, naming head-a as open with no evidence" \
+  "grep -q \"claim 'agentTooling/head-a' on session $SESSION_HEAD is still open\" \"$TMP/capture-head-b2.txt\" \
+     && grep -q 'no branch session of its own to bound it by' \"$TMP/capture-head-b2.txt\""
 check "15f-duration-unclaimed. ... and no unclaimed_duration_s at all, as no unclaimed_usd" \
   "[ \"$has_undur_f\" = False ]"
 
@@ -744,7 +789,7 @@ check "16d. ... nor hand the reader the remedy for that nothing" \
   "! grep -q 'For the rest' \"$TMP/capture-allhead-a.txt\""
 check "16e. ... while the head's own two remedies are named as before" \
   "grep -q 'the session to the feature that planning belongs to' \"$TMP/capture-allhead-a.txt\" \
-     && grep -q 'back by hand' \"$TMP/capture-allhead-a.txt\""
+     && grep -q 'set-window-from 2026-06-01T08:00:00Z --session $SESSION_ALLHEAD' \"$TMP/capture-allhead-a.txt\""
 
 # ── 17. the bound's edge is inclusive: an instant exactly ON it is still paid ──────────
 # Ruling 1 is `min_from - moment <= to - from`, so `head_bound` is the earliest payable
@@ -790,6 +835,113 @@ check "17b. ... and the segment from the bound to its from is in its duration_s:
   "[ \"$dur_edge_a\" = 7200 ]"
 check "17c. ... so nothing on this session is unclaimed, in dollars or in seconds" \
   "[ \"$has_unclaimed_e\" = False ] && [ \"$has_undur_e\" = False ]"
+
+# ── 18. an open co-claimant is bounded by its own evidence ────────────────────────────
+# Design §2. A feature that has not been captured carries `to: null`, and read as written
+# that is a claim running to the end of every transcript: on a shared coordinator the
+# in-flight feature took an equal share of every response from its `from` onwards, however
+# long the session ran afterwards. `build_claimant_index` bounds it instead by
+# `last_branch_instant(slug, ITS OWN features dir, sessions_dir)` — the identical function
+# its own close will call, which is why the two figures agree, which was the objection
+# that kept this derivation out.
+#
+# A fresh day and two fresh sessions, so nothing above is disturbed. `open-cap` is the
+# feature being captured; `open-co` is in flight, pins the same session, and has a branch
+# session of its own (`$SESSION_OPEN_EVIDENCE`, on `$OPEN_BRANCH`) whose last instant is
+# 13:00:00 — so its provisional bound is 13:00:01Z, one second past it, exactly as its own
+# capture would stamp. Ownership of the shared session is then o0 to open-cap alone
+# (before open-co's `from`), o1 halved, o2 to open-cap alone (past the provisional bound):
+# 5000 of 6000 output tokens. Unbounded — the behaviour this replaces — open-co would
+# halve o2 as well and open-cap would hold 3500.
+SESSION_OPEN="99999999-0000-0000-0000-000000000009"
+SESSION_OPEN_EVIDENCE="aaaaaaaa-0000-0000-0000-00000000000a"
+OPEN_BRANCH="openCoBranch"
+PROVISIONAL_TO="2026-06-03T13:00:01Z"
+DRIFTED_TO="2026-06-03T15:00:00Z"
+{
+  session_line "$SESSION_OPEN" "$AT" "$BRANCH" "o0" "$MODEL" "2026-06-03T10:00:00.000Z" 0 1000 0 0 0
+  session_line "$SESSION_OPEN" "$AT" "$BRANCH" "o1" "$MODEL" "2026-06-03T12:00:00.000Z" 0 2000 0 0 0
+  session_line "$SESSION_OPEN" "$AT" "$BRANCH" "o2" "$MODEL" "2026-06-03T14:00:00.000Z" 0 3000 0 0 0
+} > "$PROJECTS/$SESSION_OPEN.jsonl"
+session_line "$SESSION_OPEN_EVIDENCE" "$AT" "$OPEN_BRANCH" "y0" "$MODEL" "2026-06-03T13:00:00.000Z" 0 500 0 0 0 \
+  > "$PROJECTS/$SESSION_OPEN_EVIDENCE.jsonl"
+
+write_manifest open-cap "2026-06-03T09:00:00Z" "2026-06-03T18:00:00Z" "$SESSION_OPEN"
+write_manifest open-co  "2026-06-03T11:00:00Z" null "$SESSION_OPEN" "$OPEN_BRANCH"
+PLANNING_OPEN_CAP="$AT/self/features/open-cap/planning.json"
+
+capture open-cap > "$TMP/capture-open-cap.txt"
+
+open_claimants="$(field "$PLANNING_OPEN_CAP" "d['open_claimants']")"
+check "18a. the record names the co-claimant that was open when it was frozen" \
+  "[ \"$open_claimants\" = \"['agentTooling/open-co']\" ]"
+
+open_flag="$(field "$PLANNING_OPEN_CAP" "next(e.get('open') for e in d['sessions'][0]['share_basis'] if e['feature']=='agentTooling/open-co')")"
+open_prov="$(field "$PLANNING_OPEN_CAP" "next(e.get('provisional_to') for e in d['sessions'][0]['share_basis'] if e['feature']=='agentTooling/open-co')")"
+open_to="$(field "$PLANNING_OPEN_CAP" "next(e['to'] for e in d['sessions'][0]['share_basis'] if e['feature']=='agentTooling/open-co')")"
+check "18b. its share_basis entry says the claim was open" "[ \"$open_flag\" = True ]"
+check "18b-prov. ... and carries the provisional bound derived for it (got ${open_prov:-<absent>})" \
+  "[ \"$open_prov\" = '$PROVISIONAL_TO' ]"
+check "18b-to. ... which is the bound the split used, one second past its branch session's last instant" \
+  "[ \"$open_to\" = '$PROVISIONAL_TO' ]"
+check "18b-self. ... while this feature's own claim, whose window is closed, carries neither key" \
+  "[ \"\$(field \"$PLANNING_OPEN_CAP\" \"'open' in next(e for e in d['sessions'][0]['share_basis'] if e['feature']=='agentTooling/open-cap')\")\" = False ]"
+
+open_session_cost="$(field "$PLANNING_OPEN_CAP" "d['sessions'][0]['session_cost_usd']")"
+cost_open_cap="$(field "$PLANNING_OPEN_CAP" "d['cost_usd']['total']")"
+exp_open_cap="$(python3 -c "print(5000/6000*float('$open_session_cost'))" 2>/dev/null)"
+# The unbounded reading, for contrast: o2 halved as well. Asserted as NOT the answer, so
+# a bound that was derived and then ignored fails here rather than passing on the sum.
+exp_open_unbounded="$(python3 -c "print(3500/6000*float('$open_session_cost'))" 2>/dev/null)"
+check "18c. the capturing feature's share is the bounded one, 5000/6000 of the session" \
+  "close_enough '$cost_open_cap' '$exp_open_cap'"
+check "18c-guard. ... and not the 3500/6000 an unbounded open claim would leave it" \
+  "! close_enough '$cost_open_cap' '$exp_open_unbounded'"
+
+# ── 19. the annotation says when a stamped bound disagrees with the provisional one ────
+# The frozen record above bounded open-co at 13:00:01Z. Everything the corpus-wide
+# annotation (`--annotate-frozen`, what feature-capture.sh runs) can say about that
+# afterwards is whether the bound open-co's own close eventually stamped agrees. The WARN
+# goes to stderr on purpose: feature-capture.sh reads this pass's stdout as a list of
+# slugs, one per line.
+annotate() { HOME="$FAKE_HOME" python3 "$AT/analysis/capture_planning.py" --self --annotate-frozen 2>&1; }
+
+annotate > "$TMP/annotate-open-1.txt"
+check "19a. a claimant still open has stamped nothing to disagree with, and is passed over" \
+  "! grep -q 'bounded agentTooling/open-co' \"$TMP/annotate-open-1.txt\""
+
+python3 -B "$AT/analysis/manifest.py" --self open-co set-window-to "$PROVISIONAL_TO" \
+  > "$TMP/stamp-open-co.txt" 2>&1
+annotate > "$TMP/annotate-open-2.txt"
+check "19b. a close that stamps the same bound the capture derived says nothing at all" \
+  "! grep -q 'bounded agentTooling/open-co' \"$TMP/annotate-open-2.txt\""
+
+python3 -B "$AT/analysis/manifest.py" --self open-co set-window-to --replace "$DRIFTED_TO" \
+  > "$TMP/restamp-open-co.txt" 2>&1
+annotate > "$TMP/annotate-open-3.txt"
+check "19c. a stamped bound that differs is one WARN naming the record and both bounds" \
+  "grep -q 'WARN: open-cap: planning.json bounded agentTooling/open-co at $PROVISIONAL_TO' \"$TMP/annotate-open-3.txt\" \
+     && grep -q 'now stamps $DRIFTED_TO' \"$TMP/annotate-open-3.txt\""
+check "19d. ... naming --recapture as what moves a frozen figure" \
+  "grep 'bounded agentTooling/open-co' \"$TMP/annotate-open-3.txt\" | grep -q -- '--recapture'"
+check "19e. ... exactly once for the record, not once per claim it holds" \
+  "[ \"\$(grep -c 'bounded agentTooling/open-co' \"$TMP/annotate-open-3.txt\")\" = 1 ]"
+
+# ── 20. the provisional share is the share the close reports ──────────────────────────
+# The point of deriving the bound with the function the close calls: with open-co closed
+# at exactly the bound the capture derived for it, a re-capture of open-cap reports the
+# same dollars. Nothing else in the fixture moves, so a difference here would be the
+# bounding rule disagreeing with itself across the close.
+python3 -B "$AT/analysis/manifest.py" --self open-co set-window-to --replace "$PROVISIONAL_TO" \
+  > "$TMP/restamp-open-co-2.txt" 2>&1
+recapture open-cap > "$TMP/capture-open-cap2.txt"
+cost_open_cap_closed="$(field "$PLANNING_OPEN_CAP" "d['cost_usd']['total']")"
+check "20a. the share after the co-claimant's close equals the share taken while it was open" \
+  "close_enough '$cost_open_cap_closed' '$cost_open_cap'"
+check "20b. and the record no longer names an open claimant" \
+  "[ \"\$(field \"$PLANNING_OPEN_CAP\" \"d['open_claimants']\")\" = '[]' ]"
+check "20c. nor carries open/provisional_to on the claim, the bound now being stamped" \
+  "[ \"\$(field \"$PLANNING_OPEN_CAP\" \"any('open' in e for e in d['sessions'][0]['share_basis'])\")\" = False ]"
 
 echo
 if [ "$fails" -eq 0 ]; then

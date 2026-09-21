@@ -598,8 +598,8 @@ check "17d3. the refusal is the three-cause one, naming the branch check" \
 rm -rf "$FEATURE_DIR/auto"
 
 # ── 18: --all skips a feature whose window is still open ─────────────────────
-# A sweep over the corpus must not freeze a feature feature-close.sh has not captured:
-# a record written here would make that close skip as "already captured" and report the
+# A corpus-wide run must not freeze a feature feature-capture.sh has not captured: a
+# record written here would make that capture skip as "already captured" and report the
 # premature figure. Naming the slug still captures it.
 write_manifest "2026-07-01T00:00:00.000Z" null
 rm -f "$PLANNING"

@@ -54,7 +54,7 @@ Delete this section when the batch has a single level.
 
 **`agentTooling/feature-start.sh` writes this fence** — the slug, the method, the
 branch, the base and `from`, with the id lists empty — and
-`feature-close.sh` stamps `to` when the feature is closed
+`feature-capture.sh` stamps `to` on the branch, provisionally until the merge freezes it
 (`agentTooling/LIFECYCLE.md`). Do not hand-copy it. Only `slug`, `plans` and `branches`
 are required: `method` reads as `"plans"` when absent, `base` as `main`,
 `session_window` as unbounded, and the four id lists as empty. These are the ones that
@@ -68,9 +68,11 @@ go wrong quietly:
   and `build: by hand` respectively. Leave it out for a planned feature; a wrong value
   here moves money between buckets without a warning about which was right.
 - **`base`** — the branch the feature branched from, `main` unless
-  `feature-start.sh --base` said otherwise. `run-review.sh` reads it and exports
+  `feature-start.sh --base` said otherwise. `feature-close.sh` reads it and exports
   `FEATURE_BASE`, which is the base `plans/pr.sh` opens the PR against, so a feature
-  stacked on one that has not merged shows only its own diff. Cost capture ignores it.
+  stacked on one that has not merged shows only its own diff. `run-review.sh` reads it
+  too, to know whether it is on a branch it may commit its pass to. Cost capture ignores
+  it.
 
 - **`branches`** — copy each name from `git branch --show-current`, verbatim. It is
   matched literally against the `gitBranch` in every session transcript, so an added
@@ -95,7 +97,7 @@ go wrong quietly:
   the exception now, not the rule.** `feature-start.sh` pins nothing unless given
   `--pin`: the session that starts a feature is a *router*, it opens several features and
   belongs to none of them, and its spend is routing overhead reported from
-  `plans/routing/<session-id>.json` rather than billed to any feature
+  `plans/features/<slug>/routing.json` rather than billed to any feature
   (`agentTooling/LIFECYCLE.md` → step 2). The coordinator belongs inside the worktree,
   where rule 1 claims it by branch with no pin at all. What is left for this field is the
   case it was written for — a session that genuinely worked on this feature from
@@ -134,12 +136,14 @@ go wrong quietly:
   the parent route claims the architect here too and the ledger refuses the other
   capture as a double claim.
 - **`session_window.to`** — `null` means "still in flight", and open is the right value
-  until the feature closes. `agentTooling/feature-close.sh` sets it, from evidence: one
-  second past the last instant of the sessions this feature's `branches` and
-  `session_window` select and of their subagents, stamped before the capture so the
-  shared-session split runs against the real bound (`agentTooling/LIFECYCLE.md` → step 6).
-  Do not hand-write one, and never widen one already set — `analysis/manifest.py
-  set-window-to --tighten` is the only path that may move it, and only inwards. A window
+  until the feature's first capture. `agentTooling/feature-capture.sh` sets it on the
+  branch, from evidence: one second past the last instant of the sessions this feature's
+  `branches` and `session_window` select and of their subagents, stamped before the
+  capture so the shared-session split runs against the real bound
+  (`agentTooling/LIFECYCLE.md` → step 5). Until the merge it is provisional, and a re-run
+  of the capture after more work moves it either way (`set-window-to --replace`). Do not
+  hand-write one, and never widen one on a merged feature — `analysis/manifest.py
+  set-window-to --tighten` is the only path that may move it then, and only inwards. A window
   left open after the work is done is what goes wrong: two
   open-ended windows on a shared branch claim each other's sessions and price the same
   planning cost twice; `analysis/capture_planning.py` warns when two manifests' branches

@@ -1,6 +1,6 @@
 {
   "slug": "in-repo-worktrees",
-  "generated_at": "2026-09-11T15:14:43.940061+00:00",
+  "generated_at": "2026-09-17T17:36:58.144344+00:00",
   "cost": {
     "method": "direct",
     "planning": 0.0,
@@ -24,7 +24,16 @@
     "recovered": 0.0,
     "unrecoverable_attempts": [],
     "partially_recovered_attempts": [],
-    "shared_sessions": []
+    "shared_sessions": [
+      {
+        "session_id": "d561930d-cc5c-4acd-9b54-d222e9f66c16",
+        "cost_usd": 17.194016,
+        "also_claimed_by": [
+          "vinylCatalogue/discogs-credit-pairing",
+          "vinylCatalogue/discogs-merge-unconfirm-delete"
+        ]
+      }
+    ]
   },
   "time": {
     "method": "direct",

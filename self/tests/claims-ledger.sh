@@ -51,9 +51,10 @@ set -uo pipefail
 #             table naming the session, its dollars and the other feature.
 #   C. the annotate-only path over a FROZEN record (review escalation 1). Two features
 #      closed before either had claimed the other's coordinator — the seven closes of
-#      2026-09-07, and the case item 3 was built for. `sweep.sh` runs
-#      `capture_planning.py --all` with NO `--recapture`, so before this the frozen
-#      records returned "skipped" before the scan and the annotation never appeared:
+#      2026-09-07, and the case item 3 was built for. A corpus-wide
+#      `capture_planning.py --all` carries NO `--recapture`, so before this the frozen
+#      records returned "skipped" before the scan and the annotation never appeared
+#      (`feature-capture.sh` now runs the same refresh, scoped, as `--annotate-frozen`):
 #      C1-C2. one plain `--all` leaves each of the two naming the other — the ledger is
 #             filled for the whole run before any record is annotated, so convergence
 #             does not depend on the order the corpus is swept in;
@@ -68,8 +69,8 @@ set -uo pipefail
 #   D. `--unclaimed --for` prefers the corpus the query is for (review escalation 2).
 #      A `plans/features/<slug>` and a `self/features/<slug>` may share a name, and
 #      matching the pin by slug across both let the OTHER corpus's pin suppress a
-#      genuinely unpinned delegate — silencing feature-close.sh's stop-on-unpinned guard,
-#      whose whole job is to stop on it, and losing its cost with nothing said:
+#      genuinely unpinned delegate — silencing the close's (now feature-capture.sh's)
+#      unpinned-delegate check, whose whole job is to name it, and losing its cost with nothing said:
 #      D1.    with `--self`, the self corpus's same-slug feature pins nothing, so the
 #             delegate IS listed as unclaimed;
 #      D2.    without `--self`, the plans corpus's feature pins it, so it is not;
@@ -300,7 +301,7 @@ check "B14. a planning.json frozen before the share rule reports the old way: sh
 # it starts, so the co-claimant that has not closed yet is exactly the one with no ledger
 # claim. Simulated by stripping also_claimed_by while leaving share_basis in place, on a
 # copy restored immediately after: part C asserts an exact "2 annotated" count over an
-# --all sweep of the whole corpus, and a record left missing its annotation here would be
+# --all run over the whole corpus, and a record left missing its annotation here would be
 # re-annotated there and make that count 3.
 cp "$P_ONE" "$TMP/one-planning.bak"
 python3 - "$P_ONE" "$SHARED" <<'PYEOF'
@@ -323,7 +324,7 @@ check "B16. ...naming the co-claimant recovered from share_basis, not from the l
 check "B17. ...and report.md carries the footnote for it, still not claiming the session is counted in full" \
   'grep -q "$SHARED" "$M_ONE" && grep -q "$REPO/two" "$M_ONE" && ! grep -q "in full" "$M_ONE"'
 
-# Put `one` back the way B13 left it, so part C sweeps the corpus B14/B15 found it with.
+# Put `one` back the way B13 left it, so part C walks the corpus B14/B15 found it with.
 cp "$TMP/one-planning.bak" "$P_ONE"
 report_for one
 
@@ -347,17 +348,17 @@ cp "$P_THREE" "$TMP/three-frozen.json"
 cp "$P_FOUR" "$TMP/four-frozen.json"
 frozen_pre="$(jf "$P_THREE" '[s.get("also_claimed_by") for s in d["sessions"]]')"
 
-# The transcript goes before the sweep, not after: a frozen record's transcripts are
+# The transcript goes before the run, not after: a frozen record's transcripts are
 # expiring — that is why it is frozen — and the annotate path has to work without them.
 rm -f "$PROJECTS/$SHARED2.jsonl"
-check "C5. the shared session's transcript is deleted before the sweep" '[[ ! -f "$PROJECTS/$SHARED2.jsonl" ]]'
+check "C5. the shared session's transcript is deleted before the annotate run" '[[ ! -f "$PROJECTS/$SHARED2.jsonl" ]]'
 check "C0. ...and neither frozen record names the other yet (got ${frozen_pre:-<absent>})" '[[ "$frozen_pre" == "[None]" || "$frozen_pre" == "[[]]" ]]'
 
 all_out="$(capture_all)"; all_rc=$?
 three_also="$(jf "$P_THREE" '[s.get("also_claimed_by") for s in d["sessions"]]')"
 four_also="$(jf "$P_FOUR" '[s.get("also_claimed_by") for s in d["sessions"]]')"
 check "C1. a plain --all annotates the record frozen first (rc $all_rc, got ${three_also:-<absent>})" '[[ $all_rc -eq 0 && "$three_also" == "[['"'"'$REPO/four'"'"']]" ]]'
-check "C2. ...and the other, in the SAME run — convergence does not depend on sweep order (got ${four_also:-<absent>})" '[[ "$four_also" == "[['"'"'$REPO/three'"'"']]" ]]'
+check "C2. ...and the other, in the SAME run — convergence does not depend on the order the corpus is walked in (got ${four_also:-<absent>})" '[[ "$four_also" == "[['"'"'$REPO/three'"'"']]" ]]'
 check "C3. nothing but the annotation moved: dollars, durations, captured_at, priced rows" \
   '[[ "$(same_but_annotation "$TMP/three-frozen.json" "$P_THREE")" == "same" ]] && [[ "$(same_but_annotation "$TMP/four-frozen.json" "$P_FOUR")" == "same" ]]'
 check "C4. the run reports them as annotated, not skipped" \

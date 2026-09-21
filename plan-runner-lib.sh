@@ -64,6 +64,26 @@ CAPTURE_TMPDIR_TEMPLATE="plan-capture.XXXXXX"
 # with something a caller can tell apart from a model failure.
 CAPTURE_SETUP_RC=70
 
+# ── What the executor's environment carries ──────────────────────────────────
+# Two variables, read by hooks/allow-repo-commands.sh and by nothing else
+# (hooks/README.md → "The opaque shape"; ../RUNNER.md → "The executor's environment").
+# HEADLESS turns the hook's escalation from `ask` into silence: an `ask` is a question
+# for a human, and there is none at a terminal here, so the runner's own non-interactive
+# policy decides instead. SCRATCH names a per-pass directory the hook approves scripts
+# from by name — the place a denied heredoc is supposed to become a file. It lives
+# INSIDE CAPTURE_TMPDIR so the capture's own teardown (and on_interrupt's) removes it
+# with everything else; there is no second mktemp -d to leak.
+EXECUTOR_HEADLESS_ENV="AGENTTOOLING_HEADLESS"
+EXECUTOR_HEADLESS_VALUE=1
+EXECUTOR_SCRATCH_ENV="AGENTTOOLING_SCRATCH"
+EXECUTOR_SCRATCH_DIR_NAME="scratch"
+# `--permission-mode acceptEdits` auto-accepts an Edit or a Write only under the
+# executor's WORKING directory, and the scratch directory is under $TMPDIR — outside it.
+# Without this flag the prompt tells the executor to write a script somewhere its own
+# Write tool is then refused, so the opaque deny's rewrite has nowhere to land and the
+# feature costs two turns and changes nothing.
+EXECUTOR_ADD_DIR_FLAG="--add-dir"
+
 # ── One definition of the events in a captured stream ────────────────────────
 # `claude`'s stderr is merged into the stream (`2>&1` in run_plan), so a runtime warning
 # or a crash trace can leave a non-JSON line in it, and a killed run can leave a truncated
@@ -111,10 +131,61 @@ STREAM_HARD_KILL_LIMIT_JQ="
     and ((\$last | tostring) | test(\"$STREAM_LIMIT_TEXT_RE\"; \"i\"))
 "
 
+# ── plan_end, and the one wrapper that finishes the stamp itself ──────────────
+# A plan's closing stamp ordinarily lands the moment finalize_plan has its exit code.
+# run-review.sh needs two details that do not exist yet at that moment: the pass's
+# `verdict`, and the `head` its own commit of the pass produces — the sha
+# feature-close.sh compares HEAD against, which cannot be known before the commit is
+# made (self/DESIGN-2026-09-17-close-and-review-rounds.md §3). So it sets
+# PLAN_END_DEFERRED=1 and calls flush_plan_end itself afterwards, with those details.
+#
+# Exactly one plan_end per plan either way: a deferral holds only the LATEST plan, and a
+# second plan finishing flushes the one before it first. The EXIT trap flushes whatever is
+# still held, so a pass that fails or is interrupted after a plan finished still records
+# it — and a wrapper that has already flushed leaves nothing for the trap to write.
+PLAN_END_DEFERRED=0
+PLAN_END_HELD_PLAN=""
+PLAN_END_HELD_RC=""
+
+hold_or_stamp_plan_end() {
+  local plan="$1" rc="$2"
+  if (( PLAN_END_DEFERRED )); then
+    flush_plan_end
+    PLAN_END_HELD_PLAN="$plan"
+    PLAN_END_HELD_RC="$rc"
+    return 0
+  fi
+  stamp_timing plan_end plan="$plan" queue="$QUEUE" rc="$rc"
+}
+
+# flush_plan_end [key=value ...] — write the held plan_end, with any extra details, and
+# forget it. A no-op when nothing is held.
+flush_plan_end() {
+  [[ -n "$PLAN_END_HELD_PLAN" ]] || return 0
+  local plan="$PLAN_END_HELD_PLAN" rc="$PLAN_END_HELD_RC"
+  PLAN_END_HELD_PLAN=""
+  PLAN_END_HELD_RC=""
+  stamp_timing plan_end plan="$plan" queue="$QUEUE" rc="$rc" "$@"
+}
+
+# stamp_pass_end — the pass's closing timing stamp, written at most once per pass. The
+# EXIT trap (print_status) is its ordinary writer; run-review.sh writes it EARLY, before
+# the cost capture it runs after a clean pass, so the stamp rides the capture's commit on
+# the branch — and a second one from the trap would then dirty the worktree after that
+# commit, with a duplicate the report reads as a second pass end.
+PASS_END_STAMPED=0
+stamp_pass_end() {
+  if (( PASS_END_STAMPED )); then return 0; fi
+  PASS_END_STAMPED=1
+  stamp_timing pass_end queue="${QUEUE:-}" reason="$exit_reason"
+}
+
 print_status() {
   # Runs from the EXIT trap, so every way out of a pass — clean, failed, interrupted,
-  # paused at a sentinel — leaves the same closing stamp with the reason it stopped.
-  stamp_timing pass_end queue="${QUEUE:-}" reason="$exit_reason"
+  # paused at a sentinel — leaves the same closing stamps with the reason it stopped,
+  # unless the pass already wrote them (flush_plan_end, stamp_pass_end).
+  flush_plan_end
+  stamp_pass_end
   echo ""
   echo "=================================================="
   echo "  $SUMMARY_TITLE [${FEATURE_SLUG:-none}]: $exit_reason"
@@ -600,6 +671,17 @@ stream_shows_budget_exhausted() {
      "$stream_file" >/dev/null 2>&1
 }
 
+# One line appended to whatever build_prompt composed, in every runner at once. The
+# permission hook denies a heredoc, a `-c` string and a `$(…)` in a path and tells the
+# model to write a script and run it by name (hooks/README.md → "The opaque shape"); this
+# is what says WHERE. Appended here rather than added to each runner's own prompt
+# template because the directory only exists once run_plan has made the capture
+# directory, and because the hook that reads it is one policy, not three.
+executor_scratch_note() {          # executor_scratch_note <scratch dir>
+  printf '\n\nScratch directory for this pass: %s\nWhen a command needs a heredoc, a `python3 -c`/`bash -c` string, a loop or a `$(…)` inside a path, the permission policy denies it: write the script there with the Write tool and run it by name (`bash %s/script.sh`, `python3 %s/script.py`) instead. The directory is removed when this pass ends.\n' \
+    "$1" "$1" "$1"
+}
+
 # Run one plan. Caller must have already placed plan_path in $INPROGRESS_DIR
 # and ensured the sidecar log exists. Returns:
 #   0 = success
@@ -691,11 +773,21 @@ run_plan() {
   # CLAUDE_BUDGET_ARGS is optional and may be unset (run-plans.sh sets no cap), so it
   # gets the `${a[@]+"${a[@]}"}` form: under `set -u` on bash 3.2 — still the system
   # bash on macOS — expanding an empty array the naive way aborts the run.
-  claude -p --model "$model" --permission-mode acceptEdits \
+  # The executor's scratch directory, inside the capture directory so the teardown below
+  # — and on_interrupt's, on the paths that never reach it — removes it with everything
+  # else. `env` rather than a `NAME=value` prefix because the names are constants here
+  # and bash 3.2 cannot assign through one; it execs, so $! is still claude's own pid.
+  local scratch_dir="$CAPTURE_TMPDIR/$EXECUTOR_SCRATCH_DIR_NAME"
+  mkdir -p "$scratch_dir"
+
+  env "$EXECUTOR_HEADLESS_ENV=$EXECUTOR_HEADLESS_VALUE" \
+      "$EXECUTOR_SCRATCH_ENV=$scratch_dir" \
+    claude -p --model "$model" --permission-mode acceptEdits \
+    "$EXECUTOR_ADD_DIR_FLAG" "$scratch_dir" \
     "${CLAUDE_TOOL_ARGS[@]}" \
     ${CLAUDE_BUDGET_ARGS[@]+"${CLAUDE_BUDGET_ARGS[@]}"} \
     --output-format stream-json --verbose \
-    "$(build_prompt "$plan_path" "$log_path")" \
+    "$(build_prompt "$plan_path" "$log_path")$(executor_scratch_note "$scratch_dir")" \
     > "$stream_file" 2>&1 &
   CAPTURE_CLAUDE_PID=$!
 
@@ -951,7 +1043,7 @@ finalize_plan() {
   plan_name="$(basename "$plan_path")"
 
   write_usage_sidecar "$plan_path" "$rc" "$stream_path" "$usage_path"
-  stamp_timing plan_end plan="${plan_name%.md}" queue="$QUEUE" rc="$rc"
+  hold_or_stamp_plan_end "${plan_name%.md}" "$rc"
 
   if (( rc == 2 )); then
     exit_reason="stopped: Claude usage limit reached on $plan_name (left in inprogress for next run)"
@@ -1085,6 +1177,10 @@ run_all() {
   mkdir -p "$INCOMPLETE_DIR" "$INPROGRESS_DIR" "$COMPLETE_DIR" "$FAILED_DIR"
 
   echo "Feature: $FEATURE_SLUG   queue: $QUEUE"
+  # The round every stamp of this pass belongs to, fixed once, here: a review plan moves
+  # into review/complete/ partway through its own pass, so a stamp written after that
+  # would otherwise compute one round too many (plan-runner-roots.sh → "Rounds").
+  TIMING_ROUND="$(next_round "$FEATURE_SLUG")"
   stamp_timing pass_start queue="$QUEUE"
 
   # Report the resolved slug to a caller that asked for it, so run-batch.sh can hand the

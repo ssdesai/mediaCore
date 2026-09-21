@@ -15,6 +15,11 @@ set -uo pipefail
 # and the tier-2 escalation NN-escalation-MODEL.md (verify/ only, synthesized mid-batch
 # by run-escalation-plan.sh so no manifest can list it — exempt from check 11 alone).
 #
+# Check 7 covers the whole of a `session_window`: both bounds carry a zone, and `to` is
+# either null — the feature is in flight — or an instant strictly after `from`. An empty
+# window is not refused anywhere downstream; it simply owns no session, and the feature
+# reports $0.00.
+#
 # Prints one line per check, fourteen in order:
 #   ok    <label>
 #   FAIL  <label>: <detail>
@@ -35,6 +40,10 @@ GATE_FILENAME_RE='^[0-9]+-gate\.md$'
 # reason. Recognised under verify/ only, the way NN-gate.md is recognised under auto/.
 ESCALATION_FILENAME_RE="^[0-9]+-escalation-(${MODEL_RE})\\.md\$"
 ZONE_RE='(Z|[+-][0-9]{2}:[0-9]{2})$'
+# Check 7's label. One check over both `session_window` bounds — each carries a zone, and
+# `to` is null (in flight) or strictly after `from`. Two checks would have printed two
+# lines about one fence; the detail says which half failed.
+WINDOW_LABEL="window bounds carry a zone and to follows from"
 TODO_MARKER="@@TODO@@"
 QUEUES=(auto verify review)
 STATES=(incomplete inprogress complete failed)
@@ -123,27 +132,68 @@ else
   failc "branches non-empty" "branches is empty or absent"
 fi
 
-# 7. window bounds carry a zone
+# 7. window bounds carry a zone, and `to` is null or strictly after `from`
+#
+# Both halves are about a bound that cannot describe itself. A zone-less one is read as
+# UTC and is silently off by the author's offset (analysis/README.md → "Every instant is
+# UTC"); a `to` at or before `from` is an EMPTY window, which
+# `capture_planning.is_empty_window` drops from every share split, so the feature owns
+# nothing and reports $0.00 with no refusal anywhere — `recovered-totals-stay-honest`
+# carries exactly that, `to` 13 minutes before `from`
+# (self/DESIGN-2026-09-16-lifecycle-restructure.md §1). A null `to` is "still in flight"
+# and is the right value until the feature's first capture, so it is never out of order.
 WINDOW_JSON="$(manifest_field "$MANIFEST" session_window)"
 window_detail=""
+# add_window_detail <text> — one check, one line: several findings over the same fence
+# are joined rather than printed apart.
+add_window_detail() {
+  if [[ -n "$window_detail" ]]; then window_detail="$window_detail; $1"; else window_detail="$1"; fi
+}
+# window_order <from> <to> — "ok", "empty" (to at or before from) or "unparsed".
+# Compared as INSTANTS, never as text: `2026-09-04T14:00:00-04:00` sorts before
+# `2026-09-04T17:00:00Z` as a string and is an hour after it as a moment, which is the
+# case a string comparison gets backwards. A bound with no zone is read as UTC, exactly
+# as the capture reads it — the zone half above is what reports that separately.
+window_order() {
+  python3 -B -c 'import sys
+from datetime import datetime, timezone
+
+def moment(value):
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+start, end = moment(sys.argv[1]), moment(sys.argv[2])
+if start is None or end is None:
+    print("unparsed")
+else:
+    print("ok" if end > start else "empty")' "$1" "$2" 2>/dev/null
+}
 if [[ -n "$WINDOW_JSON" ]]; then
   FROM_VAL="$(jq -r '.from // empty' <<<"$WINDOW_JSON" 2>/dev/null)"
   TO_VAL="$(jq -r '.to // empty' <<<"$WINDOW_JSON" 2>/dev/null)"
   if [[ -n "$FROM_VAL" ]] && ! [[ "$FROM_VAL" =~ $ZONE_RE ]]; then
-    window_detail="from '$FROM_VAL' carries no zone"
+    add_window_detail "from '$FROM_VAL' carries no zone"
   fi
   if [[ -n "$TO_VAL" ]] && ! [[ "$TO_VAL" =~ $ZONE_RE ]]; then
-    if [[ -n "$window_detail" ]]; then
-      window_detail="$window_detail; to '$TO_VAL' carries no zone"
-    else
-      window_detail="to '$TO_VAL' carries no zone"
-    fi
+    add_window_detail "to '$TO_VAL' carries no zone"
+  fi
+  if [[ -n "$FROM_VAL" && -n "$TO_VAL" ]]; then
+    case "$(window_order "$FROM_VAL" "$TO_VAL")" in
+      empty)
+        add_window_detail "to '$TO_VAL' is at or before from '$FROM_VAL' — an empty window owns nothing" ;;
+      ok) ;;
+      *)
+        add_window_detail "from '$FROM_VAL' and to '$TO_VAL' do not both parse as instants" ;;
+    esac
   fi
 fi
 if [[ -z "$window_detail" ]]; then
-  pass "window bounds carry a zone"
+  pass "$WINDOW_LABEL"
 else
-  failc "window bounds carry a zone" "$window_detail"
+  failc "$WINDOW_LABEL" "$window_detail"
 fi
 
 # 8–13 share one pass over every plan file under D/{auto,verify,review}/{incomplete,

@@ -132,9 +132,9 @@ shell_scripts=(
   sync-plans.sh
   stamp-timing.sh
   feature-start.sh
+  feature-capture.sh
   feature-close.sh
   check-plans.sh
-  sweep.sh
   update.sh
   self/gate.sh
   self/pr.sh
@@ -149,23 +149,30 @@ shell_scripts=(
   self/tests/claims-ledger.sh
   self/tests/session-share.sh
   self/tests/session-claims.sh
+  self/tests/manifest-window.sh
   self/tests/direct-timing.sh
   self/tests/stale-failed-sidecars.sh
   self/tests/stream-capture.sh
   self/tests/usage-limit-kill.sh
   self/tests/batch-sigpipe.sh
   self/tests/report-footnotes.sh
+  self/tests/report-rounds.sh
   self/tests/feature-lifecycle.sh
+  self/tests/verdict-readers.sh
   self/tests/routing-record.sh
+  self/tests/capture-from-worktree.sh
   self/tests/worktree-claims.sh
   self/tests/recover-at-close.sh
   self/tests/recover-duration.sh
   self/tests/check-plans.sh
   self/tests/sync-check.sh
-  self/tests/sweep.sh
+  self/tests/audit-fixes.sh
   self/tests/template-versions.sh
+  self/tests/open-session.sh
   self/tests/allow-repo-commands.sh
+  self/tests/hook-escalation.sh
   self/tests/hook-wiring.sh
+  self/tests/policy-table.sh
   self/tests/plan-numbering.sh
   run-escalation-plan.sh
   templates/plans/gate.sh
@@ -199,31 +206,50 @@ record "subagent capture self-test" bash self/tests/subagent-capture.sh
 record "claims ledger self-test" bash self/tests/claims-ledger.sh
 record "session share self-test" bash self/tests/session-share.sh
 record "session claims self-test" bash self/tests/session-claims.sh
+record "manifest window self-test" bash self/tests/manifest-window.sh
 record "direct timing self-test" bash self/tests/direct-timing.sh
 record "stale failed sidecars self-test" bash self/tests/stale-failed-sidecars.sh
 record "stream capture self-test" bash self/tests/stream-capture.sh
 record "usage limit kill self-test" bash self/tests/usage-limit-kill.sh
 record "batch sigpipe self-test" bash self/tests/batch-sigpipe.sh
 record "report footnotes self-test" bash self/tests/report-footnotes.sh
+record "report rounds self-test" bash self/tests/report-rounds.sh
 record "feature lifecycle self-test" bash self/tests/feature-lifecycle.sh
+# The round readers the close and the batch branch on, called directly: the first line
+# rule and the numeric stem order are invisible from a whole-lifecycle run.
+record "verdict readers self-test" bash self/tests/verdict-readers.sh
 record "routing record self-test" bash self/tests/routing-record.sh
+record "capture from worktree self-test" bash self/tests/capture-from-worktree.sh
 record "worktree claims self-test" bash self/tests/worktree-claims.sh
 record "recover at close self-test" bash self/tests/recover-at-close.sh
 record "recover duration self-test" bash self/tests/recover-duration.sh
 record "check plans self-test" bash self/tests/check-plans.sh
 record "sync check self-test" bash self/tests/sync-check.sh
-record "sweep self-test" bash self/tests/sweep.sh
+record "audit fixes self-test" bash self/tests/audit-fixes.sh
 # Reads the checked-in templates rather than driving a runner, but blocking for the same
 # reason as the rest: a template body edited without a version bump reports `in-sync` in
 # every consuming repo while their seeded copies are stale (self/tests/README.md).
 record "template versions self-test" bash self/tests/template-versions.sh
+# The session opener's BODY, with osascript and claude stubbed on PATH: the worktree path
+# reaches the session intact through both escaping layers. feature-lifecycle.sh S5 reads
+# the same two files as text; this one runs them, which is the only way a quoting bug in
+# a path nobody has yet is caught before it bills a session to the wrong branch.
+record "open session self-test" bash self/tests/open-session.sh
 # The auto-approve hook and its wiring (hooks/README.md). Blocking: every case in the
 # first is a bypass that once approved a read outside the tree, a write, or an
 # execution, and the second asserts the wiring never removes a repo's own settings.
 record "allow repo commands self-test" bash self/tests/allow-repo-commands.sh
+# The other half of the same policy: the per-session escalation counter, the headless
+# fall-through and the scratch entry point, none of which a single decision can show.
+record "hook escalation self-test" bash self/tests/hook-escalation.sh
 record "hook wiring self-test" bash self/tests/hook-wiring.sh
-# The corpus numbers its plans as one sequence (self/PROJECT_FACTS.md), and the start
-# script is the only thing that hands out the next number.
+# The table both of them read (hooks/policy.py): the prefix rules it renders must cover
+# every mutating entry, and the hook's own reader must deny each one. This is what keeps
+# the two halves of the git policy from drifting apart again.
+record "policy table self-test" bash self/tests/policy-table.sh
+# A new feature's review stub is always 01, whatever another feature's corpus holds
+# (self/PROJECT_FACTS.md) — one rule, both modes, and the start script is the only thing
+# that writes that number.
 record "plan numbering self-test" bash self/tests/plan-numbering.sh
 
 echo "=== gate: python syntax ==="
@@ -233,7 +259,7 @@ echo "=== gate: python syntax ==="
 record "py_compile analysis" python3 -m py_compile analysis/*.py
 # The hook keeps a .sh name so its settings.json entry reads as a hook script; it is
 # Python, and this is the one place its syntax is checked without running it.
-record "py_compile hooks" python3 -m py_compile hooks/wire-settings.py hooks/allow-repo-commands.sh
+record "py_compile hooks" python3 -m py_compile hooks/policy.py hooks/wire-settings.py hooks/allow-repo-commands.sh
 
 echo "=== gate: permission policy ==="
 # This checkout's .claude/settings.json is not hand-authored: hooks/wire-settings.py

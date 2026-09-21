@@ -13,10 +13,10 @@ follows it. That now includes every script that runs `feature-start.sh`
 (`feature-lifecycle.sh`, `plan-numbering.sh`), because a start derives its routing record
 from the running session's transcript.
 
-**Every sandbox that copies `capture_planning.py` or `report.py` copies `routing.py`
-too.** Both import it — the first for the router predicate, the second for the Routing
-table — and a missing copy is an `ImportError` in every capture rather than one failed
-assertion. There is no
+**Every sandbox that copies `capture_planning.py`, `report.py` or `manifest.py` copies
+`routing.py` too.** All three import it — the first for the router predicate, the second
+for the Routing table, the third for `set-window-from`'s transcript lookup — and a
+missing copy is an `ImportError` in every capture rather than one failed assertion. There is no
 narrower override, deliberately: one that moved the ledger alone would let a test write
 the ledger under `mktemp -d` while still reading the machine's own transcripts.
 
@@ -47,8 +47,10 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   its build pass, **including when `auto/incomplete/` is empty** — the ladder is owed to
   the level, not to the queue behind it, and without it a batch killed during its last
   level's level-verify reports that level's failure only at the final gate, with no tier
-  in between — and a settled level is not re-settled on a re-run; `run-review.sh` opens
-  the PR when the cap fires after the report was written and not when it fires before; a sentinel's `expected-red:`/`defer:` lines reach
+  in between — and a settled level is not re-settled on a re-run; `run-review.sh` stamps
+  the round's `verdict` (read from the report's first line) when the cap fires *after* the
+  report was written and nothing at all when it fires before, and opens no PR either way,
+  that being `feature-close.sh`'s; a sentinel's `expected-red:`/`defer:` lines reach
   the gate at that level only and make it green without a tier. It also copies
   `check-plans.sh` into the sandbox, so the corpus lint really runs at the head of every
   `run-batch.sh` call here rather than being skipped by that script's `-x` guard: two
@@ -61,14 +63,26 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   `plan-runner-roots.sh`.
 - `feature-lifecycle.sh` — stands up a throwaway agentTooling checkout that is a real git
   repo with a bare `origin` beside it, copies in the real `feature-start.sh`,
-  `feature-close.sh`, `run-review.sh`, `plan-runner-{lib,roots}.sh`, `self/pr.sh` and
-  `analysis/*.py`, adds a stub gate, a stub setup hook and stub `claude`/`gh` on `PATH`,
-  and drives the whole loop with `--self` — start a feature, refuse its stub brief,
-  review it, open its PR, merge it, close it — synthesizing under a redirected `$HOME`
-  the transcripts the close captures. The rule under test (`../../LIFECYCLE.md`): for
-  slug `S` and primary checkout `R`, branch `S`, worktree `R/.worktrees/S` inside the
-  primary, and every session a feature costs is either launched in that worktree or
-  pinned by id. Its `project_dir` helper mangles `.` as well as `/`, as Claude Code does,
+  `feature-capture.sh`, `feature-close.sh`, all four runners (`run-plans.sh`,
+  `run-verify.sh`, `run-review.sh`, `run-batch.sh`), `stamp-timing.sh`,
+  `plan-runner-{lib,roots}.sh`, `self/pr.sh`, `templates/plans/pr.sh` (outside the repo,
+  as a consumer's copy) and `analysis/*.py` including `recover_attempts.py`, adds a stub
+  gate, a stub setup hook and stub `claude`/`gh` on `PATH`, and drives the whole loop
+  with `--self` — start a feature, refuse its stub brief, capture its cost on the branch,
+  review it (which records the round's verdict and stops), close it (PR, stamp, capture,
+  merge request), merge it, watch the next start prune
+  it — synthesizing under a redirected `$HOME` the transcripts the captures read. The stub
+  `claude` writes the review report for the runner to read back
+  (`CLAUDE_REPORT_OUT`, and `CLAUDE_REPORT_FIRST_LINE` for the verdict under test), and
+  the stub `gh` remembers per branch that a PR was created — so a second close finds it
+  already open the way a forge would — and records the ORIGIN branch's head at the moment
+  of a `pr merge` (`GH_MERGE_HEAD_OUT`), which is how the close's ordering is asserted
+  rather than assumed. Every
+  capture is run from `$TMP`, outside every checkout, so nothing cwd-relative inside the
+  script could reach the repo running the test. The rule under test
+  (`../../LIFECYCLE.md`): for slug `S` and primary checkout `R`, branch `S`, worktree
+  `R/.worktrees/S` inside the primary, every session a feature costs is either launched in
+  that worktree or pinned by id, and the cost record is written on `S` before the merge. Its `project_dir` helper mangles `.` as well as `/`, as Claude Code does,
   which is what files a nested worktree's transcripts under `…-R--worktrees-S`. Asserts
   that `feature-start.sh` creates the branch and worktree off `origin/main` at
   `R/.worktrees/S` (nothing at the legacy `R-S`), leaving the primary on `main` and
@@ -78,9 +92,12 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   included) intact, and nothing tracked touched — writes the manifest (`branches [S]`, `base main`, a `Z`
   `from`, `to` null, and **no pin**: the session that runs a start is a router, never a
   claimant) and a
-  `@@TODO@@` review stub numbered next in the global sequence, commits `S: start` with
-  the routing record for that router (`self/routing/<session-id>.json`, naming S in
-  `features_started`) inside it, names the worktree in its "Next" block without teaching
+  `@@TODO@@` review stub numbered `01`, whatever another feature's corpus holds
+  (`plan-numbering.sh` is the rule's own test), commits `S: start` with
+  the routing record for that router inside the feature directory
+  (`self/features/S/routing.json`, naming S in `features_started` and the router as its
+  `session_id`, with nothing written beside the corpus at `self/routing/`),
+  names the worktree in its "Next" block without teaching
   a chained `cd`, and
   refuses a bad slug, an existing branch, a worktree path already taken and a worktree's
   copy while creating nothing; that `--pin` restores the pin, `--no-pin` is an accepted
@@ -92,37 +109,136 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   `main` still lags, which is where `git branch -d` refuses and leaves a removed worktree
   whose branch the output claimed was gone; that `--open` runs the repo's
   `open-session.sh` with the worktree path as its only argument (a recording stub — the
-  seeded script talks to Terminal.app and no test runs its body) and that both copies of
-  that script quote the path inside the string they hand to Terminal.app; and that a
+  seeded script talks to Terminal.app, and `open-session.sh` in this directory is what
+  runs its body) and that both copies of that script pass the path through **both**
+  escaping layers before it reaches the string they hand to Terminal.app — `S5d` the shell
+  quoting, `S5e` the AppleScript escaping, `S5f` that the bare single-quoted `$WORKTREE`
+  of template-version 2 is gone; and that a
   `--self` start from an agentTooling **vendored** one directory inside the primary
-  commits `agentTooling/self/routing/<id>.json` along with the feature directory — a
+  commits the feature directory with `agentTooling/self/features/<slug>/routing.json`
+  inside it, and names that prefixed path in its output — a
   second, smaller scaffold built from `$AT`'s first commit with `git archive`, since the
-  main one is a standalone checkout by construction. Its prune fixture starts
-  its two candidates with no session id on purpose: two branches cut from one `main` that
-  each *add* the same `self/routing/<id>.json` are an add/add conflict, resolved by taking
-  the side with the later `captured_at`, which is the record's own accepted cost
-  (design §3.4) and not what that phase is about;
-  that `run-review.sh` files a brief still carrying `@@TODO@@` to `failed/` without
-  calling `claude`, and that a real one reaches the PR hook, which pushes `S` itself and
-  calls `pr create --base main --head S`, honours `FEATURE_BASE`, and refuses on the base
-  branch; and that `feature-close.sh` refuses from a worktree, on an unmerged branch and
-  on a dirty primary, stops on an unclaimed delegate whose brief names the feature until
-  it is pinned while a sibling delegate briefed for `S-two` is never taken for one of
-  `S`'s and never stops it, records `selected_by`/`cwd` for a branch-selected and a pinned session
-  alike, carries the review pass's trailing timing stamps home — the `pr_opened` line
-  with its URL, written after the PR hook had already committed, reaches `main` exactly
-  once, and a second close over a kept worktree duplicates nothing — stamps `to`, commits
-  exactly the cost files as `S: cost records`, prints one
-  `pinned    N delegate(s) already pinned in the manifest` line instead of telling the
-  human to pin a delegate the manifest already pins, removes the
-  worktree and branch (keeping both under `--keep-worktree --no-push`), and writes and
-  stamps nothing when the capture matches nothing — rolling that carry back, so a refused
-  close leaves the primary byte-identical and clean rather than dirty and refusing its own
-  re-run. No model, no network. A missing
-  script fails its own assertions loudly rather than aborting the run, the convention
-  `cost-recovery.sh` uses.
-  Its **W** phase is where `session_window.to` comes from
-  (`self/features/claim-window-precision/README.md`, item 1). Its fixture moves the
+  main one is a standalone checkout by construction. Most features it later **merges** are
+  started with no session id (`start_unrouted`), which is simply the cheaper fixture; the
+  routed case, two features one router starts from one `main`, is **MR** below. The first **S1** step
+  also asserts the printed "Next" names `feature-close.sh --self S` as what opens the PR
+  and still ends at the merge — the two steps after a clean verdict, in the start's own
+  last lines.
+  **T1**: `run-review.sh` files a brief still carrying `@@TODO@@` to `failed/` without
+  calling `claude` or the PR hook. **C1** (`capture-on-branch`, design §3.2): after a
+  commit of work, `feature-capture.sh` run from the worktree commits `S: cost records`
+  over it and pushes the BRANCH — the bare remote's `S` carries `planning.json`,
+  `report.*`, `timing.jsonl` and the manifest with `to` exactly one second past the
+  session's instant, the remote's `main` ref is unchanged, the worktree is clean and
+  present, the worktree session is claimed by branch with its `cwd`; a delegate of a
+  coordinator on `main` whose brief names `S` and that no route claims is a **warning**
+  line naming its id and the `"subagents"` pin, and a sibling briefed for `S-two` is never
+  **warned** about (it is named once, in the residue, which is the corpus's listing and not
+  this feature's); the router's routing record, refreshed from the router transcript
+  planted for it, gains a cost and rides the commit. **C3**, the residue the retired weekly
+  sweep used to print (design §3.5): the capture's output carries a `=== residue ===`
+  section, after `what planning.json claims` and before `=== commit ===`, holding the rate
+  table's verified date, the `main` session no feature claims and the unclaimed delegates —
+  and NOT the router that started `S`, whose spend is routing overhead rather than an
+  unclaimed remainder — while the capture still exits 0. **C2**: a later line in the session and a second
+  capture move `to` LATER, rewrite `planning.json` in a second cost commit, and meet no
+  refusal or already-captured skip. **N1**: a feature no routing record names captures
+  with no word about routing. **V1**, a clean round
+  (`../DESIGN-2026-09-17-close-and-review-rounds.md` §3 and §9): with a review edit in the
+  tree, the pass commits `S: review round 1` carrying that edit, stamps a `plan_end` with
+  `verdict=clean`, `head=` the sha of that very commit and `round=1`, writes exactly one
+  `plan_end` and one `pass_end` (the held stamp is flushed once, and the EXIT trap adds
+  none), opens no PR, pushes nothing, adds no cost commit, leaves `timing.jsonl` as the
+  ONLY dirty path, and names `feature-close.sh --self S` as the next step.
+  **T3**: a brief that merely mentions the marker mid-line runs; its feature has
+  no session, so the CLOSE's capture refuses — the close exits non-zero with the
+  `feature-capture.sh --self <slug>` re-run command, the PR is open all the same, no merge
+  is ever requested (the record is not pushed, which is the whole reason for the order),
+  and `to` is rolled back to null.
+  **T4**, where the forge is unreachable: with the stub `gh` failing `auth status`
+  (`GH_AUTH_RC=1`), the review pass makes no forge call at all and commits its own round,
+  then the close's `pr.sh` takes its `skip` path and opens nothing while the capture still
+  commits `<slug>: cost records` over the round's commit, leaving a clean worktree with no
+  "capture exited" line — the shape that used to fail every clean review in a repo with no
+  forge login. **T5**: the review runner invoked from the primary on `main` commits
+  nothing, says it is on the feature's base and left the output uncommitted, leaves the
+  primary's work in progress where it was, and touches no forge and no capture.
+  **P1**: `pr.sh` honours `FEATURE_BASE`, refuses on the base branch, and both copies carry
+  identical logic below their REPO-SPECIFIC line and never `checkout -b`. **P2**,
+  `PR_AUTO_MERGE` behind the second entry point: the OPEN path makes no `pr merge` call
+  even with it set, `--merge-request` with it set makes exactly one `pr merge … --auto`
+  asking for `--merge` and never `--squash` (the prune and the post-merge capture both
+  decide "merged" by ancestry, which a squash merge never gives) and opens no PR of its
+  own, `--merge-request` with it unset exits 0 saying nothing was requested, `self/pr.sh`
+  makes no call even with it set, and both copies read `template-version 4`.
+  **X1**, the close's refusals, each asserted to come before any `pr create`: from the
+  primary (not on the feature's branch), on a feature no review has finished (naming
+  `run-review.sh`), and after a commit whose subject is not the harness's own follows the
+  judged head (naming its short sha). **X4** is the fourth, and the one that used to be the
+  capture's alone: an untracked `NOTES.md.tmp` inside the feature directory is not a cost
+  record, so the close names that path, the forge stub's log is empty (not merely free of
+  `pr create` — nothing was called at all), the refusal says nothing was written and no PR
+  was opened, and the same close exits 0 once the file is gone, which is what keeps the
+  assertion from passing for some other reason.
+  **V2**, an escalated round: the pass still exits 0, `plan_end` carries
+  `verdict=escalated` and `round=1`, the report is copied byte for byte to
+  `escalations/<stem>.md` and rides the `review round 1` commit, no PR and no capture run
+  and the branch is never pushed, the output names the brief and the next round's steps
+  (`set-plans` included), and the close refuses naming that file. **V3**: a report whose
+  first line carries no verdict stamps `verdict=unreadable`, says so, writes the brief and
+  is refused by the close exactly like an escalated one — fail closed.
+  **RD**, rounds across a rework: round 1 escalates, a by-hand
+  `stamp-timing.sh … checkpoint` during the rework reads `round=2` (computed fresh, with
+  nobody passing it), a second brief at a cheaper model (`NN+1-review-sonnet.md`) comes
+  back clean with `round=2` on its stamps and a `review round 2` commit, and the close then
+  succeeds — opening the PR, committing the records, stamping `pr_opened` with `round=2`,
+  the round that closed, and requesting no merge because `self/pr.sh` keeps auto-merge off
+  whatever the environment says. **X2**, the close's order and the race it closes: with the
+  template `pr.sh` committed on the branch and `PR_AUTO_MERGE=1`, `pr create` precedes
+  `pr merge`, the cost records are committed and pushed, `pr_opened` carries the PR url and
+  rides that commit, **the origin head recorded at the `pr merge` call is already the cost
+  commit**, there is exactly one merge request, and the last lines name the PR and the
+  merge. **X3**: a second close run exits 0, finds the PR already open and opens no second
+  one, and ends with one record, the cost commit on top and a clean worktree.
+  **X5** is the consuming repo that never hand-merged the version-4 edits: a fixture
+  `pr.sh` built from the real template with its `# template-version:` line rewritten to 3,
+  committed on the branch, drives the close's skip branch — it names 3 and the 4 it needs,
+  the forge log holds exactly one `pr create` and no `pr merge`, the cost records are
+  committed all the same, and the close exits 0.
+  **RC** is where the close's round comes from: a round-2 review whose budget cap fired
+  after it wrote a clean report (the stub's `CLAUDE_STUB_BUDGET_CAP`, with the previous
+  round's report removed first so `report_fingerprint` sees this round's as new) is filed
+  to `review/failed/`, so `review/complete/` still holds one plan while the `plan_end`
+  carries `verdict=clean`, `round=2` and the head it judged — and the close's banner and
+  its `pr_opened` stamp both say 2, where the completed count would have said 1. **RF** is
+  the fallback beside it: with `round` stripped from every `plan_end`, the same close says
+  1, which is that count.
+  **B1/B2**, `run-batch.sh` ending a round: over empty build and verify queues (a clean
+  no-op) a clean review makes it call the close — `pr create` seen, the record written and
+  committed — and say so, while an escalated one exits 1 with no PR, no record, and the
+  rework brief's path printed. **M1**: merging `S` into the remote's `main` and starting another feature
+  prunes `S`'s worktree and local branch and pushes nothing. **MR** is the merge the
+  routing record used to break (`../DESIGN-2026-09-18-ledger-and-routing.md` §1): one
+  router session starts two features off the same `main`, the second **before** the first
+  merges — so the two records differ in `features_started` and `captured_at`, which is
+  what made them a conflict — and both merge in turn with no conflict and no unmerged
+  path, `main` carries a `routing.json` inside each feature directory, and
+  `report.py --all`'s Routing table holds exactly one row for that router naming both
+  slugs. Started after the first merges it would assert nothing: `main` would already
+  carry the file. RED before the record moved, with the second merge exiting 1. **R1**: `--recapture` from
+  the primary after the merge, with a later instant in the evidence, refuses to widen
+  (manifest `to` unchanged, "never widened"), commits nothing and leaves the remote's refs
+  byte-identical; with a hand-written later bound it tightens onto the evidence
+  (`old -> new`), writes locally, commits nothing, pushes nothing, and says to open a PR.
+  **L1**: a feature in the legacy sibling layout `R-S` (moved there by
+  `git worktree move`), merged and never captured, captures from the primary — its
+  session claimed by branch with its `cwd`, `to` stamped, nothing committed or pushed.
+  **C4**: with the sandbox's own `analysis/pricing.py` rewritten to an ancient
+  `RATES_VERIFIED` (restored immediately after), a capture warns in its residue that the
+  rate table is stale and still exits 0 — every figure depends on that table, and a table
+  nobody re-checked is not a reason to leave a feature uncaptured.
+  Its **W** phases are where `session_window.to` comes from
+  (`self/features/claim-window-precision/README.md`, item 1). The fixture moves the
   feature's `from` back to a fixed instant with `set_bound` — a local helper that rewrites
   one bound inside the manifest's last fence, by hand because two of the shapes it needs
   are exactly what `manifest.py` refuses to write — and plants a branch session running
@@ -133,61 +249,133 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   it is at second resolution though the evidence carried milliseconds, so the
   `replace(microsecond=0)` truncation cannot be dropped silently (an untruncated
   `13:00:01.700000Z` parses everywhere and would fail nothing else); and it carries a date
-  a bound stamped at close time could never equal. W1 also asserts that both the session
-  and the delegate are still captured under the now-exclusive bound. **W2** gives a feature
-  nothing but a pinned session off the branch and in another checkout: no branch-selected
-  session, so the close falls back to its own clock and prints the `no branch session`
-  line. **W3** moves that bound later by hand — the shape every `to` in both corpora
-  already had — and pins that `--recapture` tightens it back onto the evidence, printing
+  a bound stamped at capture time could never equal. W1 also asserts that both the session
+  and the delegate are still captured under the now-exclusive bound. **W7**: on the branch
+  a hand-written `to` LATER than the evidence is moved EARLIER onto it — before the merge
+  the bound moves either way (C2 is the other way). **W2** gives a feature nothing but a
+  pinned session off the branch and in another checkout: no branch-selected session, so
+  the capture falls back to its own clock and prints the `no branch session` line.
+  **W5**: a capture over a fence with no `to` key at all (so `set-window-to` fails for a
+  reason that is not a refused widen) must refuse, name what `set-window-to` printed
+  rather than a widen it never attempted, write no `planning.json` and commit nothing,
+  leaving the worktree clean. Its feature is given a real branch session on purpose —
+  without one the capture would refuse anyway and the assertion would pass whatever the
+  stamp did. After the window feature merges: **W3** moves its bound later by hand and
+  pins that `--recapture` from the primary tightens it back onto the evidence, printing
   `old -> new`. **W4** is the refusals, and their exit codes: `set-window-to --tighten`
   with a LATER instant must leave the fence byte-identical, name both bounds, and exit
-  **3**, the widen refusal's own code — the exit code matters because the close continues
-  past that one and only that one, and asserting merely "non-zero" would pass vacuously
-  under an unimplemented `--tighten`, where argparse exits 2; the bound it already carries
-  is asserted to be a no-op rather than a refusal, which is what `recover-at-close.sh` C12
-  needs from every repair run; and a bound at or before the fence's `from` — an empty
-  window, which every other feature's split would then drop — is refused as a plain exit
-  1, naming both, with the primary left clean by all four. **W5** is the other side of
-  that exit code: a close over a fence with no `to` key at all (so `set-window-to` fails
-  for a reason that is not a refused widen) must refuse, name what `set-window-to` printed
-  rather than the widen it never attempted, capture nothing, and roll its timing carry back
-  so the primary is clean and byte-identical. Its feature is given a real branch session on
-  purpose — without one the close would refuse at the capture anyway and the assertion
-  would pass whatever the stamp did. **W6** is W5's complement and the reason the exit code
-  is asserted at all: the tolerated code is written down twice, `WIDEN_REFUSED_EXIT` in
-  `manifest.py` and `WIDEN_REFUSED_RC` in `feature-close.sh`, since bash cannot import it,
-  so a drift between them would turn every declined widen into a refused close. It moves
-  the bound to `12:30` by hand — between the session's first line and its last, the one
-  shape from which the evidence widens rather than tightens, which is why the W1 fixture
-  carries that middle `12:45` line — and asserts the close warns, captures anyway and
-  leaves the published bound where it found it.
-  Its **L** phase is the legacy layout (`self/features/in-repo-worktrees/README.md`): a
-  feature started normally has its worktree moved by `git worktree move` to the sibling
-  `R-S` every feature started before worktrees moved inside the primary still has, and
-  the close must claim the session launched there by branch, carry that worktree's
-  trailing timing stamp home, and remove it and the branch, leaving the primary clean;
-  a `--recapture` afterwards, with the worktree gone, must still claim the session.
-  Depends on `plan-runner-lib.sh` refusing the `@@TODO@@`
-  marker, on `feature-start.sh` writing the `info/exclude` entry and `feature-close.sh`
-  finding the worktree through `git worktree list --porcelain`, on
-  `capture_planning.py`'s `--list-subagents`/`--list-sessions --unclaimed`,
-  its zero refusal and its `--last-branch-instant` (including the subagent walk and the
-  whole-second truncation), on `feature-close.sh` stamping from that evidence before the
-  capture, rolling the stamp back with `rollback_stamp` and tolerating exactly
-  `manifest.py`'s widen exit code at the stamp, and on `analysis/manifest.py`'s `init`,
-  `get`, `claimed` and `set-window-to [--tighten]`.
+  **3**, the widen refusal's own code — the exit code matters because the capture
+  continues past that one and only that one, and asserting merely "non-zero" would pass
+  vacuously under an unimplemented `--tighten`, where argparse exits 2; the bound it
+  already carries is asserted to be a no-op rather than a refusal; and a bound at or
+  before the fence's `from` — an empty window, which every other feature's split would
+  then drop — is refused as a plain exit 1, naming both, with the primary left clean by
+  all four. **W6** is the reason the exit code is asserted at all: the tolerated code is
+  written down twice, `WIDEN_REFUSED_EXIT` in `manifest.py` and `WIDEN_REFUSED_RC` in
+  `feature-capture.sh`, since bash cannot import it, so a drift between them would turn
+  every declined widen into a refused capture. It moves the bound to `12:30` by hand —
+  between the session's first line and its last, the one shape from which the evidence
+  widens rather than tightens, which is why the W1 fixture carries that middle `12:45`
+  line — and asserts the `--recapture` warns, captures anyway and leaves the published
+  bound where it found it. **A1**, the frozen-record annotation at capture (design §3.5):
+  two features pin the same session, the first is captured and merged so the second's
+  branch carries its frozen record, and capturing the second writes `also_claimed_by` onto
+  that record — every other byte of it identical, asserted over the whole record with the
+  key stripped — regenerates the first feature's `report.json`, names the record it
+  annotated in its output, and commits both with its own cost records, leaving the
+  worktree clean. **A2** is the other side of that admission, and the reason it is an
+  argument rather than a rule: the same sibling's `report.md` dirtied by hand *before* the
+  run — nothing the annotation touched — refuses the capture by name and leaves that one
+  path as the only dirt, where it used to be neither refused nor committed and the branch
+  was pushed dirty. No model, no network. A missing script fails its own
+  assertions loudly rather than aborting the run, the convention `cost-recovery.sh` uses.
+  Depends on `plan-runner-lib.sh` refusing the `@@TODO@@` marker and writing `pass_end`
+  once (`stamp_pass_end`), on `run-review.sh` committing the pass under pr.sh's own subject
+  and then running `feature-capture.sh` after `pr.sh` and the two stamps, and on its
+  `capped_after_report` branch stamping a verdict from a report it can prove this pass
+  wrote, on `feature-start.sh` writing the `info/exclude` entry, numbering the review stub
+  `01` and printing the close and then the merge as its last steps, on `feature-close.sh`
+  reading its round from that stamp and refusing on `stray_paths` with no sibling admitted,
+  on `plan-runner-roots.sh` owning that reader and `stray_labels`, on `feature-capture.sh`
+  choosing its mode from the checked-out
+  branch and printing its `=== residue ===`, `=== annotate ===` and `=== commit ===`
+  banners, on `capture_planning.py`'s `--list-subagents --unclaimed --for`,
+  `--list-sessions --unclaimed` (router exclusion included), `--annotate-frozen`, its zero
+  refusal and its `--last-branch-instant` (including the subagent walk and the whole-second
+  truncation), on `routing.py --refresh-for`, on `pricing.RATES_VERIFIED` being a
+  module-level assignment the fixture can rewrite, and on `analysis/manifest.py`'s `init`,
+  `get`, `claimed` and `set-window-to [--tighten|--replace]`.
+- `verdict-readers.sh` — the only test here that calls `plan-runner-roots.sh`'s round
+  readers, and (since round 2) its stray-records reader, **directly**: it sources the file,
+  points `FEATURES_DIR` at a `mktemp -d` corpus of its own for the round readers, and sets
+  `REPO_DIR`/`FEATURES_LABEL` by hand for the stray phase — the globals
+  `report_verdict`, `latest_review_plan`, `completed_review_count`, `next_round`,
+  `stray_paths` and `stray_labels` read (a whole fake checkout for `resolve_roots` to find
+  would buy nothing else). Everywhere else these run through a lifecycle, where the
+  report's first line is always one of two exact strings, every stem is one width, and
+  every caller of `stray_paths` calls `stray_labels` first, so four rules they implement
+  are otherwise unasserted and a "simplification" could delete any of them silently.
+  Asserts: `Verdict: clean` and `Verdict: escalated` read as
+  themselves; a report whose FIRST LINE is prose reads `unreadable` though its body says
+  `Verdict: clean` — the defect a `grep` would ship, since a real report says both words
+  all through its prose; `  VERDICT:  CLEAN ` with a trailing `\r` reads `clean`, the case
+  folded and the space trimmed *before* the prefix is matched; an unknown verdict word and
+  a missing file read `unreadable`; with `98-review-opus.md` and `101-review-sonnet.md`
+  both in `review/complete/`, `latest_review_plan` returns `101-review-sonnet` (lexically
+  the 98 would win, which would hand the close the earlier round's verdict); a stem in
+  `review/failed/` — a review capped after writing its report — is returned by
+  `latest_review_plan` and is *not* counted by `completed_review_count`, with `next_round`
+  the count plus one; an `08` stem neither wins nor aborts the reader on octal (`10#`); a
+  `.progress.md` beside a plan is neither read nor counted; and an unknown slug is empty
+  rather than an error. Its **stray reader** phase (round 2's escalation,
+  `self/features/lifecycle-records-and-numbering/escalations/01-review-opus.md`) asserts
+  that `stray_paths`, called with no prior `stray_labels` call so
+  `FEATURE_REL`/`FEATURES_REL`/`STRAY_SLUG` are genuinely unset, returns
+  non-zero and names `stray_labels` on stderr — RED against the pre-round-2 reader, which
+  instead let `set -u` kill the command substitution's subshell with an "unbound variable"
+  message naming no function at all; that after `stray_labels x <checkout>` derives the
+  labels for a `--self`-shaped checkout, the identical input returns 0 and reports the
+  path as stray (it is nobody's cost record); that a `planning.json` path under the
+  same feature directory returns 0 and reports nothing; and (**S7/S8**) that this
+  feature's own `routing.json` is a cost record like the rest while a sibling's copy of
+  the same router's record is stray — the routing record is a `COST_FILES` entry inside
+  the feature it links now, and `ROUTING_REL`, the fourth label, is gone with the
+  directory it named. No model, no network, no git. RED
+  until `report_verdict` folded and
+  trimmed the line before matching it (`self/features/lifecycle-records-and-numbering/README.md`,
+  slice A2), and, for the stray phase, until `stray_paths` checked its four globals before
+  its loop instead of trusting `set -u` (round 2).
+- `capture-from-worktree.sh` — a real git repo `R` with the analysis scripts committed in
+  it and a real `git worktree add R/.worktrees/S` (plus a second worktree for another
+  feature), so the worktree carries its own copy of `capture_planning.py`, and under a
+  redirected `$HOME` four transcripts: one launched in the worktree on `S` with a
+  delegate, one in `R` on `main` unpinned, one in `R` on `main` pinned in the manifest's
+  `sessions`, and one launched in the other feature's worktree on `S`. Asserts
+  (`self/DESIGN-2026-09-16-lifecycle-restructure.md` §3.2, §4) that `roots.session_root`
+  from the worktree's copy is `R`, not the worktree; that a capture run from the worktree's
+  copy exits 0 and writes `planning.json` into the worktree's corpus and none into `R`'s;
+  that it claims the worktree session by branch with its `cwd` and its delegate with it,
+  the pinned primary session as `pinned`, and neither the unpinned `main` session nor the
+  other worktree's; that `--last-branch-instant` from the worktree's copy is the delegate's
+  last instant + 1s; and that `--list-sessions` from it lists the sessions filed under `R`'s
+  own project directory as well as the worktree's. F1 and F7 were RED until
+  `session_root` followed a worktree's `.git` file to its primary (`worktree_primary`).
+  Copies `routing.py` with `capture_planning.py`, per the rule above. No model, no network.
 - `routing-record.sh` — `session-share.sh`'s scaffolding (copies of
   `analysis/{pricing,roots,transcript,capture_planning,report,routing}.py` in a throwaway
   agentTooling checkout with a bare `mkdir .git`, transcripts under a redirected `$HOME`)
-  asserting the routing record (`self/DESIGN-2026-09-16-lifecycle-restructure.md` §3.4).
+  asserting the routing record (`self/DESIGN-2026-09-16-lifecycle-restructure.md` §3.4,
+  `self/DESIGN-2026-09-18-ledger-and-routing.md` §1).
   A router transcript carrying two `feature-start.sh <slug>` Bash tool calls — built with
   `bash_tool_line` from `fixtures/transcripts/build-transcript.sh` — yields both slugs
   with the instants of their own calls, unioned with the slug being started now (whose
   `at` is null, its call not yet flushed), plus `launched_in`/`git_branch` from the
   transcript's `cwd`/`gitBranch`, its first and last instants, their span, and its cost
-  through `pricing.compute_cost`; `captured_at` equals `ended_at`, because it is the
+  through `pricing.compute_cost` — written to `self/features/<slug>/routing.json`, the
+  directory of the feature being started, with nothing at the legacy `self/routing/`;
+  `captured_at` equals `ended_at`, because it is the
   content's as-of instant rather than the wall clock, which is what makes a second write
-  **byte-identical** — the assertion the two-branch refresh rests on. A session with no
+  **byte-identical** and is what latest-wins ranks by. A session with no
   transcript still writes a record (current slug, null figures, a warning on stderr) and
   never refuses. Router detection is pinned from all three sides: `--list-sessions
   --unclaimed` drops the two routers and keeps a `main` session with no such call, a
@@ -195,11 +383,43 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   mention of the script is `grep -n x feature-start.sh hooks` — naming the file is not
   running it, though `hooks` would pass the slug pattern — while a call at command position
   behind `&&` and `bash` still counts as a router, and a plain
-  `--list-sessions` keeps them all. And `report.py --all` renders the Routing table with
-  each started slug beside its frozen total and the routing fraction, while
-  `report.py <slug>` prints `routed by` with the other slugs for a routed feature and
-  nothing extra for an unrouted one. Depends on `analysis/routing.py` and on
-  `capture_planning.py` importing `is_router_lines` from it; RED until both landed.
+  `--list-sessions` keeps them all. **R4i and R10 pin that the slug is on the start's own
+  line** (`self/DESIGN-2026-09-18-minutes-slug-and-quoting.md` §2). R10 calls
+  `routing.slug_of_start_command` directly, because which LINE a slug came from is
+  invisible from any record but by its absence: a start with no slug on its line yields
+  `None` rather than the next line's first word, a `\`-continued start yields its slug, a
+  `--base x` before the slug does not become one, and a non-start line is never read for a
+  slug at all. R4i is the same rule from the outside — a `main` session in the primary
+  whose only `feature-start.sh` call carries no slug started no feature, so it is **not** a
+  router and stays in the unclaimed listing, where before it was a router that had opened a
+  feature called `ls`. Its fixture passes `\n` as a JSON escape through `bash_tool_line`,
+  so the command really is two lines. And `report.py --all` renders the Routing table with
+  each started slug beside its frozen total and the routing fraction — **one row** for the
+  router whose record three feature directories hold — while
+  `report.py <slug>` prints `routed by` with the other slugs for a routed feature, read
+  from that feature's own copy, and nothing extra for an unrouted one. **R6** is the
+  capture's refresh, `routing.py
+  --refresh-for <slug>`: after the router's transcript grows a later start, that slug's
+  record is rewritten (the new slug present, `ended_at` moved) and its path
+  printed, the slug the transcript never carried is kept with its null `at`, a second
+  refresh is byte-identical, a slug with no record prints nothing, and a record whose
+  transcript is gone is left byte-identical with a warning naming the session.
+  **R7** is the point of the location: that refresh leaves the other two features' copies
+  of the same router's record byte-identical, with a third assertion that the refreshed
+  copy really did change so the first two cannot pass vacuously. **R8** is
+  `load_records`, called directly because what it decides is invisible from any renderer
+  but by its absence: one record per `session_id`, the copy with the latest `captured_at`,
+  and on an equal `captured_at` the copy naming more features (a hand-written copy holding
+  none is the loser). **R9** is `--migrate`: a legacy record naming two slugs lands in both
+  feature directories and its file is deleted, one printed line per move; a target already
+  holding a record captured as late or later is skipped rather than overwritten and its
+  legacy file still goes; a slug with no feature directory is skipped and no directory is
+  created for it; a record no slug of which has a directory is KEPT, since deleting it
+  would destroy its only copy; an emptied legacy directory is removed; and a second run
+  over a corpus with none exits 0, prints nothing and changes no byte under the features
+  root (asserted with `diff -r` over a copy). Depends on `analysis/routing.py` and on
+  `capture_planning.py` importing `is_router_lines` from it; RED until both landed, and
+  R1/R6–R9 RED again until the record moved inside the feature.
   No model, no network.
 - `worktree-claims.sh` — `capture-guard.sh`'s scaffolding (copies of
   `analysis/{pricing,roots,transcript,capture_planning}.py` in a throwaway checkout, a
@@ -234,7 +454,11 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   exactly 14 `  ok    ` lines, no `  FAIL  ` line, and ends `check-plans: 14 checks, 0
   failed`; and, one at a time, each of the fourteen ordered checks — feature directory
   exists, manifest present, fence parses, fence slug matches directory, method known,
-  branches non-empty, window bounds carry a zone, plan filenames well-formed, plan
+  branches non-empty, `window bounds carry a zone and to follows from` (a naive bound
+  FAILs; an offset one passes; a `to` at or before `from` FAILs naming both bounds, since
+  an empty window owns nothing; a null `to` is in flight and passes; and two bounds in
+  different zones are compared as instants, which a string comparison gets backwards),
+  plan filenames well-formed, plan
   numbers padded alike, no `@@TODO@@` stubs queued, every plan file listed in `plans[]`,
   every `plans[]` entry has a file, every queued plan names the feature, plans method has
   a queue — FAILing on the input built to trip it, naming the offending path or stem in
@@ -307,47 +531,48 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   event; `recover_attempts.py --for <slug>` recovers a **`complete`**-outcome null-cost
   attempt (recovery was never gated on `outcome`, and this is the case its docstring used
   to omit) while leaving every other feature's sidecar byte-identical, refuses an unknown
-  slug without writing, and leaves the flagless whole-tree walk `sweep.sh` calls
-  unchanged; and `feature-close.sh` recovers before it captures — with the transcript
-  present the review bucket carries real dollars and the rewritten `usage.json` is inside
-  the `<slug>: cost records` commit rather than named as a stray (which would refuse the
-  close), and with the transcript gone the close still exits 0, names the plan as
-  unrecoverable, and prints `review $0.0000 (0.0%, unpriced: <stem> — no result event,
-  transcript not found)` instead of the bare `review $0.0000 (0.0%)` the defect printed.
-  Its last phase is the repair path for the features whose zero is already committed:
-  `--recapture` over the feature the previous phase just closed — worktree removed, local
-  branch deleted, only `origin/<slug>` left — re-commits the cost records and leaves
-  `session_window.to` where the first close put it. That is why the fixture pushes each
-  branch the way `plans/pr.sh` does; without the remote ref the re-close refuses "nothing
-  to close", which is `../BACKLOG.md`'s delete-on-merge entry.
+  slug without writing, and leaves the flagless whole-tree walk — the corpus-wide repair
+  run (`../../analysis/README.md` → "Repair tools") — unchanged; and `feature-capture.sh`, run from the feature's worktree on its branch,
+  recovers before it captures — with the transcript present the review bucket carries
+  real dollars and the rewritten `usage.json` is inside the branch's `<slug>: cost
+  records` commit rather than named as a stray (which would refuse the capture), and with
+  the transcript gone the capture still exits 0, names the plan as unrecoverable, and
+  prints `review $0.0000 (0.0%, unpriced: <stem> — no result event, transcript not
+  found)` instead of the bare `review $0.0000 (0.0%)` the defect printed. Each fixture
+  starts with `--pin --session planning-<slug>` so its one planning session is claimed by
+  id, whatever second the stamp lands in.
+  The C phase then runs the repair path for the features whose zero is already committed:
+  the feature is merged, its worktree removed and local branch deleted as the prune would,
+  and `--recapture` from the primary re-captures, writing locally, committing nothing and
+  leaving `session_window.to` where the branch capture put it. It runs on to the state a
+  forge with delete-on-merge really leaves — the remote branch deleted from the bare
+  origin AND its remote-tracking ref removed — and pins that a plain capture and
+  `--recapture` both then proceed on the manifest being tracked on `main` and the
+  `<slug>: start` commit being in `main`'s history, committing nothing, while
+  `--recapture` for a feature that was never started refuses "nothing to capture".
   Three later phases came out of the review: **D** pins each of `report.py`'s three
   `unpriced_reason` strings by exact text, from a sidecar of that shape — no
   `result_event` at all (which every sidecar on disk still has, so it is the branch the
   documented repair runs), `missing`, and a `killed` attempt the runner harvested — so no
   single return value satisfies them all, and pins `set(QUEUE_COST_BUCKETS) ==
-  QUEUE_DIRS` by asserting a drifted copy of `report.py` refuses to import. **E** is the
-  mirror of `feature-lifecycle.sh`'s C5f for `rollback_recovery`: a capture that refuses
-  *after* recovery rewrote a sidecar leaves the primary clean and the sidecar as it was,
-  and the re-run refuses for the same reason rather than for dirt this run made. **F**
-  pins the narrowed sidecar match at the teardown — the other caller of `stray_paths`,
-  and the only one a fixture can reach, since an untracked file in the primary trips the
-  dirty refusal first: a worktree holding `notes/left-behind.usage.json` is kept with a
-  warning, while one holding `review/complete/99-extra-sonnet.usage.json` comes away.
+  QUEUE_DIRS` by asserting a drifted copy of `report.py` refuses to import. **E** pins
+  the recovery rollback: a capture that refuses *after* recovery rewrote a sidecar leaves
+  the worktree clean and the sidecar as it was (restored from the capture's snapshot), and
+  the re-run refuses for the same reason rather than for stray dirt this run made. **F**
+  pins the narrowed sidecar match at the capture's up-front stray check: a worktree holding
+  an untracked `notes/left-behind.usage.json` makes the capture refuse, naming it and
+  writing nothing, while one holding `review/complete/99-extra-sonnet.usage.json` is the
+  harness's own and rides the cost commit.
   The B4, C9 and D6 assertions carry their own anti-vacuity guards, since argparse reads
   `--for` as an abbreviation of `--force`, the bare-zero line is a *substring* of the
-  annotated one, and a guard that is merely true today is not a guard. Builds its sidecars with `write_unpriced_usage_json` from `fixtures/` and
-  its transcripts with `transcript_line`/`session_line`. Its C phase runs on past that
-  repair to the state a forge with delete-on-merge really leaves — the remote branch
-  deleted from the bare origin AND its remote-tracking ref removed, since the close's
-  fetch does not prune — and pins that `--recapture` then proceeds on the manifest being
-  tracked on `main` and the `<slug>: start` commit being in `main`'s history, while a
-  plain close still refuses "nothing to close" and so does `--recapture` for a feature
-  that was never started. No model, no network. Depends on
+  annotated one, and a guard that is merely true today is not a guard. Builds its sidecars
+  with `write_unpriced_usage_json` from `fixtures/` and its transcripts with
+  `transcript_line`/`session_line`. No model, no network. Depends on
   `plan-runner-lib.sh`'s `write_usage_sidecar`, `analysis/recover_attempts.py`'s `--for`,
   `analysis/report.py`'s `cost.unpriced_plans[]`, `unpriced_reason` and its
-  `QUEUE_COST_BUCKETS` import guard, and `feature-close.sh`'s recovery step,
-  `rollback_recovery`, `closed_feature_on_main` and `is_cost_usage_path`; RED until each
-  landed.
+  `QUEUE_COST_BUCKETS` import guard, and `feature-capture.sh`'s recovery step, snapshot
+  rollback, post-merge ancestry check and `is_cost_usage_path`; RED until each landed (C,
+  E and F again, when they moved from `feature-close.sh` to `feature-capture.sh`).
 - `recover-duration.sh` — `recover-at-close.sh`'s phase-B scaffolding on its own:
   `analysis/{pricing,roots,transcript,recover_attempts}.py` in a throwaway checkout, a
   synthesized `self/features/` corpus of `usage.json` sidecars, and
@@ -417,7 +642,7 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   `other`, under a manifest declaring `typo`, must still refuse and write no
   `planning.json`. It is the shape of every repo that has ever run a batch, so were the
   serialized (repo-wide) `excluded_session_ids` the set behind the refusal instead of
-  `excluded_on_branch`, a branch typo would read as an evidenced $0.00 everywhere. Phase 18: `--all` skips a feature whose `session_window.to` is still null as in flight and writes nothing, while naming the slug still captures it — a sweep must not freeze a feature `feature-close.sh` has not captured.
+  `excluded_on_branch`, a branch typo would read as an evidenced $0.00 everywhere. Phase 18: `--all` skips a feature whose `session_window.to` is still null as in flight and writes nothing, while naming the slug still captures it — a corpus-wide run must not freeze a feature `feature-capture.sh` has not captured.
 - `subagent-capture.sh` — same scaffolding as `capture-guard.sh`, plus the
   `<session_id>/subagents/agent-<id>.jsonl` files beside the parent transcripts (built with
   `subagent_line` / `subagent_prompt_line` from `fixtures/transcripts/build-transcript.sh`).
@@ -436,8 +661,19 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   other feature; and `--unclaimed --for <repo>/<slug>` keeps exactly the delegates whose
   brief names that feature — a `<slug>-two` one is not among them, one whose
   `<repo>/<slug>` outruns the 26-character pin column is, the agent id prints untruncated
-  for `feature-close.sh` to read, and `--for` without `--unclaimed` or not shaped
+  for `feature-capture.sh` to read, and `--for` without `--unclaimed` or not shaped
   `<repo>/<slug>` is a usage error. RED until the subagent walk landed.
+  Its phase **19** is `ledger-and-routing`'s zero-cost pin
+  (`../DESIGN-2026-09-18-ledger-and-routing.md` §3): a pinned delegate whose transcript is
+  a `subagent_prompt_line` and nothing else — no `assistant` line, so nothing billable —
+  is still captured into `subagents[]` as `pinned` (`19a`, the half the design said to
+  verify), earns no `priced[]` row (`19b`), and is written to the ledger under this
+  feature with `cost_usd` **0** (`19c`, `19d`), after which
+  `--list-subagents --unclaimed` stops listing it (`19e`). The listing BEFORE the pin is
+  the guard and comes first: a delegate the listing never held would satisfy `19e` on its
+  own. RED until the ledger was written from `subagents[]` instead of from the priced
+  rows — before that the id was in no feature's claims and every run told the human to
+  write the pin that was already in the manifest.
 - `claims-ledger.sh` — `subagent-capture.sh`'s scaffolding, asserting what the ledger at
   `$HOME/.claude/subagent-claims.json` counts as claimed
   (`self/features/recovered-duration-lower-bound/README.md`, items 2 and 3, plus that
@@ -474,25 +710,25 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   disclosure off the ledger alone prints a halved figure with nothing saying what halved
   it — a silent under-count, worse than the disclosed over-count the split removed, and
   the corpus's normal case rather than a corner. The record is restored from a copy
-  immediately afterwards, since part C asserts an exact `2 annotated` count over a sweep
-  of the whole corpus.
+  immediately afterwards, since part C asserts an exact `2 annotated` count over an
+  `--all` run of the whole corpus.
   **C**: the annotate-only path over a record that is already **frozen** — two features
   each captured while the ledger held no claim on their shared coordinator, which is the
   shape the seven closes of 2026-09-07 left behind. One plain `capture_planning.py --all`
-  (no `--recapture`, what `sweep.sh` runs) leaves each of them naming the other, and it
+  (no `--recapture`, the corpus-wide repair run) leaves each of them naming the other, and it
   does so in a single run because every frozen record is registered in the ledger before
   any is annotated — convergence must not depend on the order the corpus is walked in.
   Everything else in both files is byte-identical (asserted over the whole record with
   `also_claimed_by` stripped, not over a list of fields), the run reports them as
   `annotated`, `report.py` then renders the footnote, and a second `--all` writes
-  nothing. The shared session's transcript is **deleted before the sweep**, which is what
+  nothing. The shared session's transcript is **deleted before that run**, which is what
   asserts the path opens none — the reason a frozen record can take it at all. **D**: the
   same-slug corpus preference — a `plans/features/<slug>` pinning a delegate and a
   `self/features/<slug>` of the same name that does not. Under `--self` the delegate is
   still listed as unclaimed (the self corpus owns the query), without `--self` it is not,
   and a slug the queried corpus does not hold at all falls back to the slug alone across
-  both. Before it, the other corpus's pin silenced `feature-close.sh`'s stop-on-unpinned
-  guard and the delegate was never priced.
+  both. Before it, the other corpus's pin silenced the close's stop-on-unpinned guard (now
+  `feature-capture.sh`'s unclaimed-delegate warning) and the delegate was never priced.
   Depends on `capture_planning.py`'s `load_ledger`/`save_ledger` two-section shape,
   `manifest_pinned_subagents`, `register_frozen_claims`/`annotate_frozen_record`, and
   `report.py`'s `compute_shared_sessions`; RED until each landed. D writes into
@@ -662,6 +898,34 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   after. `8c` is the fourth escalation, on phase 1's output: with no head the warning is
   the pre-existing tail sentence and carries no head clause at all — the `elif` branch had
   no reader before it.
+  **18**, **19** and **20** are `ledger-and-routing`'s, the open co-claimant
+  (`../DESIGN-2026-09-18-ledger-and-routing.md` §2), on a fresh day and two fresh
+  sessions so nothing above moves. `open-cap` is captured; `open-co` is in flight
+  (`to: null`), pins the same session (`99999999-…-000000000009`; `o0` `10:00`/1000, `o1`
+  `12:00`/2000, `o2` `14:00`/3000) and has a **branch session of its own**
+  (`aaaaaaaa-…-00000000000a` on `openCoBranch`, last instant `13:00:00`) — which is what
+  `write_manifest`'s fifth argument is for, since every other fixture here declares a
+  branch no transcript carries and is claimed by pin alone. Its provisional bound is
+  therefore `13:00:01Z`, one second past that instant, exactly what its own close would
+  stamp. **18** asserts `open_claimants` names it, its `share_basis` entry carries
+  `open: true` and that `provisional_to` as its `to`, the capturing feature's own (closed)
+  claim carries neither key, and `open-cap`'s share is the bounded `5000/6000` — with
+  `18c-guard` asserting it is NOT the `3500/6000` an unbounded open claim would leave it,
+  so a bound derived and then ignored fails here. **19** is the drift WARN over
+  `--annotate-frozen`: silent while `open-co` is still open, silent once its close stamps
+  the same bound, and exactly one line naming the record, both bounds and `--recapture`
+  once it stamps a different one (read from a `2>&1` capture, the WARN being on stderr so
+  that `feature-capture.sh` can go on reading that pass's stdout as slugs). **20** is the
+  reason the bound is derived with the function the close calls: with `open-co` closed at
+  that bound, a re-capture of `open-cap` reports the same dollars and the record stops
+  naming an open claimant. The **no-evidence** half of the rule is phase **15f**, where
+  `head-a` is in flight and its `branches` match no transcript: `last_branch_instant`
+  finds nothing, the claim is empty, the empty-claim rule drops it naming it as open with
+  no evidence (`15f-open-no-evidence`), and `head-b` — which used to be paid a 1800s share
+  of `head-a`'s unbounded claim — owns the session whole, which is what `15f-duration-b`
+  now reads. `15e-remedy-from` moved with §4: the head's second remedy is the
+  `set-window-from` command, filled in, and `15e-remedy-by-hand` pins that the sentence it
+  replaced ("back by hand") is gone.
 - `session-claims.sh` — `session-share.sh`'s counterpart on the claim-set side: same
   scaffolding, plus a `write_host_manifest` twin of `write_self_manifest` that writes into
   `$TMP/plans/features` (the enclosing repo's own corpus, per `claims-ledger.sh` part D)
@@ -698,7 +962,7 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   naming the slug and the session that the frozen figure predates the share rule and
   `--recapture` would rebuild it while the transcript still exists — and goes on warning on
   the SECOND consecutive `--all` (7d-7f), which writes nothing: the annotation converges on
-  the first sweep and the stale full-count figure does not, so a warning keyed off "did
+  the first pass and the stale full-count figure does not, so a warning keyed off "did
   this run write" asks for the repair once and then goes quiet for as long as the
   transcript has left, while the `skipping` line still means the run wrote nothing;
   (8) the subagent side
@@ -752,6 +1016,29 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   10h are green either way: they pin the fixture and the branch taken, not the identity); (8) was GREEN throughout — the subagent
   refusal it pins is pre-existing and must stay exactly as it is while the session side
   grows around it. No model, no network.
+- `manifest-window.sh` — `analysis/manifest.py set-window-from`, the head's remedy
+  (`../DESIGN-2026-09-18-ledger-and-routing.md` §4). A throwaway agentTooling checkout
+  holding `analysis/{pricing,roots,transcript,routing,manifest}.py` (`routing` because
+  `manifest.py` imports it for the transcript lookup, per the rule at the top of this
+  file), one fixture manifest, and under a redirected `$HOME` one session transcript whose
+  first and last instants are `09:00` and `11:00` on a fixed date. **`set-window-to`'s own
+  cases are not here** — they are `feature-lifecycle.sh`'s W phases, asserted through a
+  real capture because that is where a `to` bound comes from. Nothing derives a `from`, so
+  this file drives the command straight at a fence and asserts the four answers it can
+  give: a bound moved BACK to the session's first instant is applied and echoed
+  `old -> new` with `to` untouched (M1); an instant before that first instant is refused,
+  naming it (M2); a LATER instant is refused, the message saying this command only moves
+  the bound back and that nothing narrows a `from` — `set-window-to` moves `to` (M3); the
+  instant already written is a no-op at exit 0 (M4); a session no transcript carries is
+  refused rather than waived, the guard being unevaluable (M5); on a feature whose
+  `planning.json` carries a `captured_at` the move is applied AND the output names
+  `--recapture` (M6); a null `from` is refused, there being no bound to move (M7); and
+  `--session` is required, which is argparse's own exit 2 (M8). Every refusal asserts the
+  manifest is left **byte-identical** beside the exit code, and each expects 1 (or 0)
+  rather than merely non-zero — against the branch before the subcommand existed argparse
+  exited 2 for all of them, so "non-zero" would have passed vacuously. The fence markers
+  in its readers are spelled `chr(96)*3`: three backticks inside a double-quoted shell
+  word are a command substitution. No model, no network, no git.
 - `timestamps-are-utc.sh` — same scaffolding, asserting the UTC convention in
   `analysis/README.md` → "Every instant is UTC": `transcript.utc_date` dates an offset
   timestamp by its UTC day (`2026-07-01T23:00:00-04:00` → `2026-07-02`), a session's start
@@ -785,12 +1072,17 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   escaping symlink, or in a writing form (`capture_planning.py --recapture`/`--all`,
   `manifest.py init`/`set-*`/`get init`, `python3 -c`, `bash` without `-n`,
   `feature-start.sh` and the rest of the scripts that move refs or freeze cost) — so
-  basename matching never widens `python3`; that every ref-moving git shape is **denied**
+  basename matching never widens `python3`; that a BARE `check-plans.sh` or `gate.sh`
+  prompts, since bash would resolve a word with no directory component along `$PATH`
+  while the hook judged a file it found in the repo; that every ref-moving git shape is **denied**
   wherever it sits on the line (after a separator, in a `(…)` subshell or a `$(…)`
   substitution, behind `-C`, `--git-dir=` or `-c k=v`) with a reason naming LIFECYCLE
-  rule 2 and both lifecycle scripts, while `git branch --show-current`, `git worktree
-  list`, a plain `git push`, `git checkout -- <file>`, `git reset <file>`, a quoted
-  `'git rebase'`, a heredoc, a `#`, a braced word and an unbalanced quote are not; that
+  rule 2, `feature-start.sh` as the way in **and** `feature-close.sh` as the way out —
+  `git worktree move|lock|unlock|repair` and `git branch --delete|--move` among the
+  denied, the four shapes `permissions.deny` used to miss — while `git branch --show-current`, `git worktree
+  list`, `git branch --list 'feat*'` (after a listing flag a positional is a pattern),
+  a plain `git push`, `git checkout -- <file>`, `git reset <file>`, a quoted
+  `'git rebase'`, a heredoc and a `#` are not; that
   both denies fire with no `CLAUDE_PROJECT_DIR` and no `cwd`; that any command chaining `cd` or
   `pushd` with another command is **denied** (separators `&&`, `||`, `;`, `|`, `&`, a
   line break, a `(` subshell) with a reason naming the rewrite, while `cd`
@@ -804,49 +1096,196 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   brace expansion to a path outside, a forbidden flag, `~`, or through nested, quoted
   or escaped braces, `|&`, a command hidden behind a mid-word `#` that shlex would read
   as a comment, relative paths and globs through symlinks,
-  symlink-following recursion, redirects, a NUL byte); that single-quoted shell
-  characters are literal while double-quoted ones are not; that a worktree session
+  symlink-following recursion, redirects, a NUL byte); that the second audit's closures
+  hold — an assignment at command position read as the program (`X=…/pytest src/a.py`
+  executed `src/a.py`), an attached-value flag path (`grep -f/etc/hosts`), `ls -L`/`ls
+  -RL`/`du -L` walking through a symlink out, `rg --hostname-bin`/`-z` and
+  `git --textconv`/`--ext-diff` running an external program, `ruff --fix` and a bare
+  `ruff format` rewriting the tree, `mypy --install-types`, and
+  `capture_planning.py --force` — each beside the near-miss guard that must stay
+  approved (`grep -d recurse`, `find -H`, `git log --format=%x41`, `ruff format
+  --check`, `ls -la`, `du -sh`), so a closure that over-reached fails here rather than
+  in a consuming repo; that every **opaque** shape is denied with a reason naming the
+  rewrite — a heredoc into an interpreter, `-c`/`-e` code as a string (including behind
+  `xargs` and `find -exec`), a pipe into an interpreter, a `$CMD`/`$(…)` program, a
+  `$(…)` inside a path, a one-line `for`/`while`/`if`/`until`/`case` — while the
+  exemptions are not: a heredoc feeding `cat`, `git commit -m "$(cat <<'EOF' … EOF)"`,
+  `x=$(cd dir && pwd)`, a whole-argument `$(…)`, an interpreter named in a flag's
+  VALUE rather than at a command position, and a *script's* own `-c`/`-e`
+  (`python3 src/a.py -c conf.yaml`); that the `cat` exemption covers the heredoc's body
+  and not the rest of its first line, so `cat <<'EOF' | python3` and
+  `bash -c "$(cat <<'EOF' … EOF)"` are denies; that a line which does not tokenize at
+  all — the seventh shape — is denied with a reason naming the **quote** (`cat 'x`,
+  `git rebase 'main`, `cd 'x && ls`, `X='/p; cat $X`, each of which used to sit in a
+  NOT_DENIED list), while the same quote inside a heredoc body or behind a `#` still
+  prompts; that single-quoted shell
+  characters are literal while double-quoted ones are not — including **for the opaque
+  scan**, which read a word's outer single quotes off before asking whether it held a
+  substitution and so DENIED `sed -n '/```json/,/```/p' <path outside the root>` as a path
+  decided at run time (it prompts now, and `grep 'a`b' README.md` is approved), while the
+  unquoted forms `` cat `pwd`/README.md `` and `` `which ls` src `` are still denied and
+  two new guards — ``sed -n 5p `pwd`/README.md``, `cat $(pwd)/src/a.py` — keep the
+  narrowing from drifting into them; that each **rewritable shape** of the 2026-09-18
+  design is denied with a reason carrying the member AS WRITTEN and the fix — a `$NAME`
+  the shell expands (`grep x $FILE`, `cat "$HOME/.zshrc"`), a `~`, a brace group the
+  expansion refuses (a quote or backslash mixed into an unquoted brace group, nesting,
+  past the cap — while a comma-less `{a}`, `{a..c}`, find's `{}` and a brace a quote
+  encloses (`jq -r ".[] | {name}" data.json`, `git show "stash@{0}"`) keep prompting,
+  since bash expands none of them), a `..` **component** of a path token (`cat ../x`,
+  `ls a/../b`, `--out=../x`, while `git diff main...HEAD` has none), a bare or relative
+  `cd`/`pushd`, a line break outside a quote or a heredoc (`git commit -m "subject\n\nbody"`
+  is one argument and keeps prompting), and a sequence mixing approved members with one to run alone
+  (`grep x f && git commit -m m`, whose reason names the first as approved and the second
+  to run alone) — each of which used to print nothing, and every one of which is moved
+  from a prompting list rather than from ALLOW or DENY
+  (`self/features/hook-rewrite-or-ask/NOTES.md` lists the moves); that the **ASK** class
+  prints nothing at all (`git diff main...HEAD`, `x=$(cd dir && pwd)`, an all-ASK
+  sequence, a pipeline, `X=1 make`, `echo x > f`, `cat /etc/hosts`, a CR, a NUL), with no
+  `ask` decision anywhere in it; that a heredoc or a `#` anywhere holds the new shapes off
+  the line entirely, as it does the three older denies; that `self/tests/fixtures/hook-replay-2026-09-18.json`
+  replays with the verdict each record claims and each denial's reason;
+  that a read-only git subcommand **behind the global
+  location options** is judged by the subcommand (`git -C <root> status`,
+  `git --git-dir=<root>/.git log`, `git --work-tree=<root> status` approved; `git -C /tmp
+  status` and `git --git-dir=/tmp/x log` prompt on the value; `git -c core.pager='sh -c
+  id' log`, `git -C <root> -c core.pager=x log`, `git --exec-path=<root> log` and
+  `git --namespace=x log` prompt because none of those names a location; `git --paginate
+  log`, `git -p -C <root> log` and `git --no-pager -C <root> log` prompt because nothing
+  else in front of the subcommand is read past; `git -C` and `git -C --git-dir status`
+  prompt for want of a value; `git -C <root> -C /tmp status` prompts on the second value;
+  `git -C <root> diff --ext-diff` prompts on the forbidden flag; and `git -C <root> branch
+  new`, `git -C <root> worktree add x` and `git --git-dir=<root>/.git stash` are still
+  **denied**) — 26 cases, since finding a subcommand must never be mistaken for approving
+  it; that a worktree session
   cannot reach the main repo; and that a payload without `cwd`, with `cwd` outside the
   root, for another tool, or without `CLAUDE_PROJECT_DIR` approves nothing. `~` and
   `/etc/hosts` are symlink targets and command text only — nothing is read from
-  either. The list of bypasses is `hooks/README.md` → What the audit found.
-- `hook-wiring.sh` — fourteen throwaway repos, one per starting state of
+  either. Every payload here carries **no `session_id`**, so the hook writes no
+  escalation state and every opaque command is a plain `deny`: the counter, the `ask`
+  and the scratch entry point are `hook-escalation.sh`'s. The list of bypasses is
+  `hooks/README.md` → What the audit found.
+- `hook-escalation.sh` — the other half of the same policy, with `$TMPDIR` redirected to
+  its own `mktemp -d` for the whole run, since that is where the hook keeps its state.
+  One throwaway root, a scratch directory holding `x.sh`, `x.py` and a symlink out, and
+  the same root's basenames repeated in an `elsewhere/` directory. Asserts that two
+  opaque commands in a row are denied and the third is `ask`, with a reason saying the
+  command is still unreadable after the two rewrites and is the human's call; that a
+  readable command between them resets the counter whether it is approved (`ls src`),
+  merely refused (`rm -rf src`) or itself denied for one of the three older shapes
+  (`git worktree add x`) — "readable", not "approved", is the rule; that two session ids
+  count independently and a payload carrying an `agent_id` counts independently of its
+  parent session, which is how a delegate is told from the session it shares a
+  `session_id` with (Claude Code hooks reference: `agent_id` is present only inside a
+  subagent call); that a corrupt, empty or absent state file counts as zero rather than
+  crashing or denying, and a payload with no `session_id` is denied every time and never
+  escalates; that every state file lands under the redirected `$TMPDIR`, one per counted
+  session, and nothing is written into the project root; that `AGENTTOOLING_HEADLESS`
+  turns the escalation into silence while the counter still advances, so the same
+  session asks the moment it is not headless, and changes nothing below the escalation;
+  and that with `AGENTTOOLING_SCRATCH` set, `bash <scratch>/x.sh` and `python3 [-B]
+  <scratch>/x.py` are approved although they are outside the project root — **with
+  arguments**, each of which must itself be confined (an absolute or relative path inside
+  the project root, a file inside the scratch directory, or a bare flag) — while the
+  same basename elsewhere, a symlink out of the scratch directory, a missing file, an
+  argument outside both roots (`/etc/passwd`, a file beside the scratch directory, a link
+  out of it), a flag BEFORE the script (`bash -x`), `sh`, direct execution and every one
+  of them
+  with the variable unset are not. Existence never decides a relative argument (round 2,
+  NOTES ruling 17): `bash <scratch>/x.sh new-output.txt` is approved although the file
+  does not exist yet, because it resolves inside the project root, while `… ../x` and
+  `… --out=../x` prompt because `../x` resolves outside both roots — whether or not `../x`
+  exists. Those three full-hook commands prompt either way, though, because
+  `command_allowed`'s `UNANALYSABLE` guard refuses any command holding a literal `..`
+  before the scratch logic runs — so this file also loads the hook as a module, the same
+  way `policy-table.sh` does, and calls `scratch_argument_allowed` directly on all three
+  values, plus a fourth check that creating the file `../x` for real does not flip its
+  answer. Those same two commands are **denied** now rather than silent (§7d): a `..`
+  component in a path token is a rewritable shape, answered before the scratch logic
+  exactly as the `UNANALYSABLE` refusal was. Its §9 is the 2026-09-18 design's half of the
+  escalation: a `$NAME`, a `~`, a `..` component, a relative `cd` and a refused brace
+  group are each denied on a fresh session, two of them in a row escalate to `ask` on the
+  third whatever mix of shapes got there, a command of the **ASK** class (`echo x > f`,
+  which prints nothing) resets the counter so the next one is a deny again, and a headless
+  runner prints nothing at that escalation while the counter still advances. Depends on
+  `OPAQUE_REWRITE_ATTEMPTS` being 2 and on
+  the state directory being an explicit name under `$TMPDIR`. No model, no network.
+- `hook-wiring.sh` — sixteen throwaway repos, one per starting state of
   `.claude/settings.json` (absent, unrelated content, hook only, deny rules only, a
   partial deny list with a repo's own rule in it, the hook and the `Edit` rules but no
-  `Bash` rules, complete, a different hook, six malformed shapes), plus two more for the
-  two modes. Asserts `hooks/wire-settings.py --check` and `--write` report the
-  documented status and exit code and agree; that after a write every deny rule is
-  present and exactly one hook entry names the script; that nothing the repo had is
+  `Bash` rules, everything but the ask rule, complete, a different hook, seven malformed
+  shapes), plus three more for the
+  two modes. The `Bash` deny list is **imported** from `hooks/policy.py` rather than
+  retyped, so a rule added to the table reaches this file with nobody editing it.
+  Asserts `hooks/wire-settings.py --check` and `--write` report the
+  documented status and exit code and agree; that after a write every deny rule and the
+  `hooks/` ask rule are
+  present — the ask rule in `permissions.ask` and not in `permissions.deny` — and exactly
+  one hook entry names the script; that nothing the repo had is
   removed or changed, including a hand-customized hook path and whatever it had under
   `allow` — which stays exactly as it was in every case, absent included; that a second
   write is `kept` with the file byte-identical and `--check` then says `in-sync`; that
-  malformed files are `INVALID` in both modes and untouched; that a file carrying the
+  malformed files (a `permissions.ask` of the wrong type among them) are `INVALID` in
+  both modes and untouched; that a file carrying the
   hook and the `Edit` rules and no `Bash` rules reports `UNWIRED` naming the count of
   missing `Bash` rules and no other gap, and that the write then appends exactly those,
-  in order; and that `--self` writes `${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh`
-  and `Edit(/hooks/**)` and differs from an ordinary run in nothing else — the two files
-  are compared with those two strings swapped — while `--self --check` over a
-  vendored-spelling file reports `UNWIRED`.
-- `plan-numbering.sh` — a minimal throwaway agentTooling checkout (a real git repo with a
-  bare `origin`, the real `feature-start.sh`, `plan-runner-roots.sh`,
-  `analysis/{roots,manifest}.py` and the manifest template) with `feature-start.sh --self
-  <slug> --no-gate` run once per corpus state, reading the number off the review stub it
-  writes. The corpus a start sees is whatever `main` holds — the worktree is cut from
-  `origin/<base>` — so each phase rewrites `self/features/` on `main` and pushes before
-  starting. Asserts that with `104-…md` present the next stem is `105` (the two-digit
-  `find`/`sed` this replaced saw nothing past 99 and handed `100` out twice), that with
-  only `08-…md` present it is `09` — the `10#` guard, without which bash reads the
-  leading zero as octal and the start aborts — that the highest is taken numerically
-  rather than lexically (`104` beats `99`), and that an empty corpus starts at `01`.
-  Depends on `feature-start.sh`'s `--self` branch being the only thing that hands out a
-  plan number (`../PROJECT_FACTS.md` → "Plan numbers run as one sequence").
+  in order; that a file missing only the ask rule names it and nothing else; and that
+  `--self` writes `${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh`
+  and the ask rules `Edit(**/hooks/**)`, `Edit(/hooks/**)` and differs from an ordinary
+  run in nothing else — the two files
+  are compared with those swapped — while `--self --check` over a
+  vendored-spelling file reports `UNWIRED`. Its last phase is the **byte-for-byte** half
+  (`self/DESIGN-2026-09-17-policy-module.md` §3): a hand-added allow rule, a hook command
+  repointed at the vendored path, and a merely REORDERED deny list each fail
+  `--self --check` — all three of which the merge check read as complete — the message
+  names the line and the entry, `--self --write` restores the generated bytes exactly,
+  and this checkout's own committed `.claude/settings.json` passes the same call
+  `self/gate.sh` records.
+- `policy-table.sh` — the odd one out beside `template-versions.sh`: it stands up no
+  sandbox at all, reading the checked-in `hooks/` instead. It imports `hooks/policy.py`,
+  the one table the hook's git deny and `wire-settings.py`'s prefix rules are both built
+  from, and loads `hooks/allow-repo-commands.sh` as a module by path (it is Python with a
+  `.sh` name) so the two halves can be compared directly. Asserts that
+  `bash_deny_rules()` renders exactly one rule per MUTATING entry and none for a
+  READ_ONLY one, in the documented order (push force ×3, `reset --hard`, the
+  always-mutating verbs, worktree ×7, checkout, switch, branch ×6), with nothing
+  rendered twice; that every rule is a `Bash(git …:*)` prefix and none is an allow rule;
+  that the hook's own `git_mutates` **denies the command each rendered rule names** —
+  the twin check, which is what a drift in either direction fails — and does not deny
+  the table's read-only spellings (`git worktree list`, `git branch --list <pattern>`, a
+  plain `git push`, `git reset <file>`); and that neither script keeps a copy of the
+  table, by reading their source for a `BASH_DENY_RULES` tuple and a `GIT_*` frozenset
+  that must no longer be there, and by checking the hook's constants are the table's own
+  objects. RED until `hooks/policy.py` landed. No model, no network, no filesystem of its
+  own.
+- `plan-numbering.sh` — two throwaway checkouts under one `mktemp -d`, each a real git repo
+  with a bare `origin` beside it carrying the real `feature-start.sh`,
+  `plan-runner-roots.sh`, `analysis/{roots,manifest,pricing,transcript,routing}.py` and the
+  manifest template: a **`--self`** one (a standalone agentTooling clone, `self/features/`
+  at its root) and a **consumer** one (agentTooling vendored one directory down,
+  `plans/features/` at the repo's root — the layout `resolve_roots` takes without `--self`).
+  `feature-start.sh … --no-gate` runs once per corpus state and the stem is read off the
+  review stub it writes; the corpus a start sees is whatever `main` holds, the worktree
+  being cut from `origin/<base>`, so each phase rewrites the features root on `main` and
+  pushes first. All four phases assert the same number — `01-review-opus` — with an empty
+  corpus (N1), with another feature holding `104-build-sonnet.md` (N2), with another
+  holding `08-review-opus.md` (N3), and in the consumer layout (N4). The corpus used to
+  number every feature's plans as one sequence, and it was retired because two features
+  started from the same base both saw the same highest number and both took it (twice on
+  2026-09-17) and because a corpus past 99 left stems of two widths that every reader had
+  to sort numerically to stay consistent with itself. So this test no longer reads a
+  number out of the corpus at all: N2 and N3 exist to show the corpus that would have
+  driven the old sequence elsewhere moves nothing. Depends on `feature-start.sh` writing
+  the stub number unconditionally in both modes (`../PROJECT_FACTS.md` → "Plan numbers are
+  per feature, from 01") and on `$HOME` being redirected, since a start derives its routing
+  record from the running session's transcript.
 - `sync-check.sh` — copies the real `sync-plans.sh`, `update.sh` and `templates/` (a
   missing `update.sh` is tolerated — RED until plan 77 lands, the `cost-recovery.sh`
   convention) into two throwaway fixtures. Fixture A is a consuming repo at
   `$TMP/consumer` holding copies of the three under `agentTooling/`; it asserts the
   `sync-plans.sh --check` contract: a fresh seed reports the five generated stubs and
   the three repo-owned scripts (`gate.sh`, `pr.sh`, `worktree-setup.sh`) in-sync with
-  their `# template-version: <N>` line (2, 2, 1 in that order) and only
+  their `# template-version: <N>` line (2, 4, 1 in that order — `pr.sh` is at 4, the
+  version with the `--merge-request` entry point `feature-close.sh` needs) and only
   `PROJECT_FACTS.md` unfilled, exit 1, `needs attention: 1 item(s)`; that the seeded
   `BACKLOG.md` is `in-sync` rather than a second unfilled item — an *empty* backlog is
   the correct steady state for a repo that has closed everything it found, so only its
@@ -878,26 +1317,41 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   itself (no prefix to pull into) refuses naming "source checkout", exit 1; and an
   unknown flag is a usage error, exit 2. No model, no network. Depends on `git subtree`
   being available and on the three templates carrying a `template-version` line, which
-  plan 77 adds.
-- `sweep.sh` — copies `sweep.sh`, `plan-runner-roots.sh` and `analysis/*.py` (a missing
-  `sweep.sh` is tolerated — RED until plan 78 lands, the `cost-recovery.sh` convention)
-  into a throwaway `agentTooling` checkout that is a real git repo with one commit —
-  unlike `capture-guard.sh`'s bare `mkdir .git`, the report step's `git status` needs a
-  real one — and, under a redirected `$HOME`, one synthesized transcript (`session_line`
-  from `fixtures/transcripts/build-transcript.sh` and `project_dir` from
-  `feature-lifecycle.sh`, both copied rather than sourced). Asserts: an unknown flag,
-  with or without `--self`, is a usage error, exit 2; a clean run over one well-formed
-  feature exits 0, prints the seven banners — `rates`, `backfill`, `recover`, `capture`,
-  `report`, `unclaimed`, `done` — strictly in that order, captures a `planning.json`
-  with one session, writes `report.md`, and the done banner names a nonzero
-  changed-file count and the `./agentTooling/update.sh` propagate line; a second run is
-  a no-op on the frozen capture, `planning.json` byte-identical; and a second feature
-  whose declared branch matches no transcript makes the capture step refuse — the sweep
-  still exits with the done banner's two lines printed and the first feature's
-  `planning.json` untouched. No model, no network. Depends on
-  `analysis/capture_planning.py --all` skipping an already-captured feature
-  (`capture-guard.sh` assertion 10) and exiting non-zero on a refusal without stopping
-  the rest of the run (`capture-guard.sh` assertion 13).
+  plan 77 adds. Fixture C (phases 13-14,
+  `self/features/ledger-and-routing/escalations/01-review-opus.md`) asserts the routing
+  migration on the write path, which nothing above exercises: `$TMP/consumer` never
+  copies `analysis/{routing,pricing,roots,transcript}.py`, so `migrate_routing`
+  (`sync-plans.sh:194`, called at `:284`) always returned before `routing.py --migrate`
+  ever ran. Its own `$TMP/consumer-routing`, with those four modules copied in, a
+  `plans/routing/<id>.json` naming slugs `a` and `b` in `features_started` (built with
+  `routing.py`'s own `serialize`, so the byte-equality checks compare against the exact
+  bytes the migration would produce) and `plans/features/{a,b}/` present: a plain sync
+  leaves both features' `routing.json` byte-equal to the legacy record, removes
+  `plans/routing/` entirely, and prints one `routing    moved  <source> -> <target>`
+  line per slug (13a-f); a second plain sync over the same corpus prints no `routing`
+  line and changes nothing (13g-h); and `--check` over a fresh copy of the same
+  fixture (`$TMP/consumer-routing-check`) leaves `plans/routing/<id>.json` in place,
+  byte-identical, and writes no `routing.json` (14a-e) — `--check`'s branch never
+  calls `migrate_routing`, which sits below it, on the write path only.
+- `audit-fixes.sh` — the two items from the 2026-09-16 audit with no home in another file
+  (`../DESIGN-2026-09-16-lifecycle-restructure.md` §3.8), each a gap that read as correct
+  output. Two sandboxes under one `mktemp -d`, no model and no network. **A.** A throwaway
+  `agentTooling` checkout — a real git repo, since `capture_planning.py` resolves its
+  session root by walking up to the nearest `.git` — with `analysis/*.py`, one `--self`
+  feature whose manifest names the branch a synthesized transcript carries (`session_line`
+  from `fixtures/transcripts/build-transcript.sh`, under a redirected `$HOME`), and a
+  `planning.json` frozen by `capture_planning.py` with no `report.json` beside it: asserts
+  `report.py --self --all` writes that feature's `report.json` **and** `report.md`, prints
+  `1 report(s) written`, and then prints a trend table carrying its row; and that a second
+  `--all` fills nothing (`0 report(s) written`), leaves the report byte-identical and still
+  prints the row. **B.** An ordinary (non-`--self`) sandbox repo with the runners, a stub
+  `claude` and a stub `plans/gate.sh`, holding exactly ONE feature — so the build pass
+  resolves the slug with none given — whose `session_window.to` precedes its `from`:
+  asserts that `run-batch.sh` with no slug argument prints the `check-plans` banner, FAILs
+  that feature's window bounds naming the inferred slug, exits non-zero, and stops there,
+  with neither the verify nor the review pass run. Depends on `check-plans.sh`'s check 7
+  label (`window bounds carry a zone and to follows from`) and on `run-batch.sh` writing
+  the inferred slug through the `FEATURE_SLUG_OUT` handshake.
 - `template-versions.sh` — the odd one out: it reads the checked-in tree rather than
   standing up a sandbox, and calls no runner. For each of the three repo-owned templates
   (`templates/plans/{gate,pr,worktree-setup}.sh`) it asserts that the
@@ -940,7 +1394,7 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   `failed/` paragraph): the runner files a plan's four sidecars as a set, so the killed
   run's `.progress.md` and `.usage.json` sit in `<queue>/failed/` while the retry's
   four sit in `complete/` — two sidecars claiming one stem, and a `failed/` pair with
-  no `.md` beside it, which is exactly what crashed `feature-close.sh` on
+  no `.md` beside it, which is exactly what crashed the close (now `feature-capture.sh`) on
   vinylCatalogue's `group-commit-all-adjudication`. Every fixture creates `failed/` (or
   `inprogress/`) **before** `complete/`, so a filesystem-ordered walk offers the wrong
   file first — that ordering is the assertion, since the defect was
@@ -950,7 +1404,7 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   read off the plan-length table, which can only have found the `.md` that exists
   there; the stem is neither missing usage nor an orphan; a `recovered_cost_usd`
   planted in the `failed/` sidecar's `attempts[]` is added to the live figure exactly
-  once and reported as recovered dollars, so money the sweep recovers into a file that
+  once and reported as recovered dollars, so money recovery writes into a file that
   lost the index is not dropped with it; directory rank breaks a tie when **both**
   candidates have a sibling `.md` (`complete` > `inprogress`, whichever the filesystem
   offers first — the sibling rule cannot decide there, so this is the only assertion
@@ -1022,13 +1476,26 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   `slow` stub's remaining runtime, or an unkilled `claude` finishing by itself would
   satisfy it. Verified by mutation: dropping `stop_capture`'s `kill` fails 8f, dropping
   its `rm -rf` fails 9g, and dropping `follow_stream`'s pid stop condition fails 8f
-  and 9f. No model, no network.
+  and 9f. **10** is the executor's own environment, which nothing else can see: the stub
+  records `AGENTTOOLING_HEADLESS`, `AGENTTOOLING_SCRATCH`, its last argument (the
+  prompt, to a file of its own — it is many lines) and its whole argv (`.argv`, one word
+  per line), and the phase asserts the runner exported both, that the scratch directory is
+  under the redirected `$TMPDIR` and exists while the executor runs, that the prompt names
+  it alongside the plan's own brief, that `--add-dir` carries that same directory — the
+  environment says where it is, only the flag says the executor may write to it, since
+  `acceptEdits` reaches the working directory alone — and that it is gone when the pass
+  ends. `hooks/allow-repo-commands.sh` is the only reader
+  of either variable, so without this phase the two ends of that contract are asserted
+  nowhere together. No model, no network.
   Depends on `plan-runner-lib.sh`'s `run_plan` capturing the stream where nothing
   downstream can truncate it, on `finalize_plan` warning on `rc == 0` with no `result`
   event, on `run_all` leaving the runner alive when its own stdout is closed, and — for
   phases 7 to 9 — on `mktemp -d` being given an explicit template under `$TMPDIR` (a bare
   `mktemp -d` ignores it on macOS, which would make every capture-directory assertion
-  here pass vacuously) — none of which is visible from an import line.
+  here pass vacuously). Phase 10 also depends on the executor scratch directory living
+  INSIDE `CAPTURE_TMPDIR`: `capture_dirs_left` counts directories at depth 1 under
+  `$TMPDIR` and 8b/9b assert exactly one, so a second `mktemp -d` beside it would fail
+  those instead. None of this is visible from an import line.
 - `usage-limit-kill.sh` — the runner scripts in a `mktemp -d` checkout with a stub
   `claude` that `cat`s a canned `.stream.jsonl` (`CLAUDE_STUB_STREAM`) and exits with
   `CLAUDE_STUB_RC`, driven through the real `run-plans.sh --self`. The canned stream is
@@ -1097,3 +1564,76 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   transcript-is-gone fixture and pins that nothing about it changed: still `†`, still a
   bare `0.0`, no `‡` anywhere. Both marks are asserted by glyph, so changing either is a
   visible change to the tests.
+  **Phases 8–10 pin the per-attempt walk**
+  (`self/DESIGN-2026-09-18-minutes-slug-and-quoting.md` §1), with a `resumed_usage_json`
+  fixture whose `attempts[]` holds one entry per `claude -p` run: a plan with one measured
+  attempt and one recovered one reports the SUM (930s, `15.5 ‡`), is in
+  `recovered_duration_plans[]` with `measured_attempts: 1` and `recovered_attempts: 1`,
+  is not in `missing_duration_plans[]`, and its footnote says `1 of 2 attempts recovered`;
+  a plan with an attempt carrying neither figure is in `missing_duration_plans[]` with
+  `unmeasured_attempts: [2]` and `attempt_count: 2`, marks `†`, footnotes `attempt 2 of 2
+  unmeasured`, and **still contributes the attempt that was measured** (480s); and a plan
+  whose only duration lives in a PRIOR sidecar — the `failed/` pair a killed attempt left
+  behind — is measured from it and is in neither list, and `--rounds-md` (the PR body's
+  copy of the Rounds table, built by `run_rounds_md` and not by `run_single_feature`)
+  prints that plan's review minutes as `report.md`'s Rounds row does (10e–10f; it needs
+  `run_rounds_md` to hand `compute_time_rollup` the same `usage_index` the report's does).
+  Phases 4b, 4f and 6b assert their
+  entries by exact equality, so the added fields are a deliberate change to them.
+  **Phase 11 pins that a read does not rewrite** (§4): two consecutive `report.py` runs
+  over an unchanged corpus leave `report.md` and `report.json` byte-identical (`cmp`),
+  `--all` leaves an existing record alone, a feature with no record still gets one, and a
+  run after `planning.json` changed rewrites both. Depends on `report.py`'s
+  `attempt_copies`/`plan_duration` and on `write_record`/`GENERATED_AT_MASK_RE` — none of
+  which is visible from an import line.
+- `open-session.sh` — the session opener's **body**, which no test ran before: both
+  `self/open-session.sh` and `templates/plans/open-session.sh`, with `osascript` and
+  `claude` stubbed in a throwaway `PATH` directory, run against a worktree path holding a
+  space, a `'`, a `"` and a `\`. The recorded `do script` argument is AppleScript-
+  unescaped the way Terminal unescapes a string literal, then run by a shell whose
+  `claude` prints `$PWD` — which must be that path intact
+  (`self/DESIGN-2026-09-18-minutes-slug-and-quoting.md` §3). Also pins both copies at
+  `template-version: 3` and that the two compose the same command, since they are
+  hand-kept in step. Nothing is opened and nothing is billed: no Terminal, no model, no
+  network. `feature-lifecycle.sh` S5c–S5f read the same two files as **text** (the two
+  escaping layers are present, the bare single-quoted path is gone, neither spells a
+  chained `cd` as a command of its own); this file runs them, which is the only way a
+  quoting bug in a path nobody has yet is caught before it bills a session to the wrong
+  branch. Depends on `shell_single_quote` and `applescript_escape` by name — the text
+  reads in `feature-lifecycle.sh` grep for exactly those call sites.
+- `report-rounds.sh` — `report-footnotes.sh`'s scaffolding with one input added: a
+  hand-written `timing.jsonl`. Same throwaway checkout
+  (`analysis/{pricing,roots,transcript,routing,report}.py`), same synthesized
+  `self/features/` corpus of manifests, `planning.json` files, plan `.md` files and
+  sidecars where every dollar and every minute is a literal, and no transcript, model or
+  network. Asserts the Rounds table
+  (`../DESIGN-2026-09-17-close-and-review-rounds.md` §4, and §9's RD and no-`round`
+  fallback): a feature whose stamps carry `round=1` then `round=2`, escalated then
+  clean, yields two `rounds[]` rows in that order with each round's build/verify/review
+  dollars and minutes partitioned by the round its plans' stamps carry, the review
+  plan's stem, its verdict, and `escalations_file` set on the escalated round **only** —
+  and the rows' dollars sum to `cost.build + cost.verify + cost.review`, so the Rounds
+  and Cost tables cannot drift apart. Each fixture's figures are distinct powers of two,
+  so no assertion can pass by reading the wrong plan and no sum is reachable two ways.
+  The other phases pin the cases that are easy to get wrong: a `timing.jsonl` with no
+  `round` key anywhere renders as exactly **one** round, round 1, unmarked (every record
+  committed before this feature); `--rounds-md` prints the heading, the header and the
+  rows and **nothing else** — no Cost, Time or Churn section — exits 0 and leaves
+  `report.json` and `report.md` byte-identical (`cmp`), which is what `feature-close.sh`
+  calls to compose the PR body; the same flag on a feature with **no `planning.json` at
+  all**, the state every feature is in when its first PR is opened, still prints the
+  table and marks the unfrozen build figure instead of printing a bare zero; and a
+  review plan whose `plan_end` carries no `verdict` key leaves `verdict` null while
+  still naming its plan, because "unknown" must never render as `clean`. Its last phase is
+  the contrast to that `--rounds-md` case: the **plain** `report.py --self <slug>` over a
+  feature with a manifest and no `planning.json` — the state before the close captures —
+  exits non-zero with one line naming `planning.json` and `feature-close.sh`, no
+  `Traceback` in stderr and no `report.json` written, where the PR-body flag beside it
+  tolerates the same absence and still prints its table. Depends on
+  `report.py`'s `compute_rounds`, `render_rounds_section`, `ROUND_KEY`/`VERDICT_KEY` and
+  the `--rounds-md` flag, and on the stamp contract `plan-runner-roots.sh`'s
+  `stamp_timing` and `run-review.sh` write (`round` on every pass-stamped event,
+  `verdict` and `head` on the review plan's `plan_end`, every detail value a string) —
+  none of which is visible from an import line. The table's heading, header row, the `†`
+  mark and the `—` absent cell are asserted by value, so a change to any of them is a
+  visible change here.

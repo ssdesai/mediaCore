@@ -31,19 +31,34 @@ to the machinery is made once and pulled everywhere.
   on it — until then it records "GATE NOT CONFIGURED" rather than a false green. Advisory only:
   it exits non-zero solely when the environment is unusable.
   See `../agentTooling/AGENT_PLANS.md` → "The mechanical gate".
-- `pr.sh` — *seeded once, then repo-owned* — same treatment as `gate.sh`. Run by
-  `run-review.sh` after a clean review pass: it **never creates a branch** — the feature
-  already ran on its own, in the worktree `../agentTooling/feature-start.sh` made
-  (`../agentTooling/LIFECYCLE.md`) — so it commits whatever the pass left, pushes the
-  current branch, and opens a PR from it whose body is `review-report.md`. The base is
-  `FEATURE_BASE`, which `run-review.sh` exports from the manifest's `base`, else
-  `BASE_BRANCH` from the environment, else `main`; a feature stacked on one that has not
-  merged therefore targets the feature beneath it and its diff shows only its own work.
-  On the base branch itself it refuses — there is no feature branch to open a PR from.
-  It lives here rather than in the shared
-  harness because opening a PR is forge-specific (`gh`, `glab`, `tea`) and the harness
-  must not pin every repo to one vendor. Check its `FORGE_CLI` before
-  relying on it. Advisory: a failure here is reported and never unwinds the review pass.
+- `pr.sh` — *seeded once, then repo-owned* — same treatment as `gate.sh`, and at
+  `template-version: 4`, which is the version that has **two entry points**. Run by
+  `../agentTooling/feature-close.sh`, never by a runner:
+  - **`pr.sh <slug> <body-file>`** opens the PR. It **never creates a branch** — the
+    feature already ran on its own, in the worktree `../agentTooling/feature-start.sh`
+    made (`../agentTooling/LIFECYCLE.md`) — so it pushes the current branch and opens a PR
+    from it whose body is the file the close composed (the review's verdict, then the
+    Rounds table). Its `git add -A` commit is only ever a **fallback** now: the review pass
+    commits its own output as `<slug>: review round N` and the close commits the stamps
+    that followed, so a current harness leaves a clean tree here. The base is
+    `FEATURE_BASE`, which `feature-close.sh` exports from the manifest's `base`, else
+    `BASE_BRANCH` from the environment, else `main`; a feature stacked on one that has not
+    merged therefore targets the feature beneath it and its diff shows only its own work.
+    On the base branch itself it refuses — there is no feature branch to open a PR from.
+  - **`pr.sh --merge-request <slug>`** asks the forge to merge the PR that is already
+    open, under `PR_AUTO_MERGE=1` (`gh pr merge --auto --merge --delete-branch`; a merge
+    commit, never a squash, since the prune and the post-merge capture both test
+    ancestry). It opens nothing and pushes nothing. `feature-close.sh` calls it **last**,
+    after `../agentTooling/feature-capture.sh` has committed the cost records on the
+    branch and pushed them — which is why the flag is safe without a required status
+    check, and why a version-3 copy, whose open path requested the merge itself, is worth
+    hand-merging (`../agentTooling/README.md` → "Adopting rounds and the close"). Unset,
+    it says so and exits 0.
+
+  It lives here rather than in the shared harness because talking to a forge is
+  forge-specific (`gh`, `glab`, `tea`) and the harness must not pin every repo to one
+  vendor. Check its `FORGE_CLI` before relying on it. Advisory: a failure here is reported
+  and never unwinds a review round that came back clean.
 - `worktree-setup.sh` — *seeded once, then repo-owned* — this repo's per-worktree setup,
   run inside a freshly created feature worktree by `../agentTooling/feature-start.sh`
   before the gate: a venv (one per worktree — never shared, since an editable install
@@ -58,21 +73,37 @@ to the machinery is made once and pulled everywhere.
   opening a Terminal.app window running `claude`; swap in a tmux window, an iTerm profile
   or an editor. Advisory: a non-zero exit is reported and the feature is already started.
   It is the one file in the tree that may spell `cd <path> && <command>`, because that
-  string is handed to Terminal.app and not to the Bash tool — and the path is
-  single-quoted inside it, since the shell Terminal.app starts word-splits what it gets
-  and a checkout under a path with a space would otherwise open the session in the wrong
-  directory, which bills it to the wrong branch. Keep that quoting in any replacement body.
-- `routing/` — one JSON record per **router** session (the session that ran
-  `feature-start.sh`), at `routing/<session-id>.json`, written by that script from the
-  router's own transcript and committed in the `<slug>: start` commit. It is the link from
-  router to feature, in git before the transcript can expire:
+  string is handed to Terminal.app and not to the Bash tool — and at `template-version: 3`
+  the path crosses **two named escaping layers** on the way there: `shell_single_quote`
+  (`'` → `'\''`), because the shell Terminal.app starts word-splits what it gets and a
+  checkout under a path with a space would otherwise open the session in the wrong
+  directory; then `applescript_escape` (`\` → `\\`, `"` → `\"`), because that command line
+  is itself written into an AppleScript string literal. Version 2 had the first layer
+  only, as a bare pair of quotes, so a path holding `'`, `"` or `\` still broke it — and a
+  session is billed to the branch of the directory it was launched in, so the mistake was
+  silent and landed in the ledger as somebody else's money. **Keep both layers in any
+  replacement body**: whichever launcher a repo swaps in, the path reaches it through
+  somebody's quoting.
+- `features/<slug>/routing.json` — the **router** that started that feature (the session
+  that ran `feature-start.sh`), written by that script from the router's own transcript
+  and committed in the `<slug>: start` commit. It is the link from router to feature, in
+  git before the transcript can expire:
   `{ session_id, launched_in, git_branch, model, started_at, ended_at, duration_s,
   cost_usd, features_started[{slug, at}], captured_at }`. The router's spend is routing
   overhead, reported per repo by `../agentTooling/analysis/report.py --all` and never
-  attributed to or split across the features it opened. Committed, small, and rewritten
-  whole by each refresh. Absent until the repo starts a feature under this rule.
-- `review-report.md` — the review executor's verdict, and the body of the PR `pr.sh`
-  opens. Gitignored and regenerated every batch, like `gate-report.txt`.
+  attributed to or split across the features it opened. It lives inside the feature it
+  links, so a router that opened three features leaves three copies and no two features
+  ever write one path; the report keeps the copy with the latest `captured_at`. Committed,
+  small, and rewritten whole by each refresh. Records written before that rule sat in a
+  `routing/` directory here, one file per router shared by every feature it started;
+  `sync-plans.sh` moves them (`../agentTooling/analysis/routing.py --migrate`) and tells
+  you to commit the moves.
+- `review-report.md` — the review executor's verdict, whose **first line** is
+  `Verdict: clean` or `Verdict: escalated` (what `run-review.sh` reads to decide whether
+  the round can be closed), and the body of the PR `feature-close.sh` opens. On an
+  escalated round the runner copies it to `features/<slug>/escalations/<review-stem>.md`,
+  where it becomes the rework brief. Gitignored and regenerated every batch, like
+  `gate-report.txt`.
 - `.gitignore` — *generated, overwritten every sync* — the four patterns whose files are
   rewritten every batch and never committed: `gate-report*.txt` (including the per-level
   `gate-report.<NN>.txt`), `**/*.stream.jsonl`, `**/*.logfifo` and `/review-report.md`.
@@ -85,10 +116,11 @@ to the machinery is made once and pulled everywhere.
 Run from the repo root:
 
 ```bash
-./agentTooling/run-batch.sh    # build pass, then verify pass, then review pass
+./agentTooling/run-batch.sh    # build, verify, review — and the close on a clean round
 ./agentTooling/run-plans.sh    # build pass only
 ./agentTooling/run-verify.sh   # verify pass only
-./agentTooling/run-review.sh   # review pass only
+./agentTooling/run-review.sh   # review pass only: the round's verdict, and nothing after it
+./agentTooling/feature-close.sh <slug>   # PR, capture, merge request — from the worktree
 ```
 
 Each accepts an optional feature slug as its first argument; omitted, the runner infers

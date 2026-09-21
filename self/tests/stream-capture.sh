@@ -89,6 +89,26 @@ ORPHAN_POLL_TRIES=40
 cat > "$TMP/bin/claude" <<STUB
 #!/usr/bin/env bash
 trap '' PIPE
+# Phase 10's window onto the executor's environment and prompt: what run_plan hands
+# `claude -p` is otherwise invisible from outside the runner.
+if [[ -n "\${CLAUDE_STUB_ENV_LOG:-}" ]]; then
+  stub_prompt=""
+  for stub_arg in "\$@"; do stub_prompt="\$stub_arg"; done
+  stub_scratch_state=no
+  if [[ -n "\${AGENTTOOLING_SCRATCH:-}" && -d "\${AGENTTOOLING_SCRATCH}" ]]; then
+    stub_scratch_state=yes
+  fi
+  {
+    printf 'HEADLESS=%s\n' "\${AGENTTOOLING_HEADLESS:-<unset>}"
+    printf 'SCRATCH=%s\n' "\${AGENTTOOLING_SCRATCH:-<unset>}"
+    printf 'SCRATCH_EXISTS=%s\n' "\$stub_scratch_state"
+  } > "\$CLAUDE_STUB_ENV_LOG"
+  # The prompt is many lines, so it gets a file of its own rather than a key=value line
+  printf '%s\n' "\$stub_prompt" > "\$CLAUDE_STUB_ENV_LOG.prompt"
+  # And the whole argv, one word per line: the environment says WHERE the scratch
+  # directory is, but only the flags say whether the executor may write to it.
+  printf '%s\n' "\$@" > "\$CLAUDE_STUB_ENV_LOG.argv"
+fi
 sid="\${CLAUDE_STUB_SESSION_ID:-stub-session}"
 printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "\$sid"
 i=0
@@ -401,6 +421,49 @@ check "9e. the stream file holds what was captured up to the kill" \
   '[[ -s "$F/auto/inprogress/$PLAN.stream.jsonl" ]]'
 check "9f. nothing from the sandbox is still running" 'poll_until sandbox_procs_gone $ORPHAN_POLL_TRIES'
 check "9g. the capture directory is gone, removed by the interrupt handler (got $(capture_dirs_left))" \
+  '[[ "$(capture_dirs_left)" == "0" ]]'
+
+# ── 10: what the executor's environment carries ──────────────────────────────
+# hooks/allow-repo-commands.sh branches on both of these (hooks/README.md → "The opaque
+# shape"): AGENTTOOLING_HEADLESS turns the escalation's `ask` into silence, because
+# nobody is at a terminal to answer one, and AGENTTOOLING_SCRATCH is the directory whose
+# scripts it approves by name — the place a denied heredoc is supposed to become a file.
+# Neither is visible from the hook, from the prompt templates, or from any other test:
+# the `claude -p` launch site in plan-runner-lib.sh is the only thing that sets them, and
+# a stub `claude` recording its own environment is the only way to see that it did.
+reset_feature
+rm -rf "${CAPTURE_TMP:?}"/*
+ENV_LOG="$TMP/stub-env-10.txt"
+rm -f "$ENV_LOG"
+( TMPDIR="$CAPTURE_TMP" CLAUDE_STUB_ENV_LOG="$ENV_LOG" "$AT/run-plans.sh" --self "$SLUG" \
+    > "$TMP/out-10.txt" 2>"$TMP/err-10.txt" ); rc=$?
+env_value() { sed -n "s/^$1=//p" "$ENV_LOG" 2>/dev/null | head -1; }
+# The word after `--add-dir` in the recorded argv, or empty when the flag is absent.
+add_dir_value() { awk '$0 == "--add-dir" { getline v; print v; exit }' "$ENV_LOG.argv" 2>/dev/null; }
+SCRATCH_SEEN="$(env_value SCRATCH)"
+check "10a. the run itself is unaffected (exit 0, got $rc)" '[[ $rc -eq 0 ]]'
+check "10b. the executor saw AGENTTOOLING_HEADLESS=1 (got \"$(env_value HEADLESS)\")" \
+  '[[ "$(env_value HEADLESS)" == "1" ]]'
+check "10c. the executor saw AGENTTOOLING_SCRATCH under \$TMPDIR (got \"$SCRATCH_SEEN\")" \
+  '[[ -n "$SCRATCH_SEEN" && "$SCRATCH_SEEN" != "<unset>" && "$SCRATCH_SEEN" == "$CAPTURE_TMP"/* ]]'
+check "10d. the scratch directory existed while the executor ran (got \"$(env_value SCRATCH_EXISTS)\")" \
+  '[[ "$(env_value SCRATCH_EXISTS)" == "yes" ]]'
+check "10e. the prompt names the scratch directory, so the executor knows where to write" \
+  'grep -qF "$SCRATCH_SEEN" "$ENV_LOG.prompt"'
+check "10e2. and the plan's own brief is still the bulk of it" \
+  'grep -q "$PLAN" "$ENV_LOG.prompt"'
+# `--permission-mode acceptEdits` auto-accepts Edit/Write only under the working
+# directory, and the scratch directory is under $TMPDIR — outside it. Without --add-dir
+# the executor is told to write a script somewhere it cannot write, the Write is refused,
+# and the deny's rewrite has nowhere to go. The environment and the prompt line say WHERE;
+# this is the assertion that the executor may actually write there.
+check "10h. the launch passes --add-dir, so the executor may write to the scratch dir" \
+  'grep -qxF -- "--add-dir" "$ENV_LOG.argv"'
+check "10i. and its value is that same scratch directory (got \"$(add_dir_value)\")" \
+  '[[ -n "$SCRATCH_SEEN" && "$(add_dir_value)" == "$SCRATCH_SEEN" ]]'
+check "10f. the scratch directory is removed when the pass ends" \
+  '[[ "$SCRATCH_SEEN" == "$CAPTURE_TMP"/* && ! -d "$SCRATCH_SEEN" ]]'
+check "10g. and nothing is left under \$TMPDIR at all (got $(capture_dirs_left))" \
   '[[ "$(capture_dirs_left)" == "0" ]]'
 
 if (( fails > 0 )); then echo "stream-capture: $fails assertion(s) FAILED"; exit 1; fi

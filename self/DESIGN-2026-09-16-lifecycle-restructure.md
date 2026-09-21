@@ -98,6 +98,14 @@ session with it.
 
 ### 3.2 `feature-capture.sh` (renamed from `feature-close.sh`)
 
+> **Superseded 2026-09-17** by `DESIGN-2026-09-17-close-and-review-rounds.md` in one
+> respect only: "there is no close" is no longer true. `feature-close.sh` is a real script
+> again — still in the worktree, on the branch, before the merge — and it is what runs
+> `pr.sh`, this capture and the merge request, in that order, and only for a tree a clean
+> review round judged. Everything below about the capture itself still holds; what changed
+> is who calls it (the close, not `run-review.sh`) and that a rework after an escalated
+> review is a new round rather than a by-hand capture.
+
 Runs **in the worktree, on the branch, before the merge**. The merge is the freeze.
 
 1. Stamp `to` from evidence (`capture_planning.py --last-branch-instant`). Pre-merge it may

@@ -41,9 +41,10 @@ Usage:
     python3 agentTooling/analysis/recover_attempts.py [--self] [--force] [--for <slug>]
 
 `--for <slug>` restricts the walk to one feature directory — what
-`feature-close.sh` runs just before it captures, so a feature is priced at the
-moment it is closed rather than at the next weekly sweep. Without it the whole
-tree is walked, which is what `sweep.sh` calls and must stay unchanged.
+`feature-capture.sh` runs just before it captures, so a feature is priced on its
+branch, before the merge, while its transcripts still exist. Without it the whole
+tree is walked: the repair run over a corpus somebody has come back to
+(`analysis/README.md` → "Repair tools"), which must stay unchanged.
 """
 
 from __future__ import annotations
@@ -177,7 +178,7 @@ def main():
         action="store_true",
         help="re-recover an attempt that already carries recovered_cost_usd",
     )
-    # Named `--for`, not `--slug`, to read the way feature-close.sh calls it. It is a
+    # Named `--for`, not `--slug`, to read the way feature-capture.sh calls it. It is a
     # prefix of `--force`, so before this existed `--for <slug>` was silently parsed as
     # `--force` plus a stray positional; an exact match wins in argparse, so adding it
     # takes that spelling back. `--forc` still abbreviates `--force`; `--fo` is now
@@ -186,8 +187,8 @@ def main():
         "--for",
         dest="feature",
         metavar="SLUG",
-        help="restrict the walk to one feature directory (feature-close.sh passes this; "
-        "sweep.sh passes nothing and walks the whole tree)",
+        help="restrict the walk to one feature directory (feature-capture.sh passes this; "
+        "a repair run over the whole corpus passes nothing)",
     )
     add_self_flag(parser)
     args = parser.parse_args()

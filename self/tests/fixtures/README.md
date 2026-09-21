@@ -7,6 +7,22 @@ Shell helpers the tests under `self/tests/` source to build their throwaway corp
 transcripts and sidecars are synthesized into a `mktemp -d` at test run time, never
 committed here as JSON blobs.
 
+**One file here is data**, and it is the exception that says why the rule holds elsewhere:
+a *command* is not a corpus. `hook-replay-2026-09-18.json` is a table of command lines and
+the verdict each must get, which nothing can synthesize — the commands are the fixture.
+
+- `hook-replay-2026-09-18.json` — `{ provenance, cwd, verdicts, records[] }`, where each
+  record is `{ command, verdict, reason_contains }` and `verdict` is one of `ALLOW` (the
+  hook approves), `REWRITE` (it denies with the rewrite as the reason), `DENY` (one of the
+  three older shape denies) or `ASK` (it prints nothing). Replayed by
+  `../allow-repo-commands.sh`, which maps the four onto the three decisions a caller can
+  see and checks `reason_contains` against every denial's reason. Every path in it is
+  relative to the throwaway project root that test builds, so no record carries a machine
+  path. Its `provenance` says what it is: the shapes
+  `../../DESIGN-2026-09-18-hook-rewrite-or-ask.md` §1 names, one record per shape and per
+  approved read — **composed, not transcribed**, since the 2026-09-18 replay behind the
+  design's counts was recorded as counts and the commands themselves survive nowhere.
+
 - `transcripts/build-transcript.sh` — `transcript_line MESSAGE_ID MODEL TIMESTAMP INPUT
   OUTPUT CACHE_READ CACHE_5M CACHE_1H [IS_SIDECHAIN]` prints one `assistant`-line session
   transcript fixture to stdout, in the shape `analysis/transcript.py`'s

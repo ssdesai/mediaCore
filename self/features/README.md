@@ -9,7 +9,9 @@ Every agentTooling feature gets one directory here, named by its slug:
       review/{incomplete,inprogress,complete,failed}/   post-verify diff review (Bash enabled)
       interactive/       bash-heavy steps run by hand, belonging to THIS feature
       escalations/NN.md  written by a level's tier-1/tier-2 pass, never by hand
+      escalations/<review-stem>.md  an escalated review's report, written by run-review.sh
       brief.md, NOTES.md, CHECKPOINT.md   a DIRECT feature's own record (../../AGENT_DIRECT.md)
+      routing.json       the record of the router session that started this feature
       planning.json      written later by analysis/capture_planning.py --self
       report.md / report.json
 
@@ -21,13 +23,33 @@ Every agentTooling feature gets one directory here, named by its slug:
   --self` with Bash enabled, after this feature's auto plans finish. Same four-folder
   layout as `auto/`.
 - `review/` — the post-verify pass, run by `../../run-review.sh --self`, reading the diff
-  rather than running the work. Optional; an empty queue is a clean no-op.
+  rather than running the work, and the end of a **round**: its verdict decides whether
+  `../../feature-close.sh --self` may close the feature or whether the rework is round
+  N+1. The round is the number of plans in `review/complete/` plus one, and every
+  `timing.jsonl` line carries it. Optional; an empty queue is a clean no-op.
 - `interactive/` — this feature's bash-heavy steps run by hand. Distinct from the
   top-level `../interactive/`, which holds standing runbooks that outlive any one
   feature.
+- `routing.json` — the **router** that started this feature: the session that ran
+  `../../feature-start.sh`, which writes this record from that session's own transcript
+  and commits it in the `<slug>: start` commit, so the link is in git before the
+  transcript can expire. `{ captured_at, cost_usd, duration_s, ended_at,
+  features_started[{slug, at}], git_branch, launched_in, model, session_id, started_at }`;
+  `../../analysis/README.md` → `routing.py` says what each field is derived from. A router
+  is never pinned into a feature (`../../LIFECYCLE.md`, rule 1): its spend is routing
+  overhead, reported per repo by `report.py --all`, never split across the features it
+  opened — and a router that opened three features leaves this file in each of the three,
+  identical but for how much of its own transcript had happened when each was written.
+  Rewritten whole by `../../feature-capture.sh`'s refresh and committed with the cost
+  records. Absent from a feature nobody started through the script. Records written before
+  this rule sat in `self/routing/<session-id>.json`, one file every feature of one router
+  shared; `routing.py --migrate` moved them here.
 - `escalations/` — one `NN.md` per level whose gate stayed red, written by the tier ladder
   (`../../RUNNER.md` → "Red gates"). It records a contract the batch changed after
-  authoring, which is why the review brief should name it. Not a queue; no state folders.
+  authoring, which is why the review brief should name it. It also holds
+  `<review-stem>.md`, the report of a review round that came back escalated or unreadable,
+  copied there by `../../run-review.sh`: that file **is** the rework brief for the next
+  round, one file with one writer. Not a queue; no state folders.
 
 The execution model — state folders, resume semantics, what the logs contain, how to
 read a failure — is documented once in `../../RUNNER.md`. The four state folders get no
@@ -45,6 +67,11 @@ and commits it — see `../../LIFECYCLE.md`. Then fill in the manifest's prose;
 shared with consuming repos even though the rest of this tree is not.
 
 ## Features
+
+The plan numbers quoted below for features started before `lifecycle-records-and-numbering`
+were issued under this corpus's retired shared sequence (`../PROJECT_FACTS.md`); every
+feature since numbers its own plans from `01`, per `../../AGENT_PLANS.md` → "Plan file
+format".
 
 - `plan-analytics` — cost measurement and the `plans/features/<slug>/` restructure that
   made a feature addressable. Plans `48`–`58`. Built before `--self` existed, out of
@@ -131,3 +158,39 @@ shared with consuming repos even though the rest of this tree is not.
   (an in-flight co-claimant's `to` is still unbounded in this feature's split), and adds
   no test file — every assertion lands in `../tests/feature-lifecycle.sh` (W),
   `../tests/session-share.sh` (12-13) and `../tests/session-claims.sh` (7d-7f, 9).
+- `sweep-retirement-and-audit-fixes` — the last of the three lifecycle-restructure
+  features (`../DESIGN-2026-09-16-lifecycle-restructure.md` §3.5, §3.8), stacked on
+  `capture-on-branch`. With the capture running on the branch, the weekly `sweep.sh` had
+  nothing left that was not either historical or a step of a capture, so it is **deleted**:
+  its repair tools become `../../analysis/README.md` → "Repair tools", its frozen-record
+  annotation becomes `capture_planning.py --annotate-frozen` run by `feature-capture.sh`,
+  and its unclaimed-session and stale-rates listing becomes that script's residue output —
+  informational, never a refusal. With it ride the audit's small items (`report.py --all`
+  writes the reports that were missing, `check-plans.sh` lints window ordering,
+  `run-batch.sh` lints an inferred slug, `RUNNER.md`'s review cap reads `$7.00`) and the
+  `capture-on-branch` review's escalation: `run-review.sh` commits its own pass under
+  `pr.sh`'s subject before calling it, so a capture no longer refuses the pass's own files
+  where no forge is logged in. Built direct (`method: "direct"`), resumed once after a
+  usage limit; plan `109-review-opus` is its review. It adds `../tests/audit-fixes.sh`,
+  deletes `../tests/sweep.sh`, and adds three `../BACKLOG.md` entries.
+- `feature-close-and-review-rounds` — the review pass ended in a verdict with two
+  outcomes and the runner acted on it as if it had one, so a rework after an escalated
+  review happened outside every gate (measured on PR #46: stale PR body, record replaced
+  by hand, no second review, no round in the timing file). Now **a feature is a sequence
+  of rounds and the close is the only way out**
+  (`../DESIGN-2026-09-17-close-and-review-rounds.md`): `run-review.sh` reads the report's
+  first line (`Verdict: clean` / `Verdict: escalated`, `unreadable` failing closed),
+  commits its pass as `<slug>: review round N`, stamps that round's `verdict` and the
+  `head` it judged, and stops — an escalated round's report becomes the rework brief at
+  `escalations/<review-stem>.md` and the rework is round N+1. `feature-close.sh` is a real
+  script again: it refuses anything but the tree a clean review judged, then opens the PR
+  (the report plus the report's Rounds table), stamps it, captures on the branch, and asks
+  for the merge **last** — which closes the `PR_AUTO_MERGE` race by ordering and takes
+  `templates/plans/pr.sh` and `self/pr.sh` to `template-version: 4` with a
+  `--merge-request` entry point. Every stamp carries its `round`, and `report.py` grows a
+  Rounds table. Built direct (`method: "direct"`) as two parallel slices — the lifecycle
+  and the report — with plan `110-review-opus` as its review. It adds no test file: the
+  lifecycle assertions land in `../tests/feature-lifecycle.sh` (V1–V3, X1–X3, RD, B1/B2
+  and the rewritten T3/T4/T5/P2), the report's in `../tests/report-rounds.sh`. It removes
+  the `PR_AUTO_MERGE` entry from `../BACKLOG.md` and adds three, and is the first feature
+  closed by its own script.

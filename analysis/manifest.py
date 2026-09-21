@@ -6,7 +6,8 @@ planning.json claimed — the JSON edits the lifecycle scripts need, kept out of
         --base BASE --from TS [--session ID]... [--plan STEM]...
     python3 agentTooling/analysis/manifest.py [--self] <slug> get <key>
     python3 agentTooling/analysis/manifest.py [--self] <slug> set-plans <stem>...
-    python3 agentTooling/analysis/manifest.py [--self] <slug> set-window-to [TS] [--tighten]
+    python3 agentTooling/analysis/manifest.py [--self] <slug> set-window-to [TS] [--tighten|--replace]
+    python3 agentTooling/analysis/manifest.py [--self] <slug> set-window-from TS --session ID
     python3 agentTooling/analysis/manifest.py [--self] <slug> claimed
 
 `init` writes `<features>/<slug>/README.md` from `templates/plans/features/TEMPLATE.md`
@@ -15,27 +16,38 @@ with the template's fence replaced by a filled one, and refuses if the file exis
 JSON array) from the LAST ```json fence, the one `capture_planning.py` reads. `set-window-to`
 replaces a `null` `to` bound with TS (default: now, UTC, `Z`) and touches nothing else in
 the file; a bound already set is left alone and reported, since a second stamp would move
-a boundary another manifest may chain to. `--tighten` is the one exception and only ever
-inwards: it replaces a bound already set with an EARLIER instant, printing `old -> new`,
-treats the same instant as a no-op, and refuses a later one — a widened `to` re-admits
-sessions the neighbouring feature's window may already have chained onto, and the share
-split then pays this feature for work it did not do. Inwards has an end too: a bound at or
-before the fence's `from` is an EMPTY window, which owns nothing and is dropped from every
-other feature's split, and is refused as well. It is what
-`feature-close.sh --recapture` runs to repair a `to` stamped at close time.
+a boundary another manifest may chain to. There are two exceptions, one per side of the
+merge. `--replace`, before it: the bound on a feature's branch is provisional, so a bound
+already set is replaced in either direction, printing `old -> new` — what
+`feature-capture.sh` runs on the branch, where a re-run after more work moves `to` later.
+`--tighten`, after it, and only ever inwards: it replaces a bound already set with an
+EARLIER instant, printing `old -> new`, treats the same instant as a no-op, and refuses a
+later one — a widened `to` re-admits sessions the neighbouring feature's window may
+already have chained onto, and the share split then pays this feature for work it did not
+do. It is what `feature-capture.sh --recapture` runs to repair a merged feature's `to`.
+Both refuse a bound at or before the fence's `from`: an EMPTY window owns nothing and is
+dropped from every other feature's split.
+`set-window-from` is the head's remedy, and the only thing here that moves `from`: it
+moves that bound BACK, over an opening stretch `capture_planning.py` has disclosed as
+unclaimed, and prints `old -> new`. Three refusals, each a plain 1 — an instant earlier
+than the named session's own first timestamped instant (a `from` before the work it is
+meant to cover is a claim on somebody else's), a *later* instant (widening the claim
+backwards is this command's job, narrowing is nobody's — see `cmd_set_window_from`), and
+a fence whose `from` is null or unparseable. On a feature already captured it applies and
+then says the figure will not move until `--recapture`.
 `set-plans` replaces `plans[]` with the stems given, in that order — how the
 architect records the batch after `feature-start.sh` wrote the fence with only the review
 stub in it — and refuses a stem that is not `NN-name-MODEL` (a sentinel is never a plan).
 `claimed` prints the sessions and subagents
 `planning.json` holds, each with how it was selected and where it was launched, and the
-total — what `feature-close.sh` shows the human before the number is quoted.
+total — what `feature-capture.sh` shows the human before the number is quoted.
 
 Formatting is preserved: the fence is written one key per line with compact values,
 the shape every hand-written manifest in both corpora already has, so a diff after
 `init` or `set-window-to` shows the change and nothing else.
 
 Exit codes: 0 success, a no-op included; 3 the widen refusal ALONE (`WIDEN_REFUSED_EXIT`
-— `feature-close.sh` continues past that one and stops on every other); 1 any other
+— `feature-capture.sh` continues past that one and stops on every other); 1 any other
 refusal; 2 argparse's usage error.
 """
 
@@ -47,6 +59,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from roots import AGENT_TOOLING_DIR, add_self_flag, features_root
+# One way, and the direction is the point: `routing` imports `pricing`, `roots` and
+# `transcript` and nothing else — never this module and never `capture_planning` — so
+# importing it here cannot close a cycle. The other candidate would have:
+# `capture_planning` is the module that reads this fence on every capture, and a
+# `manifest` -> `capture_planning` import would make the reader import its writer.
+# What is needed is the transcript lookup, and `routing.find_transcript` is the one
+# copy of it that is not behind a capture (it globs `~/.claude/projects/*/<id>.jsonl`,
+# as `recover_attempts.py` does, because session ids are unique).
+from routing import find_transcript, load_lines
 
 TEMPLATE_PATH = AGENT_TOOLING_DIR / "templates" / "plans" / "features" / "TEMPLATE.md"
 FENCE_RE = re.compile(r"```json\n(.*?)\n```", re.DOTALL)
@@ -60,13 +81,24 @@ KNOWN_METHODS = ("plans", "direct", "hand")
 # sentinel, not a plan, and never belongs in `plans[]`; the model alternation excludes it.
 PLAN_STEM_RE = re.compile(r"^[0-9]+-[a-z0-9-]+-(haiku|sonnet|opus)$")
 # The exit code `set-window-to --tighten` gives the WIDEN refusal and nothing else, so
-# that `feature-close.sh` can continue past that one refusal — the bound it declined to
-# widen is the one already published — and stop on every other. Deliberately not 2:
-# argparse exits 2 on a usage error, and a close that read a malformed invocation as a
-# declined widen would stamp nothing, warn about a cause that did not happen, and then
-# capture, commit, push and delete the branch, leaving a CLOSED feature with a permanently
-# open window. Every other refusal in this module is a plain 1.
+# that `feature-capture.sh --recapture` can continue past that one refusal — the bound it
+# declined to widen is the one already published — and stop on every other. Deliberately
+# not 2: argparse exits 2 on a usage error, and a capture that read a malformed invocation
+# as a declined widen would stamp nothing, warn about a cause that did not happen, and then
+# capture a merged feature with a permanently open window. Every other refusal in this
+# module is a plain 1.
 WIDEN_REFUSED_EXIT = 3
+# `set-window-to --replace`: the pre-merge rule. `feature-capture.sh` runs on the feature's
+# branch before the merge, and a re-run after more work must move the bound LATER — the
+# record on the branch is provisional, and the merge is what freezes it. So a bound
+# already set is replaced in either direction; the empty-window refusal still holds, since
+# a `to` at or before `from` owns nothing whichever way it moved. `--tighten` stays the
+# post-merge rule, and the two are refused together.
+REPLACE_HELP = (
+    "replace a bound already set in EITHER direction — the pre-merge rule "
+    "feature-capture.sh uses on the feature's branch, where the bound is provisional "
+    "until the merge freezes it. One at or before `from` is still refused (exit 1)"
+)
 
 
 def now_z():
@@ -165,11 +197,15 @@ def cmd_set_window_to(args):
     current = (obj.get("session_window") or {}).get("to")
     stamp = args.timestamp or now_z()
     replacing = "null"
+    if args.tighten and args.replace:
+        print("refusing: --tighten and --replace are two different rules; give one", file=sys.stderr)
+        return 1
     if current is not None:
         # A bound already set is left alone by default: a second stamp would move a
         # boundary another manifest may chain onto, and `in_window` is half-open so that
-        # they can. `--tighten` is the one exception, and only ever inwards.
-        if not args.tighten:
+        # they can. `--tighten` is one exception, and only ever inwards; `--replace` is
+        # the other, and only before the merge (see REPLACE_HELP).
+        if not (args.tighten or args.replace):
             print(f"session_window.to already set to {current}; left alone")
             return 0
         old, new = to_instant(current), to_instant(stamp)
@@ -180,11 +216,11 @@ def cmd_set_window_to(args):
                 file=sys.stderr,
             )
             return 1
-        if new > old:
+        if args.tighten and new > old:
             # Never outwards, by any path. A widened bound re-admits sessions the
             # neighbouring feature's window may already have chained onto, and the share
             # split then pays this feature for work it did not do. Its own exit code, and
-            # the ONLY one `feature-close.sh` continues past: see WIDEN_REFUSED_EXIT.
+            # the ONLY one `feature-capture.sh` continues past: see WIDEN_REFUSED_EXIT.
             print(
                 f"refusing: session_window.to is {current} and {stamp} is later — a bound "
                 "is only ever tightened, never widened; leave it as it is, or edit the "
@@ -200,7 +236,7 @@ def cmd_set_window_to(args):
         # outright — the feature would then own nothing at all, and only a WARN at its next
         # capture would say so. Compared as instants, the same reading the widen check
         # above uses; a fence with no `from` (or one that will not parse) is left unchecked
-        # rather than guessed at. A plain 1, not the widen code: the close must stop on it.
+        # rather than guessed at. A plain 1, not the widen code: the capture must stop on it.
         # Unreachable from evidence — a branch-selected session starts at or after `from`,
         # so a bound one second past its last instant is strictly later than `from` — which
         # makes this a guard on the hand invocation the repair path invites.
@@ -225,8 +261,143 @@ def cmd_set_window_to(args):
     path.write_text(text[: match.start(1)] + new_fence + text[match.end(1):])
     if current is None:
         print(f"session_window.to = {stamp}")
+    elif args.replace:
+        print(f"session_window.to replaced: {current} -> {stamp}")
     else:
         print(f"session_window.to tightened: {current} -> {stamp}")
+    return 0
+
+
+def session_first_instant(session_id):
+    """The earliest timestamped instant of one top-level session's transcript, or None
+    when no transcript carries that id or none of its lines is timestamped.
+
+    The transcript is found the way `routing.find_transcript` finds a router's — a glob
+    over every project directory rather than a lookup by launch directory — because the
+    session a head belongs to is by definition one this feature did not launch, and the
+    directory it ran in is exactly what cannot be reconstructed from here."""
+    path = find_transcript(session_id)
+    if path is None:
+        return None
+    moments = [
+        moment
+        for moment in (to_instant(line.get("timestamp")) for line in load_lines(path))
+        if moment is not None
+    ]
+    return min(moments) if moments else None
+
+
+def captured_at_of(args):
+    """The feature's frozen `captured_at`, or None when nothing has captured it yet.
+
+    Read straight off `planning.json` rather than through `capture_planning.prior_capture`:
+    this module must not import that one (see the import block above), and the question —
+    "is there a frozen figure this edit will not move?" — is one field deep."""
+    planning = features_root(args.self_mode) / args.slug / "planning.json"
+    try:
+        record = json.loads(planning.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    captured_at = record.get("captured_at") if isinstance(record, dict) else None
+    return captured_at if isinstance(captured_at, str) and captured_at.strip() else None
+
+
+def cmd_set_window_from(args):
+    """Move `session_window.from` BACK over a disclosed head, and print `old -> new`.
+
+    The head is the stretch of a shared session that lies before every claimant's `from`
+    and further back than the earliest claimant's own window is long: nobody owns it, and
+    `capture_planning.py` names it in the unclaimed warning with both remedies. One of
+    them has always had a tool (pin the session into the feature the work belongs to) and
+    the other was "move the earliest claimant's `from` back by hand" — the one edit every
+    manifest tells the author not to make. This is that tool.
+
+    Three refusals, all plain 1s (there is no `feature-capture.sh` reading these codes,
+    as there is for `set-window-to --tighten`'s widen refusal, so no code is reserved):
+
+      - **earlier than the session's own first instant.** A `from` before the session it
+        is meant to cover does not claim more of that session — it is already claiming
+        all of it — and it does reach back over whatever else ran in that window. The
+        session names itself in the warning, so the check costs one transcript read.
+      - **later than the current `from`.** This command widens a claim backwards; nothing
+        here narrows one. `set-window-to` moves `to`, and only inwards after the merge —
+        there is no `from` equivalent and deliberately so: narrowing `from` un-claims work
+        that is already frozen into a record, which `--recapture` would then have to
+        rebuild from transcripts that may be gone. Edit the fence by hand if a `from` is
+        genuinely wrong, and say so in the feature's notes.
+      - **a `from` that is null or will not parse.** An unbounded `from` claims from the
+        beginning of time already; there is no head in front of it to move over.
+
+    A bound already equal to the one asked for is a no-op, exit 0, like `set-window-to`'s.
+    On a feature already captured the edit is applied and the output says a `--recapture`
+    is what moves the figure: the fence is the input to the next capture, never to the one
+    that is already frozen."""
+    path = manifest_path(args)
+    text = path.read_text()
+    match, obj = last_fence(text)
+    window = obj.get("session_window") or {}
+    current = window.get("from")
+    stamp = args.timestamp
+    new = to_instant(stamp)
+    old = to_instant(current)
+    if new is None:
+        print(f"refusing: {stamp!r} is not an ISO 8601 instant", file=sys.stderr)
+        return 1
+    if old is None:
+        print(
+            f"refusing: session_window.from is {json.dumps(current)} — there is no bound "
+            "to move back (an unbounded `from` already claims everything before `to`); "
+            "write a real `from` first",
+            file=sys.stderr,
+        )
+        return 1
+    if new == old:
+        print(f"session_window.from is already {current}; left alone")
+        return 0
+    if new > old:
+        print(
+            f"refusing: session_window.from is {current} and {stamp} is later — this "
+            "command only ever moves `from` BACK, over a head no feature claims. Nothing "
+            "narrows a `from`: `set-window-to` moves `to` (inwards only, after the merge), "
+            "and narrowing `from` would un-claim work a frozen record already counts. Edit "
+            "the fence by hand if the recorded `from` is genuinely wrong",
+            file=sys.stderr,
+        )
+        return 1
+    first = session_first_instant(args.session)
+    if first is None:
+        print(
+            f"refusing: no transcript for session {args.session!r} under "
+            "~/.claude/projects/ — the id is wrong, or it has aged out, and the new "
+            "`from` cannot be checked against the session it is meant to cover",
+            file=sys.stderr,
+        )
+        return 1
+    if new < first:
+        print(
+            f"refusing: session {args.session} starts at "
+            f"{first.isoformat().replace('+00:00', 'Z')} and {stamp} is earlier — a `from` "
+            "before the session it is meant to cover claims no more of it and reaches back "
+            "over whatever else ran then; move `from` to the session's own first instant "
+            "or later",
+            file=sys.stderr,
+        )
+        return 1
+    fence_text = match.group(1)
+    new_fence, n = re.subn(
+        r'("from"\s*:\s*)"[^"]*"', lambda m: m.group(1) + json.dumps(stamp), fence_text, count=1
+    )
+    if n != 1:
+        print("refusing: could not find a `from` bound in the fence", file=sys.stderr)
+        return 1
+    path.write_text(text[: match.start(1)] + new_fence + text[match.end(1):])
+    print(f"session_window.from moved back: {current} -> {stamp}")
+    captured_at = captured_at_of(args)
+    if captured_at:
+        print(
+            f"note: {args.slug} was captured {captured_at}; the frozen figure does not "
+            "move until capture_planning.py --recapture rebuilds it"
+        )
     return 0
 
 
@@ -306,11 +477,28 @@ def main():
         "--tighten",
         action="store_true",
         help="also replace a bound already set, but only with an EARLIER instant — the "
-        "repair path for a `to` stamped at close time. A later one is refused (exit "
+        "post-merge repair path for a `to` stamped too late. A later one is refused (exit "
         f"{WIDEN_REFUSED_EXIT}); one at or before `from` is refused too, as an empty "
         "window (exit 1); the same one is a no-op",
     )
+    p_to.add_argument("--replace", action="store_true", help=REPLACE_HELP)
     p_to.set_defaults(func=cmd_set_window_to)
+
+    p_from = sub.add_parser(
+        "set-window-from",
+        help="move `from` BACK over a head no feature claims (the only command that "
+        "moves `from`; nothing narrows one)",
+    )
+    p_from.add_argument("timestamp", metavar="TS")
+    p_from.add_argument(
+        "--session",
+        required=True,
+        metavar="ID",
+        help="the session whose unclaimed head this `from` is being moved over — the id "
+        "capture_planning.py's unclaimed warning names. Its transcript's first instant is "
+        "the earliest bound this command will accept",
+    )
+    p_from.set_defaults(func=cmd_set_window_from)
 
     p_plans = sub.add_parser("set-plans", help="replace plans[] with these stems, in order")
     p_plans.add_argument("stems", nargs="+", metavar="STEM")

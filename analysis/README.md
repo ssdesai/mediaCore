@@ -12,11 +12,11 @@ Without `--self`, the artifact root is the consuming repo (`roots.AGENT_TOOLING_
 
 A standalone `agentTooling` clone works too, with both roots landing on the clone itself — that is why the session-root rule is "nearest ancestor holding `.git`" rather than "the parent directory": one rule covers both a vendored subtree and a standalone checkout.
 
-**A feature worktree's copy is the wrong copy for an ordinary capture.** A worktree holds a `.git` of its own (a file rather than a directory, which is why the rule tests `.exists()`), so both roots resolve to the worktree: a capture invoked from `R/.worktrees/<slug>` scans transcripts under that worktree and the worktrees it would derive from *it*, and writes its `planning.json` into the worktree's own tree. The primary checkout's sessions are outside both. Run `R`'s copy (`../LIFECYCLE.md`).
+**A feature worktree's copy is the right copy before the merge.** `feature-capture.sh` runs in the worktree, on the branch (`../LIFECYCLE.md` → step 5), so the capture it runs is the worktree's copy, and it writes `planning.json` into the worktree's own corpus — which is the branch, and what the PR carries. A worktree holds a `.git` of its own (a file rather than a directory, which is why the rule tests `.exists()`), and the session root follows it home: when the nearest `.git` is a linked worktree's file, `roots.session_root` reads its `gitdir:` line and that directory's `commondir` and returns the **primary checkout** the common git dir belongs to (`roots.worktree_primary`, no subprocess). So a worktree's copy scans the same transcript directories and claims from the same roots as `R`'s own copy would; only where it writes differs. A submodule's `.git` file has no `commondir` and resolves as before. Asserted by `self/tests/capture-from-worktree.sh`.
 
-**Which launch directories a feature claims from.** For slug `<slug>`, `capture_planning.claim_roots` names three roots — the primary `R`, the feature's worktree `R/.worktrees/<slug>`, and the legacy sibling `R-<slug>` a feature started before worktrees moved inside the primary still has, kept claimable for good so that a `--recapture` of such a feature finds every session it found before — and one fence, `R/.worktrees`. The fence is needed because every other feature's worktree is under `R` too, and a prefix test on `R` would hand each feature's sessions to all the others. A cwd is claimable when the longest of the roots and the fence that it equals or sits under is a root (`cwd_claimable`), so `R/.worktrees/<other>` falls to the fence while `R/.worktrees/<slug>` is claimed by its own, longer root. Capture, `--last-branch-instant` and the `launched_elsewhere` warning all use that one rule; `--list-sessions` and `--list-subagents` are discovery across every feature, and apply no fence. Both worktree paths are derived from the slug rather than looked up, so they stay matchable after `feature-close.sh` removes the worktree. **The project directory** Claude Code files a session under is the launch cwd with every `/` and `.` turned into `-` (`transcript_dir_name`, `TRANSCRIPT_DIR_MANGLED_CHARS`), so a nested worktree's transcripts are under `…-R--worktrees-<slug>`, which contains `R`'s own mangled name and is found by the same substring scan as every other (`find_transcript_dirs`). Mangling `/` alone, as it once did, left a `.` in `R`'s own path unmangled and matched no directory at all.
+**Which launch directories a feature claims from.** For slug `<slug>`, `capture_planning.claim_roots` names three roots — the primary `R`, the feature's worktree `R/.worktrees/<slug>`, and the legacy sibling `R-<slug>` a feature started before worktrees moved inside the primary still has, kept claimable for good so that a `--recapture` of such a feature finds every session it found before — and one fence, `R/.worktrees`. The fence is needed because every other feature's worktree is under `R` too, and a prefix test on `R` would hand each feature's sessions to all the others. A cwd is claimable when the longest of the roots and the fence that it equals or sits under is a root (`cwd_claimable`), so `R/.worktrees/<other>` falls to the fence while `R/.worktrees/<slug>` is claimed by its own, longer root. Capture, `--last-branch-instant` and the `launched_elsewhere` warning all use that one rule; `--list-sessions` and `--list-subagents` are discovery across every feature, and apply no fence. Both worktree paths are derived from the slug rather than looked up, so they stay matchable after the next `feature-start.sh` prunes the merged worktree. **The project directory** Claude Code files a session under is the launch cwd with every `/` and `.` turned into `-` (`transcript_dir_name`, `TRANSCRIPT_DIR_MANGLED_CHARS`), so a nested worktree's transcripts are under `…-R--worktrees-<slug>`, which contains `R`'s own mangled name and is found by the same substring scan as every other (`find_transcript_dirs`). Mangling `/` alone, as it once did, left a `.` in `R`'s own path unmangled and matched no directory at all.
 
-`feature-start.sh` and `feature-close.sh` refuse to run from a worktree's copy for the reason in the first paragraph.
+`feature-start.sh` still refuses to run from a worktree's copy — a feature is started from the primary — while `feature-capture.sh` runs from the worktree's copy before the merge and from the primary's after it.
 
 The scripts never take a repo path, so there is no way to point one repo's checkout at another repo's plans. That is deliberate: the subtree is shared across repos, and a `--repo` flag would make it possible to write one repo's costs into another's `plans/` tree. `--self` does not weaken this — it selects between two fixed roots derived from the script's own location, not an arbitrary path.
 
@@ -33,25 +33,45 @@ Asserted by `self/tests/timestamps-are-utc.sh`.
 
 ## How to run them
 
-**One feature is closed by `../feature-close.sh <slug>`, not by hand** (`../LIFECYCLE.md`
-→ step 6). It runs step 4 below for that slug in the order that makes it safe — the
-unclaimed-delegate check, then `session_window.to` stamped from evidence, then
-`capture_planning.py`, then `report.py` — and shows what was claimed before the number is
-quoted. **The stamp comes before the capture, not after**: the capture's share split
-divides a multiply-claimed session by the windows its claimants hold, so a bound written
-afterwards freezes this feature's own record against a window that is still open, and a
-`to` taken from the wall clock hands it an equal share of the coordinator for every hour
-since its work actually stopped. The bound is
-`capture_planning.py --last-branch-instant <slug>` (below), and a capture that refuses
-rolls the stamp back with the rest. What
-follows is the weekly **sweep behind it**, over the whole corpus: it catches the feature
-whose delegate was pinned after it closed, the batch whose `.stream.jsonl` was never
-converted, and the unpriced attempt nobody recovered — each of which reads as a correct
-number until someone looks.
+**One feature is captured by `../feature-capture.sh <slug>` on its branch, not by hand**
+(`../LIFECYCLE.md` → step 5): `run-review.sh` runs it after the PR opens, from the
+feature's worktree. It runs steps 3 and 4 below for that slug in the order that makes it
+safe — `session_window.to` stamped from evidence, then `recover_attempts.py --for`, then
+`capture_planning.py`, then `report.py` — shows what was claimed before the number is
+quoted, and commits the records on the branch. **The stamp comes before the capture, not
+after**: the capture's share split divides a multiply-claimed session by the windows its
+claimants hold, so a bound written afterwards freezes this feature's own record against a
+window that is still open, and a `to` taken from the wall clock hands it an equal share
+of the coordinator for every hour since its work actually stopped. The bound is
+`capture_planning.py --last-branch-instant <slug>` (below); before the merge it is
+provisional and moves either way (`manifest.py set-window-to --replace`), and a capture
+that refuses rolls the stamp back with the recovered sidecars.
 
-Weekly, `../sweep.sh [--self]` runs the cadence in this order, then lists the unclaimed delegates and sessions. The order is a real dependency chain, not a suggestion — `report.py` reads the `planning.json` and `usage.json` files the two capture steps write, and reports nothing where they are missing rather than failing loudly.
+**The capture is also where the corpus-wide work happens now.** After its own report it
+refreshes `sessions[].also_claimed_by` on every other already-captured record in this
+corpus from the claims ledger (`capture_planning.py --annotate-frozen`) and re-renders
+those features' reports, then prints the **residue**: the rate table's verified date, and
+the sessions and delegates of the last week that no feature claims, routers excluded.
+Informational — it is about the corpus rather than this feature, and nothing in it can
+refuse a capture.
 
-**1. Check the rate table first.** Costs are tokens × table; there is no cost field in a transcript to fall back on. A stale table silently skews every figure it touches.
+**There is no weekly sweep.** `sweep.sh` is retired
+(`../self/DESIGN-2026-09-16-lifecycle-restructure.md` §3.5). Every step of it either runs
+at a feature's own capture, where the transcripts it depends on still exist —
+`recover_attempts.py --for <slug>`, the capture, the report, the annotation, the rates
+line, the unclaimed listings — or is a **repair**, run with a reason rather than on a
+cadence. The repair tools are below. What made the sweep look necessary was that a
+feature's own record was only written *after* the merge, so everything corpus-wide had to
+be caught later; on the branch there is nothing left over to catch weekly.
+
+### Repair tools
+
+Reach for one of these when something is *already* wrong, or when a corpus predates the
+rule that would have kept it right. Each names the reason.
+
+**The rate table, when a figure looks wrong.** Costs are tokens × table; there is no cost
+field in a transcript to fall back on, so a stale table silently skews every figure it
+touches. The capture prints this date on every run; this is how to ask on its own.
 
 ```bash
 python3 -c "import sys; sys.path.insert(0,'agentTooling/analysis'); import pricing; print(pricing.RATES_VERIFIED, pricing.is_rates_stale())"
@@ -63,28 +83,28 @@ python3 -c "import sys; sys.path.insert(0,'agentTooling/analysis'); import prici
 
 **Owed work: planning.json price correction** — every `planning.json` frozen before 2026-08-22 was priced with the intro tier applied retroactively and is therefore roughly 33% low. Correcting them means a full refresh (`capture_planning.py --all --recapture`) and committing the diff — and it is now only possible for features whose transcripts still exist, which is the whole argument for doing it promptly. This batch has not done so; see the feature manifest.
 
-**2. Backfill usage sidecars** for any batch that ran before the runner captured usage itself. Idempotent, so it is safe (and cheap) to run every time:
+**`backfill_usage.py`, for a batch that ran before the runner captured usage itself.** It converts a `.stream.jsonl` still on disk into the committed `usage.json` the runner would write today. Nothing produces that gap any more, so this is for an old corpus — and for one on a machine whose streams have not been swept away yet. Idempotent, so it is safe (and cheap) to run again:
 
 ```bash
 python3 agentTooling/analysis/backfill_usage.py
 ```
 
-**3. Recover unpriced-attempt costs** from session transcripts — a killed run, or a run that exited 0 while its stream lost its `result` event; neither is gated on `outcome`. Idempotent: an attempt that already carries `recovered_cost_usd` is skipped unless `--force`:
+**`recover_attempts.py` over a whole corpus, when a feature reports a suspicious `$0`.** It prices from session transcripts what the CLI never did — a killed run, or a run that exited 0 while its stream lost its `result` event; neither is gated on `outcome`. The per-feature form is not a repair at all: `feature-capture.sh` runs it on the branch before every capture. Idempotent: an attempt that already carries `recovered_cost_usd` is skipped unless `--force`:
 
 ```bash
-python3 agentTooling/analysis/recover_attempts.py            # the whole corpus, what sweep.sh runs
-python3 agentTooling/analysis/recover_attempts.py --for <slug>   # one feature, what feature-close.sh runs
+python3 agentTooling/analysis/recover_attempts.py                 # the whole corpus — the repair
+python3 agentTooling/analysis/recover_attempts.py --for <slug>    # one feature, what feature-capture.sh runs
 ```
 
-**4. Capture planning cost, then report.** `capture_planning.py --all` walks the corpus and captures the features that have no `planning.json` yet, **skipping the ones that already do**. It also skips any feature whose `session_window.to` is still `null` — in flight, its first capture is `feature-close.sh`'s, and a record frozen here would make that close skip and report a premature figure. That skip is what makes this step ordinary cadence work rather than something to be careful with: a frozen record is not rebuilt unless you ask for it, so the run cannot rewrite a figure it can no longer reproduce, and it costs almost nothing (a skipped feature is never scanned). The sweep reports each feature whose cost files changed, then `--all` for a cross-feature trend.
+**`capture_planning.py --all`, for a corpus with features nobody captured.** It walks the corpus and captures the features that have no `planning.json` yet, **skipping the ones that already do**, and skipping any feature whose `session_window.to` is still `null` — in flight, its capture is `feature-capture.sh`'s on its branch, and a record frozen here would be a premature figure that capture then has to replace. Under the current lifecycle every feature is captured on its own branch, so a clean corpus has nothing for this to do; it is how a repo whose features merged under the old flow, or a consuming repo just brought up to date, is brought level in one pass. A frozen record is not rebuilt unless you ask for it, so the run cannot rewrite a figure it can no longer reproduce, and it costs almost nothing (a skipped feature is never scanned). Follow it with `report.py --all`, which writes the report of every feature that has a `planning.json` and no `report.json` and then prints the trend table.
 
-**A frozen record still gets its shared-session annotation refreshed, and only that.** The one thing `--all` writes to a feature it does not re-derive is `sessions[].also_claimed_by`, read from the claims ledger — no transcript is opened and no dollar, duration or `captured_at` changes (`annotate_frozen_record`). The run reports such a feature as `annotated` rather than `skipped`, `report.py` turns the field into `cost.shared_sessions[]` and the footnote under the Cost table, and `sweep.sh` regenerates the report on its own because `planning.json` shows up in `git status`. Without it a feature closed *before* another feature claimed its coordinator could never say so: the alternative is `--recapture`, which rebuilds its money from transcripts that are expiring — exactly what the freeze exists to prevent. **An annotated session with no `share_basis` predates the share rule**, and the run prints a `WARN` saying so on **every** sweep, whether or not that sweep changed anything: that entry's figure still counts the session in full rather than by concurrent share, the annotation only adds who else claims it, and `--recapture` is named as the repair — while the transcript still exists to rebuild it from. The annotation converges on the first `--all` and the stale figure does not, so a warning tied to "this run wrote something" would ask for the repair once and then go quiet for as long as the transcript had left; `annotate_frozen_record` returns `(annotated_ids, changed)` for exactly that reason, and `annotated` versus `skipped` in the run's own summary still means "did this run write".
+**A frozen record still gets its shared-session annotation refreshed, and only that.** The one thing `--all` writes to a feature it does not re-derive is `sessions[].also_claimed_by`, read from the claims ledger — no transcript is opened and no dollar, duration or `captured_at` changes (`annotate_frozen_record`). The run reports such a feature as `annotated` rather than `skipped`, and `report.py` turns the field into `cost.shared_sessions[]` and the footnote under the Cost table, so re-render every feature the run named. **`capture_planning.py --annotate-frozen [--except <slug>]` is that refresh on its own, over the corpus, printing the slug of each record it changed** — what `feature-capture.sh` runs after its own capture, and why this is no longer something a repair run is needed for: a feature frozen before another claimed the session they share is annotated at that other feature's capture, and its report re-rendered and committed with the cost records. Without it the only route would be `--recapture`, which rebuilds its money from transcripts that are expiring — exactly what the freeze exists to prevent. **An annotated session with no `share_basis` predates the share rule**, and `--all` prints a `WARN` saying so on **every** run, whether or not that run changed anything: that entry's figure still counts the session in full rather than by concurrent share, the annotation only adds who else claims it, and `--recapture` is named as the repair — while the transcript still exists to rebuild it from. The annotation converges on the first pass and the stale figure does not, so a warning tied to "this run wrote something" would ask for the repair once and then go quiet for as long as the transcript had left; `annotate_frozen_record` returns `(annotated_ids, changed)` for exactly that reason, and `annotated` versus `skipped` in the run's own summary still means "did this run write".
 
-**Cross-repo, the annotation converges on the second sweep, and cannot converge sooner.** Within one run all of a corpus's frozen records are registered in the ledger before any of them is annotated, so N features of the same repo sharing one coordinator all end up naming the other N−1 regardless of the order the corpus is walked in. Across repos there is no such ordering to fix: the ledger is the only seam, each repo sweeps its own corpus, and a record can only name the claimants whose repos have already registered. So sweep every repo once — that fills the ledger — and the annotations are final after the second pass over each. A repo swept once and never again keeps a partial list, which is a stale annotation rather than a wrong figure.
+**Cross-repo, the annotation converges on the second pass over each repo, and cannot converge sooner.** Within one `--all` run all of a corpus's frozen records are registered in the ledger before any of them is annotated, so N features of the same repo sharing one coordinator all end up naming the other N−1 regardless of the order the corpus is walked in. Across repos there is no such ordering to fix: the ledger is the only seam, each repo writes its own corpus, and a record can only name the claimants whose repos have already registered. So once every repo has captured — which each feature's own capture does — the ledger is complete, and each record is final after the next capture in its repo looks. A repo that captures once and never again keeps a partial list, which is a stale annotation rather than a wrong figure.
 
 `report.py` reads only what is already on disk, so re-run it for whatever changed — it is the capture step that has to be careful, not this one.
 
-**A full refresh is `--all --recapture`, and it is not cadence work.** It re-derives every `planning.json` from transcripts, so reach for it with a reason — a pricing correction, a manifest fix — and read the diff before committing. On a corpus older than transcript retention it does two different things: where a *priced* session is gone, `check_frozen_cost` refuses that feature, leaves it untouched, and the run carries on (exiting non-zero at the end) — `--carry-lost` instead keeps those entries verbatim (each marked `carried_from`, the file gaining a top-level `carried_from`) and adds what the scan reaches, which is how a subagent pin is added to a feature whose own sessions have expired; where only a *runner* session is gone, the feature re-captures **successfully** with fewer `excluded_session_ids` than before, which is a silent metadata loss no guard catches. Both are reasons the default is to skip.
+**A full refresh is `--all --recapture`, the heaviest repair here.** It re-derives every `planning.json` from transcripts, so reach for it with a reason — a pricing correction, a manifest fix — and read the diff before committing. On a corpus older than transcript retention it does two different things: where a *priced* session is gone, `check_frozen_cost` refuses that feature, leaves it untouched, and the run carries on (exiting non-zero at the end) — `--carry-lost` instead keeps those entries verbatim (each marked `carried_from`, the file gaining a top-level `carried_from`) and adds what the scan reaches, which is how a subagent pin is added to a feature whose own sessions have expired; where only a *runner* session is gone, the feature re-captures **successfully** with fewer `excluded_session_ids` than before, which is a silent metadata loss no guard catches. Both are reasons the default is to skip.
 
 Each command takes `--self` in the same position to operate on agentTooling's own corpus instead:
 
@@ -92,17 +112,19 @@ Each command takes `--self` in the same position to operate on agentTooling's ow
 python3 agentTooling/analysis/backfill_usage.py --self
 python3 agentTooling/analysis/recover_attempts.py --self
 python3 agentTooling/analysis/capture_planning.py --self --all
+python3 agentTooling/analysis/capture_planning.py --self --annotate-frozen
 python3 agentTooling/analysis/report.py --self <slug>
+python3 agentTooling/analysis/report.py --self --all
 ```
 
-### Why the cadence matters
+### Why the capture is on the branch
 
-Both capture steps read sources that expire, which is what makes this a recurring job rather than something to run once when you happen to want a number:
+Both capture steps read sources that expire, which is why they run at the feature's own capture — on its branch, before the merge — rather than whenever somebody next wants a number:
 
-- `.stream.jsonl` is gitignored and lives only on the machine that ran the batch. It is the sole cost record for any plan predating runner-side usage capture, and `backfill_usage.py` is what converts it into a committed `usage.json` before it is lost.
-- Session transcripts under `~/.claude/projects/` are on a retention clock. `capture_planning.py` freezes each session's cost into `planning.json` as dollars; once a transcript ages out, an uncaptured feature's planning cost is unrecoverable. Similarly, an unpriced attempt's cost — killed, or completed with no `result` event in its stream — is recoverable from its session transcript by `recover_attempts.py` only while that transcript survives; once aged out, the cost is unrecoverable. `feature-close.sh` runs it (`--for <slug>`) at close time for exactly that reason: waiting for the weekly sweep can be waiting too long.
+- `.stream.jsonl` is gitignored and lives only on the machine that ran the batch. It is the sole cost record for any plan predating runner-side usage capture, and `backfill_usage.py` is what converts it into a committed `usage.json` before it is lost. The runner writes the sidecar itself now, so nothing new depends on that conversion.
+- Session transcripts under `~/.claude/projects/` are on a retention clock — roughly four weeks, measured on this machine. `capture_planning.py` freezes each session's cost into `planning.json` as dollars; once a transcript ages out, an uncaptured feature's planning cost is unrecoverable. Similarly, an unpriced attempt's cost — killed, or completed with no `result` event in its stream — is recoverable from its session transcript by `recover_attempts.py` only while that transcript survives. `feature-capture.sh` runs both on the branch, days after the work rather than weeks: a cadence nobody schedules is a cadence that runs after the evidence is gone, which is what retiring the sweep is about.
 
-Both write into `plans/` — commit the results, or the next run has nothing to build a trend from.
+Both write into `plans/` — the capture commits them on the branch, so the PR carries them and merging it freezes them.
 
 ## Scripts
 
@@ -110,7 +132,9 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   imports neither `roots` nor any of them — it is pure transcript parsing). Exposes
   `AGENT_TOOLING_DIR`, `SELF_CORPUS_IDENTITY`, `add_self_flag(parser)`,
   `artifact_root(self_mode)`,
-  `features_root(self_mode)`, `all_features_roots()`, `session_root(self_mode)`. Every
+  `features_root(self_mode)`, `all_features_roots()`, `session_root(self_mode)`,
+  `worktree_primary(checkout)` (the primary a linked worktree belongs to, or `None`; what
+  `session_root` follows, see "Where to run them"). Every
   script resolves its roots through this module rather than computing `parents[N]`
   itself, so the ordinary and `--self` modes cannot drift apart.
   `all_features_roots()` returns **both** corpora and is read-only — it exists because
@@ -130,12 +154,21 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   `../self/DESIGN-2026-09-16-lifecycle-restructure.md` §2 it is never pinned into a
   feature's manifest — one coordinator session per feature, launched in that feature's
   worktree — so its spend belongs to no feature's buckets and would go unreported
-  without a category of its own. `feature-start.sh` writes one record per router into
-  `plans/routing/<session-id>.json` (`self/routing/` under `--self`, the directory
-  beside the features root) and commits it in the `<slug>: start` commit, so the link
-  from router to feature is in git before the transcript it is derived from can expire.
-  Usage: `python3 agentTooling/analysis/routing.py [--self] --session ID --slug SLUG
-  [--primary DIR]`.
+  without a category of its own. **A record of a link lives in the feature it links**:
+  `feature-start.sh` writes it to `plans/features/<slug>/routing.json`
+  (`self/features/` under `--self`) and commits it in the `<slug>: start` commit, so the
+  link from router to feature is in git before the transcript it is derived from can
+  expire. Usage: `python3 agentTooling/analysis/routing.py [--self] --session ID --slug
+  SLUG [--primary DIR]`, or `… [--self] --refresh-for SLUG`, which `feature-capture.sh`
+  runs: SLUG's own record (`routers_of`) is re-derived from its router's transcript as it
+  stands then (`refresh_record`), keeping the prior record's `features_started` entries
+  the transcript does not carry — the slug each start was written for went in with a null
+  `at` and may never reach the transcript — so a refresh never drops a feature's "routed
+  by" line; it prints the path it rewrote, nothing when the feature has no record, and
+  leaves a record whose transcript has aged out untouched with a warning on stderr. It
+  rewrites **that feature's copy only**: another feature's copy of the same router's
+  record is that feature's capture to write, and one this run wrote would ride this
+  branch's cost commit with no claim on it.
   The record, every field derived from the router's own transcript:
   `{ captured_at, cost_usd, duration_s, ended_at, features_started[{slug, at}],
   git_branch, launched_in, model, session_id, started_at }` — `launched_in` and
@@ -147,16 +180,56 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   the transcript, in order, first occurrence of each slug kept, **unioned with the slug
   being started now** — that one carries a null `at` until the current tool call reaches
   the transcript; `captured_at` the instant the content is current *as of*.
-  **`captured_at` is derived, not the wall clock**, and that is load-bearing: the output
-  is byte-identical for identical input (sorted keys, floats rounded to
-  `COST_DECIMALS`, instants truncated to the second) so that two feature branches each
-  refreshing one router's record write the same bytes. Two branches cut from the same
-  `main` that each *add* the file with a different `features_started` are still an add/add
-  conflict, and **the side with the later `captured_at` wins** (design §3.4): a router only
-  ever grows, so the later capture's `features_started` is a superset of the earlier one's.
-  Taking the older side instead drops the newer slug out of the record, and with it that
-  feature's "routed by" line and its row in the Routing table — and nothing restores them
-  unless the same router happens to start another feature.
+  **A start's slug is read off the start's own line** (`slug_of_start_command`, over
+  `slug_of_start_line`; `../self/DESIGN-2026-09-18-minutes-slug-and-quoting.md` §2). A
+  Bash tool call is usually several commands, one per line, so the text is first joined
+  at its `\`-newline continuations (`LINE_CONTINUATIONS`) and then matched a line at a
+  time — `COMMAND_POSITION_RE` carries no `re.MULTILINE` for exactly this reason. Under a
+  multiline match the script token landed on one line while the positional scan ran past
+  the break into the next, which went wrong both ways: `./feature-start.sh --self` with
+  `ls` under it recorded a feature named `ls` (`ls` passes `SLUG_RE`) and made an ordinary
+  maintenance session a router, dropping it out of `--list-sessions --unclaimed`, the one
+  listing whose job is to surface unclaimed cost; while a start split with a trailing `\`
+  yielded no slug at all, so that router was never recorded as one. Several lines may run
+  the script and the first that NAMES a slug wins — a slugless start names no feature, so
+  the scan passes over it and keeps looking, but only at another line that *runs* the
+  script, never at an arbitrary word. Past the script token the flags are read
+  positionally against `START_BARE_FLAGS` and `START_VALUE_FLAGS`, so `--base x` before
+  the slug does not become one.
+  **`is_router_lines` follows from that and needs no rule of its own**: it asks
+  `bool(feature_start_slugs(lines))`, and a start that names no feature contributes no
+  entry — so a session whose only `feature-start.sh` call carries no slug started nothing,
+  is not a router, and keeps its place in the unclaimed listing where its cost can still
+  be seen. Asserted by `self/tests/routing-record.sh` R4i and R10.
+  **`captured_at` is derived, not the wall clock**, and that is load-bearing twice over:
+  the output is byte-identical for identical input (sorted keys, floats rounded to
+  `COST_DECIMALS`, instants truncated to the second), so a refresh that finds the router
+  unchanged shows up in no diff — and it is what **latest wins** ranks by.
+  **One router, one record per feature it started, and the reader keeps the latest**
+  (`self/DESIGN-2026-09-18-ledger-and-routing.md` §1). A router that opens three features
+  leaves three copies of its record, each derived from the same transcript at its own
+  `captured_at`, and `load_records` globs `*/routing.json`, groups by `session_id` and
+  keeps the copy that ranks highest by `record_rank` — the latest `captured_at`, and on a
+  tie the copy naming more features. A router only ever grows, so that copy's
+  `features_started` is a superset of every other's; keeping an older one instead would
+  drop the newer slug out of the record, and with it that feature's row in the Routing
+  table. That rule used to live in a human's head: under the old shared path,
+  `<corpus>/routing/<session-id>.json`, two features one router started before either
+  merged each *added* that one path with different content, and the second merge was an
+  add/add conflict resolved by hand by taking the later side. No two features share a path
+  now, so there is nothing to resolve, and the rule is in one reader.
+  **`--migrate` is how a corpus written under the old rule catches up**:
+  `python3 agentTooling/analysis/routing.py [--self] --migrate` copies each legacy
+  `<corpus>/routing/<id>.json` into `<slug>/routing.json` for every slug its
+  `features_started` names, deletes the legacy file and prints one line per decision;
+  `sync-plans.sh` runs it on every write pass and says to commit what moved. Idempotent,
+  and nothing at all to do when the directory is absent. Three cases are not moves and each
+  says so: a slug with **no feature directory** in this corpus is skipped and no directory
+  is created for it (a directory under the features root is a feature to everything that
+  walks that tree); a target already holding a record captured **as late or later** is
+  skipped rather than overwritten, by the same `record_rank`; and a legacy record none of
+  whose slugs has a directory is **kept**, since deleting it would destroy the only copy of
+  it. No reader reads the legacy directory — one location, one reader, a migration tool.
   A missing transcript is never a refusal: the record is written with the current slug,
   null figures and one warning on stderr, because a start must not fail on a transcript
   that has not flushed or has aged out.
@@ -171,14 +244,19 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   its worktrees, on `main`, with at least one `feature-start.sh` call at **command
   position** — and is called only by `capture_planning.list_sessions`, for the
   `--unclaimed` exclusion; `routers_of(features_dir, slug)` decides which *records* name a
-  slug and is called only by `report.render_routed_by`, for the "routed by" line. Command
+  slug and is called only by `report.render_routed_by`, for the "routed by" line — it
+  opens `<slug>/routing.json` and nothing else, and returns a list of at most one because
+  a feature has one router and may have none. Command
   position (`COMMAND_POSITION_RE`) is the first word of a simple command — start of line,
   or after `&&`, `||`, `;`, `|`, `&` — optionally preceded by `bash` and with any directory
   prefix, so `grep -n foo feature-start.sh hooks` is not a start and the maintenance
   session that ran it keeps its place in the unclaimed listing. Exposes
-  `routing_dir`, `record_path`, `find_transcript`, `load_lines`, `feature_start_slugs`,
-  `is_router_lines`, `build_record`, `serialize`, `write_record`, `load_records`,
-  `started_slugs`, `routers_of`. Asserted by `self/tests/routing-record.sh`.
+  `record_path(features_dir, slug)`, `legacy_routing_dir`, `find_transcript`,
+  `load_lines`, `feature_start_slugs`,
+  `is_router_lines`, `build_record`, `serialize`, `write_record(features_dir, slug,
+  record)`, `read_record`, `record_rank`, `load_records`, `started_slugs`, `routers_of`,
+  `migrate`. Asserted by `self/tests/routing-record.sh`, and end to end — two features one
+  router starts from one `main`, merged in turn — by `self/tests/feature-lifecycle.sh`.
 - `pricing.py` — rate table and cost calculator. Exposes `utc_today()` (today's UTC date — the wall-clock source for everything here, since `date.today()` is the machine's *local* date and would disagree with every transcript-derived date for part of each day), `RATES_VERIFIED` (date the table was last checked), `STALENESS_THRESHOLD_DAYS`, `RATES` (per-model USD/Mtok `{input, output}`, optional `intro{input, output, starts, expires}`), `CACHE_READ_MULTIPLIER` / `CACHE_WRITE_5M_MULTIPLIER` / `CACHE_WRITE_1H_MULTIPLIER`, `normalize_model_id(model_id)`, `get_rates(model_id, as_of) -> RatesApplied | None`, `compute_cost(model_id, tokens, as_of) -> (cost_usd | None, rates_applied | None)`, `is_rates_stale(today=None) -> bool`. Any script that prices tokens imports `compute_cost` / `get_rates` / `is_rates_stale` from here rather than hardcoding rates — the table lives in exactly one place.
 - `transcript.py` — session-transcript parsing shared by `capture_planning.py` and
   `recover_attempts.py`. Exposes `to_utc(timestamp) -> aware datetime | None`,
@@ -209,10 +287,10 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   "complete"` with `result_event: "missing"`; cause unknown, `self/BACKLOG.md`). Nothing
   here is gated on `outcome`, deliberately: a null `total_cost_usd` with a `session_id`
   beside it is the whole precondition. `--for <slug>` restricts the walk to one feature
-  directory and refuses a slug that names none — what `feature-close.sh` runs immediately
-  before its capture, so a feature is priced when it closes rather than at the next
-  weekly sweep, by which time the transcript may be gone. Without it the whole tree is
-  walked, which is what `sweep.sh` calls.
+  directory and refuses a slug that names none — what `feature-capture.sh` runs
+  immediately before its capture, so a feature is priced on its branch while its
+  transcripts still exist. Without it the whole tree is walked: the corpus-wide repair run
+  ("Repair tools" above), for a feature reporting a suspicious `$0`.
   Walks every `usage.json` under `roots.features_root(self_mode)` (or that one feature);
   for each
   `attempts[]` entry with `total_cost_usd: null` and a `session_id`, sums that session's
@@ -287,15 +365,16 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   date, and freezes the result as dollars into `<features root>/<slug>/planning.json`.
   Cost is computed once here; nothing downstream recomputes it. Usage:
   `python3 agentTooling/analysis/capture_planning.py <slug>`,
-  `… --all [--recapture]`, `… --list-subagents [--since YYYY-MM-DD]`,
+  `… --all [--recapture]`, `… --annotate-frozen [--except <slug>]`,
+  `… --list-subagents [--since YYYY-MM-DD]`,
   `… --list-subagents --unclaimed [--for <repo>/<slug>]`,
   `… --list-sessions [--unclaimed] [--since YYYY-MM-DD]`, or
   `… --last-branch-instant <slug>`.
-  **`--last-branch-instant <slug>` is the bound `feature-close.sh` stamps**, and the one
+  **`--last-branch-instant <slug>` is the bound `feature-capture.sh` stamps**, and the one
   mode here that writes nothing at all: it prints, as ISO 8601 UTC with a `Z`, one second
   past the last instant of every session this feature's `branches` and `session_window`
   select and of those sessions' own subagents — or nothing, exit 0, when the feature has
-  no such session, which is the close's cue to fall back to its own clock and say so in
+  no such session, which is the capture's cue to fall back to its own clock and say so in
   one line. One second because `session_window.to` is exclusive and the share split is
   half-open on it too, so a bound at the last instant itself would drop the very response
   it came from; truncated to whole seconds first, so the bound is written at the
@@ -382,6 +461,27 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   calls re-globbed and re-parsed every `README.md` under both features roots and ran two
   `git remote get-url` subprocesses — roughly 1200 parses and 60 subprocesses for one
   capture of a 40-feature corpus, all answering the same question.
+  **An open co-claimant is bounded by its own evidence, not read as unbounded.** A
+  feature nobody has captured carries `to: null`, and taken at face value that is a claim
+  running to the end of every transcript: on a shared coordinator the in-flight feature
+  took an equal share of every response from its `from` onwards, however long the session
+  ran afterwards. So `build_claimant_index` bounds every claimant but the one being
+  captured, whose window is open, by `last_branch_instant(slug, ITS OWN features_dir,
+  sessions_dir)` — the identical function that feature's own close will call, which is why
+  the two figures agree whenever the transcripts do, and which is the whole answer to the
+  objection that a bound derived here might disagree with the stamped one. The entry keeps
+  `open: True` and the `provisional_to` it was bounded with, and both reach
+  `share_basis`. With **no** evidence — no branch session yet, the shape of a feature
+  started an hour ago — the claim is written as an empty window and the existing
+  empty-claim rule drops it, with a warning naming it as open with no evidence rather than
+  as the malformed manifest it is not. The capturing feature is exempt because its own
+  `to` was stamped from this same evidence by `feature-capture.sh` moments earlier and
+  because its claim is `intervals[0]` by contract; that exemption is also what keeps an
+  in-flight earliest claimant's unbounded head (`head_bound`) intact. The bound is derived
+  in the index rather than per session for the reason everything else in it is: one
+  transcript walk per open co-claimant per capture. `sessions_dir` is what switches it on,
+  so a reader that passes none — `annotate_corpus` — gets the manifest reduction alone and
+  opens no transcript.
   **The opening stretch is bounded by the earliest claimant's own window length**
   (`head_bound`, `from - (to - from)`): an instant before every dated claimant's `from` is
   that claimant's planning only when it lies no further before its `from` than its window
@@ -397,7 +497,7 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   feature: a fixed hour pays a two-minute feature an hour it did not plan for. An earliest
   claimant whose `to` is still `null` keeps the unbounded head — a window with no end has
   no length to bound by, and a feature in flight is the case where the opening stretch
-  really is its own planning; `feature-close.sh` stamps `to` and the recapture that
+  really is its own planning; `feature-capture.sh` stamps `to` and the capture that
   follows applies the bound. `head_bound` is consulted by `share_owners` for the dollars
   and added to `partition_seconds`' cut points for the seconds — the `is_empty_window`
   pattern, one rule written once, and without that edge the whole `[start, min_from)` span
@@ -407,10 +507,13 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   disclosure — whenever any of the remainder lies before every claimant's `from`, the
   "unclaimed by any feature" warning names that head's dollars and seconds apart from the
   rest and names the remedies that can reach it: pin the session into the feature the work
-  belongs to, or move the earliest claimant's `from` back by hand. Both are needed because
+  belongs to, or move the earliest claimant's `from` back over it. Both are needed because
   neither of the tail's remedies works on a head — no `to` bound widened forwards reaches
-  behind the earliest `from`, and `manifest.py set-window-to` moves `to` only, and only
-  inwards, so there is no `from` equivalent to point at. When the remainder is all tail
+  behind the earliest `from`, and `manifest.py set-window-to` moves `to` only. The second
+  remedy is a command now rather than an instruction to edit the fence by hand: the
+  warning prints `manifest.py [--self] <earliest claimant's slug> set-window-from <the
+  session's own first instant> --session <id>`, ready to run, the instant being the whole
+  of the head and also the earliest bound that command will accept for this session. When the remainder is all tail
   the warning is the sentence it always was, and when it is all **head** — two claimants
   chaining windows over everything after the earliest `from`, or the commoner single
   claimant whose window covers the session's last instant — the "and $… is the rest"
@@ -448,17 +551,36 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   `{<agent-id>: …}` map and is read as the subagents section entire, so an old ledger
   loads unchanged and the two-section shape is written by the next capture.
   **A record frozen before the other feature existed is annotated in place, not
-  re-captured.** `capture_planning.py --all` — what `sweep.sh` runs, with no
-  `--recapture` — puts every frozen record in the run into the ledger first
+  re-captured.** `capture_planning.py --all` with no `--recapture` — the repair run — puts
+  every frozen record in the run into the ledger first
   (`register_frozen_claims`, adding a claim only where the ledger has none, so a second
-  sweep writes nothing), then refreshes each one's `also_claimed_by` from it
+  run writes nothing), then refreshes each one's `also_claimed_by` from it
   (`annotate_frozen_record`, writing `planning.json` only when the list changed and
   removing the key when the list is empty). The feature is reported as `annotated`
   instead of `skipped`. Registering all of them before annotating any is what makes N
-  frozen features sharing a coordinator converge in a single run rather than in sweep
-  order; across repos it takes a second sweep, because each repo writes the shared
-  ledger from its own corpus (see the cadence above). Nothing else about the record
-  moves — no transcript is read, and the figures are the ones the close froze.
+  frozen features sharing a coordinator converge in a single run rather than in the order
+  the corpus happens to be walked in; across repos it takes a second pass over each,
+  because each repo writes the shared ledger from its own corpus (see "Repair tools"
+  above). Nothing else about the record moves — no transcript is read, and the figures are
+  the ones the capture froze.
+  **`--annotate-frozen [--except <slug>]` is the second half of that on its own**, for
+  the ordinary case: it reads the ledger, refreshes every already-captured record in this
+  corpus (`annotate_corpus`), prints the slug of each one it changed, and registers
+  nothing — the claims it reads are the ones each feature's own capture wrote. That is
+  what `../feature-capture.sh` runs after capturing, which is why a shared session's
+  co-claimants now appear without anyone running a corpus-wide pass.
+  **The same pass is where a provisional bound is answered for**, and that half writes
+  nothing at all: for every claim a record froze with `open`/`provisional_to`
+  (`frozen_provisional_claims`), the claimant's manifest is read as it stands now and, if
+  its `to` has since been stamped to a *different* instant, one WARN names the record,
+  both bounds and `--recapture` (`check_provisional_drift`) — the case where that feature
+  kept working after this capture, so the share frozen here is no longer the share the
+  same arithmetic would produce. Equal bounds print nothing, and a claimant still open has
+  stamped nothing to disagree with. The WARN goes to **stderr**, deliberately:
+  `feature-capture.sh` reads this pass's stdout as a list of slugs, one per line, and
+  would read a warning among them as a feature. The windows it compares against come from
+  `build_claimant_index` over both corpora with no `sessions_dir`, so the check opens no
+  transcript and cannot bound anything itself.
   **Sessions are pinned the way subagents are.** A manifest's
   `"sessions": ["<session-id>"]` claims a top-level session outright — across every
   project directory, regardless of branch, window or `cwd`. That is how a planning
@@ -474,8 +596,7 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   with date, id, branch, `cwd`, model, cost, minutes and opening prompt. `--unclaimed`
   keeps the ones no manifest pins, no `planning.json` in either corpus lists as selected
   or excluded, and no `usage.json` already holds as runner cost — sessions that belong to
-  somebody and are counted by nobody, which is the pin still to write and what
-  `feature-close.sh` prints before it captures.
+  somebody and are counted by nobody, which is the pin still to write.
   **`--unclaimed` also drops the routers** (`routing.is_router_lines`): a session
   launched in the primary checkout, on `main`, whose transcript **runs**
   `feature-start.sh` has a category of its own — routing overhead, reported from
@@ -510,11 +631,23 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   architect a coordinator in repo A spawned to work on repo B sits under A's project
   directory — B's manifest pins it by id and it is priced from there (`cross_repo:
   true`); `--list-subagents --everywhere` is how B finds it.
-  **The claims ledger enforces the pins.** Every subagent this tool prices is recorded
+  **The claims ledger enforces the pins.** Every subagent this tool **captures** is
+  recorded
   in `~/.claude/subagent-claims.json` under its `subagents` section — `{ <agent-id>: {
   repo, repo_name, slug, selected_by, cost_usd, claimed_at } }`, `repo` being the origin
   URL so worktrees and clones agree and `repo_name` its last segment (what a brief's
-  `feature:` line says) — beside the transcripts and scoped like them. Its path derives
+  `feature:` line says) — beside the transcripts and scoped like them.
+  **Captured, not priced: the ledger records claims.** `record_claims` walks the record's
+  own `subagents[]` — pinned or parent-selected, priced or not — and writes each id's
+  `cost_usd` as 0 where nothing in that transcript was billable. Written from the
+  `priced[]` rows instead, as it was, a pinned delegate whose transcript holds no
+  `assistant` line (a brief and then a kill, or a run that billed nothing) produced no row,
+  entered the ledger under no feature, and `--list-subagents --unclaimed` listed it
+  forever, telling the human to write a pin that was already written. Such a transcript is
+  captured into `subagents[]` like any other — selection reads timestamps
+  (`agent_start_of`), never usage — so the record and the ledger now agree about what this
+  feature claims. The double-claim refusal (`check_claims`) has always read the whole
+  selected set rather than the priced subset, for the same reason. Its path derives
   from `Path.home()` and has **no override but `$HOME` itself**, deliberately: the same
   function resolves the transcript glob, so redirecting `$HOME` moves the ledger and the
   transcripts together and no test can end up reading the machine's own transcripts
@@ -528,8 +661,8 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   write; adding `--for <repo>/<slug>` keeps only the rows whose brief names exactly that
   feature, compared as the `(repo, slug)` pair rather than as text in the printed table —
   a `<slug>-two` delegate is somebody else's and a name too long for the 26-character pin
-  column is still matched — which is what `feature-close.sh`'s stray-delegate guard reads,
-  and it is a usage error without `--unclaimed`.
+  column is still matched — which is what `feature-capture.sh`'s unclaimed-delegate
+  warning reads, after its capture, and it is a usage error without `--unclaimed`.
   **A delegate the feature's own manifest pins is not unclaimed** and is dropped from
   that list (`manifest_pinned_subagents`, looked up by slug — never by the `(repo, slug)`
   pair. Not for want of an identity to compare against: `corpus_identity` declares the
@@ -543,14 +676,12 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   `plans/features` otherwise — when that tree holds a manifest for the slug, falling
   back to the slug alone across both when it does not. Two features may share a slug
   across the two corpora, and reading both would let the other corpus's pin suppress a
-  genuinely unpinned delegate: `feature-close.sh`'s stop-on-unpinned guard would then
-  never fire on the one delegate it exists to stop on, and its cost would be lost with
-  nothing said. The pin IS the claim, and the ledger cannot say so on
-  its own: it is written by the capture, and the close that asks the question runs
-  before it. Without this, all seven closes of 2026-09-07 printed their own pinned
-  delegates under "unclaimed" and told the human to write pins that were already there;
-  `feature-close.sh` prints the `Pin each in …` advice only when something is left to
-  pin, and otherwise one line saying how many the manifest already pins.
+  genuinely unpinned delegate: `feature-capture.sh`'s unclaimed-delegate warning would
+  then never fire on the one delegate it exists to name, and its cost would be lost with
+  nothing said. The pin IS the claim, and the ledger cannot say so on its own when the
+  question is asked before a capture has written it. Without this, all seven closes of
+  2026-09-07 printed their own pinned delegates under "unclaimed" and told the human to
+  write pins that were already there.
   `--all` ends by counting the unclaimed
   under this repo's directories. A pin
   whose brief names another feature is warned about — the pin is the human's word,
@@ -709,7 +840,43 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   for a session the scan can never select again — which re-zeroed two features on
   musicMap with exit 0 and no `--force`.
   Asserted by `self/tests/capture-guard.sh`.
-- `report.py` — **also reports routing overhead.** `--all` prints a **Routing** table
+- `report.py` — **the plain single-feature mode refuses a feature nothing has captured
+  yet.** `report.py <slug>` (no `--all`, no `--rounds-md`) reads `planning.json`
+  unconditionally, so calling it between a feature's start and its close (or its capture,
+  once merged) used to raise a bare `FileNotFoundError` with a full traceback. It now
+  checks for the file first and, when it is absent, prints one line to stderr naming the
+  path and the fix — `feature-close.sh [--self] <slug>` from the worktree before the
+  merge, `feature-capture.sh [--self] <slug>` for one already merged — and exits non-zero
+  with no traceback (`UNCAPTURED_FEATURE_MESSAGE`,
+  `UNCAPTURED_FEATURE_EXIT_CODE`). Neither `--all` nor `--rounds-md` can hit this path:
+  `--all`'s `fill_missing_reports` globs `*/planning.json` and only ever visits a feature
+  that has one (see below), and `--rounds-md` (`run_rounds_md`) is the one caller meant to
+  run before the capture — it already treats a missing `planning.json` as optional input,
+  since `feature-close.sh` calls it to compose the PR body before the capture that writes
+  the file. **`--all` fills the gaps before it ranks anything.** The trend table reads
+  `*/report.json` and nothing else, so a feature whose cost was captured and never
+  reported is absent from it with no mark and no warning — three of this repo's own were.
+  `fill_missing_reports` renders every feature holding a `planning.json` with no
+  `report.json` beside it, prints `<n> report(s) written — every planning.json that had no
+  report.json`, and only then prints the table; a feature whose manifest or record cannot
+  be read is named in a `WARN` and skipped, and the table still prints. Nothing here
+  re-prices anything (the no-recompute contract), which is why filling a gap is free of
+  the risk a capture carries.
+  **A read of a report does not rewrite it.** `report.md` and `report.json` are written
+  only when the body they would hold differs from the file on disk somewhere other than
+  `generated_at` (`write_record`, comparing through `masked_body` and the one named
+  `GENERATED_AT_MASK_RE`, which is anchored on the JSON key and on `report.md`'s
+  `Generated ` line — never on a bare ISO-timestamp pattern, which would also mask the
+  Time table's wall-clock instants and hide a real change). Both files are still printed
+  either way; a record that does not exist yet is always written, and `--all` follows the
+  same rule per feature. **`generated_at` therefore means when the body last changed, not
+  when the report was last read** — a read that moves nothing leaves the earlier instant
+  in place, and the `--all` trend table's "generated" column shows that instant. Before
+  this, every run moved `generated_at` in both files, so a merged worktree whose report anyone had *read* was dirty and `feature-start.sh`'s prune
+  kept it — "merged into origin/main but has uncommitted changes", which is what held
+  `policy-module` and `lifecycle-records-and-numbering` on 2026-09-18 over one timestamp
+  line each. Asserted by `self/tests/report-footnotes.sh` phase 11.
+  **It also reports routing overhead.** `--all` prints a **Routing** table
   under the trend table, one row per routing record (`routing.load_records`): the router
   session's id, its cost, its minutes, and every feature it started with that feature's
   own frozen total from its `report.json` beside it — two records compared, never a
@@ -833,8 +1000,8 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   `<stem>.md` exists (the plan file travels with the current run), then by
   `USAGE_STATE_PREFERENCE` — `complete` > `inprogress` > `incomplete` > `failed` — then
   by path string, so the answer is the same on every machine. `live` is what every table
-  reads; `priors` is what `compute_cost_rollup` adds back, since a killed attempt the
-  sweep later recovers has its `recovered_cost_usd` written into exactly the file that
+  reads; `priors` is what `compute_cost_rollup` adds back, since a killed attempt
+  `recover_attempts.py` later prices has its `recovered_cost_usd` written into exactly the file that
   lost the ranking. A plan's cost is therefore the live sidecar's `total_cost_usd`, plus
   its own `attempts[].recovered_cost_usd`, plus — **per prior attempt, merged by
   `session_id` into the live sidecar's attempts and every prior already read** — that
@@ -860,8 +1027,8 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   file is absent, with one warning naming the path they looked for (deduplicated, since
   two tables reading the same absent file is one fact). Before that guard, a feature
   holding one retried plan could not be reported at all — the run ended in a
-  `FileNotFoundError` for a path the retry had moved away, which is what stopped
-  `feature-close.sh` on vinylCatalogue's `group-commit-all-adjudication`. Asserted by
+  `FileNotFoundError` for a path the retry had moved away, which is what stopped the
+  close (now `feature-capture.sh`) on vinylCatalogue's `group-commit-all-adjudication`. Asserted by
   `self/tests/stale-failed-sidecars.sh`.
   Its model-fit flags
   also cover *scope* — a build-queue plan over `PLAN_HIGH_TURN_THRESHOLD` turns is
@@ -893,33 +1060,79 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   under the implementer row. A planned feature's report is unchanged by this even if
   checkpoint events are somehow present — the spans divide an implementer's span, and a
   planned feature has none. An unknown value is warned
-  about and read as `"plans"`. `--all` scans every committed `*.report.json`
+  about and read as `"plans"`.
+  **Rounds are the newest table.** A feature is a sequence of rounds — build → gate →
+  verify → review, ending in that review's verdict — and `rounds[]` is one row per
+  round, ascending (`compute_rounds`):
+  `{round, build_usd, build_min, verify_usd, verify_min, review_usd, review_min,
+  review_plan, verdict, escalations_file}`. The dollars and the minutes are not derived
+  a second time — the two roll-ups hand out their own per-plan figures
+  (`plan_usd_out` / `plan_seconds_out`) and this table partitions those, so a round's
+  build figure cannot drift from `cost.build`. A plan belongs to the round its
+  `plan_start`/`plan_end` stamp carries, **last stamp winning**: a plan re-run in a later
+  round has one sidecar whose `total_cost_usd` sums every attempt, so the figure
+  describes the round it last ran in and cannot be split. A **transcript-priced** build
+  (`method` direct or hand, where `planning.json` IS the build) is one undivided figure
+  and is attributed by the round its `checkpoint` stamps carry — exactly one round and it
+  is that round's outright; none, or several, and it cannot be divided at all, so the
+  whole figure sits in round 1 and the build column is marked in **every** row with the
+  Cost and Time tables' own `†` (`rounds_unpartitioned[{bucket, reason}]`, written only
+  when some column is marked: one marking reused, not a second one invented here).
+  `verdict` is the review plan's own `plan_end` stamp and is `null` when it carries none
+  — "unknown" must never render as `clean`, which is the one verdict `feature-close.sh`
+  lets a feature ship on. `escalations_file` is `escalations/<review-stem>.md` relative
+  to the feature directory when the verdict was `escalated` or `unreadable` **and** the
+  file is on disk, else `null`; the brief is model-written, so it is linked and never
+  parsed.
+  **Two things about it are invisible from an import line.** The whole table depends on
+  `stamp_timing` (`plan-runner-roots.sh`) writing `round` onto every event a pass stamps
+  — `pass_start`, `pass_end`, `plan_start`, `plan_end`, `checkpoint` — and on
+  `run-review.sh` stamping `verdict` and `head` onto the review plan's `plan_end`
+  (`../self/DESIGN-2026-09-17-close-and-review-rounds.md` §3 and §4). Every detail value
+  in `timing.jsonl` is a **string**, so `"round":"2"` is the shape on disk and
+  `event_round` parses it; a line with no `round` key at all is round 1, which is every
+  `timing.jsonl` written before this existed — such a record renders as exactly one
+  round, which is what it was. And
+  `python3 agentTooling/analysis/report.py [--self] <slug> --rounds-md` prints **only**
+  that table, as markdown, to stdout, writing no file: `feature-close.sh` calls exactly
+  this to compose the PR body (design §5.2), which happens *before* the capture that
+  writes `planning.json` and `report.json`, so every input there is optional — a feature
+  whose build nobody has frozen yet gets a marked build column rather than a bare zero,
+  and a feature with no rounds at all gets the header row alone. One renderer
+  (`render_rounds_section`) for the PR body and for `report.md`, so the two cannot
+  disagree about what a round cost. `--rounds-md` refuses to combine with `--all`.
+  `--all` scans every committed `*.report.json`
   and prints a cross-feature trend table (with a minutes column) to stdout (no file
   written). Usage:
   `python3 agentTooling/analysis/report.py <slug>` or
   `python3 agentTooling/analysis/report.py --all`.
 - `manifest.py` — reads and writes a feature manifest's machine-readable fence, and reads
   what its `planning.json` claimed: the JSON edits the lifecycle scripts need, kept out of
-  bash. Five subcommands, `--self` first as everywhere. `init --method M --branch B --base
+  bash. Six subcommands, `--self` first as everywhere. `init --method M --branch B --base
   BASE --from TS [--session ID]… [--plan STEM]…` writes `<features root>/<slug>/README.md`
   from `templates/plans/features/TEMPLATE.md` with the template's fence replaced by a
   filled one, and refuses if the file exists — `feature-start.sh` runs it once, in the new
   worktree. `get <key>` prints one scalar or JSON array from the **last** fenced JSON block,
   the one `capture_planning.py` reads — the same fence `plan-runner-roots.sh`'s
   `manifest_field` reads on the shell side with awk and `jq`, which is how
-  `run-review.sh` gets `base` for `FEATURE_BASE` without a Python call. `set-window-to [TS] [--tighten]` replaces a `null` `to` bound with TS (default: now,
+  `run-review.sh` gets `base` for `FEATURE_BASE` without a Python call. `set-window-to [TS] [--tighten|--replace]` replaces a `null` `to` bound with TS (default: now,
   UTC, `Z`) and touches nothing else in the file; a bound already set is left alone and
   reported, since a second stamp would move a boundary another manifest may chain to.
-  `--tighten` is the one exception and only ever inwards: it replaces a bound already set
+  There is one exception per side of the merge, and the two flags together are refused.
+  **`--replace`, before it**: the bound on a feature's branch is provisional, so a bound
+  already set is replaced in **either** direction, printing `session_window.to replaced:
+  old -> new` — what `feature-capture.sh` runs on the branch, so a re-run after more work
+  moves `to` later (`REPLACE_HELP`). **`--tighten`, after it**, and only ever inwards: it
+  replaces a bound already set
   with an **earlier** instant, printing `session_window.to tightened: old -> new`, treats
   the same instant as a no-op (exit 0, nothing written) and **refuses a later one**,
   naming both bounds, with **exit 3** (`WIDEN_REFUSED_EXIT`). That code is the widen
-  refusal's alone, and it is a contract with `feature-close.sh`, which continues past
-  exactly that one — the bound it declined to widen is the one already published — and
-  refuses on every other non-zero, quoting what this printed. Deliberately not 2: argparse
-  exits 2 on a usage error, and a close reading a malformed invocation as a declined widen
-  would capture, commit and push a feature whose window was still open. Tightening also
-  **refuses a bound at or before the fence's `from`** — an empty window, which
+  refusal's alone, and it is a contract with `feature-capture.sh --recapture`, which
+  continues past exactly that one — the bound it declined to widen is the one already
+  published — and refuses on every other non-zero, quoting what this printed. Deliberately
+  not 2: argparse exits 2 on a usage error, and a capture reading a malformed invocation as
+  a declined widen would record a merged feature whose window was still open. Both flags
+  **refuse a bound at or before the fence's `from`** — an empty window, which
   `capture_planning.is_empty_window` drops from every other feature's claim set, leaving
   the feature owning nothing with only a WARN at the next capture to say so — as a plain
   exit 1, naming both, and skips the check when the fence carries no parseable `from`. It
@@ -927,12 +1140,38 @@ Both write into `plans/` — commit the results, or the next run has nothing to 
   bound one second past its last instant is later than `from`) and guards the hand
   invocation the repair path invites. Instants, never strings — `to_instant` gives a bound the
   same reading `transcript.to_utc` does, since `18:00:00-04:00` sorts below `22:00:00Z`
-  and is the same moment. `feature-close.sh --recapture` is what passes it: it is the
-  repair path for every `to` this script stamped at close time, and a widened bound would
-  re-admit sessions a neighbouring feature's window may already have chained onto.
+  and is the same moment. `feature-capture.sh --recapture` is what passes `--tighten`: it
+  is the repair path for a merged feature's `to`, and a widened bound would re-admit
+  sessions a neighbouring feature's window may already have chained onto.
+  `set-window-from <TS> --session <id>` is the **head's remedy**, and the only thing here
+  that moves `from`. It moves that bound BACK, over an opening stretch the capture has
+  disclosed as unclaimed, and prints `session_window.from moved back: old -> new`. Three
+  refusals, each a plain **exit 1** — no code is reserved here, since nothing reads these
+  the way `feature-capture.sh` reads `set-window-to --tighten`'s 3:
+  an instant **earlier than the named session's own first timestamped instant** (a `from`
+  before the session it is meant to cover claims no more of it and reaches back over
+  whatever else ran then; the message names that instant); a **later** instant, since this
+  command widens a claim backwards and *nothing* narrows a `from` — `set-window-to` moves
+  `to`, and narrowing `from` would un-claim work a frozen record already counts, so the
+  message says to edit the fence by hand if a recorded `from` is genuinely wrong; and a
+  fence whose `from` is **null or unparseable**, there being no bound to move. The same
+  instant is a no-op (exit 0), as with `set-window-to`, and on a feature that already has
+  a `planning.json` the edit is applied and the output adds that the frozen figure does
+  not move until `capture_planning.py --recapture` rebuilds it — the fence is input to the
+  next capture, never to the one already frozen. `capture_planning.py`'s "unclaimed by any
+  feature" warning prints this command, filled in, as the head's second remedy.
+  Two things about it are not visible from its imports. The session's transcript is found
+  with `routing.find_transcript` + `load_lines` — a glob over every project directory,
+  because the session a head belongs to is by definition one this feature did not launch —
+  and the **import direction is the point**: `routing` imports `pricing`, `roots` and
+  `transcript` and nothing else, so it cannot close a cycle, while `capture_planning` is
+  the module that READS this fence on every capture and must never be imported by its
+  writer. And the already-captured note is read straight off `planning.json`
+  (`captured_at_of`) rather than through `capture_planning.prior_capture`, for that same
+  reason.
   `set-plans <stem>...` replaces the manifest's `plans[]` with the given stems, in the order given, and refuses a stem that is not `NN-name-MODEL` — a sentinel is never a plan.
   `claimed` prints the sessions and subagents `planning.json` holds, each with how it was
-  selected and where it was launched, plus the total — what `feature-close.sh` shows the
+  selected and where it was launched, plus the total — what `feature-capture.sh` shows the
   human before the number is quoted. The fence it writes is
   `{ slug, method, plans[], branches[], base, session_window{from,to}, exclude_sessions[],
   exclude_subagents[], sessions[], subagents[] }`, one key per line in that order with
@@ -949,8 +1188,9 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   `plans/features/<slug>/README.md`:
   `{ slug, method, plans[], branches[], base, session_window{from,to},
   exclude_sessions[], exclude_subagents[], sessions[], subagents[] }`. Written by
-  `manifest.py` on behalf of `feature-start.sh` (`init`) and `feature-close.sh`
-  (`set-window-to`, `--tighten` under `--recapture`; the bound comes from
+  `manifest.py` on behalf of `feature-start.sh` (`init`) and `feature-capture.sh`
+  (`set-window-to`: `--replace` on the branch, `--tighten` under `--recapture` after the
+  merge; the bound comes from
   `capture_planning.py --last-branch-instant`, not from the wall clock); read by
   `capture_planning.py` (`branches`, `session_window`,
   `exclude_sessions`, `exclude_subagents`, `sessions`, `subagents`),
@@ -1026,6 +1266,7 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   unclaimed_duration_s?}],
   subagents[{agent_id,
   parent_session_id,date,started_at,ended_at,duration_s,selected_by,cross_repo}],
+  open_claimants[],
   excluded_session_ids[], priced[{session_id,agent_id,model,is_sidechain,date,
   duration_s,tokens{input,output,cache_read,cache_creation_5m,cache_creation_1h},
   cost_usd,rates_applied,share?,full_cost_usd?,shared_with[]?}],
@@ -1049,9 +1290,18 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   transcript or touching another key, which is how a feature closed before the sharer
   existed comes to say so (see the capture's entry above).
   **A shared session's entry carries the split too.** `share_basis` is the claims the
-  split used — `{feature, from, to, source}` per claim, `source` one of
-  `"self"|"manifest"|"ledger"` — so the number can be re-derived rather than taken on
-  faith. `session_cost_usd` and `session_duration_s` are the session's own undivided
+  split used — `{feature, from, to, source, open?, provisional_to?}` per claim, `source`
+  one of `"self"|"manifest"|"ledger"` — so the number can be re-derived rather than taken
+  on faith. `open` and `provisional_to` are present together, and only on a claim whose
+  feature had not been captured yet: its manifest said `to: null`, and the `to` the split
+  actually used is the bound `build_claimant_index` derived from that feature's own
+  branch evidence (`last_branch_instant`), repeated under `provisional_to` so a reader can
+  see it was derived here rather than stamped by that feature's close. The top-level
+  `open_claimants[]` lists those features as `["<repo>/<slug>", …]`, sorted, `[]` when
+  none — the record saying on its face which of its bounds are provisional. Together they
+  are what `annotate_corpus` re-reads at every later capture: when that claimant's close
+  has since stamped a different `to`, the share frozen here was computed against the older
+  bound and a WARN on stderr names the record and `--recapture`. `session_cost_usd` and `session_duration_s` are the session's own undivided
   cost and span; `unclaimed_usd` and `unclaimed_duration_s` are what no claimant owns —
   the tail past every claimant's `to`, any gap between two windows, and the opening
   stretch further before the earliest `from` than `head_bound` allows — each present only
@@ -1082,10 +1332,15 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   shared_sessions[{session_id,cost_usd,session_cost_usd?,also_claimed_by[]}]}, time{method,
   planning_sessions_s,planning_subagents_s,planning_s,implementer_s,tests_s?,
   direct_build_s?,gate_s?,build_s,verify_s,review_s,
-  executor_s,total_s,total_is_partial,missing_duration_plans[{plan,queue,reason}],
-  recovered_duration_plans[{plan,queue,reason,recovered_s}],wall_clock{first_at,
+  executor_s,total_s,total_is_partial,
+  missing_duration_plans[{plan,queue,reason,unmeasured_attempts[],attempt_count}],
+  recovered_duration_plans[{plan,queue,reason,recovered_s,measured_attempts,
+  recovered_attempts}],wall_clock{first_at,
   last_at,batch_span_s,batch_runs,batch_runs_s,passes_s{auto,verify,review},gates_s,
-  gate_runs,plans_s,plan_runs,pr_opened_at,pr_url} | null}, planning_cost_split{
+  gate_runs,plans_s,plan_runs,pr_opened_at,pr_url} | null},
+  rounds[{round,build_usd,build_min,verify_usd,verify_min,review_usd,review_min,
+  review_plan,verdict,escalations_file}], rounds_unpartitioned[{bucket,reason}]?,
+  planning_cost_split{
   sessions,subagents}, cold_start_tax_tokens,
   model_fit[{model,plan_count,total_turns,total_cost_usd,total_duration_s,flags[]}], churn[{plan,
   edit_count,files_edited,churn_ratio}], plan_length_vs_loc[{plan,plan_md_lines,
@@ -1109,6 +1364,16 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   table's "build: implementer", carrying minutes and no dollars — the implementer's
   transcript is priced as one span and nothing divides its cost the way the instants
   divide its minutes.
+  `rounds[]` is one row per round of the feature, ascending, in the field order above,
+  and `rounds_unpartitioned[]` names each column whose figure could not be divided by
+  round, with the reason its footnote prints. Both are read with a `[]` default like
+  every key added after the fact — no `report.json` written before them carries either,
+  and a re-render of one must not raise — and `rounds_unpartitioned` is written **only**
+  when something is marked, so a report whose every figure has a round is byte-identical
+  to one written before these keys existed. Every figure in a row is the Cost or Time
+  table's own, partitioned; the `report.py` entry above has the partition rules, the
+  stamp keys they depend on, and `--rounds-md`, which renders these same rows on their
+  own for a PR body.
   `cost.unpriced_plans[]` names every manifest plan that RAN and carries no
   `total_cost_usd` — `[{plan, queue, reason, recovery}]`, read with a `[]` default like
   every key added after the fact. `queue` is the `auto`/`verify`/`review` segment, i.e.
@@ -1116,10 +1381,10 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   `killed`, or `no cost reported, cause not recorded` for a sidecar written before
   `result_event` existed, and comes from that field and never from `outcome`; `recovery`
   is `recovered $X from transcript` or `transcript not found`, and since
-  `feature-close.sh` runs `recover_attempts.py --for <slug>` immediately before the
+  `feature-capture.sh` runs `recover_attempts.py --for <slug>` immediately before the
   report, the latter means the transcript is gone rather than that recovery has yet to
   run. It exists so **no bucket ever prints a bare `$0.0000` for work that happened**:
-  the cost line `feature-close.sh` shows before it commits renders a bucket holding one
+  the cost line `feature-capture.sh` shows before it commits renders a bucket holding one
   of these as `review $0.0000 (0.0%, unpriced: 01-review-opus — no result event,
   transcript not found)`, and `report.md` **marks the bucket's own cell** — the review
   row reads `| review | $0.0000 † | 0.0% |` with a footnote directly under the table,
@@ -1140,24 +1405,44 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   list, so a corpus with a hand-copied or mis-filed sidecar looked identical to a clean
   one. `report.md` prints one line under the Cost table naming them, absent entirely
   when every stem has exactly one sidecar.
-  `time.missing_duration_plans[]` is the Time table's counterpart, in the same
-  `{plan, queue, reason}` shape — it was a bare list of stems, which could say which
-  plan was missing but not which bucket's minutes to distrust or why. `reason` comes
-  from the same `result_event` field `cost.unpriced_plans[]`'s does and has the same
-  three branches, worded about the minutes: `no result event`, `killed`, or `no duration
-  reported, cause not recorded`. The Time table marks and footnotes a bucket exactly as
-  the Cost table does (`† review: no duration for 01-review-opus — no result event`), so
-  a review row that used to print a bare `0.0` beside real dollars now names the plan.
-  It holds only the plans nothing filled: where the session transcript survived **and
-  carries at least two timestamped lines**,
-  `recover_attempts.py` bounds the run and the plan moves to
-  `time.recovered_duration_plans[]` instead — the same `{plan, queue, reason}` shape plus
-  `recovered_s`, the seconds recovered, and it is never in both lists. That list marks
+  **A plan's minutes are the sum over its ATTEMPTS, walked exactly as its dollars are**
+  (`attempt_copies`, shared by both roll-ups): for each attempt, keyed by `session_id`,
+  the live sidecar's copy before any prior one, the first copy carrying `duration_ms`
+  gives a *measured* figure, else the first carrying `recovered_duration_s` gives a
+  *recovered* one, else that attempt is *unmeasured*. Before this the time roll-up summed
+  `attempts[].duration_ms` off the live file alone, so a resumed plan whose first attempt
+  was killed and whose second completed reported the second's minutes as the whole, read
+  no prior sidecar, and sat in neither list below.
+  `time.missing_duration_plans[]` is the Time table's counterpart to
+  `cost.unpriced_plans[]`, in the same `{plan, queue, reason}` shape plus
+  `unmeasured_attempts[]` (1-based attempt numbers) and `attempt_count` — it was a bare
+  list of stems, which could say which plan was missing but not which bucket's minutes to
+  distrust, why, or how much of the figure was affected. `reason` comes from the same
+  `result_event` field `cost.unpriced_plans[]`'s does and has the same three branches,
+  worded about the minutes: `no result event`, `killed`, or `no duration reported, cause
+  not recorded`. The Time table marks and footnotes a bucket exactly as the Cost table
+  does (`† review: no duration for 01-review-opus — no result event; attempt 2 of 2
+  unmeasured`), so a review row that used to print a bare `0.0` beside real dollars now
+  names the plan and the attempt. A plan lands here whenever **any** of its attempts
+  carries neither figure, however many of the rest were measured — the attempts that were
+  still contribute their seconds, since a sum short by one attempt is nearer the truth
+  than a zero as long as the mark says so.
+  A plan none of whose attempts is unmeasured but at least one of which was bounded from
+  its transcript — the session survived **and carries at least two timestamped lines**,
+  so `recover_attempts.py` could bound it — goes to
+  `time.recovered_duration_plans[]` instead: the same `{plan, queue, reason}` shape plus
+  `recovered_s` (the part of the cell that is a bound, not the whole cell),
+  `measured_attempts` and `recovered_attempts`. It is never in both lists. That list marks
   its bucket with `‡` rather than `†` and footnotes it as `‡ review: recovered 450.0s for
-  01-review-opus — no result event; transcript span, a lower bound`. One mark per
+  01-review-opus — no result event; 1 of 2 attempts recovered from transcript —
+  transcript span, a lower bound`. One mark per
   meaning: `†` is a bucket with no figure at all, `‡` a bucket whose figure is a lower
-  bound. A bucket holding one of each carries both marks and one footnote line each, and
+  bound. **A cell holding both a measurement and a recovered span is one figure carrying
+  `‡`** — a sum with a lower-bound term is a lower bound. A bucket holding one plan of
+  each kind carries both marks and one footnote line each, and
   the paragraph under the footnotes explains only the marks actually used.
+  Both entry shapes are read with `.get` at render time, so a `report.json` written
+  before the attempt counts existed renders without the clause rather than raising.
   `cost.skipped_plans[]` names the manifest plans the runner filed **without running**
   (`skip_level_verify`, `plan-runner-lib.sh`: a level whose gate came back green does
   not owe its level-verify, so the plan goes to `verify/complete/` with a one-line
@@ -1206,10 +1491,20 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
 
 - `timing.jsonl` — one JSON object per line, `{ at, event, ...detail }`, appended by the
   runners (`stamp_timing`, `plan-runner-roots.sh`) as a batch runs: `batch_start`/
-  `batch_end{rc}`, `pass_start`/`pass_end{queue,reason}`, `plan_start`/`plan_end{plan,
-  queue,rc}`, `gate_start`/`gate_end{level,rc,green,regate?}`, `pr_opened{rc,url}`, plus
-  `checkpoint{status}` appended by hand. `at`
+  `batch_end{rc}`, `pass_start`/`pass_end{queue,reason,round}`, `plan_start`/
+  `plan_end{plan,queue,rc,round}` — and on a **review** plan's `plan_end` alone,
+  `verdict` (`clean`/`escalated`/`unreadable`) and `head` (the sha that review judged),
+  stamped by `run-review.sh` —
+  `gate_start`/`gate_end{level,rc,green,regate?}`, `pr_opened{rc,url}`, plus
+  `checkpoint{status,round}` appended by hand. `at`
   is UTC to the second; every detail value is a string.
+  **`round`** is the number of review plans in `<features>/<slug>/review/complete/` plus
+  one — computed once when a runner pass starts and held for every event of that pass
+  (`TIMING_ROUND`), and freshly at each by-hand `stamp-timing.sh` stamp, so a direct
+  implementer's checkpoints during a rework read round 2
+  (`../self/DESIGN-2026-09-17-close-and-review-rounds.md` §4). A line carrying no
+  `round` key predates the feature and is read as **round 1**. `report.py` turns these
+  three keys into the Rounds table (`rounds[]`); nothing else here reads them.
   **`checkpoint{status}`** is a **direct** feature's own milestone
   (`AGENT_DIRECT.md` → "Checkpoint and resume"), written by the implementer with the
   top-level `stamp-timing.sh [--self] <slug> checkpoint status=<status>` at each rewrite
