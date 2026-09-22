@@ -47,7 +47,8 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
   for the session that ran it among them. That session is a **router** and is never pinned: coordinate
   the feature from a session launched inside the worktree, which `--open` does for you
   through `self/open-session.sh`. `--pin` is the opt-in for the rare case where the
-  starting session really is the feature's coordinator. Each start also prunes the feature
+  starting session really is the feature's coordinator, and writes no routing record — a
+  pinned session is never also a router. Each start also prunes the feature
   worktrees whose branches have merged into `origin/main`. A feature started before that layout has the sibling
   `<repo>-<slug>` instead, and captures the same way. `feature-start.sh` refuses to run
   from a worktree.

@@ -66,6 +66,7 @@ it, and do not work around it with `pushd` or a subshell, which are denied too.
 | a one-line `for`, `while`, `until`, `if` or `case` | | write the script and run it by name |
 | a line that does not tokenize | `cat 'x` | close the quote |
 | a sequence mixing approved reads with one command the human must judge | `grep x f && git commit -m m` | run the reads on their own — they are approved — and the other alone |
+| a file authored through the shell: `echo`/`printf` redirected to a path, `cat`/`tee` fed a heredoc, a herestring or an `echo` with output to a path, `sed -i` | `cat >> f <<'EOF'`, `echo x > f`, `sed -i 's/a/b/' f` | the Write tool for a new file or a whole rewrite, the Edit tool for a change — an append is an Edit on the file's last lines |
 
 The rewrite is always one of four: **write the script to the scratchpad with the Write
 tool and run it by name** (`bash <path>`, `python3 <path>`); use the Read, Grep, Write or
@@ -103,7 +104,11 @@ executors are given a scratch directory of their own and told where it is
 
 A write, a program outside the read-only list, a path outside the root, an environment
 prefix: the policy prints nothing and the human decides. It is a command they can read,
-so the only thing left to get right is how much they are being asked to approve.
+so the only thing left to get right is how much they are being asked to approve. The
+write that reaches them is one with no tool to do it instead — a command's output
+captured to a file (`pytest > out.log`), a copy, a move. A file whose content you wrote
+in the command is not theirs to approve: it is sent back to the Write or Edit tool
+(above, and "Writing files" below).
 
 **One write per Bash call, and nothing else on the line.** Reads go in their own calls,
 where they are approved with no prompt at all; the write goes alone, so the one thing the
@@ -117,7 +122,8 @@ write is sent back for exactly this reason.
 - The **Read, Grep, Write and Edit tools** rather than `sed -n`, `cp`, `cat > file` — the
   tools are checked against the repo's own allow and deny rules, and a subprocess write is
   not (see "Writing files" below).
-- Nothing else on the line with a `git commit`, a `mv`, an `rm` or a redirect into a file.
+- Nothing else on the line with a `git commit`, a `mv`, an `rm` or a captured output
+  redirected into a file.
 
 ### Writing files
 
@@ -127,7 +133,11 @@ invisible to the permission system. It is not covered by the repo's `Edit` allow
 it stops for approval even where an ordinary edit would not; and it is not checked against
 the repo's `Edit` deny rules, so the carve-outs guarding `.git/`, `.claude/`, the
 virtualenvs and `node_modules/` never see it, and the generic Bash approval is the only
-thing left in front of them. Edit and Write are checked against both.
+thing left in front of them. Edit and Write are checked against both. So a file authored
+through the shell — `echo`/`printf` into a path, `cat` or `tee` fed a heredoc, `sed -i` —
+is **sent back** with the Write/Edit rewrite rather than handed to the human, wherever the
+file is (the scratchpad and `/tmp` included); only a command's captured output, a copy or
+a move reaches the human's prompt.
 
 Write each file once. A file authored in one call and then patched three times costs four
 approvals to reach one result — compose the final content, then write it.

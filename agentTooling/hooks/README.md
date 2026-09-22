@@ -23,8 +23,11 @@ only.
   a program or a path decided at run time, a one-line compound, a line that does not
   tokenize (which names the quote instead), a `$NAME` the shell expands, a `~`, a brace
   group the expansion refuses, a `..` path component, a bare or relative `cd`, a line
-  break outside a quote or a heredoc, and a sequence mixing approved reads with a command
-  only the human can judge. Its git deny reads `policy.py`'s constants and nothing of its own.
+  break outside a quote or a heredoc, a sequence mixing approved reads with a command
+  only the human can judge, and a file authored through the shell — `echo`/`printf`
+  redirected to a path, `cat`/`tee` fed literally with output to a path, `sed -i` — whose
+  reason names the Write and Edit tools and is judged ahead of the opaque shapes. Its git
+  deny reads `policy.py`'s constants and nothing of its own.
   After `OPAQUE_REWRITE_ATTEMPTS` opaque commands in one session it emits
   `permissionDecision: "ask"` instead, keyed on the payload's `session_id` and `agent_id`
   through a state file under `$TMPDIR`; under `AGENTTOOLING_HEADLESS` it prints nothing
@@ -87,7 +90,7 @@ an approval for each and the model learned from neither.
 |---|---|---|
 | **ALLOW** | every subcommand read-only and confined to the project root | `permissionDecision: "allow"` |
 | **REWRITE** | the analysis could not read the command, and a rewrite exists | `permissionDecision: "deny"`, the reason being the rewrite — and `"ask"` after `OPAQUE_REWRITE_ATTEMPTS` of them in one session |
-| **ASK** | the analysis read it and cannot vouch for it: a write, an unknown program, a path outside the root, an environment prefix, a whole-argument `$(…)` | nothing, so the settings' own rules and then the human decide |
+| **ASK** | the analysis read it and cannot vouch for it: a write (a captured output, a copy, a move — a file authored in the command is a REWRITE), an unknown program, a path outside the root, an environment prefix, a whole-argument `$(…)` | nothing, so the settings' own rules and then the human decide |
 
 Precedence on a line: any REWRITE member makes the line REWRITE — the human is never
 handed a line no reader here could split — else any ASK member makes it ASK, else ALLOW.
@@ -329,9 +332,62 @@ deny it always was. A `&` is a job, not a sequence, and is not eligible either.
 
 **Not rewritable, and therefore ASK.** A `..` in a token that is not a path
 (`git diff main...HEAD` carries no `..` component); a CR or a NUL; an environment prefix
-(`X=1 make`); a redirect that writes (`echo x > f`); a path outside the root; a
-whole-argument `$(…)`, the documented exemption above — there is no literal to inline, so
-the human judges it. Each prints nothing, exactly as before.
+(`X=1 make`); a command's output captured to a file (`pytest > out.log`, `cat a > b`,
+`cmd | tee log`); a path outside the root; a whole-argument `$(…)`, the documented
+exemption above — there is no literal to inline, so the human judges it. Each prints
+nothing, exactly as before.
+
+### A file authored through the shell
+
+**Added 2026-09-21** (`../self/features/shell-write-rewrite/`). `CONVENTIONS.md` →
+"Writing files" says to author files with the Write and Edit tools and never by shelling
+out, because a write made by a subprocess gets past the repo's `Edit` allow and deny rules
+and leaves the generic Bash approval as the only check. Nothing enforced it:
+`cat >> tests/test_x.py <<'EOF' … EOF` was read as a write and returned ASK, which printed
+nothing, and the model learned nothing. The shape always has a rewrite, so by the
+membership test above it is a REWRITE. A member **authors a file through the shell** when
+content written in the command itself lands in a file:
+
+| Spelling | Example | Not this |
+|---|---|---|
+| `echo` or `printf` with its output redirected to a path — `>`, `>>`, `>\|`, `N>`, `&>`, `&>>`, attached or separate, anywhere among the words | `echo x > f`, `echo a>f`, `> f echo x` | `echo x 2>&1`, `echo x >&2`, `echo "a > b"`, `echo x > /dev/null` |
+| `cat` or `tee` fed literally — a heredoc or herestring on the member, or for `tee` a pipe from `echo`/`printf` or a heredoc-fed `cat` — with output to a path (a redirect, or a file operand of `tee`) | `cat > f <<'EOF'`, `tee f <<'EOF'`, `cat <<< x > f`, `echo x \| tee f` | `cat a > b`, `cmd \| tee log`, `git commit -m "$(cat <<'EOF' … EOF)"` |
+| `sed` editing in place — `-i` in any single-dash spelling (`-i`, `-i.bak`, `-Ei`, `-ni`, `-i ''`) or `--in-place[=…]` | `sed -i 's/a/b/' f` | `sed -n 5p f`, `sed 's/a/b/' f` |
+
+A path is any redirect target except `NON_FILE_TARGETS` (`/dev/null`, `/dev/stdout`,
+`/dev/stderr`, `/dev/tty`); an fd duplication and a process substitution (`>(…)`) are not
+targets at all. **Where the file is does not matter**: the scratchpad, the root and `/tmp`
+are all denied, because the Write tool reaches all three and is checked against the rules
+the shell write bypasses. `cp`, `mv`, `touch`, `mkdir`, `rm` and `ln` stay ASK — none has
+a Write/Edit rewrite that always works — and so does an interpreter script that writes
+files (`python3 gen.py`), which is readable and runs by name.
+
+**The reason** (`SHELL_AUTHORING_REWRITE_REASON`) names the member as written and gives
+the rewrite: the Write tool for a new file or a whole rewrite, the Edit tool for a change
+to an existing one — an append is an Edit anchored on the file's last lines — with the
+*why* in one clause, since the session that prompted this knew the rule and broke it for
+speed.
+
+**Its own reader.** `opaque_segments` breaks at every `&` and `|`, so `2>&1`, `&> f` and
+`>| f` come apart there; `redirect_members` reads the operators the way bash does, with
+the same quote, backslash, backtick and `$(…)` tracking — a `>` inside quotes is text, and
+a write inside a substitution is not judged. It hands back each member's words with the
+redirects taken out, so `tee`'s file operand is never a heredoc delimiter or a redirect
+target.
+
+**Where it is judged.** In `command_verdict`, after `command_allowed` has declined and
+**before** `opaque_deny_reason`, so `tee f <<'EOF'` — a heredoc into something other than
+`cat`, and so the opaque deny before this — gets the Write reason rather than "write a
+script to the scratchpad"; a heredoc into an interpreter (`python3 - <<EOF > f`) is still
+the opaque deny. When a line carries a heredoc only the text before its first line break
+is judged, the cut `segments_before_line_break` makes for the `cat` exemption: the body is
+data, so a Markdown body full of `> quote` lines is never read as redirects. A `#` on the
+judged text means the line is not judged, the guard every rewrite keeps, and a line whose
+quotes are still open at the end is left to the unreadable shape. Only the members that
+author a file are named: whatever else the line carries is judged when the model sends
+what is left. It is a narrowing of ASK and never touches ALLOW — every case it fires on
+printed nothing, or was the opaque deny, before it — and like every REWRITE it counts
+toward `OPAQUE_REWRITE_ATTEMPTS`.
 
 **The same two guards the three shape denies keep hold over all seven**: a line carrying a
 heredoc, or a `#` anywhere, is judged on the shapes above alone. A heredoc's body lines
@@ -816,7 +872,12 @@ which is where `segments_before_line_break` stops for a `cat` heredoc);
 `LINE_BREAK_NEWLINE`, `SEQUENCE_SEPARATORS`, `PARENT_COMPONENT`, `BRACE_EMPTY_GROUP` and
 one reason constant per shape (`VAR_USE_REWRITE_REASON`, `TILDE_REWRITE_REASON`,
 `BRACE_REWRITE_REASON`, `PARENT_PATH_REWRITE_REASON`, `RELATIVE_CHDIR_REWRITE_REASON`,
-`LINE_BREAK_REWRITE_REASON`, `MIXED_SEQUENCE_REWRITE_REASON`) — a new shape is a constant,
+`LINE_BREAK_REWRITE_REASON`, `MIXED_SEQUENCE_REWRITE_REASON`); the shell-authored file is
+`AUTHORING_ECHO_PROGRAMS`, `AUTHORING_LITERAL_PROGRAMS`, `AUTHORING_TEE_PROGRAM`,
+`AUTHORING_HEREDOC_FED_PROGRAM`, `AUTHORING_SED_PROGRAM`, `SED_IN_PLACE_LETTER`,
+`SED_IN_PLACE_LONG`, `SED_VALUE_LETTERS`, the `REDIRECT_*` operator constants,
+`PROCESS_SUBSTITUTION_PREFIXES`, `FD_DUP_TARGET_RE`, `NON_FILE_TARGETS`,
+`AUTHORING_SEPARATOR_CHARS`, `PIPE_SEPARATORS` and `SHELL_AUTHORING_REWRITE_REASON` — a new shape is a constant,
 a predicate in `rewrite_reason_lines`'s table, a case in `self/tests/allow-repo-commands.sh`
 and the row above;
 the escalation is `STATE_DIR_NAME` / `STATE_FILE_SUFFIX` / `STATE_KEY_SEPARATOR` under

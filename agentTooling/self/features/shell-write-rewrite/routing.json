@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-09-22T16:49:18Z",
+  "cost_usd": 6.761477,
+  "duration_s": 71389,
+  "ended_at": "2026-09-22T16:49:18Z",
+  "features_started": [
+    {
+      "at": "2026-09-21T21:01:24Z",
+      "slug": "shell-write-rewrite"
+    }
+  ],
+  "git_branch": "main",
+  "launched_in": "/Users/sahildesai/dev/agentTooling",
+  "model": "claude-opus-5",
+  "session_id": "8e4d577e-24aa-45e1-b1af-f3769fe39b16",
+  "started_at": "2026-09-21T20:59:28Z"
+}

@@ -74,6 +74,12 @@ set -uo pipefail
 #       line yields nothing rather than the next line's first word; a `\`-continued start
 #       yields its slug; a value-taking flag before the slug (`--base x`, `--method
 #       direct`) never becomes one.
+#  R11. a pinned session is never also a router (self/features/shell-write-rewrite, part
+#       2): a routing record whose `session_id` some manifest in the corpus pins in
+#       `sessions` has no row in the Routing table and is not in its fraction, `--all`
+#       names it in one line with the pinning feature, the feature's "routed by" line is
+#       gone, and the record file, the feature totals and the unpinned routers are all
+#       exactly as they were.
 #
 # All RED until analysis/routing.py and its two readers land. A missing script fails its
 # own assertions loudly rather than aborting the run (no `set -e`), the convention
@@ -458,6 +464,52 @@ check "R10h. a start on the SECOND line still reads that line's slug" \
   '[[ "$(slug_of "$(printf "git fetch origin\\n./feature-start.sh --self zeta")")" == "zeta" ]]'
 check "R10i. a command that only names the script is still not a start" \
   '[[ "$(slug_of "grep -n x feature-start.sh hooks")" == "None" ]]'
+
+# ── R11. a pinned session is never also a router ──────────────────────────────
+# One owner per session (self/features/shell-write-rewrite, part 2): a session some
+# manifest in the corpus pins in `sessions` is that feature's, so its routing record —
+# one written before `feature-start.sh --pin` stopped writing them — must not ALSO be
+# counted as routing overhead, or the `--all` fraction counts it on both sides. The
+# predicate is routing.py's; the table, its fraction and the "routed by" line all call it.
+# The record file itself is left alone. ROUTER3 is the pinned one; the two routers above
+# are pinned by nobody and must be exactly where they were.
+ROUTER3="r0000000-0000-0000-0000-000000000009"
+ROUTER3_COST="9.0"
+overhead_of() { grep -oE 'routing overhead \$[0-9.]+' <<<"$1"; }
+before_overhead="$(overhead_of "$(report --all)")"
+mkdir -p "$FEATURES/pinned-feat" "$FEATURES/pinner"
+printf '{\n  "captured_at": "2026-09-10T10:30:00Z",\n  "cost_usd": %s,\n  "duration_s": 60,\n  "ended_at": "2026-09-10T10:30:00Z",\n  "features_started": [{"slug": "pinned-feat", "at": null}],\n  "git_branch": "main",\n  "launched_in": "%s",\n  "model": "%s",\n  "session_id": "%s",\n  "started_at": "2026-09-10T10:00:00Z"\n}\n' \
+  "$ROUTER3_COST" "$AT" "$MODEL" "$ROUTER3" > "$(record_of pinned-feat)"
+write_feature pinned-feat 4.0
+# The pin sits in ANOTHER feature's manifest: "some manifest in the corpus", not only the
+# record's own feature.
+printf '# pinner\n\nTest fixture only.\n\n```json\n{"slug": "pinner", "method": "direct", "plans": [], "branches": ["pinner"], "sessions": ["%s"]}\n```\n' \
+  "$ROUTER3" > "$FEATURES/pinner/README.md"
+printf '{"cost_usd": {"total": 6.0, "total_is_partial": false}, "sessions": [], "subagents": [], "priced": []}\n' \
+  > "$FEATURES/pinner/planning.json"
+cp "$(record_of pinned-feat)" "$TMP/pinned.before"
+report pinned-feat >/dev/null 2>&1
+report pinner >/dev/null 2>&1
+all_out="$(report --all)"
+routing_table="$(awk '/Routing overhead/{f=1} f' <<<"$all_out")"
+check "R11a. the pinned router has no row in the Routing table" \
+  '! grep -q "| $ROUTER3 |" <<<"$routing_table"'
+check "R11b. ... while both unpinned routers keep theirs" \
+  'grep -q "| $ROUTER |" <<<"$routing_table" && grep -q "| $ROUTER2 |" <<<"$routing_table"'
+check "R11c. the routing overhead counts only the unpinned routers ($before_overhead before)" \
+  '[[ -n "$before_overhead" && "$(overhead_of "$all_out")" == "$before_overhead" ]]'
+check "R11d. --all names the skipped record in one line, with the feature that pins it" \
+  '[[ "$(grep -c "$ROUTER3" <<<"$all_out")" == "1" ]] && grep "$ROUTER3" <<<"$all_out" | grep -q "pinner"'
+check "R11e. the pinned-out feature's report prints no routed-by line" \
+  '! grep -q "routed by" <<<"$(report pinned-feat)"'
+check "R11f. an unpinned router's routed-by line is untouched" \
+  'grep -q "routed by $ROUTER" <<<"$(report alpha)"'
+check "R11g. the record file is not modified by any reader" \
+  'cmp -s "$TMP/pinned.before" "$(record_of pinned-feat)"'
+check "R11h. the feature totals are unchanged — pinned-feat and pinner report their own" \
+  '[[ "$(pj "$FEATURES/pinned-feat/report.json" "d[\"cost\"][\"total\"]")" == "4.0" && "$(pj "$FEATURES/pinner/report.json" "d[\"cost\"][\"total\"]")" == "6.0" ]]'
+check "R11i. load_records itself still returns the pinned record — the skip is the readers'" \
+  '[[ "$(records "len([r for r in recs if r[\"session_id\"] == \"$ROUTER3\"])")" == "1" ]]'
 
 echo
 if (( fails > 0 )); then echo "routing record: $fails assertion(s) FAILED"; exit 1; fi

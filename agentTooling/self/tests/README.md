@@ -100,7 +100,9 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   names the worktree in its "Next" block without teaching
   a chained `cd`, and
   refuses a bad slug, an existing branch, a worktree path already taken and a worktree's
-  copy while creating nothing; that `--pin` restores the pin, `--no-pin` is an accepted
+  copy while creating nothing; that `--pin` restores the pin and writes **no** routing
+  record, in the tree or in the `S: start` commit (S3a3–S3a4: a pinned session is never
+  also a router), `--no-pin` is an accepted
   no-op and `--session` names the router with or without it; that a start **prunes** every
   worktree under `.worktrees/` whose branch is an ancestor of `origin/main` and whose tree
   is clean, deleting that branch with `git branch -D`, while a dirty merged one and an
@@ -421,7 +423,15 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   created for it; a record no slug of which has a directory is KEPT, since deleting it
   would destroy its only copy; an emptied legacy directory is removed; and a second run
   over a corpus with none exits 0, prints nothing and changes no byte under the features
-  root (asserted with `diff -r` over a copy). Depends on `analysis/routing.py` and on
+  root (asserted with `diff -r` over a copy). **R11** is one owner per session
+  (`../features/shell-write-rewrite/` part 2): a hand-written record for a third router,
+  pinned in the `sessions` of a *different* feature's manifest, has no row in the Routing
+  table, leaves the `routing overhead $X` figure exactly what it was before the record
+  existed (so the fraction counts only the unpinned routers), is named in one `--all` line
+  with the pinning slug, drops the pinned-out feature's "routed by" line while an unpinned
+  router's stays, and is byte-identical afterwards; both features' `report.json` totals
+  are their own, and `load_records` still returns the record — the skip is the readers'.
+  Depends on `analysis/routing.py` and on
   `capture_planning.py` importing `is_router_lines` from it; RED until both landed, and
   R1/R6–R9 RED again until the record moved inside the feature.
   No model, no network.
@@ -1144,10 +1154,26 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   from a prompting list rather than from ALLOW or DENY
   (`self/features/hook-rewrite-or-ask/NOTES.md` lists the moves); that the **ASK** class
   prints nothing at all (`git diff main...HEAD`, `x=$(cd dir && pwd)`, an all-ASK
-  sequence, a pipeline, `X=1 make`, `echo x > f`, `cat /etc/hosts`, a CR, a NUL), with no
+  sequence, a pipeline, `X=1 make`, `cat README.md > f`, `cat /etc/hosts`, a CR, a NUL), with no
   `ask` decision anywhere in it; that a heredoc or a `#` anywhere holds the new shapes off
-  the line entirely, as it does the three older denies; that `self/tests/fixtures/hook-replay-2026-09-18.json`
-  replays with the verdict each record claims and each denial's reason;
+  the line entirely, as it does the three older denies; that a **file authored through
+  the shell** (`../features/shell-write-rewrite/`) is denied with a reason naming the
+  member as written, the Write and Edit tools and why (`AUTHORING_REWRITE`: `echo`/`printf`
+  through every redirect operator and spelling, `cat`/`tee` fed a heredoc, a herestring or
+  a pipe from `echo` with output to a path — the motivating `cat >> tests/test_x.py
+  <<'EOF'` among them — and every `sed -i` spelling), that a literal-fed `tee` gets that
+  reason and not the scratchpad one while a heredoc into an interpreter with an output file
+  is still the opaque deny, that a chained `cd` or an own-assignment on the same line
+  still gets its own older deny reason (`AUTHORING_BEHIND_SHAPE_DENIES`), and that
+  captured output, the commit-message heredoc, a quoted
+  or escaped `>`, fd duplications, the non-file targets, a process substitution, `sed`
+  without `-i`, `cp`/`mv`/`touch`/`mkdir`/`rm`/`ln`, a heredoc body full of redirects and a
+  `#` on the judged line are not (`AUTHORING_NOT_DENIED`) — nine cases moved into that
+  list from `PROMPT`, `OPAQUE_NOT_DENIED`, `ASK_CASES` and `MIXED_REWRITE`, whose `echo x >
+  cd && ls` became `cat README.md > cd && ls` to keep its point
+  (`../features/shell-write-rewrite/NOTES.md`); that `self/tests/fixtures/hook-replay-2026-09-18.json`
+  replays with the verdict each record claims and each denial's reason (its `echo x > f`
+  record is REWRITE now);
   that a read-only git subcommand **behind the global
   location options** is judged by the subcommand (`git -C <root> status`,
   `git --git-dir=<root>/.git log`, `git --work-tree=<root> status` approved; `git -C /tmp
@@ -1208,9 +1234,13 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   exactly as the `UNANALYSABLE` refusal was. Its §9 is the 2026-09-18 design's half of the
   escalation: a `$NAME`, a `~`, a `..` component, a relative `cd` and a refused brace
   group are each denied on a fresh session, two of them in a row escalate to `ask` on the
-  third whatever mix of shapes got there, a command of the **ASK** class (`echo x > f`,
-  which prints nothing) resets the counter so the next one is a deny again, and a headless
-  runner prints nothing at that escalation while the counter still advances. Depends on
+  third whatever mix of shapes got there, a command of the **ASK** class (`cat README.md >
+  f`, a captured output, which prints nothing — `echo x > f` was this resetter until
+  `shell-write-rewrite` made it a REWRITE) resets the counter so the next one is a deny
+  again, and a headless runner prints nothing at that escalation while the counter still
+  advances. §9h–9i: a file authored through the shell counts the same way — two
+  (`echo x > f`, a `cat` heredoc into a file) are denied and a third (`sed -i`) is the
+  `ask` with the escalation's own reason. Depends on
   `OPAQUE_REWRITE_ATTEMPTS` being 2 and on
   the state directory being an explicit name under `$TMPDIR`. No model, no network.
 - `hook-wiring.sh` — sixteen throwaway repos, one per starting state of

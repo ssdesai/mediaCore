@@ -38,7 +38,9 @@ from typing import NamedTuple
 
 from pricing import RATES_VERIFIED, is_rates_stale
 from roots import add_self_flag, artifact_root, features_root
-from routing import load_records, routers_of, started_slugs
+# `parse_manifest` is routing.py's: the one copy both this module and routing.py's
+# pinned-session predicate read a manifest through.
+from routing import load_records, parse_manifest, routers_of, split_pinned, started_slugs
 from transcript import to_utc
 
 # Uncaptured feature (B1, lifecycle-records-and-numbering): run_single_feature used to
@@ -119,17 +121,6 @@ ATTEMPT_RECOVERED_FIELD = "recovered_cost_usd"
 # --------------------------------------------------------------------------
 # Shared loading helpers
 # --------------------------------------------------------------------------
-
-
-def parse_manifest(readme_path):
-    """Find the *last* ```json fence in a feature README and parse it. There
-    may be earlier fences (examples, snippets) — only the last one is the
-    manifest."""
-    text = readme_path.read_text()
-    matches = re.findall(r"```json\n(.*?)\n```", text, re.DOTALL)
-    if not matches:
-        raise ValueError(f"no ```json fence found in {readme_path}")
-    return json.loads(matches[-1])
 
 
 class PlanUsage(NamedTuple):
@@ -2985,6 +2976,14 @@ ROUTING_FRACTION_NO_BASE = " (no feature spend to compare against)"
 # same breath — read from the routing files, which own the list.
 ROUTED_BY_LINE = "routed by {session}"
 ROUTED_ALONGSIDE = ", alongside {slugs}"
+# One line per routing record left out because its session is pinned in some feature's
+# `sessions` (`routing.split_pinned`): a pinned session is that feature's, never also a
+# router, so its cost is in that feature's total already. Printed so the omission is
+# visible rather than silent; the record file itself is left alone.
+ROUTING_SKIPPED_PINNED_LINE = (
+    "skipped routing record {session}: pinned in the sessions of {slugs}, so its cost is "
+    "that feature's and not routing overhead"
+)
 
 
 def frozen_total(features_dir, slug):
@@ -2999,14 +2998,26 @@ def frozen_total(features_dir, slug):
 
 def render_routing_table(features_dir, feature_total):
     """Print the Routing table and the routing fraction. `feature_total` is the summed
-    cost of the trend rows above it, the denominator of the fraction."""
-    records = load_records(features_dir)
+    cost of the trend rows above it, the denominator of the fraction.
+
+    A record whose session some manifest pins is left out of both the rows and the
+    fraction — `routing.split_pinned` decides which, and is not repeated here — and named
+    in one line of its own after them."""
+    records, skipped = split_pinned(load_records(features_dir), features_dir)
     print("")
     print(f"### {ROUTING_TABLE_TITLE}")
     print("")
-    if not records:
+    if records:
+        render_routing_rows(features_dir, records, feature_total)
+    else:
         print(ROUTING_EMPTY_NOTE)
-        return
+    for record, slugs in skipped:
+        print(ROUTING_SKIPPED_PINNED_LINE.format(
+            session=record.get("session_id"), slugs=ROUTING_SLUG_SEPARATOR.join(slugs)))
+
+
+def render_routing_rows(features_dir, records, feature_total):
+    """The Routing table's rows and the fraction line under them."""
     print(ROUTING_TABLE_HEADER)
     print(ROUTING_TABLE_RULE)
     routing_total = 0.0
@@ -3042,8 +3053,12 @@ def render_routed_by(features_dir, slug):
     Which record is this feature's is `routing.routers_of` and is not repeated here —
     it reads `<slug>/routing.json`, the feature's own copy, and nothing else (design
     2026-09-18 §1), so "alongside" names the slugs that copy had seen when it was last
-    written, which may be fewer than the router's latest copy in the Routing table."""
-    for record in routers_of(features_dir, slug):
+    written, which may be fewer than the router's latest copy in the Routing table.
+
+    A record whose session some manifest pins prints nothing (`routing.split_pinned`):
+    that session is a feature's, never also this feature's router."""
+    records, _skipped = split_pinned(routers_of(features_dir, slug), features_dir)
+    for record in records:
         line = ROUTED_BY_LINE.format(session=record.get("session_id"))
         others = [name for name in started_slugs(record) if name != slug]
         if others:
