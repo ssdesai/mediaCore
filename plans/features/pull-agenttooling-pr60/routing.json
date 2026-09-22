@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-09-22T21:23:39Z",
+  "cost_usd": 0.472597,
+  "duration_s": 66,
+  "ended_at": "2026-09-22T21:23:39Z",
+  "features_started": [
+    {
+      "at": null,
+      "slug": "pull-agenttooling-pr60"
+    }
+  ],
+  "git_branch": "HEAD",
+  "launched_in": "/Users/sahildesai/dev",
+  "model": "claude-opus-5-5",
+  "session_id": "5baa1faa-1203-465b-8477-f38f323e9c7a",
+  "started_at": "2026-09-22T21:22:33Z"
+}
