@@ -304,8 +304,10 @@ ASSIGNMENT_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=")
 # Builtins that take assignments as their arguments, so `export X=/p` is still an
 # assignment at command position rather than a command being given a value.
 ASSIGNMENT_BUILTINS = frozenset(["export"])
-# `$NAME` and `${NAME}`. Not `$(…)`, which starts with `(` and matches nothing here.
-VAR_USE_RE = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
+# `$NAME` and `${NAME}`, and the special and positional parameters — `$?`, `$$`, `$!`,
+# `$#`, `$*`, `$@`, `$-`, `$0`…`$9`, `${10}` — which the shell decides at run time just
+# the same. Not `$(…)`, which starts with `(` and matches nothing here.
+VAR_USE_RE = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*|[0-9]+|[?$!#*@-])\}?")
 
 # Multi-token program prefixes for the project's test and lint runners. `npm run`
 # is held to named scripts because it executes whatever package.json says.

@@ -52,7 +52,7 @@ it, and do not work around it with `pushd` or a subshell, which are denied too.
 |---|---|---|
 | a `cd` or `pushd` chained with another command | `cd src && ls` | `cd <absolute path>` as its own call, then the command |
 | an assignment whose own `$NAME` is used later on the line | `X=/p; cat $X/f` | inline the literal — you still have it, two words earlier |
-| a `$NAME` or `${NAME}` the shell will expand, anywhere in a word | `grep x $FILE`, `ls "$HOME/f"` | inline the literal |
+| a `$NAME` or `${NAME}` the shell will expand, anywhere in a word — the special and positional parameters (`$?`, `$$`, `$1`) included | `grep x $FILE`, `ls "$HOME/f"`, `cat $1` | inline the literal |
 | a `~` | `ls ~/x` | write the absolute path |
 | a `..` component in a path | `cat ../x`, `ls a/../b` | write the path from the project root |
 | a bare or relative `cd` | `cd src`, `cd` | `cd <absolute path>` |
