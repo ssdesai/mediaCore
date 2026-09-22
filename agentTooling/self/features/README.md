@@ -194,3 +194,10 @@ format".
   and the rewritten T3/T4/T5/P2), the report's in `../tests/report-rounds.sh`. It removes
   the `PR_AUTO_MERGE` entry from `../BACKLOG.md` and adds three, and is the first feature
   closed by its own script.
+- `hook-special-params` — `VAR_USE_RE` in `../../hooks/allow-repo-commands.sh` matched only
+  `[A-Za-z_][A-Za-z0-9_]*`, so a command carrying `$?`, `$$`, `$1` or any other special or
+  positional parameter fell through the rewrite layer and reached the human as a silent
+  prompt. The pattern now admits them; three suite cases that pinned other exemptions with
+  a `"$0"` — and passed only because it fell through — use a literal path instead. Built by
+  hand (`method: "hand"`) by the session that started it, pinned; plan `01-review-opus` is
+  its review.

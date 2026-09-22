@@ -315,7 +315,7 @@ that always works. Each has a named reason constant, each names the member as wr
 
 | Shape | Example | Reason names |
 |---|---|---|
-| a `$NAME`/`${NAME}` the shell will expand, anywhere in a word | `grep x $FILE`, `ls "$HOME/f"` | inline the literal |
+| a `$NAME`/`${NAME}` the shell will expand, anywhere in a word — the special and positional parameters (`$?`, `$$`, `$1`) included | `grep x $FILE`, `ls "$HOME/f"`, `cat $1` | inline the literal |
 | a word starting with `~` | `ls ~/x` | write the absolute path |
 | a brace group the expansion refuses — a quote or backslash mixed into an unquoted brace group, nesting, past `MAX_BRACE_WORDS` | `cat {a,{b,c}}` | expand it yourself, or write a script |
 | a `..` **component** of a path token | `cat ../x`, `ls a/../b`, `--out=../x` | write the path from the project root |
