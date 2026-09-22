@@ -17,14 +17,17 @@ silence:
            that does not tokenize (whose reason names the quote, since closing it is the
            fix), a `$NAME` the shell expands, a `~`, a brace group the expansion refuses,
            a `..` path component, a bare or relative `cd`, a line break outside a quote
-           or a heredoc, or a sequence mixing approved reads with a command only the
-           human can judge. Denied, with that rewrite as the reason: the answer goes in front of
+           or a heredoc, a sequence mixing approved reads with a command only the
+           human can judge, or a file authored through the shell (echo/printf redirected
+           to a path, cat/tee fed literally, `sed -i`), whose rewrite is the Write or Edit
+           tool. Denied, with that rewrite as the reason: the answer goes in front of
            the model instead of spending an approval from the human. After
            OPAQUE_REWRITE_ATTEMPTS of them in one session the hook stops denying and
            returns "ask" instead, so the human sees only what the model could not fix;
            under a headless runner (AGENTTOOLING_HEADLESS) it prints nothing there, since
            nobody can answer.
-  ASK      the analysis read the command and cannot vouch for what it does: a write, a
+  ASK      the analysis read the command and cannot vouch for what it does: a write
+           (a captured output, a copy, a move — not a file authored in the command), a
            program outside the allowlist, a path outside the root, an environment prefix,
            a whole-argument `$(…)`. It prints NOTHING, so the normal permission flow runs
            and the human approves a command this hook has read. No "ask" decision is
@@ -438,7 +441,8 @@ SEGMENT_BREAKS = ";|&" + LINE_BREAK_CHARS
 #            the rewrite as the reason, counting toward the same escalation the seven
 #            opaque shapes always did. They are members of this class now.
 #   ASK      the analysis READ the command and cannot vouch for what it does: a program
-#            outside the allowlist, a write, a path outside the root, an environment
+#            outside the allowlist, a write (other than a file authored through the
+#            shell, which is a REWRITE), a path outside the root, an environment
 #            prefix, a whole-argument `$(…)`. It prints nothing, exactly as before, so
 #            the settings' own allow/deny rules and then the human decide. No `ask`
 #            decision is emitted for this class: an explicit `ask` would override the
@@ -499,6 +503,57 @@ MIXED_SEQUENCE_REWRITE_REASON = (
     "the human ends up approving the whole line to get the one that matters. One write "
     "per Bash call, nothing else on the line: run on their own — approved: %s; run "
     "alone: %s.")
+
+# ── A file authored through the shell ─────────────────────────────────────────
+# Content written in the command itself landing in a file (self/features/
+# shell-write-rewrite). CONVENTIONS.md → "Writing files" says to author files with the
+# Write and Edit tools, because a write made by a subprocess gets past the repo's Edit
+# allow and deny rules; and there is a rewrite that always works, so by the membership
+# test above it is a REWRITE and not an ASK. Three spellings, judged per member:
+#   echo / printf              with its output redirected to a path;
+#   cat / tee                  fed literally — a heredoc or herestring on the member, or
+#                              for tee a pipe from echo/printf or a heredoc-fed cat — with
+#                              output to a path (a redirect, or a file operand of tee);
+#   sed                        editing in place.
+# Where the file is does not matter: the Write tool reaches the scratchpad, the root and
+# /tmp alike, and is checked against the rules the shell write bypasses. A command's
+# OUTPUT captured to a file (`pytest > out.log`, `cat a > b`, `cmd | tee log`) is not
+# this: no Edit or Write reproduces output nobody has seen, so it stays ASK.
+AUTHORING_ECHO_PROGRAMS = frozenset(["echo", "printf"])
+AUTHORING_LITERAL_PROGRAMS = frozenset(["cat", "tee"])
+AUTHORING_TEE_PROGRAM = "tee"
+AUTHORING_HEREDOC_FED_PROGRAM = "cat"     # the one program whose heredoc feeds a tee
+AUTHORING_SED_PROGRAM = "sed"
+SED_IN_PLACE_LETTER = "i"                 # `-i`, `-i.bak`, `-Ei`, `-ni`, `-i ''`
+SED_IN_PLACE_LONG = "--in-place"          # also `--in-place=<suffix>`
+# sed's short flags that take a value: past one of them the rest of the token is that
+# value (`-f<script>`), so a later `i` is a letter of a filename, not the flag.
+SED_VALUE_LETTERS = "efl"
+# Redirect operators. `N>`, `>`, `>>`, `>|` and `>&` write through a descriptor, `&>` and
+# `&>>` write both streams; `<<`, `<<-` and `<<<` feed the member text written in the
+# command. `>(…)`/`<(…)` are process substitutions and not redirects at all.
+REDIRECT_CHARS_OUT, REDIRECT_CHARS_IN = ">", "<"
+REDIRECT_OUTPUT_OPS = frozenset([">", ">>", ">|", ">&", "&>", "&>>"])
+REDIRECT_OUT_SUFFIXES = (">", "|", "&")   # what may follow the first `>` of an operator
+REDIRECT_IN_OPS = ("<<<", "<<-", "<<", "<>", "<&", "<")   # longest first
+REDIRECT_LITERAL_OPS = frozenset(["<<", "<<-", "<<<"])
+REDIRECT_DUP_OP = ">&"                    # `>&2`, `2>&1`: a descriptor, unless a filename
+REDIRECT_BOTH_STREAMS = "&"               # the `&` of `&>` / `&>>`
+PROCESS_SUBSTITUTION_PREFIXES = (">(", "<(")
+# `>&N` and `>&-` duplicate or close a descriptor; any other word after `>&` is a file
+FD_DUP_TARGET_RE = re.compile(r"^(?:\d+|-)$")
+# Redirect targets that name no file
+NON_FILE_TARGETS = frozenset(["/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty"])
+# Member separators for this reader. Unlike SEGMENT_BREAKS, an `&` or a `|` that is part
+# of a redirect operator (`2>&1`, `&>`, `>|`) is read as the operator and not as a break.
+AUTHORING_SEPARATOR_CHARS = ";|&"
+PIPE_SEPARATORS = frozenset(["|", "|&"])
+SHELL_AUTHORING_REWRITE_REASON = (
+    "%s writes a file from text in the command itself, and a file written by a shell "
+    "subprocess is one the repo's Edit allow and deny rules never see (CONVENTIONS.md § "
+    "Writing files). Use the Write tool for a new file or a whole rewrite, and the Edit "
+    "tool for a change to an existing file — an append is an Edit anchored on the "
+    "file's last lines.")
 
 # ── Escalation state ──────────────────────────────────────────────────────────
 # One file per session (and per subagent) under an explicit directory beneath $TMPDIR —
@@ -1199,8 +1254,10 @@ def opaque_deny_reason(command):
 # seven shapes above do: this is the text the approval analysis declined to read. Each
 # function answers one row of the design's table, and each row has a rewrite that always
 # works — which is the whole test for membership. A shape with no rewrite to name (a CR,
-# a NUL, a `..` in a token that is not a path, an environment prefix, a redirect that
-# writes) is an ASK: the hook prints nothing and the human judges a command it has read.
+# a NUL, a `..` in a token that is not a path, an environment prefix, a command's output
+# captured to a file) is an ASK: the hook prints nothing and the human judges a command
+# it has read. A file whose CONTENT is written in the command does have one — the Write
+# or Edit tool — and is judged ahead of all of these (`authoring_reason_lines`).
 #
 # The two guards the three shape denies keep hold here as well, and for the same reason —
 # a deny must not fire on a guess. A heredoc's body lines and the text after a `#` are
@@ -1426,6 +1483,247 @@ def rewrite_reason_lines(command, cwd, root):
     return [mixed] if mixed else []
 
 
+# ── A file authored through the shell ─────────────────────────────────────────
+
+
+class RedirectMember(object):
+    """One member of a command line as the shell will run it: its `words` with every
+    redirect taken out, its `redirects` as `(operator, raw target)` in order, and its
+    `text` as written — the slice of the command line it occupies."""
+
+    def __init__(self, words, redirects, text):
+        self.words, self.redirects, self.text = words, redirects, text
+
+
+def redirect_members(command, stop_at_line_break):
+    """`[(separator, RedirectMember)]` for the command's top-level members, reading
+    redirect operators the way bash does — which `opaque_segments` does not: it breaks at
+    every `&` and `|`, so `2>&1`, `&> f` and `>| f` come apart there.
+
+    Quote-aware like every reader here: a `>` inside either quote or behind a backslash is
+    text. `$(…)`, backticks and `(…)` are one opaque word, as in `opaque_segments`, so a
+    write inside a substitution is not judged. A `>(` or `<(` opens a process
+    substitution, which is a word and not a redirect.
+
+    With `stop_at_line_break` the walk ends at the first line break outside every quote
+    and substitution: on a line carrying a heredoc that is where the body begins, and the
+    body is data — the cut `segments_before_line_break` makes for the `cat` heredoc
+    exemption. A line whose quotes are still open at the end names no member at all: it
+    is the unreadable shape's to answer, not this one's."""
+    members, words, redirects, word = [], [], [], []
+    pending = [None]            # the operator whose target the next word is
+    sep, start = "", 0
+    in_single = in_double = escaped = in_backtick = False
+    depth, index, length = 0, 0, len(command)
+
+    def end_word():
+        if not word:
+            return
+        token = "".join(word)
+        del word[:]
+        if pending[0] is not None:
+            redirects.append((pending[0], token))
+            pending[0] = None
+        else:
+            words.append(token)
+
+    def flush(end):
+        end_word()
+        pending[0] = None
+        if words or redirects:
+            members.append((sep, RedirectMember(list(words), list(redirects),
+                                                command[start:end].strip())))
+        del words[:]
+        del redirects[:]
+
+    while index < length:
+        ch = command[index]
+        if escaped:
+            word.append(ch)
+            escaped = False
+        elif ch == ESCAPE and not in_single:
+            word.append(ch)
+            escaped = True
+        elif ch == QUOTE_SINGLE and not in_double:
+            in_single = not in_single
+            word.append(ch)
+        elif ch == QUOTE_DOUBLE and not in_single:
+            in_double = not in_double
+            word.append(ch)
+        elif in_single or in_double:
+            word.append(ch)
+        elif ch == BACKTICK:
+            in_backtick = not in_backtick
+            word.append(ch)
+        elif in_backtick:
+            word.append(ch)
+        elif ch == SUBSHELL_OPEN:
+            depth += 1
+            word.append(ch)
+        elif ch == SUBSHELL_CLOSE and depth:
+            depth -= 1
+            word.append(ch)
+        elif depth:
+            word.append(ch)
+        elif ch in REDIRECT_CHARS and command.startswith(SUBSHELL_OPEN, index + 1):
+            word.append(ch)                      # `>(…)`: a process substitution
+        elif ch == REDIRECT_CHARS_OUT:
+            if word and "".join(word).isdigit():
+                del word[:]                      # `2>`: the descriptor is the operator's
+            end_word()
+            op = ch
+            if command[index + 1:index + 2] in REDIRECT_OUT_SUFFIXES:
+                op += command[index + 1]
+            pending[0] = op
+            index += len(op)
+            continue
+        elif ch == REDIRECT_CHARS_IN:
+            if word and "".join(word).isdigit():
+                del word[:]
+            end_word()
+            op = next(o for o in REDIRECT_IN_OPS if command.startswith(o, index))
+            pending[0] = op
+            index += len(op)
+            continue
+        elif (ch == REDIRECT_BOTH_STREAMS
+              and command.startswith(REDIRECT_CHARS_OUT, index + 1)):
+            end_word()
+            op = REDIRECT_BOTH_STREAMS + REDIRECT_CHARS_OUT
+            if command.startswith(REDIRECT_CHARS_OUT, index + len(op)):
+                op += REDIRECT_CHARS_OUT
+            pending[0] = op
+            index += len(op)
+            continue
+        elif ch in LINE_BREAK_CHARS:
+            flush(index)
+            if stop_at_line_break:
+                return members
+            sep, start = ch, index + 1
+        elif ch in AUTHORING_SEPARATOR_CHARS:
+            flush(index)
+            end = index
+            while end < length and command[end] in AUTHORING_SEPARATOR_CHARS:
+                end += 1
+            sep, start = command[index:end], end
+            index = end
+            continue
+        elif ch.isspace():
+            end_word()
+        else:
+            word.append(ch)
+        index += 1
+
+    if in_single or in_double or in_backtick:
+        return []
+    flush(length)
+    return members
+
+
+def file_target(raw):
+    """True when a redirect target or a tee operand names a file: not empty, not one of
+    NON_FILE_TARGETS, not a process substitution. Where the file is does not matter."""
+    if raw.startswith(PROCESS_SUBSTITUTION_PREFIXES):
+        return False
+    body = word_body(raw)
+    return bool(body) and body not in NON_FILE_TARGETS
+
+
+def writes_to_file(member):
+    """True when one of the member's redirects sends its output to a file. `>&2` and
+    `2>&1` duplicate a descriptor and are not targets at all."""
+    for op, target in member.redirects:
+        if op not in REDIRECT_OUTPUT_OPS:
+            continue
+        if op == REDIRECT_DUP_OP and FD_DUP_TARGET_RE.match(target):
+            continue
+        if file_target(target):
+            return True
+    return False
+
+
+def fed_literally(member):
+    """True when the member's input is a heredoc or a herestring on the member itself."""
+    return any(op in REDIRECT_LITERAL_OPS for op, _target in member.redirects)
+
+
+def member_program(member):
+    head = program_words(member.words)
+    return (command_name(head[0]), head[1:]) if head else (None, [])
+
+
+def piped_from_literal(sep, previous):
+    """True when this member is the right-hand side of a pipe whose left-hand member
+    writes literal text: echo/printf, or a heredoc-fed cat."""
+    if sep not in PIPE_SEPARATORS or previous is None:
+        return False
+    name, _args = member_program(previous)
+    return (name in AUTHORING_ECHO_PROGRAMS
+            or (name == AUTHORING_HEREDOC_FED_PROGRAM and fed_literally(previous)))
+
+
+def tee_writes_operand(args):
+    """True when tee is given a file operand: a word that is not a flag. Heredoc
+    delimiters and redirect targets are not in `args` — `redirect_members` took them out."""
+    return any(not word_body(a).startswith(FLAG_PREFIX) and file_target(a) for a in args)
+
+
+def sed_edits_in_place(args):
+    """True when sed is told to edit in place: `--in-place[=…]`, or an `i` among the
+    leading letters of a single-dash token before any letter that takes a value. The
+    scan stops at the first character that is not a letter, so `-i.bak` is in place and
+    a brace group (`-{n,i}`) is left to the brace rules, which refuse it on their own."""
+    for arg in args:
+        body = word_body(arg)
+        if body == SED_IN_PLACE_LONG or body.startswith(SED_IN_PLACE_LONG + FLAG_VALUE_SEP):
+            return True
+        if not body.startswith(FLAG_PREFIX) or body.startswith(FLAG_PREFIX * 2):
+            continue
+        for letter in body[1:]:
+            if letter == SED_IN_PLACE_LETTER:
+                return True
+            if letter in SED_VALUE_LETTERS or not letter.isalpha():
+                break
+    return False
+
+
+def authors_a_file(sep, member, previous):
+    """True when this member lands text written in the command itself in a file."""
+    name, args = member_program(member)
+    if name in AUTHORING_ECHO_PROGRAMS:
+        return writes_to_file(member)
+    if name == AUTHORING_SED_PROGRAM:
+        return sed_edits_in_place(args)
+    if name in AUTHORING_LITERAL_PROGRAMS:
+        is_tee = name == AUTHORING_TEE_PROGRAM
+        if not (fed_literally(member) or (is_tee and piped_from_literal(sep, previous))):
+            return False
+        return writes_to_file(member) or (is_tee and tee_writes_operand(args))
+    return False
+
+
+def authoring_reason_lines(command):
+    """One reason line per member that authors a file through the shell, naming the
+    member as written — a sibling of `rewrite_reason_lines`, judged before the opaque
+    shapes so `tee f <<'EOF'` is told to use the Write tool rather than to write a script.
+
+    On a line carrying a heredoc only the text before the first line break is judged: the
+    body is data, so a Markdown body full of `> quote` lines is never read as redirects.
+    A `#` on the judged text means the line is not judged, the guard every rewrite keeps.
+    """
+    members = redirect_members(command, stop_at_line_break=HEREDOC_OPERATOR in command)
+    if any(COMMENT_CHAR in member.text for _sep, member in members):
+        return []
+    lines, previous = [], None
+    for sep, member in members:
+        if authors_a_file(sep, member, previous):
+            line = SHELL_AUTHORING_REWRITE_REASON % (
+                MEMBER_QUOTE % member_text(member.text.split()))
+            if line not in lines:
+                lines.append(line)
+        previous = member
+    return lines
+
+
 def command_verdict(command, cwd, root):
     """(verdict, reason) for the whole line — the tri-state `main()` acts on.
 
@@ -1442,6 +1740,17 @@ def command_verdict(command, cwd, root):
                 return VERDICT_ALLOW, DECISION_REASON
         except Exception:   # any analysis failure is a refusal, never an approval
             pass
+    # A file authored through the shell, judged after ALLOW has declined and BEFORE the
+    # opaque shapes: `tee f <<'EOF'` is a heredoc into something other than `cat`, and its
+    # rewrite is the Write tool rather than a script in the scratchpad. Only the members
+    # that author a file are named; whatever else the line carries is judged when the
+    # model sends what is left of it.
+    try:
+        authoring = authoring_reason_lines(command)
+    except Exception:       # an analysis failure is never a deny
+        authoring = []
+    if authoring:
+        return VERDICT_REWRITE, REASON_PREFIX + REASON_LINE_SEPARATOR.join(authoring)
     try:
         reason = opaque_deny_reason(command)
     except Exception:       # an analysis failure is never a deny

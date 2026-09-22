@@ -56,6 +56,12 @@ keeping the prior record's slugs the transcript never carried, and rides the cap
 commit. Another feature's copy of the same router's record is not this capture's to write.
 A record whose transcript has aged out is left as it is.
 
+**A pinned session is never also a router.** `feature-start.sh --pin` writes no record,
+and a record already on disk whose `session_id` some manifest in the corpus pins in
+`sessions` is skipped by every reader that counts routing overhead (`split_pinned`) —
+that session's cost is in the pinning feature's total, and counting it here too would
+put it on both sides of the Routing table's fraction.
+
 Usage: python3 agentTooling/analysis/routing.py [--self] --session ID --slug SLUG \\
            [--primary DIR]
        python3 agentTooling/analysis/routing.py [--self] --refresh-for SLUG
@@ -184,6 +190,17 @@ MIGRATE_KEPT_ORPHAN = (
 )
 MIGRATE_KEPT_UNREADABLE = "kept   {source}: not a routing record — left for a human"
 MIGRATE_REMOVED_DIR = "removed {directory} — the legacy routing directory is empty"
+
+# One owner per session (self/features/shell-write-rewrite, part 2). A router belongs to
+# no feature; a pin claims a session for a feature outright; so a session some manifest
+# pins in `sessions` is that feature's, and its routing record — written before
+# `feature-start.sh --pin` stopped writing one, or by hand — must not also be counted as
+# routing overhead. The manifest is the last ```json fence of `<slug>/README.md`, read by
+# `parse_manifest` below, which `report.py` imports from here rather than keeping a copy
+# of its own (this module is the leaf every other analysis module already imports).
+MANIFEST_NAME = "README.md"
+MANIFEST_FENCE_RE = re.compile(r"```json\n(.*?)\n```", re.DOTALL)
+MANIFEST_SESSIONS_KEY = "sessions"
 
 
 def record_path(features_dir, slug):
@@ -493,6 +510,57 @@ def routers_of(features_dir, slug):
     """
     record = read_record(record_path(features_dir, slug))
     return [record] if record is not None else []
+
+
+def parse_manifest(readme_path):
+    """Find the *last* ```json fence in a feature README and parse it. There may be
+    earlier fences (examples, snippets) — only the last one is the manifest. Raises
+    ValueError when there is none, or when it does not parse."""
+    text = Path(readme_path).read_text()
+    matches = MANIFEST_FENCE_RE.findall(text)
+    if not matches:
+        raise ValueError(f"no ```json fence found in {readme_path}")
+    return json.loads(matches[-1])
+
+
+def pinned_sessions(features_dir):
+    """`{session_id: [slug, ...]}` for every session some manifest in this corpus pins
+    in `sessions`, the slugs sorted. A manifest that is missing, has no fence or does
+    not parse pins nothing here — quiet, like `read_record`: a report must not fail on
+    one bad file, and the capture is where a broken manifest is refused."""
+    pins = {}
+    for readme in sorted(Path(features_dir).glob("*/" + MANIFEST_NAME)):
+        try:
+            manifest = parse_manifest(readme)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(manifest, dict):
+            continue
+        for session_id in manifest.get(MANIFEST_SESSIONS_KEY) or []:
+            if isinstance(session_id, str) and session_id:
+                pins.setdefault(session_id, []).append(readme.parent.name)
+    return {session_id: sorted(slugs) for session_id, slugs in pins.items()}
+
+
+def split_pinned(records, features_dir):
+    """`(kept, skipped)`: the routing records whose `session_id` no manifest in the
+    corpus pins, and `[(record, pinning slugs)]` for the ones some manifest does.
+
+    **The one predicate for "a pinned session is never also a router"** — the Routing
+    table, its fraction and `report.py <slug>`'s "routed by" line all call it, and none
+    of them reads a manifest on its own. It decides what is COUNTED, never what is on
+    disk: the record files are left exactly as they are (they are git history, and a
+    second writer would be a migration), and `load_records`, `routers_of` and
+    `refresh_for` still see them."""
+    pins = pinned_sessions(features_dir)
+    kept, skipped = [], []
+    for record in records:
+        slugs = pins.get(record.get("session_id"))
+        if slugs:
+            skipped.append((record, slugs))
+        else:
+            kept.append(record)
+    return kept, skipped
 
 
 def refresh_record(record, lines):

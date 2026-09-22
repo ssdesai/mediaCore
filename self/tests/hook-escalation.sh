@@ -355,8 +355,14 @@ check("8d. scratch_argument_allowed('../x') stays refused once the path exists",
 # with the rewrite, then the human. And the reset rule is unchanged, now stated in the
 # vocabulary that made it true all along — a command the hook READ puts the count back at
 # zero, and the ASK class is exactly the class of commands it read and cannot vouch for.
-NEW_SHAPES = ["cat $HOME/f", "ls ~/x", "cat ../x", "cd src", "cat {a,{b,c}}"]
-ASK_RESETTER = "echo x > f"
+NEW_SHAPES = ["cat $HOME/f", "ls ~/x", "cat ../x", "cd src", "cat {a,{b,c}}",
+              # a file authored through the shell (shell-write-rewrite) — a REWRITE like
+              # the rest, so it is counted by the same path and escalates the same way
+              "echo x > f"]
+# A command's OUTPUT captured to a file: read, a write, no Edit/Write rewrite reproduces
+# it, so it stays ASK. `echo x > f` was this resetter until shell-write-rewrite made it a
+# REWRITE (self/features/shell-write-rewrite/NOTES.md).
+ASK_RESETTER = "cat README.md > f"
 for i, shape in enumerate(NEW_SHAPES):
     got = d(shape, session_id="shape-%d" % i)
     check("9a. a fresh session is denied the rewritable shape %r (got %s)" % (shape, got),
@@ -382,6 +388,15 @@ check("9g. headless prints nothing at the escalation for a rewritable shape too"
       d(NEW_SHAPES[0], session_id="shape-headless", env_extra=HEADLESS) == "DENY"
       and d(NEW_SHAPES[1], session_id="shape-headless", env_extra=HEADLESS) == "DENY"
       and d(NEW_SHAPES[2], session_id="shape-headless", env_extra=HEADLESS) == "prompt")
+# The shell-authored file counts toward the escalation through the same path as every
+# other REWRITE: two in one session are denied, and the third is the human's `ask`.
+AUTHORING = ["echo x > f", "cat > f <<'EOF'\nbody\nEOF", "sed -i 's/a/b/' README.md"]
+SW = "authoring-escalation"
+check("9h. two shell-authored files in a row are denied",
+      d(AUTHORING[0], session_id=SW) == "DENY" and d(AUTHORING[1], session_id=SW) == "DENY")
+third, third_reason = decide(AUTHORING[2], session_id=SW)
+check("9i. the third is ask, with the escalation's own reason (got %s)" % third,
+      third == "ASK" and not [w for w in ASK_REASON_WORDS if w not in third_reason])
 
 sys.exit(1 if fails else 0)
 PY

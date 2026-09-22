@@ -38,7 +38,8 @@ set -uo pipefail
 #   S2. it refuses a slug that fails the pattern, a slug whose branch exists, a slug
 #       whose worktree path is already taken, and being run from a worktree's copy —
 #       creating nothing in each case;
-#   S3. --pin (the opt-in that restores the old behaviour), --no-pin (an accepted no-op),
+#   S3. --pin (the opt-in that restores the old behaviour, and writes NO routing record:
+#       a pinned session is never also a router), --no-pin (an accepted no-op),
 #       --session with and without --pin, an unset environment, --method, --base,
 #       --no-gate, and a red gate (refuses, worktree left in place, no manifest); and
 #       after seven more starts the exclude entry is still there exactly once;
@@ -555,6 +556,13 @@ start lifecycle-pin --pin --no-gate >/dev/null 2>&1
 check "S3a2. --pin restores the old behaviour and pins the running session" '[[ "$(fence "$(wt_path lifecycle-pin)/self/features/lifecycle-pin/README.md" "d[\"sessions\"]")" == "['"'"'$PIN'"'"']" ]]'
 start lifecycle-sess --pin --session abc-123 --no-gate >/dev/null 2>&1
 check "S3b. --session with --pin pins the id given" '[[ "$(fence "$(wt_path lifecycle-sess)/self/features/lifecycle-sess/README.md" "d[\"sessions\"]")" == "['"'"'abc-123'"'"']" ]]'
+# One owner per session (self/features/shell-write-rewrite, part 2): a pinned session is
+# this feature's, never also a router, so --pin writes no routing record — in the tree or
+# in the `S: start` commit — while the pin itself is still written (S3a2, S3b above).
+check "S3a3. --pin writes no routing record for the pinned session" \
+  '[[ ! -e "$(routing_record "$(wt_path lifecycle-pin)" lifecycle-pin)" && ! -e "$(routing_record "$(wt_path lifecycle-sess)" lifecycle-sess)" ]]'
+check "S3a4. ... and the S: start commit carries none" \
+  '! git -C "$(wt_path lifecycle-pin)" show --name-only --format= HEAD | grep -q "routing.json" && [[ "$(git -C "$(wt_path lifecycle-pin)" log -1 --format=%s)" == "lifecycle-pin: start" ]]'
 start lifecycle-sess-nopin --session def-456 --no-gate >/dev/null 2>&1
 check "S3b2. --session without --pin pins nothing, and names the router's record" \
   '[[ "$(fence "$(wt_path lifecycle-sess-nopin)/self/features/lifecycle-sess-nopin/README.md" "d[\"sessions\"]")" == "[]" ]] && [[ "$(pj "$(routing_record "$(wt_path lifecycle-sess-nopin)" lifecycle-sess-nopin)" "d[\"session_id\"]")" == "def-456" ]]'
