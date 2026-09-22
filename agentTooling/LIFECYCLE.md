@@ -57,7 +57,7 @@ refused untouched.
 **The session that runs it is a router, and a router is never pinned.** Its spend is
 routing overhead, a category of its own: it opens several features and belongs to none of
 them, so pinning it would bill one transcript to every feature it started. What goes into
-the `S: start` commit instead is the **routing record**, written inside the feature
+the `S: start` commit instead — unless `--pin` (below) — is the **routing record**, written inside the feature
 directory the commit already carries — `plans/features/S/routing.json` (`self/features/`
 under `--self`) — derived from that session's own transcript by `analysis/routing.py`: the
 link from router to feature, in git before the transcript can expire, and what
@@ -71,7 +71,10 @@ a session launched **inside the worktree**, where rule 1 claims it by branch wit
 `--base` is for a feature stacked on one that has not merged; `--no-gate`, `--pin` (the
 opt-in for the rare case where the starting session really is this feature's coordinator)
 and `--session <id>` are for the cases that need them, and `--no-pin` is still accepted
-and does nothing. Read the "Next" lines it prints:
+and does nothing. **A pinned session is never also a router**: under `--pin` no routing
+record is written — the pin is the link, and one owner per session is the rule — and
+`report.py` skips any record already on disk whose session some manifest pins, so its
+cost is never on both sides of the Routing table's fraction. Read the "Next" lines it prints:
 they are steps 3 to 7 below with the paths filled in.
 
 ## 3. Brief

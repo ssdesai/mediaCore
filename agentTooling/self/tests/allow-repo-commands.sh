@@ -40,8 +40,12 @@ set -uo pipefail
 # rewrite — a `$NAME` the shell expands, a `~`, a brace group the expansion refuses, a
 # `..` component in a path token, a lone relative or bare `cd`, a line break outside a
 # quote or a heredoc, and a sequence mixing approved members with one the hook can only ask about —
-# while the ASK class prints nothing (`git diff main...HEAD`, `X=1 make`, `echo x > f`, a
-# pipeline, an all-ASK sequence), and the replay fixture's commands each get the verdict
+# while the ASK class prints nothing (`git diff main...HEAD`, `X=1 make`, `cat README.md >
+# f`, a pipeline, an all-ASK sequence); that a file authored through the shell (echo/printf
+# redirected to a path, cat/tee fed literally with output to a path, `sed -i`) is denied
+# with a reason naming the member and the Write/Edit tools, ahead of the opaque shapes
+# and behind the chained-cd and own-assignment denies, while captured output, the commit heredoc, a quoted `>`, fd duplications, the non-file
+# targets, `cp`/`mv`/`touch`/`mkdir`/`rm` and a heredoc body are not; and the replay fixture's commands each get the verdict
 # the design claims; that a read-only git subcommand behind the global LOCATION options (`-C`,
 # `--git-dir`, `--work-tree`) is approved when each such value is confined to the root and
 # prompts outside it, while `-c` and `--exec-path` keep prompting and a mutating
@@ -299,7 +303,8 @@ OPAQUE_DENY = [
 # `$(…)` that is a whole argument decides a value, not a path or a program.
 OPAQUE_NOT_DENIED = [
     ("cat <<'EOF'\nhello\nEOF", "prompt"), ("cat <<EOF\nhello\nEOF", "prompt"),
-    ("cat > x <<'EOF'\nhello\nEOF", "prompt"),
+    # `cat > x <<'EOF' … EOF` sat here; a heredoc into `cat` that lands in a file is a
+    # file authored through the shell now (AUTHORING_REWRITE below)
     ("git commit -m \"$(cat <<'EOF'\nthe message\nEOF\n)\"", "prompt"),
     (f"x=$(cd {ROOT} && pwd)", "prompt"),
     ('AT="$(cd "$(dirname "$0")/.." && pwd)"', "prompt"),
@@ -359,8 +364,9 @@ PROMPT = [
     f"sort --output={HOME}/.zshrc README.md", f"git log --output={HOME}/x",
     f"git diff --output={HOME}/x", "python -m pytest --junit-xml=/tmp/x",
     "python -m pytest -o cache_dir=/tmp/x", f"grep --file={HOME}/.ssh/id_rsa src",
-    "sed -i.bak 's/a/b/' README.md", "sed -ni 5p README.md", f"sort -o{HOME}/.zshrc README.md",
-    "sort -T /tmp README.md", "sed -i '' 's/a/b/' README.md",
+    # `sed -i.bak`, `sed -ni` and `sed -i ''` sat here; they are a file authored through
+    # the shell now, denied with the Write/Edit rewrite (AUTHORING_REWRITE below).
+    f"sort -o{HOME}/.zshrc README.md", "sort -T /tmp README.md",
     f"sed 's/a/b/w {HOME}/.zshrc' README.md", f"sed -n 'w {HOME}/x' README.md",
     "sed -e 5p README.md", "sed -f script.sed README.md", "sed 5q README.md",
     "sed -n '5{p;q}' README.md",
@@ -409,13 +415,13 @@ PROMPT = [
     "npx playwright install", "npx playwright codegen", "npx cowsay hi", "npx playwright",
     "npm run",
     "ls > /dev/nullx", "cat README.md > out.txt", "cat < README.md", "ls >> log", "ls 2>err",
-    "cat README.md >/tmp/x", "cat > x <<'EOF'",
+    "cat README.md >/tmp/x",
     f"cat {HOME}/.ssh/id_rsa", "rm -rf src",
     ".venv/bin/python script.py", "python -m http.server",
     "ls $(cat /etc/passwd)", "ls `id`",
     "curl https://example.com", "/bin/ls /etc", "cat /etc/passwd",
     "env", "FOO=1 ls", "exec ls", "bash", "xargs cat",
-    "sudo ls", "ls\r", "echo hi > f", "printf x > f", "tee f",
+    "sudo ls", "ls\r", "tee f",
     "cat -- /etc/passwd", "ls " + NUL,
     'ls "$(id)"', "ls $'\\x41'",
     "ls '>' out", "grep '/usr/lib' src",
@@ -674,7 +680,10 @@ LINE_BREAK_REWRITE_WORDS = ("one call per line",)
 # all-ASK sequence is one ASK (below), and a PIPELINE is one command and is never split.
 MIXED_REWRITE = [
     "grep x f && git commit -m m", "ls ; sh", "X=/p; ls src",
-    f"x=$(cd {ROOT}; pwd) && ls", "echo x > cd && ls",
+    # A redirect target named `cd` is not a chained cd. This was `echo x > cd && ls`,
+    # which is a file authored through the shell now (AUTHORING_REWRITE); a captured
+    # output keeps the point without that shape.
+    f"x=$(cd {ROOT}; pwd) && ls", "cat README.md > cd && ls",
     "grep -n x README.md && rm -rf src",
     "git status && git log --oneline -5 && rm -rf src",
 ]
@@ -688,7 +697,8 @@ MIXED_REWRITE_WORDS = ("approved", "run alone")
 # the human sees is one the hook has read. No `ask` decision is emitted for this class.
 ASK_CASES = [
     "git diff main...HEAD", f"x=$(cd {ROOT} && pwd)", "git add x && git commit -m m",
-    "./run-review.sh --self x 2>&1 | tail -25", "X=1 make", "echo x > f",
+    # `echo x > f` sat here; it is a file authored through the shell now (below)
+    "./run-review.sh --self x 2>&1 | tail -25", "X=1 make", "cat README.md > f",
     "cat /etc/hosts", "ls\r", "ls " + NUL,
     # A newline inside a double-quoted argument is one argument, not a second command —
     # the rewrite ("one call per line") cannot be carried out, so this stays an ASK
@@ -696,6 +706,79 @@ ASK_CASES = [
     # escalations/01-review-opus.md #1).
     'git commit -m "subject\n\nbody"', 'gh pr create --title t --body "a\n\nb"',
     "git commit -m 'subject\n\nbody'",
+]
+
+# ── A file authored through the shell (self/features/shell-write-rewrite) ────
+# Content written in the command itself landing in a file: the Write and Edit tools
+# always reproduce it, and a subprocess write gets past the repo's Edit allow and deny
+# rules, so it is a REWRITE — denied with the Write/Edit rewrite as the reason — where
+# before every case here printed nothing. Three spellings: echo/printf redirected to a
+# path; cat/tee fed literally (a heredoc, a herestring, or for tee a pipe from
+# echo/printf or a heredoc-fed cat) with output to a path; sed editing in place. Where
+# the file is does not matter: the scratchpad, the root and /tmp are all denied.
+AUTHORING_REWRITE = [
+    # echo / printf with its output redirected to a path, every operator and spelling
+    "echo x > f", "echo x >> f", "echo x >| f", "echo x 1> f", "echo x 2> f",
+    "echo x &> f", "echo x &>> f", "echo a>f", "echo x >f", 'echo x > "f"',
+    "printf '%s\\n' a b > f", "printf x > /tmp/f", f"echo x > {ROOT}/src/new.py",
+    "echo hi > f", "printf x > f",                         # moved from PROMPT
+    "echo x > cd && ls",                                   # moved from MIXED_REWRITE
+    "> f echo x", "echo x > f && ls", "ls && echo x >> f",
+    # cat / tee fed literally, output to a path — the motivating case is the third
+    "cat > f <<'EOF'\nbody\nEOF", "cat <<'EOF' > f\nbody\nEOF",
+    "cat >> tests/test_x.py <<'EOF'\ndef test_x():\n    pass\nEOF",
+    "cat <<-EOF > f\n\tx\n\tEOF", "cat <<< 'hello' > f",
+    "cat > x <<'EOF'",                                     # moved from PROMPT
+    "cat > x <<'EOF'\nhello\nEOF",                         # moved from OPAQUE_NOT_DENIED
+    # a Markdown body full of `> quote` lines and `#` headings: the FIRST line decides
+    "cat > notes.md <<'EOF'\n# Title\n> a quote\nEOF",
+    "tee f <<'EOF'\nbody\nEOF", "tee -a f <<'EOF'\nbody\nEOF", "tee f <<< 'x'",
+    "tee > f <<'EOF'\nbody\nEOF",
+    "echo x | tee f", "printf x | tee -a log.txt", "echo x | tee f > /dev/null",
+    "cat <<'EOF' | tee f\nbody\nEOF",
+    # sed editing in place, every single-dash spelling and the long one
+    "sed -i 's/a/b/' README.md", "sed -Ei 's/a/b/' README.md",
+    "sed -i.bak 's/a/b/' README.md", "sed -ni 5p README.md",        # moved from PROMPT
+    "sed -i '' 's/a/b/' README.md",                                  # moved from PROMPT
+    "sed --in-place 's/a/b/' README.md", "sed --in-place=.bak 's/a/b/' README.md",
+    "sed 's/a/b/' -i README.md",
+]
+AUTHORING_REWRITE_WORDS = ("Write tool", "Edit tool", "never see")
+# What stays what it was: captured OUTPUT (no Edit/Write rewrite reproduces output nobody
+# has seen), the commit-message heredoc and every other `cat` heredoc reaching no file, a
+# quoted `>`, fd duplications and the non-file targets, `sed` without `-i`, the writes
+# with no rewrite that always works, and a heredoc BODY or a `#` on the judged line.
+AUTHORING_NOT_DENIED = [
+    ("pytest > out.log", "prompt"), ("git diff > p.patch", "prompt"),
+    ("grep x src > hits", "prompt"), ("ls | tee log", "prompt"), ("cat a > b", "prompt"),
+    ("cat README.md | tee f", "prompt"), ("tee f", "prompt"),
+    ("python3 gen.py > out.txt", "prompt"),
+    ("git commit -m \"$(cat <<'EOF'\nthe message\nEOF\n)\"", "prompt"),
+    ("cat <<'EOF'\nhello\nEOF", "prompt"), ("cat <<'EOF' | tee\nhello\nEOF", "prompt"),
+    ('echo "a > b"', "prompt"), ("echo 'a > b'", "ALLOW"), ("echo a \\> b", "prompt"),
+    ("grep '>' README.md", "prompt"),
+    ("echo x 2>&1", "ALLOW"), ("echo x >&2", "prompt"), ("printf x 1>&2", "prompt"),
+    ("echo x > /dev/null", "ALLOW"), ("echo x > /dev/stderr", "prompt"),
+    ("echo x > /dev/tty", "prompt"), ("echo x >> /dev/stdout", "prompt"),
+    ("printf x &> /dev/null", "ALLOW"), ("echo x | tee /dev/null", "prompt"),
+    ("echo x >(cat)", "prompt"), ("echo x | tee >(cat)", "prompt"),
+    ("sed -n 5p README.md", "ALLOW"), ("sed 's/a/b/' README.md", "prompt"),
+    ("sed -e 's/-i/x/' README.md", "prompt"), ("sed -n '/-i/p' README.md", "ALLOW"),
+    ("cp a b", "prompt"), ("mv a b", "prompt"), ("touch f", "prompt"),
+    ("mkdir d", "prompt"), ("rm f", "prompt"), ("ln -s a b", "prompt"),
+    # the heredoc's body is data: redirects, `sed -i` and `tee f` in it are text
+    ("cat <<'EOF'\n> a quote\necho a > f\nsed -i s/a/b/ f\ntee f\nEOF", "prompt"),
+    # a `#` on the judged text means the line is not judged, as for every other rewrite
+    ("echo x > f # note", "prompt"), ("cat > f <<'EOF' # c\nx\nEOF", "prompt"),
+    ("echo x", "ALLOW"),
+]
+# The member as written, so a line with several commands says which one to rewrite
+AUTHORING_MEMBER_CASES = [
+    ("echo x > f && ls", "`echo x > f`"),
+    ("cat >> tests/test_x.py <<'EOF'\ndef test_x():\n    pass\nEOF",
+     "`cat >> tests/test_x.py <<'EOF'`"),
+    ("echo x | tee f", "`tee f`"),
+    ("sed -i 's/a/b/' README.md", "`sed -i 's/a/b/' README.md`"),
 ]
 
 WT_CASES = [(f"cat {ROOT}/README.md", "prompt"), ("cat frontend/tests/x.spec.ts", "ALLOW"),
@@ -791,6 +874,56 @@ group("the mixed sequence names the approved member and the one to run alone",
       lambda c: deny_reason_ok(c, ("grep x f", "approved", "git commit -m m", "run alone")))
 # ASK prints nothing, as it always did: no `ask` decision, no JSON, no reason.
 group("the read-and-unsafe class prints nothing", [(c, "prompt") for c in ASK_CASES], run)
+
+# ── A file authored through the shell ────────────────────────────────────────
+group("denies a file authored through the shell",
+      [(c, "DENY") for c in AUTHORING_REWRITE], run)
+group("the reason for a shell-authored file names the Write and Edit tools and why",
+      [(c, "ok") for c in AUTHORING_REWRITE],
+      lambda c: deny_reason_ok(c, AUTHORING_REWRITE_WORDS))
+group("the shell-authored file's reason names the member as written",
+      [((c, m), "ok") for c, m in AUTHORING_MEMBER_CASES],
+      lambda cm: deny_reason_ok(cm[0], (cm[1],)))
+group("captured output, the commit heredoc, quotes, non-file targets and other writes "
+      "are not a shell-authored file", AUTHORING_NOT_DENIED, run)
+
+
+def reason_lacks(cmd, words):
+    """"ok" when the hook denies `cmd` and its reason carries none of `words`."""
+    out = hook_output(cmd)
+    if out.get("permissionDecision") != "deny":
+        return "permissionDecision=%r" % out.get("permissionDecision")
+    present = [w for w in words if w in out.get("permissionDecisionReason", "")]
+    return "reason carries %s" % present if present else "ok"
+
+
+# Judged BEFORE the opaque shapes: `tee f <<'EOF'` was the opaque deny on main (a heredoc
+# into something other than `cat`), and its rewrite is the Write tool, not a script in the
+# scratchpad. A heredoc into an interpreter is still the opaque deny, output file or not.
+group("a literal-fed tee gets the Write/Edit reason, not the scratchpad one",
+      [(c, "ok") for c in ["tee f <<'EOF'\nbody\nEOF", "tee f <<< 'x'"]],
+      lambda c: reason_lacks(c, ("scratchpad",)))
+group("a heredoc into an interpreter is still the opaque deny, output file or not",
+      [(c, "ok") for c in ["python3 - <<EOF > f\nprint(1)\nEOF",
+                           "python3 <<'EOF' >> out.txt\nprint(1)\nEOF"]],
+      lambda c: deny_reason_ok(c, OPAQUE_REASON_WORDS))
+# The three shape denies in main() still run first: a line that is one of them AND
+# authors a file gets that shape's reason, not the Write/Edit one ("never see" is only in
+# SHELL_AUTHORING_REWRITE_REASON).
+AUTHORING_BEHIND_SHAPE_DENIES = [
+    (f"cd {ROOT} && echo x > f", ("cd", "own", "absolute")),
+    ("X=/p; echo x > $X/f", ASSIGN_REASON_WORDS),
+]
+
+
+def shape_deny_wins(case):
+    cmd, words = case
+    got = deny_reason_ok(cmd, words)
+    return got if got != "ok" else reason_lacks(cmd, ("never see",))
+
+
+group("the chained-cd and own-assignment denies still win over a shell-authored file",
+      [(cw, "ok") for cw in AUTHORING_BEHIND_SHAPE_DENIES], shape_deny_wins)
 
 # The replay the design's claim rests on: every command in the fixture, with the verdict
 # it says. REWRITE and the three older shape denies are both a `deny` decision to a

@@ -45,7 +45,8 @@ set -uo pipefail
 #      it is replaced;
 #   8. writes the ROUTING RECORD for the session that ran it, INSIDE that feature
 #      directory — plans/features/S/routing.json, self/features/ under --self — through
-#      analysis/routing.py, from that session's own transcript;
+#      analysis/routing.py, from that session's own transcript; unless --pin, since a
+#      pinned session is this feature's and never also a router;
 #   9. commits the feature directory, routing record and all, on S as `S: start`;
 #  10. with `--open`, runs the repo's plans/open-session.sh (self/open-session.sh under
 #      --self) with the worktree path as its only argument, which is how the coordinator
@@ -58,9 +59,11 @@ set -uo pipefail
 # pinning it bills one session's whole transcript to every feature it started. Its spend
 # is routing overhead instead, reported per repo from the record step 8 writes
 # (analysis/README.md → routing.py). `--pin` restores the old behaviour for the rare case
-# where this really is the feature's own coordinator, and `--session <id>` names the
-# session — for the record always, and for the pin when `--pin` is given. `--no-pin` is
-# accepted and does nothing, so a brief or a note written under the old default still runs.
+# where this really is the feature's own coordinator — and then the session is not a
+# router, so no routing record is written: one owner per session, and the pin is the
+# link. `--session <id>` names the session — for the routing record without `--pin`, and
+# for the pin with it. `--no-pin` is accepted and does nothing, so a brief or a note
+# written under the old default still runs.
 #
 # **A stale primary.** This script runs from the primary's copy of agentTooling but
 # branches from origin/<base>, so a primary whose main lags origin/main runs OLD code that
@@ -171,8 +174,8 @@ HOOK_LABEL="${GATE_SCRIPT_LABEL%/gate.sh}/worktree-setup.sh"
 OPEN_HOOK_LABEL="${GATE_SCRIPT_LABEL%/gate.sh}/open-session.sh"
 WORKTREES_ROOT="$PRIMARY/$WORKTREES_DIR_NAME"
 REPO_NAME="$(basename "$PRIMARY")"
-# The session that ran this script: the router. It names the routing record always, and
-# the manifest's pin only under --pin.
+# The session that ran this script. Without --pin it is the router and names the routing
+# record; under --pin it is the manifest's pin and names no record — never both.
 ROUTER_SESSION="${SESSION_OPT:-${CLAUDE_CODE_SESSION_ID:-}}"
 
 git -C "$PRIMARY" show-ref --verify --quiet "refs/heads/$SLUG" && refuse "branch '$SLUG' already exists"
@@ -377,7 +380,15 @@ echo "  review    ${FEATURE_DIR#"$WORKTREE"/}/review/incomplete/$STEM.md  (stub 
 # flushed, or has aged out, yields a record with this slug and no figures plus one
 # warning, and the start goes on.
 # -B, for the reason the manifest call gives: no analysis/__pycache__ in the new worktree.
-if [[ -n "$ROUTER_SESSION" ]]; then
+#
+# **Not under --pin.** One owner per session: a pin claims the session for this feature
+# outright, so it is this feature's coordinator and not a router, and a record for it
+# would put its cost into the Routing table AND into this feature's frozen total — both
+# sides of the `--all` fraction (self/features/shell-write-rewrite, part 2). The pin is
+# the link. analysis/routing.py's `split_pinned` skips any such record already on disk.
+if (( PIN )); then
+  echo "  routing   none (--pin: session ${SESSION:-(none)} is this feature's, never also a router)"
+elif [[ -n "$ROUTER_SESSION" ]]; then
   if python3 -B "$WT_AT/$ROUTING_MODULE" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} \
       --session "$ROUTER_SESSION" --slug "$SLUG" --primary "$PRIMARY" >/dev/null; then
     echo "  routing   ${FEATURE_DIR#"$WORKTREE"/}/$ROUTING_RECORD_NAME  (router $ROUTER_SESSION, not pinned)"

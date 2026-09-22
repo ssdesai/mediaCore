@@ -158,7 +158,20 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `feature-start.sh` writes it to `plans/features/<slug>/routing.json`
   (`self/features/` under `--self`) and commits it in the `<slug>: start` commit, so the
   link from router to feature is in git before the transcript it is derived from can
-  expire. Usage: `python3 agentTooling/analysis/routing.py [--self] --session ID --slug
+  expire — for every start **except `--pin`**: a pinned session is that feature's, never
+  also a router, so `feature-start.sh --pin` writes no record (one owner per session;
+  `../self/features/shell-write-rewrite/` part 2). **`split_pinned(records,
+  features_dir)` is the other half**, for records already on disk: it returns `(kept,
+  skipped)`, skipping every record whose `session_id` some manifest in the corpus pins in
+  `sessions` (`pinned_sessions(features_dir)` → `{session_id: [slug, …]}`, read through
+  `parse_manifest`, the last ```json fence of `<slug>/README.md` — report.py imports it
+  from here rather than keeping its own copy, since every analysis module already imports
+  this one and it imports none of them). The Routing table, its fraction and the "routed
+  by" line all call it; none of them reads a manifest on its own, and no reader modifies a
+  record file. Without it a pinned router's cost sat in the feature's frozen total *and*
+  in the Routing table, both sides of `--all`'s fraction. `load_records`, `routers_of`
+  and `refresh_for` still see such a record — the skip decides what is counted, not what
+  is on disk. Usage: `python3 agentTooling/analysis/routing.py [--self] --session ID --slug
   SLUG [--primary DIR]`, or `… [--self] --refresh-for SLUG`, which `feature-capture.sh`
   runs: SLUG's own record (`routers_of`) is re-derived from its router's transcript as it
   stands then (`refresh_record`), keeping the prior record's `features_started` entries
@@ -255,7 +268,8 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `load_lines`, `feature_start_slugs`,
   `is_router_lines`, `build_record`, `serialize`, `write_record(features_dir, slug,
   record)`, `read_record`, `record_rank`, `load_records`, `started_slugs`, `routers_of`,
-  `migrate`. Asserted by `self/tests/routing-record.sh`, and end to end — two features one
+  `parse_manifest`, `pinned_sessions`, `split_pinned`,
+  `migrate`. Asserted by `self/tests/routing-record.sh` (R11 for the pinned skip), and end to end — two features one
   router starts from one `main`, merged in turn — by `self/tests/feature-lifecycle.sh`.
 - `pricing.py` — rate table and cost calculator. Exposes `utc_today()` (today's UTC date — the wall-clock source for everything here, since `date.today()` is the machine's *local* date and would disagree with every transcript-derived date for part of each day), `RATES_VERIFIED` (date the table was last checked), `STALENESS_THRESHOLD_DAYS`, `RATES` (per-model USD/Mtok `{input, output}`, optional `intro{input, output, starts, expires}`), `CACHE_READ_MULTIPLIER` / `CACHE_WRITE_5M_MULTIPLIER` / `CACHE_WRITE_1H_MULTIPLIER`, `normalize_model_id(model_id)`, `get_rates(model_id, as_of) -> RatesApplied | None`, `compute_cost(model_id, tokens, as_of) -> (cost_usd | None, rates_applied | None)`, `is_rates_stale(today=None) -> bool`. Any script that prices tokens imports `compute_cost` / `get_rates` / `is_rates_stale` from here rather than hardcoding rates — the table lives in exactly one place.
 - `transcript.py` — session-transcript parsing shared by `capture_planning.py` and
@@ -885,7 +899,12 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   zero in a spend table reads as "free". `report.py <slug>` prints one
   `routed by <session-id>, alongside <slugs>` line under its summary when a routing
   record names that slug, and nothing at all when none does — the "names that slug"
-  predicate is `routing.routers_of`, called rather than repeated here. Both are a **sum**, never a
+  predicate is `routing.routers_of`, called rather than repeated here. **A record whose
+  session some manifest pins in `sessions` is in neither** — no row, not in the fraction,
+  no "routed by" line — because that session is the pinning feature's and its cost is in
+  that feature's total already; `routing.split_pinned` decides it, and `--all` prints one
+  `skipped routing record <session>: pinned in the sessions of <slugs>, …` line
+  (`ROUTING_SKIPPED_PINNED_LINE`) for each, so the omission is visible. Both are a **sum**, never a
   split: the router's dollars stay the router's, which is the arithmetic the no-pin rule
   exists to remove. Nothing of this is written into `report.json` — the routing record is
   the one copy of the link, so a second copy inside a frozen feature report could only

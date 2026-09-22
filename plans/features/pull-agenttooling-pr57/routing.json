@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-09-22T16:57:56Z",
+  "cost_usd": 0.0,
+  "duration_s": 58,
+  "ended_at": "2026-09-22T16:57:56Z",
+  "features_started": [
+    {
+      "at": null,
+      "slug": "pull-agenttooling-pr57"
+    }
+  ],
+  "git_branch": "HEAD",
+  "launched_in": "/Users/sahildesai/dev",
+  "model": "claude-opus-5-5",
+  "session_id": "4c82d770-2541-44b7-b212-342dbb2dd984",
+  "started_at": "2026-09-22T16:56:57Z"
+}
