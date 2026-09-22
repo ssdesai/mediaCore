@@ -26,10 +26,14 @@ set -uo pipefail
 #      origin, and when the primary's main is BEHIND origin/main, fast-forwards it and
 #      exits asking to be run again (see "A stale primary" below);
 #   3. prunes the features that have merged: every worktree under R/.worktrees/ whose
-#      branch is an ancestor of origin/main is removed and its local branch deleted
-#      (`git branch -D` — ancestry against origin/main is the check, and `-d` would
-#      re-decide it against the primary's own HEAD, which lags whenever the PR merged
-#      on the forge and nobody pulled).
+#      branch has moved since it was created and is an ancestor of origin/main is
+#      removed and its local branch deleted (`git branch -D` — ancestry against
+#      origin/main is the check, and `-d` would re-decide it against the primary's own
+#      HEAD, which lags whenever the PR merged on the forge and nobody pulled). "Has
+#      moved" is what keeps a concurrent start's brand-new branch alive: until its
+#      `S: start` commit lands it sits at its start point, an ancestor of origin/main
+#      with nothing merged (see "Merged" at prune_one). A merged branch whose reflog no
+#      longer records where it was created is kept, with one line saying so.
 #      That is the whole of post-merge teardown. A worktree with uncommitted work is
 #      left in place with one line saying so, an unmerged one is never touched, and
 #      nothing is committed or pushed;
@@ -110,6 +114,12 @@ PRUNE_MERGED_INTO="$PRIMARY_UPSTREAM"
 # "merged" against the branch's upstream or the primary's HEAD, which is a different and
 # laggier question (see prune_one).
 PRUNE_DELETE_FLAG="-D"
+# The message git writes as a branch's first reflog entry when `git worktree add -b` (or
+# `git branch`) creates it. The prune takes the oldest entry as the creation point only
+# when it carries this prefix: once gc has expired the real first entry (gc.reflogExpire),
+# the oldest one left is some later commit, and reading that as "created here" would keep
+# a merged worktree without a word (see prune_one).
+BRANCH_CREATED_REFLOG_PREFIX="branch: Created from"
 # The module that derives and writes the routing record, run from the new worktree's copy
 # so the record lands in the worktree's corpus and rides the `S: start` commit, and the
 # name it writes it under inside the feature directory (analysis/routing.py's
@@ -238,16 +248,37 @@ fi
 # The whole of post-merge teardown, done here rather than by a close step, because the
 # next start is the first moment anyone is looking and the fetch above has just refreshed
 # the evidence. Only worktrees under R/.worktrees/ are candidates — never the primary,
-# never a checkout somewhere else — and only when the branch is an ancestor of
-# $PRUNE_MERGED_INTO. Nothing is committed and nothing is pushed.
+# never a checkout somewhere else — and only when the branch has MERGED, below. Nothing
+# is committed and nothing is pushed.
+#
+# **Merged** is two facts, not one: the branch is an ancestor of $PRUNE_MERGED_INTO, AND
+# it has moved since it was created. Ancestry alone is true of every branch that has no
+# commits of its own — which is every feature another session's start has just made with
+# `git worktree add -b`, from then until its `S: start` commit lands after the hook and
+# the gate. Two starts at once used to delete each other's new worktrees that way
+# (2026-09-22). Where a branch was created is git's own record of it: the oldest entry in
+# the branch's reflog, which `git worktree add -b` writes and `git branch -D` deletes with
+# the branch, so a reused slug starts a record of its own. A branch still at that commit
+# has merged nothing. A branch whose oldest entry is not the creation record
+# ($BRANCH_CREATED_REFLOG_PREFIX) — no reflog, or one gc has expired past its start — is
+# kept with a line saying so, since the prune never deletes what it cannot prove.
 #
 # prune_one <worktree path> <branch>
 prune_one() {
-  local wt="$1" branch="$2" label
+  local wt="$1" branch="$2" label oldest created
   [[ -n "$wt" && -n "$branch" ]] || return 0
   case "$wt" in "$WORKTREES_ROOT"/*) ;; *) return 0 ;; esac
   git -C "$PRIMARY" merge-base --is-ancestor "$branch" "$PRUNE_MERGED_INTO" 2>/dev/null || return 0
   label="${wt#"$PRIMARY"/}"
+  oldest="$(git -C "$PRIMARY" reflog show --format='%H %gs' "refs/heads/$branch" 2>/dev/null | tail -n 1)"
+  case "${oldest#* }" in
+    "$BRANCH_CREATED_REFLOG_PREFIX"*) created="${oldest%% *}" ;;
+    *)
+      echo "  kept      $label — an ancestor of $PRUNE_MERGED_INTO, but branch $branch's reflog no longer records where it was created, so it cannot be shown to have commits of its own"
+      return 0 ;;
+  esac
+  # Silent, like any unmerged worktree: this is a feature being started right now.
+  [[ "$(git -C "$PRIMARY" rev-parse "refs/heads/$branch")" != "$created" ]] || return 0
   # Uncommitted work in a merged worktree is work the merge did not carry. Say so and
   # leave it: the next start will offer to take it again once it is committed or dropped.
   if [[ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]]; then

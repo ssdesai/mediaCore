@@ -105,8 +105,12 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   also a router), `--no-pin` is an accepted
   no-op and `--session` names the router with or without it; that a start **prunes** every
   worktree under `.worktrees/` whose branch is an ancestor of `origin/main` and whose tree
-  is clean, deleting that branch with `git branch -D`, while a dirty merged one and an
-  unmerged one survive and the bare remote's refs are untouched — including the case a
+  is clean, deleting that branch with `git branch -D`, while a dirty merged one, an
+  unmerged one, and a concurrent start's brand-new branch with no commits yet (S4g2 — an
+  ancestor that has merged nothing — and S4g3, the same after `origin/main` moves past
+  it) survive, as does a merged branch whose reflog no longer records its creation
+  (first entry expired, or no reflog at all), each named on a `kept` line (S4g4–S4g6);
+  and the bare remote's refs are untouched — including the case a
   second clone builds, where the merge happened on `origin/main` and this checkout's own
   `main` lags, which is where `git branch -d` refuses and leaves a removed worktree
   whose branch the output claimed was gone. There the first start only fast-forwards
