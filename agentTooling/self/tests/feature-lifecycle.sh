@@ -614,6 +614,52 @@ check "S4f. the primary checkout itself is never a candidate" \
   '[[ -d "$AT" && "$(git -C "$AT" branch --show-current)" == "main" && -z "$(git -C "$AT" status --porcelain)" ]]'
 check "S4g. the prune pushed nothing" '[[ "$(origin_refs)" == "$origin_refs_before" ]]'
 
+# Two starts at once (2026-09-22): another session's start has just run `git worktree add
+# -b` and is still in its hook or gate, so its branch sits at origin/main with no
+# `S: start` commit yet — an ancestor of origin/main that has merged nothing. Built here
+# exactly as feature-start.sh's own step 4 builds it; the start that runs meanwhile must
+# leave it alone.
+PRUNE_FRESH="lifecycle-mid-start"
+git -C "$AT" worktree add -q "$(wt_path "$PRUNE_FRESH")" -b "$PRUNE_FRESH" origin/main
+out="$(start lifecycle-prunes-beside --no-gate)"
+check "S4g2. a concurrent start's new branch, with no commits yet, is not pruned" \
+  '[[ -d "$(wt_path "$PRUNE_FRESH")" ]] && git -C "$AT" show-ref --quiet "refs/heads/$PRUNE_FRESH" && ! grep -q "$PRUNE_FRESH" <<<"$out"'
+
+# ... and the same when origin/main has moved on since that branch was made: it is still
+# an ancestor, and still at the commit it was created at.
+git -C "$AT" commit -q --allow-empty -m "main moves on"
+git -C "$AT" push -q origin main 2>/dev/null
+out="$(start lifecycle-prunes-later --no-gate)"
+check "S4g3. ... and after origin/main has moved past its start point, it is still not pruned" \
+  '[[ -d "$(wt_path "$PRUNE_FRESH")" ]] && git -C "$AT" show-ref --quiet "refs/heads/$PRUNE_FRESH" && ! grep -q "$PRUNE_FRESH" <<<"$out"'
+git -C "$AT" worktree remove "$(wt_path "$PRUNE_FRESH")"
+git -C "$AT" branch -q -D "$PRUNE_FRESH"
+
+# A merged branch whose reflog no longer records its creation cannot be shown to have
+# commits of its own, so it is kept, and the run says so. Two ways to lose that record:
+# gc expiring the first entry (the oldest left is then a commit), and no reflog at all.
+# `git reflog delete <ref>@{N}` removes one entry, the oldest being the highest N.
+PRUNE_EXPIRED="lifecycle-merged-expired"; PRUNE_NOLOG="lifecycle-merged-nolog"
+for slug in "$PRUNE_EXPIRED" "$PRUNE_NOLOG"; do
+  start_unrouted "$slug" --no-gate >/dev/null
+  git -C "$AT" merge -q --no-ff -m "Merge $slug" "$slug"
+done
+git -C "$AT" push -q origin main 2>/dev/null
+git -C "$AT" reflog delete "refs/heads/$PRUNE_EXPIRED@{1}"
+git -C "$AT" reflog delete "refs/heads/$PRUNE_NOLOG@{1}"
+git -C "$AT" reflog delete "refs/heads/$PRUNE_NOLOG@{0}"
+out="$(start lifecycle-prunes-unproven --no-gate)"
+check "S4g4. a merged branch whose first reflog entry has expired is kept, with its branch" \
+  '[[ -d "$(wt_path "$PRUNE_EXPIRED")" ]] && git -C "$AT" show-ref --quiet "refs/heads/$PRUNE_EXPIRED"'
+check "S4g5. ... and one with no reflog at all" \
+  '[[ -d "$(wt_path "$PRUNE_NOLOG")" ]] && git -C "$AT" show-ref --quiet "refs/heads/$PRUNE_NOLOG"'
+check "S4g6. ... each named on a kept line of its own" \
+  'grep -q "kept .*$PRUNE_EXPIRED" <<<"$out" && grep -q "kept .*$PRUNE_NOLOG" <<<"$out"'
+for slug in "$PRUNE_EXPIRED" "$PRUNE_NOLOG"; do
+  git -C "$AT" worktree remove "$(wt_path "$slug")"
+  git -C "$AT" branch -q -D "$slug"
+done
+
 # The merge happened on the REMOTE and the primary's own main was never pulled — the
 # ordinary shape after a PR merges on the forge. The fixture reproduces it exactly as the
 # real loop makes it: self/pr.sh pushes the branch with `-u`, so its upstream is

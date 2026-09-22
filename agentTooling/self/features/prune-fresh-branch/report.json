@@ -1,0 +1,163 @@
+{
+  "slug": "prune-fresh-branch",
+  "generated_at": "2026-09-22T21:16:45.800875+00:00",
+  "cost": {
+    "method": "hand",
+    "planning": 0.0,
+    "implementer": 0.0,
+    "build": 0.0,
+    "verify": 0.0,
+    "review": 1.5887107999999999,
+    "total": 1.5887107999999999,
+    "planning_pct": 0.0,
+    "build_pct": 0.0,
+    "verify_pct": 0.0,
+    "review_pct": 100.0,
+    "cost_per_plan": 0.7943553999999999,
+    "cost_per_file": 0.5295702666666666,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "hand",
+    "planning_sessions_s": 0,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 0,
+    "build_s": 0.0,
+    "verify_s": 0.0,
+    "review_s": 192.812,
+    "executor_s": 192.812,
+    "total_s": 192.812,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-22T21:06:25+00:00",
+      "last_at": "2026-09-22T21:16:43+00:00",
+      "batch_span_s": 618.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 197.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 197.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-09-22T21:16:43+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/60"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.6921237999999998,
+      "review_min": 1.48405,
+      "review_plan": "01-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/01-review-opus.md"
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.896587,
+      "review_min": 1.7294833333333335,
+      "review_plan": "02-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 0.0
+  },
+  "cold_start_tax_tokens": 120744,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 2,
+      "total_turns": 28,
+      "total_cost_usd": 1.5887107999999999,
+      "total_duration_s": 192.812,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "02-review-opus",
+      "edit_count": 3,
+      "files_edited": 3,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 50,
+      "loc_changed": 61
+    },
+    {
+      "plan": "02-review-opus",
+      "plan_md_lines": 39,
+      "loc_changed": 41
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/Users/sahildesai/dev/agentTooling/.worktrees/prune-fresh-branch/self/gate-report.txt",
+      "tool": "Read",
+      "plans": [
+        "01-review-opus",
+        "02-review-opus"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-opus",
+      "edited_not_listed": [
+        "feature-start.sh",
+        "self/review-report.md",
+        "self/tests/README.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": [],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and this feature stamped no `checkpoint` event \u2014 nothing divides it by round, so all of it sits in round 1"
+    }
+  ]
+}
