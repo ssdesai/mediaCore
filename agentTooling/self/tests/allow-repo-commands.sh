@@ -307,7 +307,7 @@ OPAQUE_NOT_DENIED = [
     # file authored through the shell now (AUTHORING_REWRITE below)
     ("git commit -m \"$(cat <<'EOF'\nthe message\nEOF\n)\"", "prompt"),
     (f"x=$(cd {ROOT} && pwd)", "prompt"),
-    ('AT="$(cd "$(dirname "$0")/.." && pwd)"', "prompt"),
+    (f'AT="$(cd "$(dirname {ROOT}/x)/.." && pwd)"', "prompt"),
     ("echo $(pwd)", "prompt"), (f"echo $(echo $(cd {ROOT} && pwd))", "prompt"),
     ("ls $(cat /etc/passwd)", "prompt"), ("ls `id`", "prompt"),
     # readable commands the analysis refuses for what they DO, not for being unreadable
@@ -472,7 +472,7 @@ NOT_DENIED = [
     ("echo cd && ls", "ALLOW"), ("ls && echo cd", "ALLOW"), ("grep -rn 'cd ' src", "ALLOW"),
     ("grep -n 'cd x && ls' src", "ALLOW"), ("find . -name cd", "ALLOW"),
     ('git commit -m "cd x && ls"', "prompt"), ("cat <<'EOF'\ncd x\nEOF", "prompt"),
-    ('AT="$(cd "$(dirname "$0")/.." && pwd)"', "prompt"),
+    (f'AT="$(cd "$(dirname {ROOT}/x)/.." && pwd)"', "prompt"),
     ("cat a#<<EOF\ncd x\nls\nEOF", "prompt"),
 ]
 
@@ -604,7 +604,7 @@ ASSIGN_NOT_DENIED = [
     ("cat <<'EOF'\nX=/p; cat $X\nEOF", "prompt"),
     ("cat a#<<EOF\nX=/p; cat $X\nEOF", "prompt"),
     ("ls src # X=/p; cat $X", "prompt"),
-    ('AT="$(cd "$(dirname "$0")/.." && pwd)"', "prompt"),
+    (f'AT="$(cd "$(dirname {ROOT}/x)/.." && pwd)"', "prompt"),
 ]
 # The deny's reason has to name the correction, as the other two do
 ASSIGN_REASON_WORDS = ("inline", "literal", "run time")
@@ -642,6 +642,9 @@ VAR_REWRITE = [
     "grep x $FILE", "cat $HOME/f", "cat $HOME/.ssh/id_rsa", 'cat "$HOME/.zshrc"',
     'ls "$HOME/f"', "ls ${PWD}/src", "ls ${PWD}/../", "cat 'a'$HOME",
     "cat \"'$HOME'\"", "cat \\\\$HOME", "X=/p; cat $Y/f", "cat {src,$HOME}",
+    # the special and positional parameters, decided at run time like any `$NAME`
+    "cat $1", "cat ${10}", "ls $$", "ls $?", "ls $!", "cat $*", 'cat "$@"', "ls $-",
+    "cat $0/f", "ls ${?}", 'AT="$(cd "$(dirname "$0")/.." && pwd)"',
 ]
 VAR_REWRITE_WORDS = ("Inline the literal",)
 TILDE_REWRITE = ["ls ~/x", "ls ~", "ls ~/", "ls ~user", "cat ~/.zshrc"]
