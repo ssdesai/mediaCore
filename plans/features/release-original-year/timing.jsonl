@@ -4,3 +4,5 @@
 {"at":"2026-09-24T16:42:03Z","event":"checkpoint","status":"committed","round":"1"}
 {"at":"2026-09-24T16:43:50Z","event":"pass_start","queue":"review","round":"1"}
 {"at":"2026-09-24T16:43:50Z","event":"plan_start","plan":"01-review-opus","queue":"review","round":"1"}
+{"at":"2026-09-24T16:44:35Z","event":"plan_end","plan":"01-review-opus","queue":"review","rc":"0","verdict":"clean","head":"8ddfd5f1e2a488661472dfa94081095aa10806c5","round":"1"}
+{"at":"2026-09-24T16:44:35Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"1"}
