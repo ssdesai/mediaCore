@@ -10,8 +10,9 @@ without a word — and says how many it filled in.
 No-recompute contract: this script must NOT call `compute_cost` or recompute
 any dollar figure. Every cost number in the output comes from a `usage.json`'s
 `total_cost_usd` or a `planning.json`'s `cost_usd`, summed or divided, never
-repriced. `pricing.RATES_VERIFIED` / `pricing.is_rates_stale` are imported
-only to footnote rate freshness in the rendered report — display only, never
+repriced. `pricing.RATES_VERIFIED` (the rate history's `checked` date),
+`pricing.HISTORY_FILENAME` and `pricing.is_rates_stale` are imported only to
+footnote rate freshness in the rendered report — display only, never
 used to compute a figure.
 
 Plan drift is a best-effort heuristic: it extracts backtick-quoted paths from
@@ -36,7 +37,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
 
-from pricing import RATES_VERIFIED, is_rates_stale
+from pricing import HISTORY_FILENAME, RATES_VERIFIED, is_rates_stale
 from roots import add_self_flag, artifact_root, features_root
 # `parse_manifest` is routing.py's: the one copy both this module and routing.py's
 # pinned-session predicate read a manifest through.
@@ -85,6 +86,11 @@ SCOPE_FLAG_QUEUES = ("auto",)
 # AGENT_PLANS.md's frontend/src/App.tsx counter-example (plans 44/45, disjoint
 # regions, zero interaction).
 EDIT_OVERLAP_MIN_CHARS = 40
+
+# What a stream-derived value reads when there is neither a stream to compute it from
+# nor a committed report.json holding the value it had when the stream existed
+# (`previous_report`, `carried_loc`, `carried_section`).
+STREAMS_UNAVAILABLE = "not computed: streams unavailable"
 
 STATE_DIRS = {"incomplete", "inprogress", "complete", "failed"}
 QUEUE_DIRS = {"auto", "verify", "review"}
@@ -1116,7 +1122,7 @@ def compute_cost_rollup(
                 partially_recovered_attempts.append({"plan": stem, "session_id": session_id})
             warnings.append(
                 f"plan {stem} has {len(partially_recovered_sessions)} attempt(s) recovered "
-                "with at least one model absent from pricing.RATES (sessions: "
+                f"with at least one model absent from {HISTORY_FILENAME} (sessions: "
                 f"{', '.join(str(s) for s in partially_recovered_sessions)}); its recovered "
                 "dollars cover only the priced portion"
             )
@@ -1926,6 +1932,48 @@ def compute_churn(loaded_plans, warnings):
 
 
 # --------------------------------------------------------------------------
+# What the streams said, once they are gone
+# --------------------------------------------------------------------------
+#
+# `*.stream.jsonl` is gitignored and lives only in the worktree the runner ran in, so
+# once feature-start.sh prunes that worktree no stream is left to compute from. The
+# committed report.json was computed while the streams existed, so it is the frozen
+# record of what they said: a value with no stream behind it is carried from there,
+# never replaced with STREAMS_UNAVAILABLE. Without this, the re-render
+# feature-capture.sh's annotate step runs on every frozen record it annotates wrote
+# "not computed" over real values, and the rewrite rode another feature's cost-records
+# commit (self/features/carry-stream-sections).
+
+
+def previous_report(feature_dir):
+    """The committed report.json as a dict, or {} when there is none or it cannot be
+    read — nothing to carry either way."""
+    try:
+        data = json.loads(Path(feature_dir, "report.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def carried_loc(previous, stem):
+    """The `loc_changed` the previous report computed for plan `stem`, or
+    STREAMS_UNAVAILABLE when it holds no integer for that plan."""
+    rows = previous.get("plan_length_vs_loc")
+    for row in rows if isinstance(rows, list) else []:
+        if isinstance(row, dict) and row.get("plan") == stem:
+            loc = row.get("loc_changed")
+            if isinstance(loc, int) and not isinstance(loc, bool):
+                return loc
+    return STREAMS_UNAVAILABLE
+
+
+def carried_section(previous, key):
+    """The previous report's computed list under `key`, or STREAMS_UNAVAILABLE."""
+    section = previous.get(key)
+    return section if isinstance(section, list) else STREAMS_UNAVAILABLE
+
+
+# --------------------------------------------------------------------------
 # Plan length vs LoC changed
 # --------------------------------------------------------------------------
 
@@ -1950,7 +1998,7 @@ def compute_loc_changed(stream_path):
     return total
 
 
-def compute_plan_length_vs_loc(loaded_plans, warnings):
+def compute_plan_length_vs_loc(loaded_plans, warnings, previous):
     rows = []
     for stem, usage_data, usage_path in loaded_plans:
         plan_md = read_plan_md(stem, usage_path, warnings)
@@ -1961,7 +2009,7 @@ def compute_plan_length_vs_loc(loaded_plans, warnings):
         if stream_path.exists():
             loc_changed = compute_loc_changed(stream_path)
         else:
-            loc_changed = "not computed: streams unavailable"
+            loc_changed = carried_loc(previous, stem)
         rows.append(
             {
                 "plan": stem,
@@ -1998,7 +2046,7 @@ def collect_search_targets(stream_path):
     return targets
 
 
-def compute_re_hunting(loaded_plans, warnings):
+def compute_re_hunting(loaded_plans, warnings, previous):
     plans_with_stream = []
     skipped = []
     for stem, _, usage_path in loaded_plans:
@@ -2009,7 +2057,7 @@ def compute_re_hunting(loaded_plans, warnings):
             skipped.append(stem)
 
     if not plans_with_stream:
-        return "not computed: streams unavailable"
+        return carried_section(previous, "re_hunting")
 
     if skipped:
         warnings.append(
@@ -2098,7 +2146,7 @@ def shared_substring_len(text_a, text_b):
     return 0
 
 
-def compute_edit_overlap(loaded_plans, repo_dir, warnings):
+def compute_edit_overlap(loaded_plans, repo_dir, warnings, previous):
     ordered = sorted(loaded_plans, key=lambda p: numeric_prefix(p[0]))
 
     plans_with_stream = []
@@ -2111,7 +2159,7 @@ def compute_edit_overlap(loaded_plans, repo_dir, warnings):
             skipped.append(stem)
 
     if not plans_with_stream:
-        return "not computed: streams unavailable"
+        return carried_section(previous, "edit_overlap")
 
     if skipped:
         warnings.append(
@@ -2572,13 +2620,13 @@ def render_report_md(data):
         if partial:
             # Distinct from unrecoverable above: these attempts DO carry a recovered
             # figure, just not a whole one — at least one model in the session's
-            # transcript was absent from pricing.RATES, so its tokens are excluded
+            # transcript was absent from the rate history, so its tokens are excluded
             # from recovered_cost_usd rather than coerced to a silent 0.
             detail = ", ".join(f"{p['plan']} ({p['session_id']})" for p in partial)
             lines.append(
                 f"**Partially recovered attempts:** {detail}. Each was priced from its "
                 f"session transcript but at least one model in it has no rate in "
-                f"`pricing.RATES`; its recovered dollars cover only the priced "
+                f"`analysis/{HISTORY_FILENAME}`; its recovered dollars cover only the priced "
                 f"portion, so the total remains a lower bound."
             )
             lines.append("")
@@ -2693,9 +2741,9 @@ def render_report_md(data):
 
     staleness = "stale" if is_rates_stale() else "fresh"
     lines.append(
-        f"---\n\nRates last verified {RATES_VERIFIED} ({staleness} as of report "
-        "generation). This footnote is display-only and does not affect any "
-        "figure above."
+        f"---\n\nRates from `analysis/{HISTORY_FILENAME}`, last checked "
+        f"{RATES_VERIFIED} ({staleness} as of report generation). This footnote is "
+        "display-only and does not affect any figure above."
     )
     lines.append("")
 
@@ -2820,10 +2868,13 @@ def run_single_feature(repo_dir, features_dir, slug):
     cold_start_tax_tokens = compute_cold_start_tax(loaded_plans)
     model_fit = compute_model_fit(loaded_plans)
     churn = compute_churn(loaded_plans, warnings)
-    plan_length_vs_loc = compute_plan_length_vs_loc(loaded_plans, warnings)
-    re_hunting = compute_re_hunting(loaded_plans, warnings)
+    # Read before either record is rewritten below: it is what the streams said when
+    # they existed, and the only source of it once the worktree has been pruned.
+    previous = previous_report(feature_dir)
+    plan_length_vs_loc = compute_plan_length_vs_loc(loaded_plans, warnings, previous)
+    re_hunting = compute_re_hunting(loaded_plans, warnings, previous)
     plan_drift = compute_plan_drift(loaded_plans, warnings)
-    edit_overlap = compute_edit_overlap(loaded_plans, repo_dir, warnings)
+    edit_overlap = compute_edit_overlap(loaded_plans, repo_dir, warnings, previous)
 
     data = {
         "slug": slug,

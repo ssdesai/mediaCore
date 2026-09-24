@@ -5,8 +5,9 @@ set -uo pipefail
 # (self/features/tooling-backlog-2026-09-06/README.md, items 5 and 6). Run by
 # self/gate.sh, or by hand: bash self/tests/report-footnotes.sh
 #
-# Same scaffolding as stale-failed-sidecars.sh — copies of `analysis/pricing.py`,
-# `roots.py`, `transcript.py` and `report.py` into a throwaway agentTooling checkout
+# Same scaffolding as stale-failed-sidecars.sh — copies of `analysis/pricing.py` (and the
+# `rates_history.json` it loads from its own directory), `roots.py`, `transcript.py`,
+# `report.py` and `routing.py` into a throwaway agentTooling checkout
 # under mktemp -d, plus a synthesized `self/features/` corpus of hand-written manifests,
 # `planning.json` files, plan `.md` files and `usage.json` sidecars. No transcripts, no
 # model, no network: every dollar is a literal in a sidecar, which is what report.py's
@@ -66,7 +67,12 @@ set -uo pipefail
 #  11. a READ of the report does not rewrite it (§4): two consecutive runs over an
 #      unchanged corpus leave `report.md` and `report.json` byte-identical, `--all`
 #      leaves them alone too, a feature with no record gets one, and a run after
-#      `planning.json` changed rewrites both.
+#      `planning.json` changed rewrites both;
+#  12. a re-render with the streams gone keeps what they said
+#      (self/features/carry-stream-sections/README.md): `loc_changed`, `re_hunting` and
+#      `edit_overlap` are carried from the committed report.json, a stream that exists is
+#      computed fresh, and with nothing to carry — no previous report, or one that does
+#      not parse — the value is `not computed: streams unavailable` and the exit is 0.
 #
 # RED until items 5 and 6 land: phase 1 finds a bare `| review | $0.0000 | 0.0% |` and
 # an **Unpriced plans** paragraph, phase 4 finds a bare `| review | 0.0 |` and a list of
@@ -80,7 +86,7 @@ trap 'rm -rf "$TMP"' EXIT
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
 
-for f in pricing.py roots.py transcript.py report.py routing.py; do
+for f in pricing.py rates_history.json roots.py transcript.py report.py routing.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f" 2>/dev/null || true
 done
 
@@ -282,9 +288,13 @@ def load(path):
 def get_path(data, dotted):
     cur = data
     for part in dotted.split("."):
-        if not isinstance(cur, dict):
+        # A numeric part indexes a list — `plan_length_vs_loc.0.loc_changed` (phase 12).
+        if isinstance(cur, list) and part.isdigit():
+            cur = cur[int(part)] if int(part) < len(cur) else None
+        elif isinstance(cur, dict):
+            cur = cur.get(part)
+        else:
             return None
-        cur = cur.get(part)
     return cur
 
 
@@ -536,6 +546,75 @@ report_for rf-stable
 check "11f. a run after planning.json changed rewrites report.json" \
   '! cmp -s "$TMP/stable.json.before" "$D11/report.json"'
 check "11g. ...and report.md" '! cmp -s "$TMP/stable.md.before" "$D11/report.md"'
+
+# ── 12: a re-render with the streams gone keeps what the streams said ─────────
+# `*.stream.jsonl` is gitignored and lives only in the worktree the runner ran in, so once
+# that worktree is pruned a re-render — feature-capture.sh's annotate step, a --recapture
+# from the primary — has no stream to compute from. It used to write `not computed:
+# streams unavailable` over "LoC changed", "Re-hunting" and "Cross-plan edit overlap",
+# and the rewritten frozen report rode another feature's cost-records commit
+# (self/features/carry-stream-sections). The committed report.json is the frozen record
+# of what the streams said, so its values are carried when no stream is left.
+STREAM_LOC="3"              # the Edit below: one line replaced by three
+FRESH_LOC="5"               # the Write the fresher stream in 12h makes
+NOT_COMPUTED="not computed: streams unavailable"
+D12="$(review_feature rf-streams "$PRICED_COST" "$PRICED_MS" seen)"
+S12="$D12/review/complete/01-review-opus.stream.jsonl"
+cat > "$S12" <<'JSONEOF'
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Read", "input": {"file_path": "/repo/a.py"}}, {"type": "tool_use", "name": "Edit", "input": {"file_path": "/repo/a.py", "old_string": "one", "new_string": "one\ntwo\nthree"}}]}}
+JSONEOF
+report_for rf-streams
+r12a="$(V field_equals "$D12/report.json" plan_length_vs_loc.0.loc_changed "$STREAM_LOC")"
+check "12a. with its stream, the plan's LoC changed is computed (got $r12a)" '[[ "$r12a" == "True" ]]'
+r12b="$(V field_equals "$D12/report.json" re_hunting '[]')"
+r12c="$(V field_equals "$D12/report.json" edit_overlap '[]')"
+check "12b. ...and re-hunting and edit overlap are computed lists (got $r12b, $r12c)" \
+  '[[ "$r12b" == "True" && "$r12c" == "True" ]]'
+cp "$D12/report.json" "$TMP/streams.json.before"
+cp "$D12/report.md" "$TMP/streams.md.before"
+rm "$S12"
+report_for rf-streams
+rc12=$?
+check "12c. with the stream gone, an unchanged corpus re-renders cleanly and writes nothing (exit $rc12)" \
+  '(( rc12 == 0 )) && cmp -s "$TMP/streams.json.before" "$D12/report.json" && cmp -s "$TMP/streams.md.before" "$D12/report.md"'
+# What the annotation does: planning.json moves, so the report must be rewritten — and
+# everything the streams decided must come through it unchanged.
+cat > "$D12/planning.json" <<'JSONEOF'
+{"cost_usd": {"total": 1.75, "total_is_partial": false}}
+JSONEOF
+report_for rf-streams
+check "12d. after planning.json changes the report is rewritten" \
+  '! cmp -s "$TMP/streams.json.before" "$D12/report.json"'
+r12e="$(V field_equals "$D12/report.json" plan_length_vs_loc.0.loc_changed "$STREAM_LOC")"
+check "12e. ...carrying the plan's LoC changed from the committed report (got $r12e)" '[[ "$r12e" == "True" ]]'
+r12f="$(V field_equals "$D12/report.json" re_hunting '[]')"
+r12g="$(V field_equals "$D12/report.json" edit_overlap '[]')"
+check "12f. ...and re-hunting and edit overlap, not the not-computed sentence (got $r12f, $r12g)" \
+  '[[ "$r12f" == "True" && "$r12g" == "True" ]]'
+check "12g. ...so report.md never says the streams are unavailable" \
+  '! grep -qF "$NOT_COMPUTED" "$D12/report.md"'
+# A stream that exists always wins over the carried value.
+cat > "$S12" <<'JSONEOF'
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Write", "input": {"file_path": "/repo/b.py", "content": "1\n2\n3\n4\n5"}}]}}
+JSONEOF
+report_for rf-streams
+r12h="$(V field_equals "$D12/report.json" plan_length_vs_loc.0.loc_changed "$FRESH_LOC")"
+check "12h. a stream that exists is computed fresh, never carried (got $r12h)" '[[ "$r12h" == "True" ]]'
+# Nothing to carry: no previous report, or one that does not parse. Both give the old
+# sentence, and neither may raise.
+D12N="$(review_feature rf-nostreams "$PRICED_COST" "$PRICED_MS" seen)"
+report_for rf-nostreams
+rc12n=$?
+r12i="$(V field_equals "$D12N/report.json" re_hunting "\"$NOT_COMPUTED\"")"
+r12j="$(V field_equals "$D12N/report.json" plan_length_vs_loc.0.loc_changed "\"$NOT_COMPUTED\"")"
+check "12i. with no stream and no previous report, nothing is carried (exit $rc12n; got $r12i, $r12j)" \
+  '(( rc12n == 0 )) && [[ "$r12i" == "True" && "$r12j" == "True" ]]'
+echo "not json" > "$D12N/report.json"
+report_for rf-nostreams
+rc12k=$?
+r12k="$(V field_equals "$D12N/report.json" edit_overlap "\"$NOT_COMPUTED\"")"
+check "12j. an unreadable previous report is treated as absent (exit $rc12k; got $r12k)" \
+  '(( rc12k == 0 )) && [[ "$r12k" == "True" ]]'
 
 echo
 if (( fails > 0 )); then echo "report-footnotes: $fails assertion(s) FAILED"; exit 1; fi

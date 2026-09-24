@@ -323,7 +323,7 @@ mkdir -p "$RC_CONSUMER/agentTooling/analysis"
 cp "$AT/sync-plans.sh" "$RC_CONSUMER/agentTooling/sync-plans.sh" 2>/dev/null || true
 cp -r "$AT/templates" "$RC_CONSUMER/agentTooling/templates" 2>/dev/null || true
 cp -r "$AT/hooks" "$RC_CONSUMER/agentTooling/hooks" 2>/dev/null || true
-for f in routing.py pricing.py roots.py transcript.py; do
+for f in routing.py pricing.py rates_history.json roots.py transcript.py; do
   cp "$AT/analysis/$f" "$RC_CONSUMER/agentTooling/analysis/$f" 2>/dev/null || true
 done
 chmod +x "$RC_CONSUMER/agentTooling/sync-plans.sh" 2>/dev/null || true
@@ -366,7 +366,7 @@ mkdir -p "$RC_CHECK/agentTooling/analysis"
 cp "$AT/sync-plans.sh" "$RC_CHECK/agentTooling/sync-plans.sh" 2>/dev/null || true
 cp -r "$AT/templates" "$RC_CHECK/agentTooling/templates" 2>/dev/null || true
 cp -r "$AT/hooks" "$RC_CHECK/agentTooling/hooks" 2>/dev/null || true
-for f in routing.py pricing.py roots.py transcript.py; do
+for f in routing.py pricing.py rates_history.json roots.py transcript.py; do
   cp "$AT/analysis/$f" "$RC_CHECK/agentTooling/analysis/$f" 2>/dev/null || true
 done
 chmod +x "$RC_CHECK/agentTooling/sync-plans.sh" 2>/dev/null || true

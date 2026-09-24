@@ -20,6 +20,14 @@ missing copy is an `ImportError` in every capture rather than one failed asserti
 narrower override, deliberately: one that moved the ledger alone would let a test write
 the ledger under `mktemp -d` while still reading the machine's own transcripts.
 
+**Every sandbox that copies `pricing.py` copies `rates_history.json` too**, for the same
+reason: `pricing.py` loads the history from its own directory at import, so a missing
+copy is an import error in every script that prices anything. **Every sandbox that runs
+`feature-capture.sh` also copies `refresh_rates.py` and exports `RATES_CHECK_SOURCE`** to
+`fixtures/pricing/litellm-sample.json`: the capture's residue runs `refresh_rates.py
+--check`, and without that seam it would fetch LiteLLM over the network
+(`feature-lifecycle.sh`, `recover-at-close.sh`).
+
 - `level-sentinel.sh` — copies the runner scripts into a `mktemp -d` checkout with a stub
   `claude` (exit code from `CLAUDE_STUB_RC`) and a stub `self/gate.sh` (verdict from
   `GATE_STUB_VERDICT`), then asserts the level-sentinel contract `run-batch.sh` depends
@@ -223,6 +231,15 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   its `pr_opened` stamp both say 2, where the completed count would have said 1. **RF** is
   the fallback beside it: with `round` stripped from every `plan_end`, the same close says
   1, which is that count.
+  **RB** is a router that built its feature (`../features/router-built-pin/`). A session
+  starts a feature unpinned through `start_as`, so the start writes its routing record.
+  The feature is reviewed clean, and then that router's transcript gains a line whose
+  `cwd` is the worktree. The phase asserts:
+  - the close exits non-zero, naming the router and `pin-session <id>`, with no forge call
+    and the worktree's `HEAD` and status unchanged;
+  - `manifest.py pin-session` puts the id in the fence's `sessions`, and a second
+    `pin-session` of the same id leaves the file byte-identical;
+  - the same close then exits 0, and the pin is in the `S: cost records` commit.
   **B1/B2**, `run-batch.sh` ending a round: over empty build and verify queues (a clean
   no-op) a clean review makes it call the close — `pr create` seen, the record written and
   committed — and say so, while an escalated one exits 1 with no PR, no record, and the
@@ -243,9 +260,13 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   **L1**: a feature in the legacy sibling layout `R-S` (moved there by
   `git worktree move`), merged and never captured, captures from the primary — its
   session claimed by branch with its `cwd`, `to` stamped, nothing committed or pushed.
-  **C4**: with the sandbox's own `analysis/pricing.py` rewritten to an ancient
-  `RATES_VERIFIED` (restored immediately after), a capture warns in its residue that the
-  rate table is stale and still exits 0 — every figure depends on that table, and a table
+  **C3a2**: the residue also carries `refresh_rates.py --check`'s result against
+  `fixtures/pricing/litellm-sample.json` (`RATES_CHECK_SOURCE`), which differs from the
+  seeded history — a `rates` line naming `claude-opus-5-5` and a `WARN` naming
+  `refresh_rates.py` — while the capture still exits 0.
+  **C4**: with the sandbox's own `analysis/rates_history.json` rewritten to an ancient
+  `checked` (restored immediately after), a capture warns in its residue that the
+  rate history is stale and still exits 0 — every figure depends on that history, and one
   nobody re-checked is not a reason to leave a feature uncaptured.
   Its **W** phases are where `session_window.to` comes from
   (`self/features/claim-window-precision/README.md`, item 1). The fixture moves the
@@ -312,8 +333,9 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   banners, on `capture_planning.py`'s `--list-subagents --unclaimed --for`,
   `--list-sessions --unclaimed` (router exclusion included), `--annotate-frozen`, its zero
   refusal and its `--last-branch-instant` (including the subagent walk and the whole-second
-  truncation), on `routing.py --refresh-for`, on `pricing.RATES_VERIFIED` being a
-  module-level assignment the fixture can rewrite, and on `analysis/manifest.py`'s `init`,
+  truncation), on `routing.py --refresh-for`, on `pricing.RATES_VERIFIED` being the
+  `checked` of the `rates_history.json` beside `pricing.py`, which the fixture can rewrite,
+  on `refresh_rates.py --check` honouring `--source` (fed through `RATES_CHECK_SOURCE`), and on `analysis/manifest.py`'s `init`,
   `get`, `claimed` and `set-window-to [--tighten|--replace]`.
 - `verdict-readers.sh` — the only test here that calls `plan-runner-roots.sh`'s round
   readers, and (since round 2) its stray-records reader, **directly**: it sources the file,
@@ -435,6 +457,20 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   with the pinning slug, drops the pinned-out feature's "routed by" line while an unpinned
   router's stays, and is byte-identical afterwards; both features' `report.json` totals
   are their own, and `load_records` still returns the record — the skip is the readers'.
+  **R12** is `routing.py --unpinned-builder`, the predicate `feature-close.sh` refuses on
+  (`../features/router-built-pin/`). Each case is a hand-written feature whose routing
+  record names its own router, launched in the primary, with a `tool_line` helper that
+  writes one `tool_use` block. The router's id is printed, exit 0, for a router whose
+  `cwd` moved into `.worktrees/<slug>`, one that stayed in the primary but `Edit`ed a
+  worktree file, and one whose `NotebookEdit` landed there. Nothing is printed, still
+  exit 0, for:
+  - a router that only started the feature, `Read` a worktree file and `Write`d in the
+    primary;
+  - one that worked in `.worktrees/<slug>-two`, since containment is by path component;
+  - one pinned in another feature's `sessions`;
+  - one whose transcript is gone;
+  - a feature with no routing record.
+
   Depends on `analysis/routing.py` and on
   `capture_planning.py` importing `is_router_lines` from it; RED until both landed, and
   R1/R6–R9 RED again until the record moved inside the feature.
@@ -495,23 +531,26 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   `plan-runner-lib.sh`'s refusal rule (`grep -q '^@@TODO@@'`, any line) matching the
   lint's, since the lint exists to predict that refusal: the `10c` fixture is the stub
   `feature-start.sh` really writes, marker on line 3 under a title.
-- `cost-recovery.sh` — copies `analysis/pricing.py`, `analysis/roots.py`,
+- `cost-recovery.sh` — copies `analysis/pricing.py`, `analysis/rates_history.json`, `analysis/roots.py`,
   `analysis/report.py`, `analysis/transcript.py` and `analysis/recover_attempts.py` into a
   throwaway checkout, synthesizes a `self/features/` corpus of `usage.json` sidecars (and,
   for the report.py-level assertions, minimal feature dirs with a manifest `README.md` and
   `planning.json`) and, under a redirected `$HOME`, the
   `~/.claude/projects/*/<session_id>.jsonl` transcripts they point at, and asserts the
-  killed-attempt-cost-recovery contract: `pricing.py`'s intro tier is a two-sided window (a
-  date before it starts, or after it expires, prices standard; a date inside it prices intro
-  at exactly 2/3 of standard); `recover_attempts.py` fills a killed attempt's
+  killed-attempt-cost-recovery contract: Sonnet 5's dated price change in
+  `rates_history.json` (a date before 2026-08-22 prices at the `0000-01-01` entry; that date
+  and every later one — 2026-09-01 included, past the old intro window's announced expiry —
+  at the `2026-08-22` entry, exactly 2/3 of the first; these asserted a two-sided intro
+  `tier` until litellm-pricing made the window an ordinary entry); `recover_attempts.py` fills a killed attempt's
   `recovered_cost_usd` / `recovered_tokens` / `recovered_from` / `recovered_at` /
   `rates_applied` from its transcript without touching `total_cost_usd`; a usage.json's
   top-level `recovered_cost_usd` sums its recovered attempts; the 5m/1h cache-creation
-  split prices in the `CACHE_WRITE_1H_MULTIPLIER` / `CACHE_WRITE_5M_MULTIPLIER` ratio (the
+  split prices in the model's `cache_creation_1h` / `cache_creation_5m` ratio from
+  `pricing.get_rates` (the
   guard against reading `usage.json`'s flat, unsplit `cache_creation_input_tokens` instead);
   an already-measured attempt and a second run are both no-ops; a missing transcript is
   reported unrecoverable rather than erroring; per-`message.id` dedup bills one API response
-  once; a killed attempt on a model absent from `pricing.RATES` is marked
+  once; a killed attempt on a model absent from the rate history is marked
   `recovered_is_partial` with `unpriced_models` naming it (propagating the models it could
   price rather than refusing the whole attempt), and `report.py` classes such a plan's total
   as partial rather than recovered-and-whole; attempt-level recovery survives
@@ -1067,9 +1106,10 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   is identical under `TZ=Pacific/Kiritimati` and `TZ=Pacific/Midway` — whose local dates
   always differ, since the two offsets span 25 hours, making that a deterministic check that
   it is not `date.today()`. The assertion worth the most: a session at
-  `2026-08-21T23:00:00-04:00` is `2026-08-22` UTC and must price at sonnet-5's **intro**
-  tier, 2/3 of standard — the old `timestamp[:10]` slice dated it locally and priced it
-  standard. Calls `reset_capture` between phases, since the frozen-cost guard would
+  `2026-08-21T23:00:00-04:00` is `2026-08-22` UTC and must price at sonnet-5's
+  **`2026-08-22`** history entry, 2/3 of the one before, with that `from` recorded in its
+  `rates_applied` — the old `timestamp[:10]` slice dated it locally and priced it at the
+  earlier entry. Calls `reset_capture` between phases, since the frozen-cost guard would
   otherwise (correctly) refuse a write once a previous phase's transcript is removed, and
   passes `--recapture` on every call, since capture otherwise skips a feature that
   already has a `planning.json` and several phases here re-capture under a changed
@@ -1297,7 +1337,8 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   own.
 - `plan-numbering.sh` — two throwaway checkouts under one `mktemp -d`, each a real git repo
   with a bare `origin` beside it carrying the real `feature-start.sh`,
-  `plan-runner-roots.sh`, `analysis/{roots,manifest,pricing,transcript,routing}.py` and the
+  `plan-runner-roots.sh`, `analysis/{roots,manifest,pricing,transcript,routing}.py`,
+  `analysis/rates_history.json` and the
   manifest template: a **`--self`** one (a standalone agentTooling clone, `self/features/`
   at its root) and a **consumer** one (agentTooling vendored one directory down,
   `plans/features/` at the repo's root — the layout `resolve_roots` takes without `--self`).
@@ -1316,6 +1357,40 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   the stub number unconditionally in both modes (`../PROJECT_FACTS.md` → "Plan numbers are
   per feature, from 01") and on `$HOME` being redirected, since a start derives its routing
   record from the running session's transcript.
+- `rates-history.sh` — copies `analysis/pricing.py`, `analysis/refresh_rates.py` and
+  `analysis/rates_history.json` into throwaway `analysis/` directories under one
+  `mktemp -d`, so every refresh writes a copy and never the committed history, and feeds
+  `refresh_rates.py` `fixtures/pricing/litellm-sample.json` through `--source`
+  (`self/features/litellm-pricing/README.md`, "Spec"). **H1**, seed parity: for every
+  model, three dated aliases and eleven dates (Sonnet 5's `2026-08-21`/`2026-08-22`
+  boundary among them) in `fixtures/pricing/rates-main-2026-09-22.json` — generated from
+  main's `pricing.py` before its table was replaced — `get_rates` returns main's five
+  rates rounded to `refresh_rates.RATE_DECIMALS` (float representation error only: main
+  computed 0.8 × 0.1 as `0.08000000000000002`), `compute_cost` main's dollars to a
+  relative 1e-12 and a `rates_applied` equal to `get_rates`, every applied rate says
+  `tier: "standard"` and `source: "manual"`, Sonnet 5's `from` is `0000-01-01` then
+  `2026-08-22`, and three unknown models are `(None, None)`. **H2**: every model's entries
+  sorted by `from`, the first at `0000-01-01`, all five rates numeric, `source` litellm or
+  manual; `checked` is `pricing.RATES_VERIFIED`; `pricing` has no `RATES` or `*MULTIPLIER*`
+  attribute. **H3**, a refresh: exit 0; Opus 5.5 keeps its manual entry and gains one
+  `litellm` entry from today at the **undated** key's rates though a dated key disagrees;
+  Sonnet 4.6, listed only under two dated keys, takes the **later** date's; Mythos preview,
+  new, gets one entry from `0000-01-01`; every other model is byte-for-byte as it was —
+  Mythos 5.1, absent from the fixture, and Claude Opus 4, whose only fixture entry is
+  openrouter's, included; `claude-3-haiku-20240307`, missing its 1h rate, is named and not
+  added; `checked` is today. **H4**, float noise: Sonnet 5's fixture figures × 10⁶ are not
+  the history's floats (premise, asserted) and it gains no entry. **H5**: a second refresh
+  is byte-identical to the first once `checked` is set back to today. **H6**: Opus 5.5 on
+  `2026-09-01` still prices at 4 (`manual`) and to the parity fixture's dollars, and today
+  at 5 from `litellm`. **H7**: an unknown model has no rates after the refresh. **H8**,
+  `--check`: `FETCH_FAILED_EXIT` is none of 0, 1, 2; with changes it exits 1, names Opus
+  5.5, Mythos preview and Sonnet 4.6 but not Sonnet 5, and leaves the file byte-identical;
+  against a refreshed history it exits 0 and writes nothing, `checked` included; a missing
+  `--source` exits `FETCH_FAILED_EXIT` naming the path, and so does a write-mode run, which
+  writes nothing. **H9**: `--history <path>` writes that file and leaves the default alone.
+  Depends on `pricing.HISTORY_PATH` being the history beside `pricing.py` and on
+  `refresh_rates.RATE_DECIMALS` / `FETCH_FAILED_EXIT`. RED until litellm-pricing landed.
+  No model, no network.
 - `sync-check.sh` — copies the real `sync-plans.sh`, `update.sh` and `templates/` (a
   missing `update.sh` is tolerated — RED until plan 77 lands, the `cost-recovery.sh`
   convention) into two throwaway fixtures. Fixture A is a consuming repo at
@@ -1569,7 +1644,8 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   `run-batch.sh` installing `trap 'exec >/dev/null; printf "\n"' PIPE` above its first
   write — a handler, never `trap '' PIPE`, for the reason `../PROJECT_FACTS.md` records.
 - `report-footnotes.sh` — `stale-failed-sidecars.sh`'s report-only scaffolding
-  (`analysis/{pricing,roots,transcript,report}.py` in a throwaway checkout, a
+  (`analysis/{pricing,roots,transcript,report,routing}.py` and `rates_history.json` in a
+  throwaway checkout, a
   synthesized `self/features/` corpus of hand-written manifests, `planning.json` files,
   plan `.md` files and sidecars; no transcripts, every dollar a literal). Its own file
   rather than a phase of that one because the subject differs: that file is about which
@@ -1624,6 +1700,23 @@ the ledger under `mktemp -d` while still reading the machine's own transcripts.
   run after `planning.json` changed rewrites both. Depends on `report.py`'s
   `attempt_copies`/`plan_duration` and on `write_record`/`GENERATED_AT_MASK_RE` — none of
   which is visible from an import line.
+  **Phase 12 pins that a re-render with the streams gone keeps what they said**
+  (`self/features/carry-stream-sections/`). Its fixture is the only one here with a
+  `.stream.jsonl` beside its sidecar: one `Edit` replacing a line with three. The phase
+  asserts, in order:
+  - with the stream, `loc_changed` is 3 and `re_hunting`/`edit_overlap` are computed lists;
+  - with the stream deleted, a re-render over an unchanged corpus writes nothing (`cmp`);
+  - after `planning.json` changes, which is what the annotate step does, the report is
+    rewritten and still carries 3 and both lists, and `report.md` never says `not
+    computed: streams unavailable`;
+  - a fresher stream (a five-line `Write`) is computed, never carried;
+  - a feature with no stream and no previous report, or one whose `report.json` does not
+    parse, still gets the sentence and exits 0.
+
+  The list-index step phase 12 needs is in the `verify.py` helper's `get_path`
+  (`plan_length_vs_loc.0.loc_changed`). Depends on `report.py`'s `previous_report`,
+  `carried_loc`, `carried_section` and `STREAMS_UNAVAILABLE`, and on the stream sitting
+  beside its `usage.json` as `<stem>.stream.jsonl`.
 - `open-session.sh` — the session opener's **body**, which no test ran before: both
   `self/open-session.sh` and `templates/plans/open-session.sh`, with `osascript` and
   `claude` stubbed in a throwaway `PATH` directory, run against a worktree path holding a

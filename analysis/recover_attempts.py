@@ -115,7 +115,7 @@ def recover_attempt(session_id):
     # The session's earliest INSTANT, dated in UTC — not min() over raw strings then
     # sliced. String ordering picks the wrong line when a transcript mixes timestamp
     # formats, and the slice reads the date in whatever zone the string was written in.
-    # `as_of` selects the rate tier, so either mistake is a dollar error; see
+    # `as_of` selects the rate history entry, so either mistake is a dollar error; see
     # transcript.utc_date.
     moments = [
         moment
@@ -161,7 +161,7 @@ def recover_attempt(session_id):
     }
     if recovered_duration_s is not None:
         result["recovered_duration_s"] = recovered_duration_s
-    # A model missing from pricing.RATES must not silently drop out of the sum
+    # A model missing from the rate history must not silently drop out of the sum
     # (pricing.py: "a silent 0 reads as 'planning was cheap' when it means
     # 'unmeasured'") — mark the attempt partial and name what was skipped, same as
     # capture_planning.py's per-model warn-and-mark-partial for the same case.

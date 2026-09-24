@@ -7,8 +7,9 @@ Shell helpers the tests under `self/tests/` source to build their throwaway corp
 transcripts and sidecars are synthesized into a `mktemp -d` at test run time, never
 committed here as JSON blobs.
 
-**One file here is data**, and it is the exception that says why the rule holds elsewhere:
-a *command* is not a corpus. `hook-replay-2026-09-18.json` is a table of command lines and
+**Three files here are data**, and they are the exceptions that say why the rule holds
+elsewhere: a *command* is not a corpus, and neither is a price list or the output of code
+that no longer exists. `hook-replay-2026-09-18.json` is a table of command lines and
 the verdict each must get, which nothing can synthesize — the commands are the fixture.
 
 - `hook-replay-2026-09-18.json` — `{ provenance, cwd, verdicts, records[] }`, where each
@@ -22,6 +23,27 @@ the verdict each must get, which nothing can synthesize — the commands are the
   `../../DESIGN-2026-09-18-hook-rewrite-or-ask.md` §1 names, one record per shape and per
   approved read — **composed, not transcribed**, since the 2026-09-18 replay behind the
   design's counts was recorded as counts and the commands themselves survive nowhere.
+- `pricing/rates-main-2026-09-22.json` — `{ provenance, dates[], tokens{input, output,
+  cache_read, cache_creation_5m, cache_creation_1h}, unknown[], models{<model id or dated
+  alias>: {<date>: {model, input, output, cache_read, cache_creation_5m,
+  cache_creation_1h, cost_usd}}} }`: what main's `analysis/pricing.py` — the hand table
+  `RATES`, `RATES_VERIFIED` 2026-09-22 — returned from `get_rates` and `compute_cost`
+  (for `tokens`) for every model it held plus three dated aliases, on each of `dates`.
+  Generated **once, before** litellm-pricing replaced the table, so it cannot be
+  regenerated: the code that produced it is gone. `../rates-history.sh` H1 holds the
+  seeded `analysis/rates_history.json` to it; `unknown[]` are ids that must stay unpriced.
+- `pricing/litellm-sample.json` — a small file in the shape of LiteLLM's
+  `model_prices_and_context_window.json` (`<key>: {litellm_provider, mode,
+  input_cost_per_token, output_cost_per_token, cache_read_input_token_cost,
+  cache_creation_input_token_cost, cache_creation_input_token_cost_above_1hr, …}`, plus
+  the upstream `sample_spec`), built to trip each rule `analysis/refresh_rates.py` states:
+  a changed model with a disagreeing dated key (Opus 5.5), a model under dated keys only
+  (Sonnet 4.6), a new model (Mythos preview), float noise (Sonnet 5 — per-token figures a
+  ulp off, so × 10⁶ is not exact), an entry missing its 1h rate (`claude-3-haiku-20240307`),
+  and other providers' keys (openrouter, vertex, openai). Mythos 5.1 is deliberately
+  absent. Read by `../rates-history.sh` through `--source`, and by
+  `../feature-lifecycle.sh` and `../recover-at-close.sh` through `RATES_CHECK_SOURCE`,
+  so no capture under test reaches the network.
 
 - `transcripts/build-transcript.sh` — `transcript_line MESSAGE_ID MODEL TIMESTAMP INPUT
   OUTPUT CACHE_READ CACHE_5M CACHE_1H [IS_SIDECHAIN]` prints one `assistant`-line session

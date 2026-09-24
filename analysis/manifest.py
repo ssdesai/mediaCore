@@ -8,6 +8,7 @@ planning.json claimed — the JSON edits the lifecycle scripts need, kept out of
     python3 agentTooling/analysis/manifest.py [--self] <slug> set-plans <stem>...
     python3 agentTooling/analysis/manifest.py [--self] <slug> set-window-to [TS] [--tighten|--replace]
     python3 agentTooling/analysis/manifest.py [--self] <slug> set-window-from TS --session ID
+    python3 agentTooling/analysis/manifest.py [--self] <slug> pin-session ID
     python3 agentTooling/analysis/manifest.py [--self] <slug> claimed
 
 `init` writes `<features>/<slug>/README.md` from `templates/plans/features/TEMPLATE.md`
@@ -38,6 +39,10 @@ then says the figure will not move until `--recapture`.
 `set-plans` replaces `plans[]` with the stems given, in that order — how the
 architect records the batch after `feature-start.sh` wrote the fence with only the review
 stub in it — and refuses a stem that is not `NN-name-MODEL` (a sentinel is never a plan).
+`pin-session` appends one session id to `sessions[]`, idempotently, and refuses an empty
+one — the remedy `feature-close.sh` names when the feature's router worked in its
+worktree unpinned (self/features/router-built-pin). The manifest is a cost record, so the
+change it leaves passes the close's dirty-files check and rides the capture's commit.
 `claimed` prints the sessions and subagents
 `planning.json` holds, each with how it was selected and where it was launched, and the
 total — what `feature-capture.sh` shows the human before the number is quoted.
@@ -77,6 +82,9 @@ FENCE_KEY_ORDER = (
     "exclude_sessions", "exclude_subagents", "sessions", "subagents",
 )
 KNOWN_METHODS = ("plans", "direct", "hand")
+# The fence key `pin-session` appends to: the sessions claimed outright, regardless of
+# branch, window or cwd.
+SESSIONS_KEY = "sessions"
 # A plan stem: number, kebab name, model — the filename without `.md`. `NN-gate` is a
 # sentinel, not a plan, and never belongs in `plans[]`; the model alternation excludes it.
 PLAN_STEM_RE = re.compile(r"^[0-9]+-[a-z0-9-]+-(haiku|sonnet|opus)$")
@@ -415,6 +423,28 @@ def cmd_set_plans(args):
     return 0
 
 
+def cmd_pin_session(args):
+    """Add one session id to the fence's `sessions[]`, idempotently — the remedy
+    `feature-close.sh` names when the feature's router built it unpinned
+    (self/features/router-built-pin). Nothing else in the file moves."""
+    session_id = args.session_id.strip()
+    if not session_id:
+        print("refusing: an empty session id pins nothing", file=sys.stderr)
+        return 1
+    path = manifest_path(args)
+    text = path.read_text()
+    match, obj = last_fence(text)
+    sessions = list(obj.get(SESSIONS_KEY) or [])
+    if session_id in sessions:
+        print(f"{SESSIONS_KEY} already pins {session_id}")
+        return 0
+    sessions.append(session_id)
+    obj[SESSIONS_KEY] = sessions
+    path.write_text(text[: match.start(1)] + render_fence(obj) + text[match.end(1):])
+    print(f"{SESSIONS_KEY} = {json.dumps(sessions)}")
+    return 0
+
+
 def cmd_claimed(args):
     planning = features_root(args.self_mode) / args.slug / "planning.json"
     if not planning.exists():
@@ -503,6 +533,14 @@ def main():
     p_plans = sub.add_parser("set-plans", help="replace plans[] with these stems, in order")
     p_plans.add_argument("stems", nargs="+", metavar="STEM")
     p_plans.set_defaults(func=cmd_set_plans)
+
+    p_pin = sub.add_parser(
+        "pin-session",
+        help="add a session id to the fence's sessions[] — the remedy feature-close.sh "
+        "names when the feature's router built it unpinned",
+    )
+    p_pin.add_argument("session_id", metavar="ID")
+    p_pin.set_defaults(func=cmd_pin_session)
 
     p_claimed = sub.add_parser("claimed", help="what planning.json claims, and the total")
     p_claimed.set_defaults(func=cmd_claimed)

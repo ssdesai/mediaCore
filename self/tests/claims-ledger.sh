@@ -92,7 +92,7 @@ TMP="$(cd "$TMP" && pwd -P)"
 
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features" "$AT/.git"
-for f in pricing.py roots.py transcript.py capture_planning.py report.py routing.py; do
+for f in pricing.py rates_history.json roots.py transcript.py capture_planning.py report.py routing.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f" 2>/dev/null || true
 done
 source "$HERE/self/tests/fixtures/transcripts/build-transcript.sh"
