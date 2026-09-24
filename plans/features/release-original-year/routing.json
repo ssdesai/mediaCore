@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-09-24T16:33:44Z",
+  "cost_usd": 7.842081,
+  "duration_s": 2518,
+  "ended_at": "2026-09-24T16:33:44Z",
+  "features_started": [
+    {
+      "at": "2026-09-24T16:33:44Z",
+      "slug": "release-original-year"
+    }
+  ],
+  "git_branch": "HEAD",
+  "launched_in": "/Users/sahildesai/dev",
+  "model": "claude-fable-5-1",
+  "session_id": "dc8c52a0-53c9-40e9-bccd-aba4a521b026",
+  "started_at": "2026-09-24T15:51:45Z"
+}
