@@ -1,39 +1,55 @@
-# <Feature title>
+# Release.original_year
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+The bundle cannot carry vinylCatalogue's original-or-reissue answer because `Release` has no
+field for an original's year (vinylCatalogue spec §6.2 `issue`, §7.10 "The bundle does not
+carry §6.2's `issue`", both amended 2026-09-11; that spec is at
+`/Users/sahildesai/dev/vinylCatalogue/vinyl-catalogue-spec.md`). This feature grows the
+contract by one field. Same shape of change as `Track.artist` (2026-09-06): a field on an
+`extra="forbid"` model, so `SCHEMA_VERSION` and the minor version both move. Built direct
+(`agentTooling/AGENT_DIRECT.md`) from the decisions below, which are binding.
+
+## Decisions
+
+1. **Field.** `Release.original_year: int | None = None`, placed after `released`. Meaning:
+   the year the *work* was first released, when this release is a reissue of it. `None` is
+   absence — the source did not say, or this release is the original (in which case `year`
+   already is the original's year and a second copy would drift). Discogs has no per-release
+   field for this; the nearest is the master's `year`, and the name says what the value is
+   rather than where it came from. Validation: an int between 1877 and the current year
+   inclusive (mirror vinylCatalogue §6.2's bound and reason), and never later than `year`
+   when `year` is present. No `issue`/`kind` enum on the contract: the presence of
+   `original_year` is the reissue signal, and a reissue with unknown original year is
+   indistinguishable from an original by design — record that in §3's bullet list.
+2. **Versioning.** `SCHEMA_VERSION` 3, package `0.4.0`. `read_bundle` behaviour is unchanged:
+   a schema-1 or schema-2 bundle still reads with the field `None`; a bundle newer than the
+   install is still refused. `write_bundle` stamps 3. Tag `v0.4.0` is applied after the PR
+   merges, by the coordinator, on the merge commit — not by this feature.
+3. **INTEGRATION.md.** §3 shape block and a bullet; §12 versioning paragraph (a new
+   paragraph in the shape of the `Track.artist` one, dated 2026-09-24); §13 decisions log
+   entry. §6 (vinylCatalogue adapter): one sentence saying the adapter fills it from
+   `record.issue.original_year` when `issue.kind == "reissue"` — the adapter change itself is
+   vinylCatalogue's, not this repo's.
+4. **Fixture.** `INTEGRATION.md` §11's IT'S SAXY: leave `original_year` `null` unless §11
+   already states it is a reissue; regenerate the fixture through the generator so the
+   packaged `release.json` carries `"schema_version": 3` and the key. The gate's
+   fixture-idempotence check must stay green.
+5. **PROJECT_FACTS.md** → Types: the `SCHEMA_VERSION`/version bullet updated to 3 / 0.4.0
+   and the field named.
+6. **Tests.** `tests/test_release.py`: round-trip with and without the field; the bounds;
+   the `original_year > year` refusal; a schema-2 `release.json` reads with `None`.
+   `tests/test_bundle.py`: a written bundle is stamped 3.
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Reads the diff against the decisions above and INTEGRATION.md §3, §12, §13. |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- Consumer re-pins (humanNetworkMap, musicMap, vinylCatalogue) and vinylCatalogue's adapter:
+  separate features after `v0.4.0` is tagged.
+- Any `issue`/`kind` enum, or an `in_collection` field (ownership is not release data).
 
 ## Machine-readable
 
