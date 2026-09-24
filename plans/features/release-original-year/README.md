@@ -64,7 +64,7 @@ contract by one field. Same shape of change as `Track.artist` (2026-09-06): a fi
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],
-  "subagents": []
+  "subagents": ["a326b5c37bd3a8cc0"]
 }
 ```
 

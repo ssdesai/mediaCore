@@ -50,7 +50,7 @@ format-agnostic; MusicBrainz maps onto it cleanly).
 
 ```
 Release
-  schema_version: int = 2
+  schema_version: int = 3
   refs: Refs                      # authority-keyed identity of THIS release (§4)
   provenance: list[Provenance]    # where this copy came from (§4)
   title: str
@@ -58,6 +58,7 @@ Release
   labels: list[LabelRef]
   year: int | None
   released: str | None            # ISO date or partial ("1974", "1974-06")
+  original_year: int | None       # the work's first release year, when this is a reissue
   country: str | None
   medium: Medium                  # "vinyl" | "cd" | "cassette" | "digital" | "other"
   format: str | None              # free text as the authority states it, e.g. "Vinyl, LP, Album"
@@ -96,6 +97,14 @@ Refs = dict[str, str]             # see §4 for key format
   artist; it does **not** mean "same as the release artist" (absence is absence — a
   consumer that wants a display artist falls back to `Release.artists` itself). A track
   artist is not a role credit: `Track.credits` keeps the roles (`Written-By`).
+- `Release.original_year` is the year the *work* was first released, when this release
+  is a reissue of it; `year` stays the year of *this* release. `None` is absence — the
+  source did not say, or this release is the original, whose year `year` already is (a
+  second copy would drift). A present value lies between 1877 (no recording predates the
+  phonograph) and the current year inclusive, and is never later than `year` when `year`
+  is present. There is no issue/kind enum: the presence of `original_year` *is* the
+  reissue signal, so a reissue whose original year is unknown is indistinguishable from
+  an original — by design, not by omission (§13, 2026-09-24).
 - `MediaFile.role` is free text; vinylCatalogue emits its photo-role vocabulary
   (`sleeve_front`, `sleeve_back`, `label_a`, `label_b`), a CD source would emit its own.
   Consumers treat it as a caption hint, nothing more.
@@ -157,7 +166,7 @@ A *bundle* is a directory:
 
 ```
 <slug>/
-  release.json              # one Release, schema_version 2
+  release.json              # one Release, schema_version 3
   media/<sha256>.<ext>      # every MediaFile and AudioFile, named by content hash
 ```
 
@@ -285,7 +294,10 @@ disk generalised — not a shared database. Logged in §13.
     `identity.catalogue_number`.
   - `year`: `identity.year.value`, else `data["year"]` when > 0, else null. `country`,
     `released`, `format` from identity values. `medium = "vinyl"` — hard-coded in this
-    adapter, which is the right place for the only vinyl fact.
+    adapter, which is the right place for the only vinyl fact. `original_year` from
+    `record.issue.original_year` when `record.issue.kind == "reissue"`, else null
+    (vinylCatalogue spec §6.2 `issue`; the adapter change is vinylCatalogue's, after
+    `mediacore` 0.4.0).
   - `tracks`: from `record.tracklist` (values only, where the envelope state is
     present), including `artist` from `record.tracklist[].artist` — the track-level
     artist a compilation prints, dropped by every export before `mediacore` 0.3.0.
@@ -621,6 +633,18 @@ install's own `SCHEMA_VERSION`, so a schema-1 bundle re-written by 0.3.0 comes o
 labelled 2 — the label describes the bytes, and the older reader gets the upgrade
 message above rather than an opaque validation error (§13, 2026-09-06).
 
+`Release.original_year` (2026-09-24) is the same kind of change: a field on an
+`extra="forbid"` model, so a 0.3.0 reader **refuses** a bundle carrying `original_year`
+rather than ignoring the key. `mediacore` **0.4.0**, `schema_version` **3**, tag
+`v0.4.0` applied by the coordinator on the merge commit after the PR merges. A 0.4.0
+reader still reads schema-1 and schema-2 bundles (the field defaults to `None`, and
+`Track.artist` as before), and `read_bundle` still refuses any `schema_version` newer
+than the install's. `write_bundle` stamps 3, so a schema-2 bundle re-written by 0.4.0
+comes out labelled 3 with an `"original_year": null` key. Consumers re-pin deliberately,
+as for 0.3.0; until they do, a 0.4.0-exported bundle is refused by their 0.3.0 readers
+with the schema-version message. vinylCatalogue's adapter fills the field (§6) in its
+own feature after the tag.
+
 WP7 is also an experiment on the delegation tier itself — each of 7a–7e is built twice,
 once through the plan workflow and once by a single Opus delegate, from this section as
 the shared brief. The checklist and scorecard live in humanNetworkMap
@@ -631,6 +655,35 @@ Each WP is executed in its own repo with that repo's plan workflow
 by an agent briefed with this file.
 
 ## 13. Decisions log
+
+- **2026-09-24 — `Release.original_year`, and `schema_version` 3.** The bundle could not
+  carry vinylCatalogue's original-or-reissue answer (its spec §6.2 `issue`, §7.10, both
+  amended 2026-09-11) because `Release` had no field for an original's year. `Release`
+  gains `original_year: int | None = None`, after `released`.
+  - **The name says what the value is.** Discogs has no per-release field for it — the
+    nearest is the master's `year` — so the field is named for its meaning, not its
+    source.
+  - **`None` is absence**: the source did not say, or this release is the original, in
+    which case `year` already is the original's year and a second copy would drift.
+  - **No issue/kind enum on the contract.** Presence of `original_year` is the reissue
+    signal; a reissue with unknown original year is indistinguishable from an original,
+    by design (§3). vinylCatalogue keeps its own `issue.kind`; the contract carries only
+    the year.
+  - **Validated on the model**, mirroring vinylCatalogue §6.2's bound and reason: an int
+    between 1877 (no recording predates the phonograph) and the current year inclusive
+    — the upper bound read when the value is validated, not frozen in a constant — and
+    never later than `year` when `year` is present (an original cannot postdate its own
+    reissue; equal is allowed). Both checks are one `Release` `model_validator`, so a
+    hand-edited `release.json` meets them through `model_validate` as `Release(...)`
+    does.
+  - **The bump follows from `ContractModel`**, exactly as for `Track.artist`:
+    `SCHEMA_VERSION` 2 → 3, package 0.3.0 → **0.4.0**; §12 says how consumers re-pin.
+    A second frozen asset, `tests/assets/its-saxy-schema-2/release.json` (the fixture as
+    0.3.0 wrote it, byte-for-byte), holds the schema-2 backward read to the promise.
+  - **IT'S SAXY stays `null`**: §11 does not say it is a reissue.
+  - **Out of scope:** vinylCatalogue's adapter change and the consumer re-pins (separate
+    features after `v0.4.0`), and any `in_collection` field — ownership is not release
+    data.
 
 - **2026-09-06 — `write_bundle` stamps `schema_version`; reading still preserves it.**
   `read_bundle` keeps whatever version the file carried on the model it returns, and the

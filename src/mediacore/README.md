@@ -14,8 +14,17 @@ Release, read_bundle, normalize_text` — never from a submodule.
 - `release.py` — the wire models (§3), all `extra="forbid"` and all round-tripping
   through `model_dump(mode="json")` / `model_validate` without loss:
   - `Release { schema_version, refs, provenance, title, artists, labels, year,
-    released, country, medium, format, genres, styles, tracks, credits, notes, tags,
-    media, audio, links }` — the on-disk `release.json` shape.
+    released, original_year, country, medium, format, genres, styles, tracks, credits,
+    notes, tags, media, audio, links }` — the on-disk `release.json` shape.
+    `original_year` is the year the *work* was first released, when this release is a
+    reissue of it (`year` stays this release's year); `None` is absence — unknown, or
+    this release is the original. No issue/kind enum: presence is the reissue signal, so
+    a reissue of unknown original year looks like an original by design. Validated by a
+    `Release` `model_validator`: between `EARLIEST_ORIGINAL_YEAR` (1877) and the current
+    year inclusive — the upper bound read from the clock at validation time, not a
+    constant — and never later than `year` when `year` is present (equal passes). Added
+    at `SCHEMA_VERSION` 3 / package 0.4.0 (`INTEGRATION.md` §3, §12, §13 2026-09-24); a
+    schema-1 or schema-2 bundle reads with it `None`.
   - `ArtistRef { name, sort_name, refs }`
   - `LabelRef { name, catalogue_number, refs }`
   - `Track { position, title, artist, duration, credits }` — `artist` is the artist
@@ -43,11 +52,12 @@ Release, read_bundle, normalize_text` — never from a submodule.
   - `Provenance { kind, id, label, exported_at }` — where this copy came from:
     evidence of a different kind, carrying no more authority than any other ref.
   - `Medium` = `"vinyl" | "cd" | "cassette" | "digital" | "other"`; `MediaKind` =
-    `"photo" | "external_photo"`; `SCHEMA_VERSION` = 2 (bumped by `Track.artist`:
-    extras are forbidden, so a 0.2.0 reader *refuses* a bundle carrying the new key,
-    which makes an added field a shape change rather than an additive one);
-    `ContractModel` is the shared
-    `extra="forbid"` base; `MIN_ARTISTS` = 1. Also `BUNDLE_MEDIA_DIRNAME` (`"media"` —
+    `"photo" | "external_photo"`; `SCHEMA_VERSION` = 3 (2 since `Track.artist`, 3
+    since `Release.original_year`: extras are forbidden, so an older reader *refuses* a
+    bundle carrying a new key, which makes an added field a shape change rather than an
+    additive one); `ContractModel` is the shared
+    `extra="forbid"` base; `MIN_ARTISTS` = 1; `EARLIEST_ORIGINAL_YEAR` = 1877 (not
+    re-exported from the package root, like `MIN_ARTISTS`). Also `BUNDLE_MEDIA_DIRNAME` (`"media"` —
     defined here and imported by `bundle.py`, so the directory name has one
     definition), `SHA256_HEX_PATTERN`, `BUNDLE_FILE_EXTENSION_PATTERN`,
     `BUNDLE_FILE_PATTERN`, `BUNDLE_FILE_RE`, `Sha256Hex`, and
@@ -99,9 +109,9 @@ Release, read_bundle, normalize_text` — never from a submodule.
   validates the whole mapping before touching `dest`, **stamps `schema_version` with
   this install's** (`release_payload(release)` — whatever version the `Release` was read
   with, the file is labelled with the shape it is written in, so a re-written schema-1
-  bundle comes out as 2 and the label never lies about the bytes; the model itself is
-  not mutated, and `read_bundle` still preserves the file's own version — §12, §13
-  2026-09-06), then **stages into a sibling temporary directory and swaps it into
+  or schema-2 bundle comes out as 3 and the label never lies about the bytes; the model
+  itself is not mutated, and `read_bundle` still preserves the file's own version — §12,
+  §13 2026-09-06), then **stages into a sibling temporary directory and swaps it into
   place**, so an interrupted export leaves either
   the previous bundle intact or nothing — never a half-written directory that the
   bundle guard would then refuse to overwrite. It refuses a non-empty destination

@@ -26,18 +26,20 @@ every decision taken along the way. Start there.
 ## Consuming
 
 ```
-mediacore @ git+https://github.com/ssdesai/mediaCore.git@v0.3.0
-mediacore[s3] @ git+https://github.com/ssdesai/mediaCore.git@v0.3.0   # for an s3:// store
+mediacore @ git+https://github.com/ssdesai/mediaCore.git@v0.4.0
+mediacore[s3] @ git+https://github.com/ssdesai/mediaCore.git@v0.4.0   # for an s3:// store
 ```
 
 Pin a tag, never a branch. Version policy is in `INTEGRATION.md` §12. The `s3` extra
 pulls `boto3`; a consumer on a `file://` store (or on none) needs nothing beyond
 `pydantic`.
 
-`v0.3.0` writes `release.json` at **`schema_version` 2**: `Track` gained `artist`
-(`Track { position, title, artist, duration, credits }`), and because every model
-forbids extra fields a 0.2.0 reader *refuses* a bundle carrying it. A 0.3.0 reader still
-reads a schema-1 bundle. Re-pin deliberately, per §12.
+`v0.4.0` writes `release.json` at **`schema_version` 3**: `Release` gained
+`original_year` (the work's first release year when this release is a reissue; `None`
+otherwise or when unknown), and because every model forbids extra fields a 0.3.0 reader
+*refuses* a bundle carrying it. A 0.4.0 reader still reads schema-1 and schema-2
+bundles. `v0.3.0` was the same kind of step at schema 2, for `Track.artist`. Re-pin
+deliberately, per §12.
 
 ## Working in this repo
 

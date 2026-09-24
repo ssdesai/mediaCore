@@ -1,0 +1,3 @@
+{"at":"2026-09-24T16:36:42Z","event":"checkpoint","status":"planned","round":"1"}
+{"at":"2026-09-24T16:38:24Z","event":"checkpoint","status":"tests-written","round":"1"}
+{"at":"2026-09-24T16:41:24Z","event":"checkpoint","status":"gating","round":"1"}
