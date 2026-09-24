@@ -60,7 +60,7 @@ contract by one field. Same shape of change as `Track.artist` (2026-09-06): a fi
   "plans": ["01-review-opus"],
   "branches": ["release-original-year"],
   "base": "main",
-  "session_window": {"from": "2026-09-24T16:34:09Z", "to": null},
+  "session_window": {"from": "2026-09-24T16:34:09Z", "to": "2026-09-24T16:44:35Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],
