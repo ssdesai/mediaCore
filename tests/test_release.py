@@ -293,6 +293,10 @@ def test_original_year_later_than_year_is_rejected() -> None:
     with pytest.raises(ValidationError, match="original_year"):
         Release.model_validate(payload)
 
+    # The edge: one year past `year` is already too late.
+    with pytest.raises(ValidationError, match="original_year"):
+        make_release(year=SAMPLE_RELEASE_YEAR, original_year=SAMPLE_RELEASE_YEAR + 1)
+
 
 def test_original_year_equal_to_year_is_accepted() -> None:
     """"Never later than `year`" — a reissue in the original's own year is allowed."""
