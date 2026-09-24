@@ -68,8 +68,9 @@ EXPECTED_MEDIA_COUNT = len(EXPECTED_PHOTO_ROLES) + EXPECTED_EXTERNAL_PHOTO_COUNT
 EXPECTED_AUDIO_COUNT = len(EXPECTED_TRACKS)
 EXPECTED_AUDIO_FORMAT = "wav"
 # The fixture is written by this install, so it carries the current on-disk shape:
-# schema 2, since `Track.artist` (INTEGRATION.md §12, decision 2026-09-06).
-EXPECTED_SCHEMA_VERSION = 2
+# schema 3, since `Release.original_year` (INTEGRATION.md §12, decision 2026-09-24).
+EXPECTED_SCHEMA_VERSION = 3
+ORIGINAL_YEAR_FIELD = "original_year"
 EXPECTED_PROVENANCE_KIND = "vinylcat"
 EXPECTED_COLLECTION_LABEL = "Test"
 EXPECTED_LINKS = [
@@ -201,6 +202,15 @@ def test_no_track_carries_a_track_level_artist(release: Release) -> None:
     compilation — so every `Track.artist` is `None`. `None` is absence, not "same as
     the release artist" (decision 2026-09-06)."""
     assert all(track.artist is None for track in release.tracks)
+
+
+def test_original_year_is_null_and_present(bundle_dir: Path, release: Release) -> None:
+    """§11 does not say IT'S SAXY is a reissue, so `original_year` is `None` — and,
+    written by this install, the key is on disk as `null` (decision 2026-09-24)."""
+    assert release.original_year is None
+    on_disk = json.loads((bundle_dir / RELEASE_FILENAME).read_text())
+    assert ORIGINAL_YEAR_FIELD in on_disk
+    assert on_disk[ORIGINAL_YEAR_FIELD] is None
 
 
 def test_media_matches_integration_md(release: Release) -> None:

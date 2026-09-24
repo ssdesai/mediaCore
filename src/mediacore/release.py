@@ -19,7 +19,7 @@ another, or enforces uniqueness.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -27,10 +27,16 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from mediacore.refs import Refs
 
 # Bumped only when the on-disk release.json shape changes (INTEGRATION.md §12). 2 since
-# `Track.artist`: `ContractModel` forbids extras, so a bundle carrying the new key is
-# *refused* by a 0.2.0 reader rather than read with the key ignored — a shape change,
-# not an additive one (decision 2026-09-06).
-SCHEMA_VERSION = 2
+# `Track.artist`, 3 since `Release.original_year`: `ContractModel` forbids extras, so a
+# bundle carrying a new key is *refused* by an older reader rather than read with the
+# key ignored — a shape change, not an additive one (decisions 2026-09-06, 2026-09-24).
+SCHEMA_VERSION = 3
+
+# `Release.original_year` bounds (INTEGRATION.md §3, decision 2026-09-24), mirroring
+# vinylCatalogue spec §6.2 `issue`: no recording predates the phonograph, and the upper
+# bound is the current year, read when a value is validated — a constant would go stale
+# on the first of January.
+EARLIEST_ORIGINAL_YEAR = 1877
 
 # The contract's only closed vocabularies. `format` sits beside `medium` and is the
 # authority's own free text — never parsed, never validated against a list.
@@ -175,6 +181,13 @@ class Link(ContractModel):
 
 
 class Release(ContractModel):
+    """The release. `year` is the year of *this* release; `original_year` is the year
+    the work was first released, set only when this release is a reissue of it. `None`
+    is absence — the source did not say, or this release is the original, whose year
+    `year` already is (a second copy would drift). There is no issue/kind enum: the
+    presence of `original_year` is the reissue signal, so a reissue whose original year
+    is unknown is indistinguishable from an original by design (INTEGRATION.md §3)."""
+
     schema_version: int = SCHEMA_VERSION
     refs: Refs = Field(default_factory=dict)
     provenance: list[Provenance] = Field(default_factory=list)
@@ -183,6 +196,7 @@ class Release(ContractModel):
     labels: list[LabelRef] = Field(default_factory=list)
     year: int | None = None
     released: str | None = None
+    original_year: int | None = None
     country: str | None = None
     medium: Medium
     format: str | None = None
@@ -195,6 +209,27 @@ class Release(ContractModel):
     media: list[MediaFile] = Field(default_factory=list)
     audio: list[AudioFile] = Field(default_factory=list)
     links: list[Link] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _original_year_is_plausible(self) -> Self:
+        """`original_year`, when present, lies between `EARLIEST_ORIGINAL_YEAR` and the
+        current year inclusive, and is never later than `year` when `year` is present —
+        an original cannot postdate its own reissue (§3, decision 2026-09-24)."""
+        if self.original_year is None:
+            return self
+        latest = date.today().year
+        if not EARLIEST_ORIGINAL_YEAR <= self.original_year <= latest:
+            raise ValueError(
+                f"original_year {self.original_year} is outside "
+                f"{EARLIEST_ORIGINAL_YEAR}..{latest}: no recording predates the "
+                f"phonograph, and none comes from a year that has not begun"
+            )
+        if self.year is not None and self.original_year > self.year:
+            raise ValueError(
+                f"original_year {self.original_year} is later than year {self.year}; "
+                f"an original cannot postdate its own reissue"
+            )
+        return self
 
     @model_validator(mode="after")
     def _bundle_files_are_consistent_per_digest(self) -> Self:

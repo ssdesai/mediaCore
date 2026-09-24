@@ -12,6 +12,8 @@ edited by hand, never edited by a test.
   Regenerate with `.venv/bin/python scripts/make_fixture_its_saxy.py`; the generator is
   deterministic, so a regeneration that changes a byte is a bug in the generator.
   Reach it from code with `mediacore.its_saxy_bundle()`, never by hard-coded path.
+  Written at `schema_version` 3; `original_year` is `null` because §11 does not say this
+  pressing is a reissue (and `year` itself is unknown).
 
   **One field in this bundle is invented rather than transcribed.** Every other value
   in `release.json` comes from `INTEGRATION.md` §11, which was read from the live

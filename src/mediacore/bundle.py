@@ -134,9 +134,10 @@ def release_payload(release: Release) -> dict[str, Any]:
     `schema_version` stamped to this install's `SCHEMA_VERSION`.
 
     Reading preserves the file's own version on the model (`read_bundle`), so a
-    schema-1 bundle read by 0.3.0 and written again is labelled **2** — which is what
-    the bytes now are, since the writer dumps today's model and every track carries
-    `artist`. Left at 1 the label would lie: a 0.2.0 reader would fail the file on
+    schema-1 or schema-2 bundle read by 0.4.0 and written again is labelled **3** —
+    which is what the bytes now are, since the writer dumps today's model: every track
+    carries `artist` and the release carries `original_year`. Left at the old number the
+    label would lie: an older reader would fail the file on
     `extra="forbid"` instead of being told to upgrade, and a store would list a version
     only a newer `mediacore` can parse (§12, §13 2026-09-06). The `Release` handed in is
     never mutated — only the payload is stamped, so the in-memory object still says what

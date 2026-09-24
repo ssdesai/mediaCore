@@ -175,6 +175,7 @@ MEDIUM = "vinyl"
 RELEASE_FORMAT = "Vinyl, LP, Album"
 YEAR = None          # Discogs says 0; §11 records the year as unknown
 RELEASED = None
+ORIGINAL_YEAR = None  # §11 does not say this pressing is a reissue (decision 2026-09-24)
 GENRES = [
     "Jazz",
     "Rock",
@@ -330,6 +331,7 @@ def build_release() -> tuple[Release, dict[str, bytes]]:
         ],
         year=YEAR,
         released=RELEASED,
+        original_year=ORIGINAL_YEAR,
         country=COUNTRY,
         medium=MEDIUM,
         format=RELEASE_FORMAT,

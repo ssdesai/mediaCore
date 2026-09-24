@@ -45,9 +45,19 @@ TRACK_ARTIST = "Peter Tetteroo"
 FROZEN_SCHEMA_1_BUNDLE = Path(__file__).parent / "assets" / "its-saxy-schema-1"
 FROZEN_SCHEMA_VERSION = 1
 FROZEN_TRACK_COUNT = 12
-# One past this install's SCHEMA_VERSION (2): the bundle a *future* mediacore writes,
+# The frozen release.json mediacore 0.3.0 wrote, before `Release.original_year` existed
+# (tests/assets/README.md). Read in place, like the schema-1 asset.
+FROZEN_SCHEMA_2_BUNDLE = Path(__file__).parent / "assets" / "its-saxy-schema-2"
+FROZEN_SCHEMA_2_VERSION = 2
+# What this install stamps on every bundle it writes, as a literal so a bump is a
+# deliberate edit here (INTEGRATION.md §12, §13 2026-09-24).
+CURRENT_SCHEMA_VERSION = 3
+# One past this install's SCHEMA_VERSION (3): the bundle a *future* mediacore writes,
 # which this one must refuse rather than half-read.
-UNSUPPORTED_SCHEMA_VERSION = 3
+UNSUPPORTED_SCHEMA_VERSION = 4
+# A reissue's original year, carried across the disk boundary (§3, `original_year`).
+SAMPLE_RELEASE_YEAR = 1974
+SAMPLE_ORIGINAL_YEAR = 1969
 
 
 def built(tmp_path: Path) -> tuple[Release, dict[str, Path]]:
@@ -207,8 +217,21 @@ def test_read_bundle_rejects_release_json_with_a_newer_schema_version(tmp_path):
         read_bundle(dest)
 
 
-def test_read_bundle_rejects_a_schema_version_3_bundle(tmp_path):
-    """The guard still bites after the bump to 2: schema 3 is a shape this install has
+def test_write_bundle_stamps_schema_version_3(tmp_path):
+    """A bundle written by this install is labelled 3 — the shape that carries
+    `Release.original_year` (§12, §13 2026-09-24)."""
+    release, sources = built(tmp_path)
+    dest = tmp_path / BUNDLE_DIRNAME
+    write_bundle(release, dest, sources)
+
+    payload = json.loads((dest / RELEASE_FILENAME).read_text())
+    assert SCHEMA_VERSION == CURRENT_SCHEMA_VERSION
+    assert payload["schema_version"] == CURRENT_SCHEMA_VERSION
+    assert "original_year" in payload
+
+
+def test_read_bundle_rejects_a_schema_version_4_bundle(tmp_path):
+    """The guard still bites after the bump to 3: schema 4 is a shape this install has
     never seen, and reading it would be guessing (INTEGRATION.md §12)."""
     assert UNSUPPORTED_SCHEMA_VERSION > SCHEMA_VERSION
     release, sources = built(tmp_path)
@@ -266,6 +289,61 @@ def test_write_bundle_stamps_the_current_schema_version_on_a_schema_1_release(tm
     assert rewritten.schema_version == SCHEMA_VERSION
     assert len(rewritten.tracks) == FROZEN_TRACK_COUNT
     assert all(track.artist is None for track in rewritten.tracks)
+
+
+# --- Release.original_year across the disk boundary (§3, decision 2026-09-24) ---
+
+
+def test_original_year_survives_write_and_read(tmp_path):
+    release, sources = built(tmp_path)
+    release = release.model_copy(
+        update={"year": SAMPLE_RELEASE_YEAR, "original_year": SAMPLE_ORIGINAL_YEAR}
+    )
+    dest = tmp_path / BUNDLE_DIRNAME
+    write_bundle(release, dest, sources)
+
+    reread = read_bundle(dest)
+    assert reread.original_year == SAMPLE_ORIGINAL_YEAR
+    assert reread == release
+
+
+def test_absent_original_year_is_written_as_null(tmp_path):
+    """The writer dumps the model whole, so absence is a present `null` key — as
+    `Track.artist` is (§13 2026-09-06)."""
+    release, sources = built(tmp_path)
+    dest = tmp_path / BUNDLE_DIRNAME
+    write_bundle(release, dest, sources)
+
+    payload = json.loads((dest / RELEASE_FILENAME).read_text())
+    assert payload["original_year"] is None
+    assert read_bundle(dest).original_year is None
+
+
+def test_read_bundle_reads_the_frozen_schema_2_bundle():
+    """A 0.4.0 reader still reads a bundle written by 0.3.0 (§12): no `original_year`
+    key at all, and the field defaults to `None`."""
+    payload = json.loads((FROZEN_SCHEMA_2_BUNDLE / RELEASE_FILENAME).read_text())
+    assert payload["schema_version"] == FROZEN_SCHEMA_2_VERSION
+    assert "original_year" not in payload
+
+    release = read_bundle(FROZEN_SCHEMA_2_BUNDLE, verify=False)
+    assert release.schema_version == FROZEN_SCHEMA_2_VERSION
+    assert release.original_year is None
+
+
+def test_write_bundle_stamps_the_current_schema_version_on_a_schema_2_release(tmp_path):
+    """Rewriting a schema-2 bundle relabels it 3 and adds the `original_year` key; the
+    release the reader returned still says 2 (§13 2026-09-06, stamping)."""
+    stale = read_bundle(FROZEN_SCHEMA_2_BUNDLE, verify=False)
+    without_files = stale.model_copy(update={"media": [], "audio": []})
+    dest = tmp_path / BUNDLE_DIRNAME
+
+    write_bundle(without_files, dest, {})
+
+    assert without_files.schema_version == FROZEN_SCHEMA_2_VERSION
+    payload = json.loads((dest / RELEASE_FILENAME).read_text())
+    assert payload["schema_version"] == CURRENT_SCHEMA_VERSION
+    assert payload["original_year"] is None
 
 
 # --- size_bytes is verified against the actual audio file on disk -------------------

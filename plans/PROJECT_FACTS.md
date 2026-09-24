@@ -24,8 +24,16 @@ executors share no context, so repeating a fact across plans in a batch is corre
   `from mediacore import Release, ...`.
 - Models are `extra="forbid"` and round-trip through `model_dump(mode="json")` /
   `model_validate` without loss.
-- `SCHEMA_VERSION` is **2** and the package is **0.3.0** (`INTEGRATION.md` §12, §13
-  2026-09-06). `Track { position, title, artist, duration, credits }`: `artist` is the
+- `SCHEMA_VERSION` is **3** and the package is **0.4.0** (`INTEGRATION.md` §12, §13
+  2026-09-24). `Release.original_year: int | None`, after `released`, is the year the
+  *work* was first released when this release is a reissue; `None` is absence (unknown,
+  or this release is the original — `year` already is its year). Validated on
+  `Release`: 1877 (`EARLIEST_ORIGINAL_YEAR`) to the current year inclusive, read at
+  validation time, and never later than `year` when `year` is present. No issue/kind
+  enum: presence is the reissue signal. A schema-1 or schema-2 bundle still reads with
+  the field `None`; `write_bundle` stamps 3.
+- Schema 2 / 0.3.0 (§13 2026-09-06) added `Track { position, title, artist, duration,
+  credits }`: `artist` is the
   track-level artist a compilation prints, optional and defaulting to `None`, and `None`
   is absence — never "same as the release artist". Because extras are forbidden, adding
   a field is an on-disk shape change and not an additive one, which is why the schema

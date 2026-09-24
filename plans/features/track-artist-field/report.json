@@ -1,6 +1,6 @@
 {
   "slug": "track-artist-field",
-  "generated_at": "2026-09-07T15:49:26.471043+00:00",
+  "generated_at": "2026-09-24T16:47:47.007152+00:00",
   "cost": {
     "method": "direct",
     "planning": 0.0,
@@ -23,7 +23,30 @@
     "orphan_usage_plans": [],
     "recovered": 0.0,
     "unrecoverable_attempts": [],
-    "partially_recovered_attempts": []
+    "partially_recovered_attempts": [],
+    "shared_sessions": [
+      {
+        "session_id": "ed088063-7aea-498e-84b1-7503d4bd88e1",
+        "cost_usd": 29.9342345,
+        "also_claimed_by": [
+          "agentTooling/recovered-duration-lower-bound",
+          "agentTooling/tooling-backlog-2026-09-06",
+          "humanNetworkMap/delete-error-surface",
+          "humanNetworkMap/error-surface-completion",
+          "humanNetworkMap/mediacore-0-3-0",
+          "humanNetworkMap/validation-and-fetch-error-surface",
+          "musicMap/integration-test-database",
+          "musicMap/mediacore-0-3-0",
+          "musicMap/ruff-format-gate",
+          "vinylCatalogue/backlog-assertions-2026-09",
+          "vinylCatalogue/bundle-track-artist",
+          "vinylCatalogue/fold-duplicated-rows",
+          "vinylCatalogue/keyed-promotion-pairing",
+          "vinylCatalogue/show-selected-and-refetch-flake",
+          "vinylCatalogue/staged-commit-journal"
+        ]
+      }
+    ]
   },
   "time": {
     "method": "direct",
@@ -38,6 +61,7 @@
     "total_s": 64858.0,
     "total_is_partial": false,
     "missing_duration_plans": [],
+    "recovered_duration_plans": [],
     "wall_clock": {
       "first_at": "2026-09-06T22:36:13+00:00",
       "last_at": "2026-09-06T22:58:48+00:00",
@@ -58,6 +82,20 @@
     "direct_build_s": 214.0,
     "gate_s": 60.0
   },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 35.94624075,
+      "build_min": 1076.1166666666666,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.0128595,
+      "review_min": 4.85,
+      "review_plan": "01-review-opus",
+      "verdict": null,
+      "escalations_file": null
+    }
+  ],
   "planning_cost_split": {
     "subagents": 6.01200625,
     "sessions": 29.934234500000002

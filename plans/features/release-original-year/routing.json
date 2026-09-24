@@ -1,0 +1,37 @@
+{
+  "captured_at": "2026-09-24T16:47:36Z",
+  "cost_usd": 12.555543,
+  "duration_s": 3350,
+  "ended_at": "2026-09-24T16:47:36Z",
+  "features_started": [
+    {
+      "at": "2026-09-24T16:33:44Z",
+      "slug": "release-original-year"
+    },
+    {
+      "at": "2026-09-24T16:37:53Z",
+      "slug": "gate-db-name-and-alembic-readme"
+    },
+    {
+      "at": "2026-09-24T16:37:53Z",
+      "slug": "backlog-assertions-2026-09-24"
+    },
+    {
+      "at": "2026-09-24T16:42:29Z",
+      "slug": "discogs-write-serialization"
+    },
+    {
+      "at": "2026-09-24T16:43:49Z",
+      "slug": "browse-records-issue-facet"
+    },
+    {
+      "at": "2026-09-24T16:45:08Z",
+      "slug": "playwright-real-parallel"
+    }
+  ],
+  "git_branch": "HEAD",
+  "launched_in": "/Users/sahildesai/dev",
+  "model": "claude-fable-5-1",
+  "session_id": "dc8c52a0-53c9-40e9-bccd-aba4a521b026",
+  "started_at": "2026-09-24T15:51:45Z"
+}

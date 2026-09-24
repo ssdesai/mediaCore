@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+from datetime import date
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -34,10 +36,24 @@ from conftest import (
     make_release,
 )
 
-# The on-disk shape this install writes (INTEGRATION.md §12, §13 2026-09-06). Pinned as a
-# literal as well as against SCHEMA_VERSION so a bump is a deliberate edit here, not a
-# test that silently follows the source.
-CURRENT_SCHEMA_VERSION = 2
+# The on-disk shape this install writes (INTEGRATION.md §12, §13 2026-09-06 and
+# 2026-09-24). Pinned as a literal as well as against SCHEMA_VERSION so a bump is a
+# deliberate edit here, not a test that silently follows the source.
+CURRENT_SCHEMA_VERSION = 3
+
+# `Release.original_year` bounds (§3, decision 2026-09-24), pinned as literals rather
+# than imported so a change to the contract's bound is a deliberate edit here: no
+# recording predates the phonograph, and none can come from a year that has not begun.
+EARLIEST_ORIGINAL_YEAR = 1877
+SAMPLE_RELEASE_YEAR = 1974
+SAMPLE_ORIGINAL_YEAR = 1969
+
+# The frozen schema-2 release.json, as mediacore 0.3.0 wrote it — before
+# `Release.original_year` existed (tests/assets/README.md). Never regenerated.
+FROZEN_SCHEMA_2_RELEASE_JSON = (
+    Path(__file__).parent / "assets" / "its-saxy-schema-2" / "release.json"
+)
+FROZEN_SCHEMA_2_VERSION = 2
 
 # A track-level artist: what a compilation, split, or various-artists release prints
 # against one track (§3, `Track.artist`).
@@ -46,6 +62,8 @@ SAMPLE_TRACK_ARTIST = "Peter Tetteroo"
 # The name the wheel and every consumer's pin install under; the metadata side of the
 # version the package also states in `mediacore.__version__`.
 DISTRIBUTION_NAME = "mediacore"
+# The package version `CURRENT_SCHEMA_VERSION` ships in; a literal for the same reason.
+CURRENT_PACKAGE_VERSION = "0.4.0"
 
 
 def full_release() -> Release:
@@ -78,8 +96,9 @@ def full_release() -> Release:
                 "refs": {"discogs:label": "123456"},
             }
         ],
-        year=1974,
+        year=SAMPLE_RELEASE_YEAR,
         released="1974-06",
+        original_year=SAMPLE_ORIGINAL_YEAR,
         country="US",
         medium="vinyl",
         format="LP",
@@ -143,8 +162,9 @@ def test_release_round_trips() -> None:
 
 
 def test_schema_version_defaults_to_the_installed_version() -> None:
-    """`SCHEMA_VERSION` is 2 since `Track.artist` (§12): `ContractModel` forbids extras,
-    so a bundle carrying `artist` is a new on-disk shape, not an additive one."""
+    """`SCHEMA_VERSION` is 3 since `Release.original_year` (§12), as it was 2 since
+    `Track.artist`: `ContractModel` forbids extras, so a bundle carrying a new key is a
+    new on-disk shape, not an additive one."""
     assert SCHEMA_VERSION == CURRENT_SCHEMA_VERSION
 
     release = make_release()
@@ -157,10 +177,15 @@ def test_schema_version_defaults_to_the_installed_version() -> None:
 
 def test_package_version_matches_the_installed_distribution() -> None:
     """`mediacore.__version__` and `pyproject.toml`'s `version` are two hand-kept copies
-    of one number — three with the `v0.3.0` tag consumers pin (§12) — and a bump that
+    of one number — three with the `v0.4.0` tag consumers pin (§12) — and a bump that
     moves one and not the other is otherwise green everywhere. The gate installs the
     package, so the metadata side of this assertion is the real one."""
     assert mediacore.__version__ == importlib.metadata.version(DISTRIBUTION_NAME)
+
+
+def test_package_version_is_the_one_schema_3_ships_in() -> None:
+    """Schema 3 is package 0.4.0 (§12, §13 2026-09-24): the minor moves with the shape."""
+    assert mediacore.__version__ == CURRENT_PACKAGE_VERSION
 
 
 def test_track_artist_defaults_to_none() -> None:
@@ -189,6 +214,114 @@ def test_track_artist_round_trips() -> None:
     assert reloaded == release
     assert reloaded.tracks[0].artist == SAMPLE_TRACK_ARTIST
     assert reloaded.tracks[1].artist is None
+
+
+# --- Release.original_year (§3, decision 2026-09-24) ---
+
+
+def test_original_year_defaults_to_none() -> None:
+    """Absence is absence: `None` means the source did not say, or this release is the
+    original (whose year `year` already is). It is not "same as `year`"."""
+    release = make_release()
+    assert release.original_year is None
+    assert release.model_dump(mode="json")["original_year"] is None
+
+
+def test_original_year_round_trips_when_set() -> None:
+    release = make_release(year=SAMPLE_RELEASE_YEAR, original_year=SAMPLE_ORIGINAL_YEAR)
+
+    dumped = release.model_dump(mode="json")
+    assert dumped["original_year"] == SAMPLE_ORIGINAL_YEAR
+
+    reloaded = Release.model_validate(json.loads(json.dumps(dumped)))
+    assert reloaded == release
+    assert reloaded.original_year == SAMPLE_ORIGINAL_YEAR
+
+
+def test_original_year_round_trips_when_absent() -> None:
+    release = make_release(year=SAMPLE_RELEASE_YEAR)
+
+    dumped = release.model_dump(mode="json")
+    assert "original_year" in dumped
+    assert dumped["original_year"] is None
+
+    reloaded = Release.model_validate(json.loads(json.dumps(dumped)))
+    assert reloaded == release
+    assert reloaded.original_year is None
+
+
+def test_original_year_sits_after_released() -> None:
+    """Placement is part of the decision: the key follows `released` on the wire."""
+    keys = list(make_release().model_dump(mode="json"))
+    assert keys.index("original_year") == keys.index("released") + 1
+
+
+def test_original_year_accepts_its_inclusive_bounds() -> None:
+    this_year = date.today().year
+    assert make_release(original_year=EARLIEST_ORIGINAL_YEAR).original_year == (
+        EARLIEST_ORIGINAL_YEAR
+    )
+    assert make_release(original_year=this_year).original_year == this_year
+
+
+@pytest.mark.parametrize(
+    "bad_year",
+    [EARLIEST_ORIGINAL_YEAR - 1, 0, -1, date.today().year + 1],
+)
+def test_original_year_outside_its_bounds_is_rejected(bad_year: int) -> None:
+    """Between 1877 (no recording predates the phonograph) and the current year,
+    inclusive — vinylCatalogue spec §6.2 `issue`'s bound and reason."""
+    with pytest.raises(ValidationError, match="original_year"):
+        make_release(original_year=bad_year)
+
+
+def test_original_year_out_of_bounds_is_rejected_through_model_validate() -> None:
+    """A hand-edited `release.json` meets the same check as `Release(...)`."""
+    payload = make_release().model_dump(mode="json")
+    payload["original_year"] = EARLIEST_ORIGINAL_YEAR - 1
+    with pytest.raises(ValidationError, match="original_year"):
+        Release.model_validate(payload)
+
+
+def test_original_year_later_than_year_is_rejected() -> None:
+    """An original cannot postdate its own reissue."""
+    with pytest.raises(ValidationError, match="original_year"):
+        make_release(year=SAMPLE_ORIGINAL_YEAR, original_year=SAMPLE_RELEASE_YEAR)
+
+    payload = make_release(year=SAMPLE_ORIGINAL_YEAR).model_dump(mode="json")
+    payload["original_year"] = SAMPLE_RELEASE_YEAR
+    with pytest.raises(ValidationError, match="original_year"):
+        Release.model_validate(payload)
+
+    # The edge: one year past `year` is already too late.
+    with pytest.raises(ValidationError, match="original_year"):
+        make_release(year=SAMPLE_RELEASE_YEAR, original_year=SAMPLE_RELEASE_YEAR + 1)
+
+
+def test_original_year_equal_to_year_is_accepted() -> None:
+    """"Never later than `year`" — a reissue in the original's own year is allowed."""
+    release = make_release(year=SAMPLE_RELEASE_YEAR, original_year=SAMPLE_RELEASE_YEAR)
+    assert release.original_year == SAMPLE_RELEASE_YEAR
+
+
+def test_original_year_without_year_is_accepted() -> None:
+    """The ordering check applies only when `year` is present; IT'S SAXY's own `year`
+    is unknown, and a reissue of unknown pressing year may still name its original's."""
+    release = make_release(year=None, original_year=SAMPLE_ORIGINAL_YEAR)
+    assert release.year is None
+    assert release.original_year == SAMPLE_ORIGINAL_YEAR
+
+
+def test_frozen_schema_2_release_json_reads_with_original_year_none() -> None:
+    """A 0.4.0 reader still reads what 0.3.0 wrote (§12): the schema-2 shape has no
+    `original_year` key at all, and the field defaults to `None`."""
+    payload = json.loads(FROZEN_SCHEMA_2_RELEASE_JSON.read_text())
+    assert payload["schema_version"] == FROZEN_SCHEMA_2_VERSION
+    assert "original_year" not in payload
+
+    release = Release.model_validate(payload)
+    assert release.schema_version == FROZEN_SCHEMA_2_VERSION
+    assert release.original_year is None
 
 
 def test_credit_has_no_artist_field() -> None:

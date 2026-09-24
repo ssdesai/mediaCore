@@ -8,10 +8,19 @@ the current code proves nothing.
 - `its-saxy-schema-1/release.json` — the IT'S SAXY bundle's `release.json` exactly as
   `mediacore` 0.2.0 wrote it (`schema_version` 1, no `artist` key on any track), copied
   from the commit before `Track.artist` landed. `tests/test_bundle.py` reads it through
-  `read_bundle(..., verify=False)` to pin that a 0.3.0 reader still reads a schema-1
+  `read_bundle(..., verify=False)` to pin that this install still reads a schema-1
   bundle and defaults every `Track.artist` to `None`, and writes it back out to pin that
-  the writer **stamps** `schema_version` — the re-written bundle is labelled 2, the
+  the writer **stamps** `schema_version` — the re-written bundle carries the current
+  version, the
   release the reader returned still says 1 (`INTEGRATION.md` §12, §13 2026-09-06). It is
   the `release.json` alone: `verify=False` touches no media, so the bundle's `media/`
   files are deliberately not duplicated under `tests/`, and the re-write empties `media`
   and `audio` because there are no bytes to hand `write_bundle`.
+- `its-saxy-schema-2/release.json` — the IT'S SAXY bundle's `release.json` exactly as
+  `mediacore` 0.3.0 wrote it (`schema_version` 2, `artist` on every track, no
+  `original_year` key), copied from the checked-in fixture before `Release.original_year`
+  landed. `tests/test_release.py` validates it through `Release.model_validate` and
+  `tests/test_bundle.py` reads it through `read_bundle(..., verify=False)`, both pinning
+  that a 0.4.0 reader still reads a schema-2 bundle with `original_year` `None`;
+  `test_bundle.py` also re-writes it to pin the stamp to 3 (`INTEGRATION.md` §12, §13
+  2026-09-24). `release.json` alone, for the same reasons as the schema-1 asset.
