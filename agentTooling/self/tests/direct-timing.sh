@@ -41,7 +41,7 @@ cp "$HERE/plan-runner-roots.sh" "$AT/plan-runner-roots.sh"
 # stamp-timing.sh is this feature's deliverable; a missing cp must fail every assertion
 # below loudly rather than abort the script (no `set -e`, and the rc is not checked).
 cp "$HERE/stamp-timing.sh" "$AT/stamp-timing.sh" 2>/dev/null || true
-for f in pricing.py roots.py transcript.py report.py routing.py; do
+for f in pricing.py rates_history.json roots.py transcript.py report.py routing.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f"
 done
 

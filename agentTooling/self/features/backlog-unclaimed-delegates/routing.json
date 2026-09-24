@@ -1,0 +1,21 @@
+{
+  "captured_at": "2026-09-23T17:09:54Z",
+  "cost_usd": 4.199791,
+  "duration_s": 5110,
+  "ended_at": "2026-09-23T17:09:54Z",
+  "features_started": [
+    {
+      "at": "2026-09-23T15:51:39Z",
+      "slug": "litellm-pricing"
+    },
+    {
+      "at": "2026-09-23T16:50:32Z",
+      "slug": "backlog-unclaimed-delegates"
+    }
+  ],
+  "git_branch": "main",
+  "launched_in": "/Users/sahildesai/dev/agentTooling",
+  "model": "claude-opus-5-5",
+  "session_id": "f95dbb82-60da-4017-af85-60cd44c218f2",
+  "started_at": "2026-09-23T15:44:44Z"
+}

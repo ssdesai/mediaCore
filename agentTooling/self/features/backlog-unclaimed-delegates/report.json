@@ -1,0 +1,171 @@
+{
+  "slug": "backlog-unclaimed-delegates",
+  "generated_at": "2026-09-23T17:10:02.996812+00:00",
+  "cost": {
+    "method": "hand",
+    "planning": 0.0,
+    "implementer": 0.0,
+    "build": 0.0,
+    "verify": 0.0,
+    "review": 0.8560239999999999,
+    "total": 0.8560239999999999,
+    "planning_pct": 0.0,
+    "build_pct": 0.0,
+    "verify_pct": 0.0,
+    "review_pct": 100.0,
+    "cost_per_plan": 0.42801199999999995,
+    "cost_per_file": 0.42801199999999995,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "hand",
+    "planning_sessions_s": 0,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 0,
+    "build_s": 0.0,
+    "verify_s": 0.0,
+    "review_s": 712.102,
+    "executor_s": 712.102,
+    "total_s": 712.102,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-23T16:55:03+00:00",
+      "last_at": "2026-09-23T17:10:01+00:00",
+      "batch_span_s": 898.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 721.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 721.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-09-23T17:10:01+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/64"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.4666664,
+      "review_min": 2.817633333333333,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.38935759999999997,
+      "review_min": 9.050733333333334,
+      "review_plan": "02-review-sonnet",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 0.0
+  },
+  "cold_start_tax_tokens": 78598,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 17,
+      "total_cost_usd": 0.4666664,
+      "total_duration_s": 169.058,
+      "flags": []
+    },
+    {
+      "model": "sonnet",
+      "plan_count": 1,
+      "total_turns": 25,
+      "total_cost_usd": 0.38935759999999997,
+      "total_duration_s": 543.044,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "02-review-sonnet",
+      "edit_count": 3,
+      "files_edited": 2,
+      "churn_ratio": 1.5
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 39,
+      "loc_changed": 51
+    },
+    {
+      "plan": "02-review-sonnet",
+      "plan_md_lines": 33,
+      "loc_changed": 61
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/Users/sahildesai/dev/agentTooling/.worktrees/backlog-unclaimed-delegates/self/BACKLOG.md",
+      "tool": "Read",
+      "plans": [
+        "01-review-opus",
+        "02-review-sonnet"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "self/BACKLOG.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-sonnet",
+      "edited_not_listed": [
+        "self/BACKLOG.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": [],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and this feature stamped no `checkpoint` event \u2014 nothing divides it by round, so all of it sits in round 1"
+    }
+  ]
+}

@@ -52,7 +52,7 @@ copy_tooling() {
   for f in feature-start.sh plan-runner-roots.sh; do
     cp "$HERE/$f" "$dest/$f" 2>/dev/null || true
   done
-  for f in roots.py manifest.py pricing.py transcript.py routing.py; do
+  for f in roots.py manifest.py pricing.py rates_history.json transcript.py routing.py; do
     cp "$HERE/analysis/$f" "$dest/analysis/$f" 2>/dev/null || true
   done
   cp "$HERE/templates/plans/features/TEMPLATE.md" \

@@ -68,8 +68,8 @@ set -uo pipefail
 #       delegate whose brief names S and that no route claims is a WARNING naming its id
 #       and how to pin it, never a refusal, and a sibling briefed for S-two is not named;
 #   C3. the capture prints the residue the retired weekly sweep used to print (design
-#       §3.5), after what planning.json claims and before its commit: the rate table's
-#       date, and the corpus-wide sessions and delegates no feature claims — the `main`
+#       §3.5), after what planning.json claims and before its commit: the rate history's
+#       checked date and its `refresh_rates.py --check` against a fixture (C3a2), and the corpus-wide sessions and delegates no feature claims — the `main`
 #       session with no `feature-start.sh` call is listed, the router that started S is
 #       not, and neither listing makes the capture exit non-zero;
 #   C2. a second capture after more work — a later transcript instant — moves `to`
@@ -146,9 +146,10 @@ set -uo pipefail
 #   L1. a feature merged under the old flow and never closed — its worktree the legacy
 #       sibling R-S — captures from the primary after the merge: the session launched in
 #       R-S claimed by branch, `to` stamped, written locally, nothing committed or pushed;
-#   C4. a rate table older than its staleness threshold warns in that residue and still
-#       captures: every figure depends on the table, and a table nobody re-checked is not
-#       a reason to leave a feature uncaptured while its transcripts exist;
+#   C4. a rate history whose `checked` is older than the staleness threshold warns in
+#       that residue and still captures: every figure depends on the history, and one
+#       nobody re-checked is not a reason to leave a feature uncaptured while its
+#       transcripts exist;
 #   W1. a capture whose only branch session ended hours ago stamps session_window.to one
 #       second after the last instant of that session AND of its delegate, whichever ran
 #       later, at second resolution, not at its own wall clock;
@@ -189,7 +190,7 @@ for f in feature-start.sh feature-capture.sh feature-close.sh plan-runner-roots.
          run-plans.sh run-verify.sh run-review.sh run-batch.sh stamp-timing.sh; do
   cp "$HERE/$f" "$AT/$f" 2>/dev/null || true
 done
-for f in pricing.py roots.py transcript.py capture_planning.py report.py manifest.py routing.py recover_attempts.py; do
+for f in pricing.py rates_history.json refresh_rates.py roots.py transcript.py capture_planning.py report.py manifest.py routing.py recover_attempts.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f" 2>/dev/null || true
 done
 cp "$HERE/templates/plans/features/TEMPLATE.md" "$AT/templates/plans/features/TEMPLATE.md"
@@ -300,6 +301,10 @@ unset PR_AUTO_MERGE
 AUTO_MERGE_CALL_RE='^pr merge .*--auto'
 # Where the stub gh records the origin branch's head at the moment of a `pr merge` (X2).
 export GH_MERGE_HEAD_OUT="$TMP/merge-head"
+# Where every capture's `refresh_rates.py --check` reads LiteLLM's price list from: the
+# committed fixture, never the network (feature-capture.sh's RATES_CHECK_SOURCE seam). It
+# differs from the seeded history, so C3 can see the check's result in the residue.
+export RATES_CHECK_SOURCE="$HERE/self/tests/fixtures/pricing/litellm-sample.json"
 # The first line of a review report, which is the verdict the runner reads back
 # (design §3; VERDICT_PREFIX and friends in plan-runner-roots.sh).
 VERDICT_LINE_CLEAN="Verdict: clean"
@@ -884,6 +889,8 @@ residue_of() { awk '/^=== residue ===/{f=1} /^=== commit ===/{f=0} f' <<<"$1"; }
 residue="$(residue_of "$out")"
 check "C3a. the capture prints a residue section with the rate table's date" \
   '[[ -n "$residue" ]] && grep -q "rates  *verified " <<<"$residue"'
+check "C3a2. ... and the LiteLLM check's result as news, naming a model that would change" \
+  'grep -q "rates .*claude-opus-5-5" <<<"$residue" && grep -q "WARN .*refresh_rates.py" <<<"$residue"'
 check "C3b. ... an unclaimed listing naming the main session no feature claims" \
   'grep -q "$SESSION_M" <<<"$residue"'
 check "C3c. ... and the delegates nobody claimed" 'grep -q "$AGENT_D" <<<"$residue"'
@@ -1511,20 +1518,20 @@ git -C "$AT" commit -q -m "$SLUGL: the legacy capture's records"
 # must not stop a feature being captured while its transcripts still exist. Run against
 # the primary's copy, where the capture commits nothing, so the edit below cannot reach a
 # cost commit.
-cp "$AT/analysis/pricing.py" "$TMP/pricing.py.before"
-python3 - "$AT/analysis/pricing.py" <<'PY'
-import re, sys
+cp "$AT/analysis/rates_history.json" "$TMP/rates_history.json.before"
+python3 - "$AT/analysis/rates_history.json" <<'PY'
+import json, sys
 path = sys.argv[1]
-text = open(path).read()
-text, n = re.subn(r'^RATES_VERIFIED = "[^"]*"', 'RATES_VERIFIED = "2000-01-01"', text, count=1, flags=re.M)
-assert n == 1, "no RATES_VERIFIED assignment in %s" % path
-open(path, "w").write(text)
+history = json.load(open(path))
+assert "checked" in history, "no checked date in %s" % path
+history["checked"] = "2000-01-01"
+open(path, "w").write(json.dumps(history, indent=2) + "\n")
 PY
 outs="$(capture "$AT" "$SLUGL")"; rcs=$?
-check "C4a. a capture over a stale rate table still exits 0 (got $rcs)" '[[ $rcs -eq 0 ]]'
-check "C4b. ... warning in the residue that the table needs re-checking" \
-  'grep -q "rate table is stale" <<<"$(residue_of "$outs")"'
-cp "$TMP/pricing.py.before" "$AT/analysis/pricing.py"
+check "C4a. a capture over a stale rate history still exits 0 (got $rcs)" '[[ $rcs -eq 0 ]]'
+check "C4b. ... warning in the residue that the history needs re-checking" \
+  'grep -q "rate history is stale" <<<"$(residue_of "$outs")"'
+cp "$TMP/rates_history.json.before" "$AT/analysis/rates_history.json"
 # That run rewrote the legacy feature's report locally, as every post-merge capture does.
 # Commit it: the starts below refuse a primary with work in progress in it.
 git -C "$AT" add -A
@@ -1768,6 +1775,51 @@ check "A2b. ... naming that path" 'grep -q "$SIBLING_REL" <<<"$outa2"'
 check "A2c. ... and writing nothing: that one path is still the only dirt (got: $(dirty_names "$WT_TWO" | tr "\n" " "))" \
   '[[ "$(dirty_names "$WT_TWO")" == "$SIBLING_REL" ]]'
 git -C "$WT_TWO" checkout -- "$SIBLING_REL"
+
+# ── RB. a router that built its feature is refused until it is pinned ─────────
+# self/features/router-built-pin: the session that ran feature-start.sh without --pin is
+# the feature's router, and its cost is routing overhead. When that same session then
+# works in the feature's worktree, it built the feature, and without a pin the build's
+# cost is in nobody's total. The close refuses before the PR and names the remedy,
+# `manifest.py pin-session`; once pinned, the same close exits 0 and the pin rides the
+# cost-records commit.
+RB_SLUG="lifecycle-router-built"
+RB_ROUTER="rb000000-0000-0000-0000-000000000030"
+RB_PROJ="$(project_dir "$AT")"
+mkdir -p "$RB_PROJ"
+bash_tool_line "$RB_ROUTER" "$AT" "main" "msg-rb1" "$MODEL" "$(now_z)" \
+  "./feature-start.sh --self $RB_SLUG" 100 200 > "$RB_PROJ/$RB_ROUTER.jsonl"
+start_as "$RB_ROUTER" "$RB_SLUG" --no-gate >/dev/null
+RBWT="$(wt_path "$RB_SLUG")"
+RBFD="$RBWT/self/features/$RB_SLUG"
+review_ready "$RB_SLUG" "rb000000-0000-0000-0000-000000000031"
+review "$RBWT" "$RB_SLUG" >/dev/null
+# The router then moved into the worktree and worked there, instead of a coordinator
+# launched in it.
+bash_tool_line "$RB_ROUTER" "$RBWT" "main" "msg-rb2" "$MODEL" "$(now_z)" "ls" 100 200 \
+  >> "$RB_PROJ/$RB_ROUTER.jsonl"
+rb_status_before="$(git -C "$RBWT" status --porcelain --untracked-files=all)"
+rb_head_before="$(git -C "$RBWT" rev-parse HEAD)"
+: > "$GH_LOG"
+outrb="$(close "$RBWT" "$RB_SLUG")"; rcrb=$?
+check "RBa. the close refuses a feature its unpinned router built (got $rcrb)" \
+  '[[ $rcrb -ne 0 ]] && grep -q "$RB_ROUTER" <<<"$outrb"'
+check "RBb. ... naming the remedy, pin-session with that id" \
+  'grep -q "pin-session $RB_ROUTER" <<<"$outrb"'
+check "RBc. ... before any PR call, and with nothing written or committed" \
+  '[[ ! -s "$GH_LOG" && "$(git -C "$RBWT" rev-parse HEAD)" == "$rb_head_before" && "$(git -C "$RBWT" status --porcelain --untracked-files=all)" == "$rb_status_before" ]]'
+outpin="$(HOME="$FAKE_HOME" python3 -B "$RBWT/analysis/manifest.py" --self "$RB_SLUG" pin-session "$RB_ROUTER" 2>&1)"; rcpin=$?
+check "RBd. pin-session adds the router to the fence's sessions (exit $rcpin)" \
+  '[[ $rcpin -eq 0 && "$(fence "$RBFD/README.md" "d[\"sessions\"] == [\"$RB_ROUTER\"]")" == "True" ]]'
+cp "$RBFD/README.md" "$TMP/rb-manifest.after-pin"
+HOME="$FAKE_HOME" python3 -B "$RBWT/analysis/manifest.py" --self "$RB_SLUG" pin-session "$RB_ROUTER" >/dev/null 2>&1
+check "RBe. ... and a second pin of the same id changes nothing" \
+  'cmp -s "$TMP/rb-manifest.after-pin" "$RBFD/README.md"'
+outrb2="$(close "$RBWT" "$RB_SLUG")"; rcrb2=$?
+check "RBf. pinned, the same close exits 0 — the refusal was the missing pin and nothing else (got $rcrb2)" \
+  '[[ $rcrb2 -eq 0 ]]'
+check "RBg. ... and the pin rides the cost-records commit" \
+  '[[ "$(git -C "$RBWT" log -1 --format=%s)" == "$RB_SLUG: cost records" ]] && git -C "$RBWT" show "HEAD:self/features/$RB_SLUG/README.md" | grep -q "$RB_ROUTER"'
 
 echo
 if (( fails > 0 )); then echo "feature-lifecycle: $fails assertion(s) FAILED"; exit 1; fi

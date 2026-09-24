@@ -47,7 +47,7 @@ AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
 
 # manifest.py imports routing, which imports pricing, roots and transcript.
-for f in pricing.py roots.py transcript.py routing.py manifest.py; do
+for f in pricing.py rates_history.json roots.py transcript.py routing.py manifest.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f"
 done
 
