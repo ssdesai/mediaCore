@@ -66,7 +66,9 @@ links, so a router that opens three features leaves three copies and no two feat
 write one path; the Routing table keeps the copy with the latest `captured_at`
 (`analysis/README.md` → `routing.py`). Coordinate the feature from
 a session launched **inside the worktree**, where rule 1 claims it by branch with no pin:
-`--open` launches one through the repo-owned `plans/open-session.sh`.
+`--open` launches one through the repo-owned `plans/open-session.sh`. A router that builds
+the feature itself instead is refused at the close until it is pinned (step 6), so a
+session that will do the work should say so up front with `--pin`.
 
 `--base` is for a feature stacked on one that has not merged; `--no-gate`, `--pin` (the
 opt-in for the rare case where the starting session really is this feature's coordinator)
@@ -149,6 +151,14 @@ other than the harness's own (`S: cost records`, `S: PR`), and a worktree holdin
 path that is not one of the harness's records — **the same reader the capture refuses on**
 (`stray_paths`, `plan-runner-roots.sh`), so a half-written file inside the feature
 directory is named here, before the PR, rather than by the capture after one is open.
+It also refuses a feature **its unpinned router built**: the session that ran the start
+without `--pin`, recorded in `routing.json`, whose transcript shows it working in this
+worktree (`analysis/routing.py --unpinned-builder`). That session built the feature, and
+unpinned, its build would be counted as routing overhead and left out of the total this
+close freezes. The refusal names the remedy, `analysis/manifest.py [--self] S
+pin-session <id>`. The manifest is a cost record, so the re-run passes and the capture
+commits the pin. A router that builds should have been started with `--pin`; a router
+that only routes, with a coordinator launched in the worktree, is never refused.
 
 The round it names in its banner, its refusals and its `pr_opened` stamp is the one the
 closing review stamped on its own `plan_end`; the count of completed reviews is only the
@@ -248,7 +258,8 @@ hand-merge (`README.md` → "Updating").
 **There is no weekly cost sweep any more.** Every step of it either belongs to a feature's
 own capture (step 6) or is a repair somebody reaches for with a reason:
 
-- the rate table's age and the corpus-wide sessions and delegates nobody has claimed are
+- the rate history's age, its diff against LiteLLM (`analysis/refresh_rates.py --check`,
+  which writes nothing) and the corpus-wide sessions and delegates nobody has claimed are
   printed by `feature-capture.sh`, after its report and before its commit — informational,
   never a refusal;
 - the frozen-record annotation (`sessions[].also_claimed_by`) runs at capture too, from

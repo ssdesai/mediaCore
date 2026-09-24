@@ -41,8 +41,9 @@ set -uo pipefail
 #   6. two windows chained at the same instant but written in different formats are
 #      disjoint — no false overlap warning;
 #   7. the rate tier follows the UTC date: a session at 2026-08-21T23:00:00-04:00 is
-#      2026-08-22 UTC and prices at sonnet-5's intro tier, 2/3 of standard. Under the
-#      old local-date slicing it priced standard, so this assertion is worth real money;
+#      2026-08-22 UTC and prices at sonnet-5's 2026-08-22 history entry, 2/3 of the one
+#      before, and records that entry's `from`. Under the old local-date slicing it priced
+#      at the earlier entry, so this assertion is worth real money;
 #   8. pricing.utc_today() is UTC, not local: it returns the same date under TZ=UTC+14
 #      and TZ=UTC-11, whose local dates always differ (their offsets span 25 hours);
 #   9. a session_window bound with no zone is WARNED about — silently reading it as UTC
@@ -62,7 +63,7 @@ TMP="$(cd "$TMP" && pwd -P)"
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features" "$AT/.git"
 
-for f in pricing.py roots.py transcript.py capture_planning.py routing.py; do
+for f in pricing.py rates_history.json roots.py transcript.py capture_planning.py routing.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f"
 done
 
@@ -189,9 +190,10 @@ check "6. windows chained across formats raise no overlap warning" \
 rm -rf "$SIB"
 
 # ── 7. the rate tier follows the UTC date ────────────────────────────────────
-# sonnet-5's intro window starts 2026-08-22. A session at 2026-08-21T23:00:00-04:00 is
-# 2026-08-22T03:00Z, so it prices intro (2/3 of standard). Slicing the local date gives
-# 2026-08-21 and prices standard.
+# sonnet-5's cheaper entry in analysis/rates_history.json starts 2026-08-22 (it was an
+# intro window before litellm-pricing made it an ordinary dated entry). A session at
+# 2026-08-21T23:00:00-04:00 is 2026-08-22T03:00Z, so it prices at that entry (2/3 of the
+# earlier one). Slicing the local date gives 2026-08-21 and prices at the earlier entry.
 reset_capture
 SID_T="tier0000-0000-0000-0000-000000000003"
 write_manifest
@@ -199,10 +201,10 @@ session_line "$SID_T" "$AT" "$BRANCH" "t1" "$MODEL" "2026-08-21T23:00:00-04:00" 
   > "$PROJECTS/$SID_T.jsonl"
 capture > /dev/null
 tier_total="$(total_of)"
-check "7. an offset session crossing into the intro window prices intro" \
+check "7. an offset session crossing 2026-08-22 prices at that entry" \
   "python3 -c \"import sys;sys.exit(0 if abs(float('$tier_total') - 2.0) < 1e-9 else 1)\""
-check "7b. the applied tier is recorded as intro" \
-  "[ \"\$(python3 -c \"import json;print(json.load(open('$FEATURE_DIR/planning.json'))['priced'][0]['rates_applied']['tier'])\" 2>/dev/null)\" = 'intro' ]"
+check "7b. the applied rates are recorded as the 2026-08-22 history entry" \
+  "[ \"\$(python3 -c \"import json;print(json.load(open('$FEATURE_DIR/planning.json'))['priced'][0]['rates_applied']['from'])\" 2>/dev/null)\" = '2026-08-22' ]"
 rm -f "$PROJECTS/$SID_T.jsonl"
 
 # ── 8. utc_today is UTC, not local ───────────────────────────────────────────

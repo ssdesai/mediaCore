@@ -72,7 +72,7 @@ check() { if eval "$2"; then ok "$1"; else fail "$1"; fi; }
 pj() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2]))" "$1" "$2" 2>/dev/null; }
 
 mkdir -p "$R/analysis" "$R/self/features"
-for f in pricing.py roots.py transcript.py capture_planning.py routing.py; do
+for f in pricing.py rates_history.json roots.py transcript.py capture_planning.py routing.py; do
   cp "$HERE/analysis/$f" "$R/analysis/$f" 2>/dev/null || true
 done
 printf '__pycache__/\n' > "$R/.gitignore"

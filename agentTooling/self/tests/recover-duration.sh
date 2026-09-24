@@ -59,7 +59,7 @@ source "$HERE/self/tests/fixtures/usage/build-usage.sh"
 
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
-for f in pricing.py roots.py transcript.py recover_attempts.py; do
+for f in pricing.py rates_history.json roots.py transcript.py recover_attempts.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f" 2>/dev/null || true
 done
 

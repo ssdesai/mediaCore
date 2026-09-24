@@ -85,7 +85,7 @@ trap 'rm -rf "$TMP"' EXIT
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
 
-for f in pricing.py roots.py transcript.py report.py routing.py; do
+for f in pricing.py rates_history.json roots.py transcript.py report.py routing.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f" 2>/dev/null || true
 done
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-# Self-test for killed-attempt cost recovery and the intro-rate window
+# Self-test for killed-attempt cost recovery and Sonnet 5's dated price change
 # (self/features/killed-attempt-cost-recovery/README.md). Run by self/gate.sh, or by
 # hand: bash self/tests/cost-recovery.sh
 #
@@ -17,10 +17,14 @@ set -uo pipefail
 # recovery assertion below, not to crash the script.
 #
 # Asserts, in order:
-#   1. a transcript dated before the intro window starts prices at the standard tier;
-#   2. the identical tokens dated inside the window price at the intro tier, at exactly 2/3
-#      the cost of assertion 1;
-#   3. a date after the window's expiry prices standard again (closed on both sides);
+#   1. a transcript dated before Sonnet 5's 2026-08-22 price change prices at the entry
+#      in effect then (`from: 0000-01-01` in analysis/rates_history.json);
+#   2. the identical tokens dated on the change price at the 2026-08-22 entry, at exactly
+#      2/3 the cost of assertion 1;
+#   3. a date after the old intro window's announced expiry still prices at that entry —
+#      the cut was made permanent, and a history entry applies until the next one;
+#      (1-3 once asserted a two-sided intro `tier`; litellm-pricing turned that window
+#      into an ordinary dated entry, so they now assert the `from` of the entry applied);
 #   4. recover_attempts.py fills a killed attempt's recovered_cost_usd (matching
 #      pricing.compute_cost on the transcript's own tokens), recovered_tokens (five-key
 #      shape, per model), recovered_from: "transcript", and recovered_at/rates_applied
@@ -29,8 +33,8 @@ set -uo pipefail
 #   6. a usage.json's top-level recovered_cost_usd equals the sum over its recovered
 #      attempts;
 #   7. the 5m/1h cache-creation split is honoured: identical total cache-creation tokens,
-#      one all-5m and one all-1h, recover different costs in the ratio
-#      CACHE_WRITE_1H_MULTIPLIER / CACHE_WRITE_5M_MULTIPLIER;
+#      one all-5m and one all-1h, recover different costs in the ratio of the model's
+#      `cache_creation_1h` / `cache_creation_5m` rates from pricing.get_rates;
 #   8. an attempt that already has a real total_cost_usd is left byte-identical;
 #   9. running recovery twice is idempotent — the second run changes nothing;
 #  10. a killed attempt whose transcript is absent is left untouched, reported as
@@ -39,7 +43,7 @@ set -uo pipefail
 #      fixture with distinct message ids (dedup defeated) bills three times — and the two
 #      must differ, so the assertion cannot pass vacuously;
 #  12. model: "<synthetic>" lines contribute nothing to recovered cost;
-#  13. a killed attempt on a model absent from pricing.RATES is marked
+#  13. a killed attempt on a model absent from the rate history is marked
 #      recovered_is_partial with unpriced_models naming it, and report.py classes the
 #      plan's total as partial rather than recovered-and-whole; a mixed transcript (one
 #      priceable model, one not) still recovers the priceable model's dollars while
@@ -71,7 +75,7 @@ trap 'rm -rf "$TMP"' EXIT
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
 
-for f in pricing.py roots.py report.py routing.py; do
+for f in pricing.py rates_history.json roots.py report.py routing.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f"
 done
 # transcript.py / recover_attempts.py are plan 02/03's deliverables; a missing cp here is
@@ -114,12 +118,12 @@ def find_attempt(usage_path, session_id):
     return None
 
 
-def cmd_tier(args):
+def cmd_entry_from(args):
     analysis_dir, model, as_of = args
     sys.path.insert(0, analysis_dir)
     import pricing
     rates = pricing.get_rates(model, as_of)
-    print(rates["tier"] if rates else "NONE")
+    print(rates.get("from") if rates else "NONE")
 
 
 def cmd_cost_ratio_check(args):
@@ -201,10 +205,11 @@ def cmd_top_equals_sum(args):
 
 
 def cmd_ratio_between(args):
-    analysis_dir, usage_path_a, session_a, usage_path_b, session_b, tol = args
+    analysis_dir, model, as_of, usage_path_a, session_a, usage_path_b, session_b, tol = args
     sys.path.insert(0, analysis_dir)
     import pricing
-    expected_ratio = pricing.CACHE_WRITE_1H_MULTIPLIER / pricing.CACHE_WRITE_5M_MULTIPLIER
+    rates = pricing.get_rates(model, as_of)
+    expected_ratio = rates["cache_creation_1h"] / rates["cache_creation_5m"]
     a = find_attempt(usage_path_a, session_a)
     b = find_attempt(usage_path_b, session_b)
     cost_a = (a or {}).get("recovered_cost_usd")
@@ -251,7 +256,7 @@ def cmd_report_warning_contains(args):
 
 
 COMMANDS = {
-    "tier": cmd_tier,
+    "entry_from": cmd_entry_from,
     "cost_ratio_check": cmd_cost_ratio_check,
     "recovered_cost_matches": cmd_recovered_cost_matches,
     "field_equals": cmd_field_equals,
@@ -271,21 +276,21 @@ PYEOF
 
 V() { python3 "$TMP/verify.py" "$@" 2>/dev/null; }
 
-# ── 1-3: the intro-rate window (pricing.py only) ──────────────────────────────
-t1="$(V tier "$ANALYSIS_DIR" "$MODEL" 2026-08-01)"
-check "1. a date before the intro window starts prices standard (got $t1)" '[[ "$t1" == "standard" ]]'
+# ── 1-3: Sonnet 5's dated price change (pricing.py + rates_history.json only) ──
+t1="$(V entry_from "$ANALYSIS_DIR" "$MODEL" 2026-08-01)"
+check "1. a date before the 2026-08-22 change prices at the first entry (got $t1)" '[[ "$t1" == "0000-01-01" ]]'
 
 TOKENS_23='{"input":1000,"output":1000,"cache_read":0,"cache_creation_5m":0,"cache_creation_1h":0}'
-t2="$(V tier "$ANALYSIS_DIR" "$MODEL" 2026-08-22)"
-check "2a. a date inside the intro window prices intro (got $t2)" '[[ "$t2" == "intro" ]]'
+t2="$(V entry_from "$ANALYSIS_DIR" "$MODEL" 2026-08-22)"
+check "2a. a date on the change prices at the 2026-08-22 entry (got $t2)" '[[ "$t2" == "2026-08-22" ]]'
 r2="$(V cost_ratio_check "$ANALYSIS_DIR" "$MODEL" 2026-08-01 2026-08-22 "$TOKENS_23" 0.6666666666666666 "$TOL")"
-check "2b. intro-tier cost is exactly 2/3 of standard for identical tokens (got $r2)" '[[ "$r2" == "True" ]]'
+check "2b. the 2026-08-22 entry's cost is exactly 2/3 of the first's for identical tokens (got $r2)" '[[ "$r2" == "True" ]]'
 
-# The intro rate was made permanent on 2026-09-01 (pricing.py's sonnet-5 entry says
-# why the window is open-ended rather than re-based), so a date after the announced
-# expiry still prices at the intro tier.
-t3="$(V tier "$ANALYSIS_DIR" "$MODEL" 2026-09-01)"
-check "3. a date after the announced expiry still prices intro — the cut is permanent (got $t3)" '[[ "$t3" == "intro" ]]'
+# The intro rate was made permanent on 2026-09-01 (analysis/README.md's rates_history.json
+# entry says why the start date is where it is), so a date after the announced expiry
+# still prices at the 2026-08-22 entry: an entry applies until the next one.
+t3="$(V entry_from "$ANALYSIS_DIR" "$MODEL" 2026-09-01)"
+check "3. a date after the announced expiry still prices at the 2026-08-22 entry — the cut is permanent (got $t3)" '[[ "$t3" == "2026-08-22" ]]'
 
 # ── Fixture corpus for assertions 4-12 ────────────────────────────────────────
 FEAT="$AT/self/features/fixcost/auto/complete"
@@ -362,7 +367,7 @@ U12="$FEAT/assert12-synthetic-sonnet.usage.json"
 write_usage_json "$U12" "$S12:killed:null"
 TOKENS12='{"input":100,"output":50,"cache_read":0,"cache_creation_5m":0,"cache_creation_1h":0}'
 
-# assertion 13: a model absent from pricing.RATES, plus a mixed transcript (one
+# assertion 13: a model absent from the rate history, plus a mixed transcript (one
 # priceable model, one not). Lives in its own feature dir, not fixcost, because the
 # report.py half needs a clean manifest + planning.json with no unrelated
 # partial/orphan plans muddying total_is_partial.
@@ -430,8 +435,8 @@ r6="$(V top_equals_sum "$U6")"
 check "6. top-level recovered_cost_usd equals the sum over recovered attempts (got $r6)" '[[ "$r6" == "True" ]]'
 
 # assertion 7
-r7="$(V ratio_between "$ANALYSIS_DIR" "$U7_5M" "$S7_5M" "$U7_1H" "$S7_1H" "$TOL")"
-check "7. the 5m/1h cache-creation split prices in the CACHE_WRITE_1H_MULTIPLIER/CACHE_WRITE_5M_MULTIPLIER ratio (got $r7)" '[[ "$r7" == "True" ]]'
+r7="$(V ratio_between "$ANALYSIS_DIR" "$MODEL" "$AS_OF" "$U7_5M" "$S7_5M" "$U7_1H" "$S7_1H" "$TOL")"
+check "7. the 5m/1h cache-creation split prices in the model's cache_creation_1h/cache_creation_5m ratio (got $r7)" '[[ "$r7" == "True" ]]'
 
 # assertion 8 — checked against the file as it existed before ANY recovery run.
 check "8. an attempt with a real total_cost_usd is left byte-identical" 'diff -q "$U8" "$TMP/assert8.pristine" >/dev/null 2>&1'

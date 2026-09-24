@@ -8,14 +8,15 @@ and writes token counts plus priced dollars to `plans/features/<slug>/planning.j
 CRITICAL DESIGN POINT: cost is computed once, here, and written as dollars into
 `planning.json` alongside the token counts, `rates_applied`, and `rates_source`.
 `report.py` (plan 56) must never recompute — it only reads and sums the dollar
-figures this script already produced. Rates change (Sonnet 5's intro pricing
-expires 2026-08-31), so recomputing at report time would silently reprice a
-completed feature's planning cost and destroy cross-feature comparison.
+figures this script already produced. Rates change (Sonnet 5's price dropped on
+2026-08-22; `rates_history.json` gains a dated entry at every change), so recomputing
+at report time with a different history would silently reprice a completed feature's
+planning cost and destroy cross-feature comparison.
 
 Design decision: cost is priced per (session, model, is_sidechain), using that
 session's own start date, then the resulting dollars are summed — raw tokens are
 never summed across sessions first and priced once. A feature whose planning phase
-straddles the Sonnet 5 intro-pricing expiry would otherwise have every token priced
+straddles a price change (Sonnet 5's on 2026-08-22) would otherwise have every token priced
 at whichever rate wins after aggregation, silently mispricing part of the feature.
 
 Subagent transcripts — `<session-id>/subagents/agent-<id>.jsonl` beside the parent's
@@ -61,20 +62,17 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from pricing import RATES_VERIFIED, compute_cost, is_rates_stale
+from pricing import HISTORY_FILENAME, RATES_VERIFIED, compute_cost, is_rates_stale
 from roots import (
     SELF_CORPUS_IDENTITY, add_self_flag, all_features_roots, features_root, session_root,
 )
 # One-way, and it has to stay that way: `routing` imports nothing from here (it locates a
 # transcript by globbing the project directories, as `recover_attempts.py` does), so the
-# router predicate can live beside the record it explains.
-from routing import is_router_lines
+# router predicate can live beside the record it explains. The feature worktree layout
+# lives there too (`WORKTREES_DIR_NAME`, `feature_worktree_path`), so the claim roots here
+# and the unpinned-builder check the close runs derive a worktree the same way.
+from routing import WORKTREES_DIR_NAME, feature_worktree_path, is_router_lines
 from transcript import add_usage, iter_billable_messages, iter_billable_messages_at, to_utc
-
-# Feature worktree layout (LIFECYCLE.md): the directory under the primary checkout that
-# holds every feature's worktree. feature-start.sh holds the same name in a constant of
-# its own; the two move together.
-WORKTREES_DIR_NAME = ".worktrees"
 
 # Claude Code's project-directory naming: every one of these characters in the launch cwd
 # becomes `TRANSCRIPT_DIR_MANGLE_TO`, which is why `<R>/.worktrees/<slug>` is filed under
@@ -318,13 +316,6 @@ def subagent_transcript_paths(transcript_dir, session_id):
     if not subagents_dir.is_dir():
         return []
     return sorted(subagents_dir.glob("agent-*.jsonl"))
-
-
-def feature_worktree_path(primary, slug):
-    """The feature's worktree as `feature-start.sh` creates it, `<primary>/.worktrees/<slug>`
-    (LIFECYCLE.md). Derived from the slug rather than looked up, so it still resolves after
-    `feature-start.sh`'s prune has removed the worktree."""
-    return f"{primary}/{WORKTREES_DIR_NAME}/{slug}"
 
 
 def legacy_worktree_path(primary, slug):
@@ -3118,7 +3109,11 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     )
 
     if is_rates_stale():
-        warnings.append(f"RATES_VERIFIED is stale (verified {RATES_VERIFIED})")
+        warnings.append(
+            f"rate history is stale (checked {RATES_VERIFIED}); refresh "
+            f"analysis/{HISTORY_FILENAME} with analysis/refresh_rates.py in an "
+            f"agentTooling self feature"
+        )
 
     data = {
         "slug": slug,
@@ -3151,7 +3146,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             "subagents": subagents_duration,
             "entries_without_duration": without_duration,
         },
-        "rates_source": f"agentTooling/analysis/pricing.py RATES_VERIFIED={RATES_VERIFIED}",
+        "rates_source": f"agentTooling/analysis/{HISTORY_FILENAME} checked={RATES_VERIFIED}",
         "warnings": warnings,
     }
     if carried_from:

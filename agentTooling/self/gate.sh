@@ -174,6 +174,7 @@ shell_scripts=(
   self/tests/hook-wiring.sh
   self/tests/policy-table.sh
   self/tests/plan-numbering.sh
+  self/tests/rates-history.sh
   run-escalation-plan.sh
   templates/plans/gate.sh
   templates/plans/pr.sh
@@ -251,6 +252,10 @@ record "policy table self-test" bash self/tests/policy-table.sh
 # (self/PROJECT_FACTS.md) — one rule, both modes, and the start script is the only thing
 # that writes that number.
 record "plan numbering self-test" bash self/tests/plan-numbering.sh
+# Every dollar figure is tokens times analysis/rates_history.json: the seed must price
+# exactly as the hand table it replaced did, and a LiteLLM refresh may only ever append
+# (self/features/litellm-pricing/README.md).
+record "rates history self-test" bash self/tests/rates-history.sh
 
 echo "=== gate: python syntax ==="
 # Compiles each file independently — it does NOT exercise the bare cross-imports
@@ -270,11 +275,12 @@ echo "=== gate: permission policy ==="
 record "permission policy wired into .claude/settings.json" \
   python3 -B hooks/wire-settings.py --self --repo "$REPO_DIR" --check
 
-echo "=== gate: rate table ==="
-# analysis/README.md makes this step 1 of the weekly flow. Informational by design:
-# a stale table skews cost figures but breaks nothing, and capture_planning.py and
-# report.py both surface it in their own warnings[] as well.
-record_info "pricing rate table is current" \
+echo "=== gate: rate history ==="
+# Whether analysis/rates_history.json's `checked` date is within the staleness threshold.
+# Informational by design: a stale history skews cost figures but breaks nothing, and
+# capture_planning.py and report.py both surface it in their own warnings[] as well. The
+# gate never fetches — `analysis/refresh_rates.py --check` is the network half.
+record_info "pricing rate history is current" \
   python3 -c "import sys; sys.path.insert(0, 'analysis'); import pricing; sys.exit(1 if pricing.is_rates_stale() else 0)"
 
 echo "=== gate: runner prerequisites ==="

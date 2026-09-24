@@ -59,9 +59,9 @@ def utc_date(timestamp):
 
     Not `timestamp[:10]`. That slice reads the date in whatever zone the string was
     written in, so "2026-07-01T23:00:00-04:00" slices to 2026-07-01 when the instant is
-    2026-07-02 UTC. The pricing date selects the rate tier (`pricing.get_rates`), so a
-    day off by one is a dollar error, not a display one: a session on the eve of an
-    intro-rate window prices at the wrong tier in whichever direction the offset points.
+    2026-07-02 UTC. The pricing date selects the rate history entry (`pricing.get_rates`),
+    so a day off by one is a dollar error, not a display one: a session on the eve of a
+    price change prices at the wrong entry in whichever direction the offset points.
     """
     parsed = to_utc(timestamp)
     return parsed.date().isoformat() if parsed else None

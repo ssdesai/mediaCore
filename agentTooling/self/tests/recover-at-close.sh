@@ -148,6 +148,9 @@ STUB
 chmod +x "$TMP/bin/claude" "$TMP/bin/gh"
 export PATH="$TMP/bin:$PATH"
 export GH_LOG="$TMP/gh.log"; : > "$GH_LOG"
+# The capture's `refresh_rates.py --check` reads this fixture, never the network
+# (feature-capture.sh's RATES_CHECK_SOURCE seam).
+export RATES_CHECK_SOURCE="$HERE/self/tests/fixtures/pricing/litellm-sample.json"
 
 echo "recover at close"
 
@@ -230,7 +233,7 @@ check "A8. a leftover stream from a killed run is harvested as a 'killed' attemp
 # ── B. recover_attempts.py --for <slug> ──────────────────────────────────────
 CA="$TMP/recover/agentTooling"
 mkdir -p "$CA/analysis" "$CA/self/features"
-for f in pricing.py roots.py transcript.py recover_attempts.py; do
+for f in pricing.py rates_history.json roots.py transcript.py recover_attempts.py; do
   cp "$HERE/analysis/$f" "$CA/analysis/$f" 2>/dev/null || true
 done
 PROJ="$FAKE_HOME/.claude/projects/recover-fixtures"
@@ -276,7 +279,7 @@ mkdir -p "$LA/analysis" "$LA/self/features" "$LA/templates/plans/features"
 for f in feature-start.sh feature-capture.sh plan-runner-roots.sh plan-runner-lib.sh stamp-timing.sh; do
   cp "$HERE/$f" "$LA/$f" 2>/dev/null || true
 done
-for f in pricing.py roots.py transcript.py capture_planning.py report.py manifest.py recover_attempts.py routing.py; do
+for f in pricing.py rates_history.json refresh_rates.py roots.py transcript.py capture_planning.py report.py manifest.py recover_attempts.py routing.py; do
   cp "$HERE/analysis/$f" "$LA/analysis/$f" 2>/dev/null || true
 done
 cp "$HERE/templates/plans/features/TEMPLATE.md" "$LA/templates/plans/features/TEMPLATE.md" 2>/dev/null || true
@@ -494,7 +497,7 @@ check "D5. QUEUE_COST_BUCKETS covers exactly QUEUE_DIRS (got $d5)" '[[ "$d5" == 
 # Not vacuous: the guard must be enforced at import, not merely true today. A copy with a
 # fourth queue in QUEUE_DIRS and nothing added to the dict must refuse to import.
 mkdir -p "$TMP/drift"
-cp "$LA/analysis"/*.py "$TMP/drift/"
+cp "$LA/analysis"/*.py "$LA/analysis/rates_history.json" "$TMP/drift/"
 sed -i.bak 's/^QUEUE_DIRS = {"auto", "verify", "review"}$/QUEUE_DIRS = {"auto", "verify", "review", "escalate"}/' "$TMP/drift/report.py"
 drift_out="$(python3 -B -c "import sys; sys.path.insert(0, sys.argv[1]); import report" "$TMP/drift" 2>&1)"; drift_rc=$?
 check "D6. ... and a queue added to QUEUE_DIRS but not to the dict fails at import (got $drift_rc)" '[[ $drift_rc -ne 0 ]] && grep -q "QUEUE_COST_BUCKETS" <<<"$drift_out" && grep -q "escalate" <<<"$drift_out"'

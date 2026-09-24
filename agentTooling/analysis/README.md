@@ -26,7 +26,7 @@ One convention, because cost depends on it: **every timestamp is normalized to U
 
 - **Transcripts** are written UTC with a `Z`. That is what makes string handling *look* correct — it is right only while every string is the same shape, and nothing enforced that.
 - **`session_window` bounds** are typed by a human, usually read off `git log`, which prints **local** time. **End every bound with `Z`.** One with no offset is interpreted as UTC — what every bound in the committed corpora already means — so a local time pasted bare silently shifts the window by your UTC offset, 4–5 hours in US Eastern, which is more than the gap between consecutive features. Write local only with the offset spelled out (`2026-07-17T18:00:00-04:00`); it is converted. `capture_planning.check_naive_bounds` warns on any bound that declares no zone, because the string cannot describe itself and nothing else can catch it.
-- **The pricing date** (`as_of`) is the UTC date of a session's earliest instant, and it selects the rate tier. An offset timestamp late in the day belongs to the *next* UTC day, so dating it locally can price a session on the wrong side of an intro-rate boundary — a dollar error, not a display one.
+- **The pricing date** (`as_of`) is the UTC date of a session's earliest instant, and it selects the rate history entry in effect (`rates_history.json`). An offset timestamp late in the day belongs to the *next* UTC day, so dating it locally can price a session on the wrong side of a price change — a dollar error, not a display one.
 - **Wall-clock "today"** is `pricing.utc_today()`, never `date.today()`, so the one date that does not come from a transcript is UTC like the rest.
 
 Asserted by `self/tests/timestamps-are-utc.sh`.
@@ -50,8 +50,9 @@ that refuses rolls the stamp back with the recovered sidecars.
 **The capture is also where the corpus-wide work happens now.** After its own report it
 refreshes `sessions[].also_claimed_by` on every other already-captured record in this
 corpus from the claims ledger (`capture_planning.py --annotate-frozen`) and re-renders
-those features' reports, then prints the **residue**: the rate table's verified date, and
-the sessions and delegates of the last week that no feature claims, routers excluded.
+those features' reports, then prints the **residue**: the rate history's `checked` date
+and staleness and `refresh_rates.py --check`'s diff against LiteLLM (news only — the
+capture never writes the history), and the sessions and delegates of the last week that no feature claims, routers excluded.
 Informational — it is about the corpus rather than this feature, and nothing in it can
 refuse a capture.
 
@@ -69,17 +70,34 @@ be caught later; on the branch there is nothing left over to catch weekly.
 Reach for one of these when something is *already* wrong, or when a corpus predates the
 rule that would have kept it right. Each names the reason.
 
-**The rate table, when a figure looks wrong.** Costs are tokens × table; there is no cost
-field in a transcript to fall back on, so a stale table silently skews every figure it
-touches. The capture prints this date on every run; this is how to ask on its own.
+**The rate history, when a figure looks wrong.** Costs are tokens × `rates_history.json`;
+there is no cost field in a transcript to fall back on, so a stale history silently skews
+every figure it touches. The capture prints its `checked` date and diffs it against
+LiteLLM on every run; this is how to ask on its own (read-only: it writes nothing):
 
 ```bash
-python3 -c "import sys; sys.path.insert(0,'agentTooling/analysis'); import pricing; print(pricing.RATES_VERIFIED, pricing.is_rates_stale())"
+python3 agentTooling/analysis/refresh_rates.py --check
 ```
 
-`True` means `RATES_VERIFIED` is more than `STALENESS_THRESHOLD_DAYS` old. Re-check published rates, update `RATES` and bump `RATES_VERIFIED` in `pricing.py`, then continue. `capture_planning.py` and `report.py` also surface this in their `warnings[]` — they warn, never fail, so an unread warning becomes a wrong number.
+Exit 0 means no model's rates differ from LiteLLM's; 1 names each that would change;
+3 means the fetch failed and says why. The first line is the history's `checked` date and
+whether it is more than `STALENESS_THRESHOLD_DAYS` old. **To refresh**, start an
+agentTooling self feature and run `python3 analysis/refresh_rates.py` there: it appends a
+dated `litellm` entry for each change and sets `checked`, and the diff is one line per
+changed price. **Never refresh in a consuming repo** — the history ships through the
+subtree, and a local edit is overwritten by the next pull or conflicts with it. A rate
+LiteLLM does not carry (Mythos 5.1 today) is added by hand as a dated `"manual"` entry
+appended to that model's list; never edit or remove an existing entry, since every
+session priced before it would re-price differently. `capture_planning.py` and
+`report.py` also surface staleness in their `warnings[]` — they warn, never fail, so an
+unread warning becomes a wrong number.
 
-**Unconfirmed: `claude-sonnet-5`'s `intro.starts`** — the `2026-08-22` start date in `RATES` was inferred from observed billing ratios across this repo's own corpus (every sonnet day from 2026-07-30 to 2026-08-21 billed 1.5x what the intro rate computes, 2026-08-22 billed 1.0x), not read off a published price list. `RATES_VERIFIED` was bumped with it, so `is_rates_stale()` will not flag it — confirm the date against Anthropic's published rates at the next re-check.
+**Unconfirmed: `claude-sonnet-5`'s `2026-08-22` entry** — the start date of Sonnet 5's
+2/10 entry (announced as an introductory price, made permanent on 2026-09-01) was
+inferred from observed billing ratios across this repo's own corpus (every sonnet day from
+2026-07-30 to 2026-08-21 billed 1.5x what the 2/10 rate computes, 2026-08-22 billed 1.0x),
+not read off a published price list, and `checked` does not vouch for it — confirm it
+against Anthropic's published rates at the next look.
 
 **Owed work: planning.json price correction** — every `planning.json` frozen before 2026-08-22 was priced with the intro tier applied retroactively and is therefore roughly 33% low. Correcting them means a full refresh (`capture_planning.py --all --recapture`) and committing the diff — and it is now only possible for features whose transcripts still exist, which is the whole argument for doing it promptly. This batch has not done so; see the feature manifest.
 
@@ -263,15 +281,42 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   position (`COMMAND_POSITION_RE`) is the first word of a simple command — start of line,
   or after `&&`, `||`, `;`, `|`, `&` — optionally preceded by `bash` and with any directory
   prefix, so `grep -n foo feature-start.sh hooks` is not a start and the maintenance
-  session that ran it keeps its place in the unclaimed listing. Exposes
+  session that ran it keeps its place in the unclaimed listing.
+  **A router that builds its feature must be pinned** (`../self/features/router-built-pin/`).
+  The design has a different session, launched in the worktree, build the feature. A router
+  that does the work itself built it, and unpinned its whole build is routing overhead
+  while the feature reports only its review. `unpinned_builder(features_dir, slug)` returns
+  the router's session id when three things hold, and `None` otherwise:
+  - SLUG's own record names a session (`routers_of`);
+  - no manifest in the corpus pins it in `sessions` (`pinned_sessions`, the predicate
+    `split_pinned` reads, so the pin that stops the Routing table counting a router also
+    satisfies this);
+  - its transcript shows it at work in `feature_worktree_path(launched_in, slug)`
+    (`worked_in`): a line whose `cwd` is at or under that directory, or an `Edit`,
+    `Write` or `NotebookEdit` aimed at a path under it (`WRITING_TOOL_PATH_KEYS`).
+
+  Containment is by whole path component (`is_at_or_under`), so `.worktrees/<slug>-two`
+  is not `<slug>`'s. Reads are not work, and a transcript that cannot be found names
+  nobody. `routing.py [--self] --unpinned-builder SLUG` prints that id or nothing, and
+  exits 0 either way. `feature-close.sh` refuses on a printed id before the PR, and on a
+  non-zero exit (fail closed). The refusal names `manifest.py pin-session` as the remedy.
+  **The feature worktree layout lives here too**: `WORKTREES_DIR_NAME` (`.worktrees`,
+  which `feature-start.sh` holds in a constant of its own, and the two move together) and
+  `feature_worktree_path(primary, slug)`. `capture_planning.py` imports both for its claim
+  roots, so the capture and the close derive a worktree one way.
+  Exposes
   `record_path(features_dir, slug)`, `legacy_routing_dir`, `find_transcript`,
   `load_lines`, `feature_start_slugs`,
   `is_router_lines`, `build_record`, `serialize`, `write_record(features_dir, slug,
   record)`, `read_record`, `record_rank`, `load_records`, `started_slugs`, `routers_of`,
-  `parse_manifest`, `pinned_sessions`, `split_pinned`,
-  `migrate`. Asserted by `self/tests/routing-record.sh` (R11 for the pinned skip), and end to end — two features one
-  router starts from one `main`, merged in turn — by `self/tests/feature-lifecycle.sh`.
-- `pricing.py` — rate table and cost calculator. Exposes `utc_today()` (today's UTC date — the wall-clock source for everything here, since `date.today()` is the machine's *local* date and would disagree with every transcript-derived date for part of each day), `RATES_VERIFIED` (date the table was last checked), `STALENESS_THRESHOLD_DAYS`, `RATES` (per-model USD/Mtok `{input, output}`, optional `intro{input, output, starts, expires}`), `CACHE_READ_MULTIPLIER` / `CACHE_WRITE_5M_MULTIPLIER` / `CACHE_WRITE_1H_MULTIPLIER`, `normalize_model_id(model_id)`, `get_rates(model_id, as_of) -> RatesApplied | None`, `compute_cost(model_id, tokens, as_of) -> (cost_usd | None, rates_applied | None)`, `is_rates_stale(today=None) -> bool`. Any script that prices tokens imports `compute_cost` / `get_rates` / `is_rates_stale` from here rather than hardcoding rates — the table lives in exactly one place.
+  `parse_manifest`, `pinned_sessions`, `split_pinned`, `feature_worktree_path`,
+  `is_at_or_under`, `worked_in`, `unpinned_builder`,
+  `migrate`. Asserted by `self/tests/routing-record.sh` (R11 for the pinned skip, R12 for `unpinned_builder`), and end to end — two features one
+  router starts from one `main`, merged in turn, and a router that built its feature
+  refused at the close until it is pinned (RB) — by `self/tests/feature-lifecycle.sh`.
+- `pricing.py` — cost calculator over the rate history; holds no rates itself. Loads `rates_history.json` **from its own directory at import** (`HISTORY_FILENAME`, `HISTORY_PATH`, `load_history(path)`) — a missing or malformed file is an import error, so every sandbox that copies `pricing.py` copies `rates_history.json` beside it. Exposes `utc_today()` (today's UTC date — the wall-clock source for everything here, since `date.today()` is the machine's *local* date and would disagree with every transcript-derived date for part of each day), `RATES_VERIFIED` (the history's `checked` date, under its old name), `STALENESS_THRESHOLD_DAYS`, `RATE_FIELDS` (the five rate keys), `normalize_model_id(model_id)`, `get_rates(model_id, as_of) -> RatesApplied | None` (the model's last entry whose `from` is on or before `as_of`; `None` for an unknown model), `compute_cost(model_id, tokens, as_of) -> (cost_usd | None, rates_applied | None)` (never `(0.0, None)`: an unknown model is `(None, None)`), `is_rates_stale(today=None, checked=None) -> bool`. **`RatesApplied { model, input, output, cache_read, cache_creation_5m, cache_creation_1h, tier, from, source }`** — the `rates_applied` written into `planning.json`'s `priced[]` and a `usage.json` attempt: `model` is the normalized id, the five rates are USD per million, `tier` is always `"standard"` (kept for readers of records written when Sonnet 5's price was an `"intro"` window), `from` is the applied entry's start date and `source` is `"litellm"` or `"manual"`. Records written before litellm-pricing carry no `from`/`source` and may say `tier: "intro"`. Any script that prices tokens imports `compute_cost` / `get_rates` / `is_rates_stale` from here rather than hardcoding rates — the history lives in exactly one place.
+- `rates_history.json` — the dated rate history every figure here is priced from. `{ checked, source_url, models{<normalized model id>: [{from, input, output, cache_read, cache_creation_5m, cache_creation_1h, source}]} }`: rates are absolute USD per million tokens (no multipliers); each model's entries are sorted by `from` (`YYYY-MM-DD`), the first at `0000-01-01`, and an entry applies from its `from` until the next one's; `source` is `"manual"` (the seed, and anything added by hand) or `"litellm"` (appended by `refresh_rates.py`); `checked` is the last date anyone checked it against its source; `source_url` is LiteLLM's raw price list. **Append-only**: an entry is never rewritten or removed, which is what makes re-pricing any session dated before a change give the dollars it gave before — and why `--recapture` reproduces the figures it replaces. Written one entry per line (`refresh_rates.serialize`) so a diff is one line per price. Seeded from the hand-maintained table `pricing.py` held until litellm-pricing, figure for figure (`self/tests/rates-history.sh` H1 holds it to a fixture of that table's output); Sonnet 5's old introductory window is two ordinary entries, 3/15 from `0000-01-01` and 2/10 from `2026-08-22` — a start date inferred from observed billing ratios in this repo's own corpus, not read off a price list (see "Repair tools" → "The rate history"). Ships to every consuming repo with the subtree: refresh it only in an agentTooling self feature.
+- `refresh_rates.py` — `refresh_rates.py [--check] [--source <path or url>] [--history <path>]`: appends to `rates_history.json` from LiteLLM's `model_prices_and_context_window.json` (`LITELLM_PRICES_URL`; `--source` for another URL or a local file, which is how the tests stay offline; `--history` for another history file, default `pricing.HISTORY_PATH`). Stdlib only (`urllib.request`, `json`). Reads the entries whose `litellm_provider` is `"anthropic"` and whose key starts `claude-`, normalized with `pricing.normalize_model_id` — an undated key beats a dated one, and among dated keys only the latest date wins; an entry missing any of the five rates is skipped and named. Converts `input_cost_per_token`, `output_cost_per_token`, `cache_read_input_token_cost`, `cache_creation_input_token_cost` (→ `cache_creation_5m`) and `cache_creation_input_token_cost_above_1hr` (→ `cache_creation_1h`) to per-million and rounds to `RATE_DECIMALS` (6), so conversion noise never reads as a change; integral rates are stored as integers. For each model whose rates differ from its latest entry it appends one from today (UTC), `source: "litellm"`; a model with no entry gets its first at `0000-01-01`; a model LiteLLM lacks is untouched; then `checked` is set to today. `--check` prints the same diff and writes nothing, exiting `NO_CHANGES_EXIT` (0) or `CHANGES_EXIT` (1). Either mode prints the history's `checked` date and staleness first, and a source that cannot be read or parsed exits `FETCH_FAILED_EXIT` (3) with the reason, having written nothing. Fetches time out after `FETCH_TIMEOUT_S`. Run by `feature-capture.sh`'s residue as `--check` (with `--source "$RATES_CHECK_SOURCE"` when that is set — the tests' seam); rulings in `self/features/litellm-pricing/NOTES.md`; asserted by `self/tests/rates-history.sh`.
 - `transcript.py` — session-transcript parsing shared by `capture_planning.py` and
   `recover_attempts.py`. Exposes `to_utc(timestamp) -> aware datetime | None`,
   `utc_date(timestamp) -> "YYYY-MM-DD" | None`, `SYNTHETIC_MODEL`,
@@ -293,7 +338,7 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `session_window` bounds already mean. `utc_date` is what replaced `timestamp[:10]`
   everywhere; the slice read the date in whatever zone the string carried, so an
   evening offset timestamp was dated a day early and could price against the wrong
-  rate tier.
+  rate history entry.
 - `recover_attempts.py` — recovers an unpriced attempt's cost from its own session
   transcript. **Two things leave an attempt unpriced**, and it handles both: a *killed*
   run, which never reached the end of its stream, and a *completed* run — exit 0, work
@@ -313,7 +358,7 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `recovered_cost_usd`, `recovered_tokens` (the five-key shape, per model),
   `recovered_from: "transcript"`, `recovered_at`, `rates_applied` onto the attempt —
   never onto `total_cost_usd`, which must stay distinguishable as the CLI's own figure.
-  A model the transcript names but `pricing.RATES` has no rate for is excluded from
+  A model the transcript names but `rates_history.json` has no rate for is excluded from
   `recovered_cost_usd` rather than coerced to 0 (the rule `pricing.py` states): that
   attempt also gets `unpriced_models[]` naming the excluded ids and
   `recovered_is_partial: true` — its `rates_applied` entry for those models is `null` —
@@ -324,7 +369,7 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   timestamped lines**, over every line rather than only the ones
   `iter_billable_messages` yields, since a session's last assistant response is not its
   last instant and the span is meant to bound the run rather than the billing. It reuses
-  the instants already parsed to date the session for its rate tier. A transcript with
+  the instants already parsed to date the session for its rate history entry. A transcript with
   fewer than `MIN_MOMENTS_FOR_SPAN` (2) timestamped lines writes **nothing**, not `0.0`:
   one line gives an instant, not a duration, and a zero beside a real dollar figure reads
   as a run that took no time. `duration_ms` itself is left null forever, exactly as
@@ -890,6 +935,27 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   kept it — "merged into origin/main but has uncommitted changes", which is what held
   `policy-module` and `lifecycle-records-and-numbering` on 2026-09-18 over one timestamp
   line each. Asserted by `self/tests/report-footnotes.sh` phase 11.
+  **A re-render with the streams gone keeps what the streams said.** Three sections come
+  from `.stream.jsonl`, which is gitignored and lives only in the worktree the runner
+  ran in: `plan_length_vs_loc[].loc_changed`, `re_hunting` and `edit_overlap`. Once
+  `feature-start.sh` prunes that worktree no stream is left. The committed `report.json`
+  was computed while the streams existed, so it is the frozen record of them, and
+  `report.py` reads it before rewriting anything (`previous_report`). A plan with no
+  stream carries its `loc_changed` from the previous report's row for the same plan
+  (`carried_loc`), and when **no** plan has a stream, `re_hunting` and `edit_overlap` are
+  carried whole (`carried_section`). Only a value that was computed is carried: an
+  integer, or a list. With nothing to carry — no previous report, one that does not
+  parse, or one that already said so — the value is `STREAMS_UNAVAILABLE` (`not
+  computed: streams unavailable`), as before. A stream that exists is always computed
+  fresh. When some plans have streams and some do not, the two sections are computed from
+  the ones that exist and warn about the rest, unchanged. That is a live feature missing
+  a stream, not a pruned one. Nothing marks a carried value, since a mark would itself
+  be a diff on every re-render. This is what keeps `feature-capture.sh`'s annotate step,
+  which re-renders every frozen record whose `also_claimed_by` it changed, and a
+  `--recapture` from the primary from writing `not computed` over a frozen report and
+  committing that into another feature's cost records
+  (`../self/features/carry-stream-sections/`). Asserted by
+  `self/tests/report-footnotes.sh` phase 12.
   **It also reports routing overhead.** `--all` prints a **Routing** table
   under the trend table, one row per routing record (`routing.load_records`): the router
   session's id, its cost, its minutes, and every feature it started with that feature's
@@ -944,7 +1010,7 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `cost.build`/`cost.verify`/`cost.review` bucket and totalled separately as
   `cost.recovered`), partially recovered (`recovered_cost_usd` present but
   `recovered_is_partial: true` — `recover_attempts.py` found a model in the transcript
-  absent from `pricing.RATES`, so the recovered figure prices only the rest; still
+  absent from `rates_history.json`, so the recovered figure prices only the rest; still
   folded into the queue bucket and `cost.recovered`, but named in
   `cost.partially_recovered_attempts[]`), or unrecoverable (`recovered_cost_usd` absent
   too — either `recover_attempts.py` has not been run over this feature yet, or it ran
@@ -1127,7 +1193,7 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `python3 agentTooling/analysis/report.py --all`.
 - `manifest.py` — reads and writes a feature manifest's machine-readable fence, and reads
   what its `planning.json` claimed: the JSON edits the lifecycle scripts need, kept out of
-  bash. Six subcommands, `--self` first as everywhere. `init --method M --branch B --base
+  bash. Seven subcommands, `--self` first as everywhere. `init --method M --branch B --base
   BASE --from TS [--session ID]… [--plan STEM]…` writes `<features root>/<slug>/README.md`
   from `templates/plans/features/TEMPLATE.md` with the template's fence replaced by a
   filled one, and refuses if the file exists — `feature-start.sh` runs it once, in the new
@@ -1189,6 +1255,14 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   (`captured_at_of`) rather than through `capture_planning.prior_capture`, for that same
   reason.
   `set-plans <stem>...` replaces the manifest's `plans[]` with the given stems, in the order given, and refuses a stem that is not `NN-name-MODEL` — a sentinel is never a plan.
+  `pin-session <id>` appends one session id to the fence's `sessions[]`, prints the new
+  list, treats an id already there as a no-op (exit 0, nothing written) and refuses an
+  empty one (exit 1). Nothing else in the file moves. It is the remedy
+  `feature-close.sh` names when the feature's router built it unpinned
+  (`routing.unpinned_builder`, `../self/features/router-built-pin/`), and it is a script
+  so that nobody has to edit the fence by hand. The manifest is one of `COST_FILES`, so
+  the dirty `README.md` it leaves passes the close's stray check on the re-run, and the
+  capture commits it.
   `claimed` prints the sessions and subagents `planning.json` holds, each with how it was
   selected and where it was launched, plus the total — what `feature-capture.sh` shows the
   human before the number is quoted. The fence it writes is
@@ -1227,10 +1301,12 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   paths], edit_count, attempts[{session_id,outcome,total_cost_usd,num_turns,
   duration_ms,recovered_cost_usd,recovered_duration_s,recovered_tokens{<modelId>:{input,
   output,cache_read,cache_creation_5m,cache_creation_1h}},recovered_from,recovered_at,
-  rates_applied,recovered_is_partial,unpriced_models[]}],
+  rates_applied{<modelId>:{model,input,output,cache_read,cache_creation_5m,
+  cache_creation_1h,tier,from,source}|null},recovered_is_partial,unpriced_models[]}],
   recovered_cost_usd, recovered_duration_s }` — sidecar to a plan's `.md`, written by the runner
   (`finalize_plan`) or backfilled by `backfill_usage.py`; both produce the identical
-  shape.
+  shape. Each `rates_applied` value is `pricing.RatesApplied` (see `pricing.py` above;
+  `from`/`source` are absent on attempts recovered before litellm-pricing).
   `attempts[]` holds one record per `claude -p` invocation, oldest first — a resumed
   plan has several, each with its own session id (see `RUNNER.md` → "How resume
   works"). `num_turns`, `duration_ms`, `total_cost_usd`, `usage{}`,
@@ -1258,7 +1334,7 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   write `recovered_cost_usd` (plus `recovered_tokens`/`recovered_from`/`recovered_at`/
   `rates_applied`) onto the same attempt — `total_cost_usd` itself is left `null`
   forever, so a measured figure and a recovered one stay distinguishable. If the
-  session's transcript contains a model absent from `pricing.RATES`, that model's
+  session's transcript contains a model absent from `rates_history.json`, that model's
   tokens are excluded from `recovered_cost_usd` rather than coerced to a silent 0 (the
   rule `pricing.py` states and `capture_planning.py` already follows): the attempt
   instead carries `unpriced_models` (the excluded model ids) and
@@ -1288,13 +1364,17 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   open_claimants[],
   excluded_session_ids[], priced[{session_id,agent_id,model,is_sidechain,date,
   duration_s,tokens{input,output,cache_read,cache_creation_5m,cache_creation_1h},
-  cost_usd,rates_applied,share?,full_cost_usd?,shared_with[]?}],
+  cost_usd,rates_applied{model,input,output,cache_read,cache_creation_5m,
+  cache_creation_1h,tier,from,source},share?,full_cost_usd?,shared_with[]?}],
   cost_usd{main,sidechain,subagents,total,total_is_partial},
   duration_s{sessions,subagents,entries_without_duration[]}, rates_source,
   warnings[] }` — a feature's frozen planning-phase cost and time, written by
   `capture_planning.py`. `cost_usd` and `rates_applied` are computed once at capture
   time; `report.py` (plan 56) only reads and sums these dollar figures, never
-  recomputes them. `duration_s` is a span in whole seconds (first to last transcript
+  recomputes them. `rates_applied` is `pricing.RatesApplied` (records captured before
+  litellm-pricing carry no `from`/`source`); `rates_source` is
+  `"agentTooling/analysis/rates_history.json checked=<date>"` (older records name
+  `pricing.py RATES_VERIFIED=<date>`). `duration_s` is a span in whole seconds (first to last transcript
   instant), summed separately over sessions and subagents; an entry carried forward
   from a capture that predates the field has none and is named in
   `entries_without_duration`, so the sums are then lower bounds.
@@ -1363,12 +1443,16 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   sessions,subagents}, cold_start_tax_tokens,
   model_fit[{model,plan_count,total_turns,total_cost_usd,total_duration_s,flags[]}], churn[{plan,
   edit_count,files_edited,churn_ratio}], plan_length_vs_loc[{plan,plan_md_lines,
-  loc_changed}], re_hunting[{target,tool,plans[]}] | "not computed: streams
+  loc_changed | "not computed: streams unavailable"}], re_hunting[{target,tool,plans[]}] | "not computed: streams
   unavailable", plan_drift[{plan,edited_not_listed[],listed_not_edited[]}],
   edit_overlap[{file,earlier_plan,later_plan,overlap_chars}] | "not computed: streams
   unavailable", warnings[] }` — a feature's cost roll-up and waste tripwires, written
   by `report.py`. Every figure comes from a `usage.json` or `planning.json` already on
-  disk — summed or divided, never repriced. `total_is_partial` is set when any manifest
+  disk — summed or divided, never repriced. The three stream-derived values
+  (`loc_changed`, `re_hunting`, `edit_overlap`) are the exception. They come from
+  `.stream.jsonl` while it exists and are carried from this same file once it does not,
+  so `not computed: streams unavailable` means that no stream and no earlier computed
+  value was ever available, not that the worktree was pruned. `total_is_partial` is set when any manifest
   plan has no `usage.json`, any loaded plan has no `total_cost_usd`, any attempt of one
   — live or from a prior sidecar — has neither a reported nor a recovered cost, or
   `planning.json`
@@ -1482,7 +1566,7 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   whole session transcript priced cleanly, folded into `cost.build`/`cost.verify`/
   `cost.review` and counted separately in `cost.recovered`), partially recovered
   (`recovered_cost_usd` present but `recovered_is_partial: true` — at least one model in
-  the transcript is absent from `pricing.RATES`, so the recovered figure covers only the
+  the transcript is absent from `rates_history.json`, so the recovered figure covers only the
   priced portion; still folded into the queue bucket and `cost.recovered`, but named in
   `cost.partially_recovered_attempts[]`), or unrecoverable (`recovered_cost_usd` absent
   too — recovery has not run over the feature, or it ran and the transcript had already

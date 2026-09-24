@@ -48,7 +48,9 @@ set -uo pipefail
 #     7. warns — never refuses — about a delegate whose brief names <repo>/<slug> and that
 #        neither route claims: asked AFTER the capture, when the ledger holds this
 #        capture's own claims, so a delegate claimed through its parent is not listed;
-#     8. prints the RESIDUE — the rate table's date and the corpus-wide sessions and
+#     8. prints the RESIDUE — the rate history's checked date and staleness, its
+#        `refresh_rates.py --check` against LiteLLM (news only; the capture never writes
+#        the history), and the corpus-wide sessions and
 #        delegates no feature claims, routers excluded. About the corpus rather than this
 #        feature, and never a refusal: this is where the retired weekly sweep's last step
 #        went (self/DESIGN-2026-09-16-lifecycle-restructure.md §3.5);
@@ -91,6 +93,10 @@ WIDEN_REFUSED_RC=3
 # far enough that a delegate spawned before the weekend is still named, near enough that
 # the listing stays a list of things to act on rather than the corpus's whole history.
 RESIDUE_LOOKBACK_DAYS=7
+# refresh_rates.py --check's exit code when LiteLLM's rates differ from the history
+# (CHANGES_EXIT there; bash cannot import it). Its other codes need no word from here:
+# 0 is "no changes", and a fetch failure prints its own one-line reason.
+RATES_CHANGED_RC=1
 COST_COMMIT_SUFFIX=": cost records"
 # The subject feature-start.sh gives a feature's first commit (LIFECYCLE.md → step 2):
 # with both branch refs gone, the only thing left in history saying it was started here.
@@ -358,18 +364,29 @@ done <<<"$DELEGATES"
 # §3.5), moved to the one moment somebody is already reading cost output. Informational
 # in the strict sense: it reports on the CORPUS, not on this feature, and nothing in it
 # can refuse a capture that has already done its job — an unclaimed session is a question
-# for a human, and a rate table nobody has re-checked is a reason to re-check it, not a
+# for a human, and a rate history nobody has re-checked is a reason to refresh it, not a
 # reason to leave a feature uncaptured while its transcripts still exist.
 #
-# The rates line comes first because every dollar printed above is tokens times that
-# table. The listings exclude routers by construction (`is_router_lines`): a router's
+# The rates lines come first because every dollar printed above is tokens times
+# analysis/rates_history.json. `refresh_rates.py --check` prints the history's `checked`
+# date and staleness, then diffs it against LiteLLM's price list and writes nothing: a
+# difference is news, and a network failure is one line. The capture NEVER writes the
+# history — it ships to every consuming repo through the subtree, so a refresh that
+# finds a change is its own agentTooling self feature. RATES_CHECK_SOURCE, when set, is
+# passed as `--source`: the seam that keeps self/tests off the network.
+# The listings exclude routers by construction (`is_router_lines`): a router's
 # spend is routing overhead, a category of its own, not an unclaimed remainder.
 echo ""
 echo "=== residue ==="
-RATES_OUT="$(python3 -B -c "import sys; sys.path.insert(0, '$SCRIPT_DIR/analysis'); import pricing; print(pricing.RATES_VERIFIED, pricing.is_rates_stale())" 2>&1)"
-echo "  rates     verified ${RATES_OUT%% *}"
-if [[ "${RATES_OUT##* }" == "True" ]]; then
-  echo "  WARN      rate table is stale; update RATES and RATES_VERIFIED in analysis/pricing.py"
+RATES_CHECK_ARGS=(--check)
+if [[ -n "${RATES_CHECK_SOURCE:-}" ]]; then RATES_CHECK_ARGS+=(--source "$RATES_CHECK_SOURCE"); fi
+RATES_OUT="$(python3 -B "$SCRIPT_DIR/analysis/refresh_rates.py" "${RATES_CHECK_ARGS[@]}" 2>&1)"
+RATES_RC=$?
+while IFS= read -r rates_line; do
+  echo "  rates     $rates_line"
+done <<<"$RATES_OUT"
+if (( RATES_RC == RATES_CHANGED_RC )); then
+  echo "  WARN      rates differ from litellm; refresh analysis/rates_history.json with analysis/refresh_rates.py in an agentTooling self feature, never here"
 fi
 LOOKBACK_DATE="$(python3 -B -c 'import datetime as d, sys; print((d.datetime.now(d.timezone.utc) - d.timedelta(days=int(sys.argv[1]))).strftime("%Y-%m-%d"))' "$RESIDUE_LOOKBACK_DAYS")"
 "${CAPTURE_PY[@]}" --list-sessions --unclaimed --since "$LOOKBACK_DATE"

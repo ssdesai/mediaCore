@@ -66,6 +66,12 @@ Usage: python3 agentTooling/analysis/routing.py [--self] --session ID --slug SLU
            [--primary DIR]
        python3 agentTooling/analysis/routing.py [--self] --refresh-for SLUG
        python3 agentTooling/analysis/routing.py [--self] --migrate
+       python3 agentTooling/analysis/routing.py [--self] --unpinned-builder SLUG
+
+**A router that builds its feature must be pinned.** `--unpinned-builder` prints the
+session id of SLUG's router when its transcript shows it at work in SLUG's worktree and no
+manifest pins it, and `feature-close.sh` refuses on that before the PR, naming
+`manifest.py pin-session` (self/features/router-built-pin).
 """
 
 from __future__ import annotations
@@ -164,6 +170,26 @@ SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 # worktrees — on `main`, with at least one `feature-start.sh` call in the transcript.
 # Everything else on `main` keeps its place in the unclaimed listing.
 ROUTER_BRANCH = "main"
+
+# Feature worktree layout (LIFECYCLE.md): the directory under the primary checkout that
+# holds every feature's worktree. feature-start.sh holds the same name in a constant of
+# its own; the two move together. Here, in the leaf module, so that capture_planning.py's
+# claim roots and the unpinned-builder check below derive a worktree one way.
+WORKTREES_DIR_NAME = ".worktrees"
+
+# A router that built its feature (self/features/router-built-pin). The design has a
+# different session, launched in the worktree, build the feature; a router that works
+# there itself built it, and without a pin its cost is routing overhead and the feature's
+# total is short by the whole build. "Works there" is a transcript line whose `cwd` is at
+# or under the worktree, or one of these tool calls aimed at a path under it. Reads are
+# not work: a router may look at what it started.
+CWD_KEY = "cwd"
+WRITING_TOOL_PATH_KEYS = {
+    "Edit": "file_path",
+    "Write": "file_path",
+    "NotebookEdit": "notebook_path",
+}
+PATH_SEPARATOR = "/"
 
 WARN_PREFIX = "WARN:"
 USAGE_RC = 2
@@ -563,6 +589,65 @@ def split_pinned(records, features_dir):
     return kept, skipped
 
 
+def feature_worktree_path(primary, slug):
+    """The feature's worktree as `feature-start.sh` creates it, `<primary>/.worktrees/<slug>`
+    (LIFECYCLE.md). Derived from the slug rather than looked up, so it still resolves after
+    `feature-start.sh`'s prune has removed the worktree."""
+    return f"{primary}/{WORKTREES_DIR_NAME}/{slug}"
+
+
+def is_at_or_under(path, directory):
+    """Whether `path` is `directory` or inside it, by whole path component — so
+    `.worktrees/foo-two` is not under `.worktrees/foo`."""
+    return path == directory or path.startswith(directory + PATH_SEPARATOR)
+
+
+def worked_in(lines, directory):
+    """Whether the transcript shows its session at work in `directory`: a line whose
+    `cwd` is at or under it, or an Edit/Write/NotebookEdit aimed at a path under it."""
+    for line in lines:
+        cwd = line.get(CWD_KEY)
+        if isinstance(cwd, str) and is_at_or_under(cwd, directory):
+            return True
+        if line.get("type") != ASSISTANT_TYPE:
+            continue
+        content = (line.get("message") or {}).get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != TOOL_USE_TYPE:
+                continue
+            key = WRITING_TOOL_PATH_KEYS.get(block.get("name"))
+            path = (block.get("input") or {}).get(key) if key else None
+            if isinstance(path, str) and is_at_or_under(path, directory):
+                return True
+    return False
+
+
+def unpinned_builder(features_dir, slug):
+    """The session id of `slug`'s router when that router BUILT the feature unpinned,
+    else None — what `feature-close.sh` refuses on (self/features/router-built-pin).
+
+    Three conditions, all read from what is already on disk: the feature's own routing
+    record names a session (`routers_of`); no manifest in the corpus pins it in `sessions`
+    (`pinned_sessions`, the predicate `split_pinned` uses, so a pin that stops the Routing
+    table counting the router also satisfies this); and its transcript shows it at work in
+    `<launched_in>/.worktrees/<slug>` (`worked_in`). A transcript that cannot be found
+    judges nothing and names nobody."""
+    pins = pinned_sessions(features_dir)
+    for record in routers_of(features_dir, slug):
+        session_id = record.get("session_id")
+        primary = record.get("launched_in")
+        if not session_id or not primary or session_id in pins:
+            continue
+        transcript = find_transcript(session_id)
+        if transcript is None:
+            continue
+        if worked_in(load_lines(transcript), feature_worktree_path(primary, slug)):
+            return session_id
+    return None
+
+
 def refresh_record(record, lines):
     """A router's record re-derived from its transcript as it stands now, keeping every
     entry of the prior `record` the transcript does not carry.
@@ -699,8 +784,20 @@ def main():
                         help="move every legacy <corpus>/routing/<id>.json into the "
                              "directory of each feature it names and delete it, printing "
                              "each move — what sync-plans.sh runs after a pull")
+    parser.add_argument("--unpinned-builder", metavar="SLUG", dest="unpinned_builder",
+                        help="print SLUG's router's session id when that router worked "
+                             "in SLUG's worktree and no manifest pins it, and nothing "
+                             "otherwise — what feature-close.sh refuses on")
     args = parser.parse_args()
 
+    if args.unpinned_builder is not None:
+        if args.session or args.slug or args.refresh_for or args.migrate:
+            parser.error("--unpinned-builder takes no --session, --slug, --refresh-for "
+                         "or --migrate")
+        builder = unpinned_builder(features_root(args.self_mode), args.unpinned_builder)
+        if builder:
+            print(builder)
+        return 0
     if args.migrate:
         if args.session or args.slug or args.refresh_for:
             parser.error("--migrate takes no --session, --slug or --refresh-for")

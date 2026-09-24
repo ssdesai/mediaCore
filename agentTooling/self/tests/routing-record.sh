@@ -92,7 +92,7 @@ TMP="$(cd "$TMP" && pwd -P)"
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features" "$AT/.git"
 
-for f in pricing.py roots.py transcript.py capture_planning.py report.py routing.py; do
+for f in pricing.py rates_history.json roots.py transcript.py capture_planning.py report.py routing.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f" 2>/dev/null || true
 done
 source "$HERE/self/tests/fixtures/transcripts/build-transcript.sh"
@@ -510,6 +510,97 @@ check "R11h. the feature totals are unchanged — pinned-feat and pinner report 
   '[[ "$(pj "$FEATURES/pinned-feat/report.json" "d[\"cost\"][\"total\"]")" == "4.0" && "$(pj "$FEATURES/pinner/report.json" "d[\"cost\"][\"total\"]")" == "6.0" ]]'
 check "R11i. load_records itself still returns the pinned record — the skip is the readers'" \
   '[[ "$(records "len([r for r in recs if r[\"session_id\"] == \"$ROUTER3\"])")" == "1" ]]'
+
+# ── R12. a router that built its feature, unpinned ────────────────────────────
+# `routing.py --unpinned-builder <slug>` is what feature-close.sh refuses on
+# (self/features/router-built-pin): it prints the router's session id when the feature's
+# own routing record names a session no manifest pins in `sessions` AND that session's
+# transcript shows it at work in `<launched_in>/.worktrees/<slug>` — a line whose `cwd`
+# is at or under it, or an Edit/Write/NotebookEdit aimed under it. Otherwise it prints
+# nothing and exits 0, which is every case the intended flow produces.
+T_RB="2026-09-11T09:00:00.000Z"
+# tool_line <session> <cwd> <msg-id> <tool> <input-key> <input-path> — one assistant line
+# carrying one tool_use block, the shape a real Edit/Write/Read call is written as.
+tool_line() {
+  printf '{"type":"assistant","sessionId":"%s","cwd":"%s","gitBranch":"main","timestamp":"%s","isSidechain":false,"message":{"id":"%s","model":"%s","content":[{"type":"tool_use","name":"%s","input":{"%s":"%s"}}],"usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}\n' \
+    "$1" "$2" "$T_RB" "$3" "$MODEL" "$4" "$5" "$6"
+}
+# rb_feature <slug> <router-session> — a feature whose routing record names that router,
+# launched in the primary, which is where every real router record says it was launched.
+rb_feature() {
+  write_feature "$1" 1.0
+  printf '{\n  "captured_at": "2026-09-11T09:00:00Z",\n  "cost_usd": 1.0,\n  "duration_s": 60,\n  "ended_at": "2026-09-11T09:00:00Z",\n  "features_started": [{"slug": "%s", "at": null}],\n  "git_branch": "main",\n  "launched_in": "%s",\n  "model": "%s",\n  "session_id": "%s",\n  "started_at": "2026-09-11T09:00:00Z"\n}\n' \
+    "$1" "$AT" "$MODEL" "$2" > "$(record_of "$1")"
+}
+# rb_start <session> <slug> — the router's own start, from the primary, on main.
+rb_start() { bash_tool_line "$1" "$AT" "main" "m-$1-start" "$MODEL" "$T_RB" "./feature-start.sh --self $2" 10 20; }
+builder_of() { HOME="$FAKE_HOME" python3 -B "$AT/analysis/routing.py" --self --unpinned-builder "$1" 2>&1; }
+
+RB_CWD="rb000000-0000-0000-0000-000000000001"
+RB_EDIT="rb000000-0000-0000-0000-000000000002"
+RB_NOTEBOOK="rb000000-0000-0000-0000-000000000003"
+RB_READER="rb000000-0000-0000-0000-000000000004"
+RB_SIBLING="rb000000-0000-0000-0000-000000000005"
+RB_PINNED="rb000000-0000-0000-0000-000000000006"
+
+# Built from inside the worktree: its cwd moved there after the start.
+rb_feature rb-cwd "$RB_CWD"
+{ rb_start "$RB_CWD" rb-cwd
+  bash_tool_line "$RB_CWD" "$AT/.worktrees/rb-cwd" "main" "m-rbc2" "$MODEL" "$T_RB" "ls" 10 20
+} > "$PRIMARY_PROJ/$RB_CWD.jsonl"
+# Built from the primary: every cwd is the primary, but an Edit landed in the worktree.
+rb_feature rb-edit "$RB_EDIT"
+{ rb_start "$RB_EDIT" rb-edit
+  tool_line "$RB_EDIT" "$AT" "m-rbe2" "Edit" "file_path" "$AT/.worktrees/rb-edit/analysis/x.py"
+} > "$PRIMARY_PROJ/$RB_EDIT.jsonl"
+rb_feature rb-notebook "$RB_NOTEBOOK"
+{ rb_start "$RB_NOTEBOOK" rb-notebook
+  tool_line "$RB_NOTEBOOK" "$AT" "m-rbn2" "NotebookEdit" "notebook_path" "$AT/.worktrees/rb-notebook/n.ipynb"
+} > "$PRIMARY_PROJ/$RB_NOTEBOOK.jsonl"
+# The intended flow: the router starts the feature and only looks — a Read of a worktree
+# file and a Write in the PRIMARY. It built nothing.
+rb_feature rb-reader "$RB_READER"
+{ rb_start "$RB_READER" rb-reader
+  tool_line "$RB_READER" "$AT" "m-rbr2" "Read" "file_path" "$AT/.worktrees/rb-reader/README.md"
+  tool_line "$RB_READER" "$AT" "m-rbr3" "Write" "file_path" "$AT/notes.md"
+} > "$PRIMARY_PROJ/$RB_READER.jsonl"
+# A sibling whose name only STARTS with this slug: `.worktrees/rb-sib-two` is not under
+# `.worktrees/rb-sib`.
+rb_feature rb-sib "$RB_SIBLING"
+{ rb_start "$RB_SIBLING" rb-sib
+  bash_tool_line "$RB_SIBLING" "$AT/.worktrees/rb-sib-two" "main" "m-rbs2" "$MODEL" "$T_RB" "ls" 10 20
+  tool_line "$RB_SIBLING" "$AT" "m-rbs3" "Edit" "file_path" "$AT/.worktrees/rb-sib-two/x.py"
+} > "$PRIMARY_PROJ/$RB_SIBLING.jsonl"
+# Built from inside the worktree, and pinned — in ANOTHER feature's manifest, as R11 pins.
+rb_feature rb-pinned "$RB_PINNED"
+{ rb_start "$RB_PINNED" rb-pinned
+  bash_tool_line "$RB_PINNED" "$AT/.worktrees/rb-pinned" "main" "m-rbp2" "$MODEL" "$T_RB" "ls" 10 20
+} > "$PRIMARY_PROJ/$RB_PINNED.jsonl"
+mkdir -p "$FEATURES/rb-pinner"
+printf '# rb-pinner\n\nTest fixture only.\n\n```json\n{"slug": "rb-pinner", "method": "hand", "plans": [], "branches": ["rb-pinner"], "sessions": ["%s"]}\n```\n' \
+  "$RB_PINNED" > "$FEATURES/rb-pinner/README.md"
+# A record whose router's transcript is gone: nothing can be judged, so nothing is refused.
+rb_feature rb-ghost "$GHOST"
+
+out12="$(builder_of rb-cwd)"; rc12=$?
+check "R12a. a router whose cwd moved into the worktree is named (got '$out12', exit $rc12)" \
+  '[[ "$out12" == "$RB_CWD" && $rc12 -eq 0 ]]'
+check "R12b. ... and so is one that stayed in the primary but Edited a file in the worktree" \
+  '[[ "$(builder_of rb-edit)" == "$RB_EDIT" ]]'
+check "R12c. ... and one whose NotebookEdit landed there" \
+  '[[ "$(builder_of rb-notebook)" == "$RB_NOTEBOOK" ]]'
+check "R12d. a router that only started the feature, read into the worktree and wrote in the primary is not" \
+  '[[ -z "$(builder_of rb-reader)" ]]'
+check "R12e. a worktree whose name only starts with the slug is not this feature's" \
+  '[[ -z "$(builder_of rb-sib)" ]]'
+check "R12f. a router some manifest pins in sessions is never named — it is that feature's already" \
+  '[[ -z "$(builder_of rb-pinned)" ]]'
+out12g="$(builder_of rb-ghost)"; rc12g=$?
+check "R12g. a router whose transcript is gone is not named, and the check still exits 0 (exit $rc12g)" \
+  '[[ -z "$out12g" && $rc12g -eq 0 ]]'
+out12h="$(builder_of unrouted)"; rc12h=$?
+check "R12h. a feature with no routing record is not a question (exit $rc12h)" \
+  '[[ -z "$out12h" && $rc12h -eq 0 ]]'
 
 echo
 if (( fails > 0 )); then echo "routing record: $fails assertion(s) FAILED"; exit 1; fi

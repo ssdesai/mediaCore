@@ -48,7 +48,7 @@ echo "audit-fixes"
 # ── A. report.py --all fills the missing reports ──────────────────────────────
 AT="$TMP/a/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
-for f in "$HERE"/analysis/*.py; do
+for f in "$HERE"/analysis/*.py "$HERE"/analysis/rates_history.json; do
   cp "$f" "$AT/analysis/$(basename "$f")" 2>/dev/null || true
 done
 git -C "$AT" init -q
