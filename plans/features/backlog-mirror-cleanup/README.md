@@ -39,7 +39,7 @@ merged on 2026-09-25. Built by hand (`--method hand`): a documentation-only chan
   "plans": ["01-review-opus"],
   "branches": ["backlog-mirror-cleanup"],
   "base": "main",
-  "session_window": {"from": "2026-09-25T11:33:43Z", "to": null},
+  "session_window": {"from": "2026-09-25T11:33:43Z", "to": "2026-09-25T11:36:05Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],

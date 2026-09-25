@@ -1,0 +1,47 @@
+{
+  "slug": "backlog-mirror-cleanup",
+  "captured_at": "2026-09-25T11:36:28.501301+00:00",
+  "manifest_branches": [
+    "backlog-mirror-cleanup"
+  ],
+  "manifest_subagents": [],
+  "sessions": [],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "27f92b6b-6bfd-466f-98da-35f300e22c7e",
+    "2b2b10af-ab69-4dc8-98f1-f2b15d9ff519",
+    "32df1d5a-fbe4-40bd-88f2-321776723b02",
+    "4285b39b-e43b-432c-8816-401ea9a2d838",
+    "54374427-d353-400e-8413-20f0a4b976c6",
+    "60fffb9c-f1ce-49ab-8fbb-005d59803b18",
+    "68427583-5ea4-40ba-9969-e49e12950d7c",
+    "7b929042-1447-442e-b56a-cbbf2cfd8993",
+    "7d0fc5c6-7ca3-4bd5-be94-b205436a0a52",
+    "9034068b-08ef-4453-80c1-5e1eb2c16bd6",
+    "90a58789-b366-481a-a599-79e9c10a8e3e",
+    "beb918c4-7c40-470c-a75e-60ab43f11d71",
+    "cb19dfb7-7855-401d-a318-e895f3440d12",
+    "cbb3f5ca-4dcf-4211-9970-515b1d202b3c",
+    "d5408c53-6382-4419-9f2a-a3465394c547",
+    "dd4fc76c-92db-4a48-9de7-4c48c014233e"
+  ],
+  "excluded_agent_ids": [],
+  "priced": [],
+  "cost_usd": {
+    "main": 0.0,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 0.0,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 0,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-09-22",
+  "warnings": [
+    "no planning session matched, but 1 excluded session(s) on ['backlog-mirror-cleanup'] were met \u2014 the branch name is right and the zero is evidenced; their cost is in usage.json or belongs to the feature that excluded them"
+  ]
+}
