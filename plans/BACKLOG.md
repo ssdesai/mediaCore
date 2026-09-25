@@ -21,7 +21,7 @@ which is the correct state for a repo that has closed everything it found.
 ## Entries
 
 - **humanNetworkMap still pins `mediacore` `v0.3.0`, so it refuses schema-3 bundles.**
-  Its dependency pin (`pyproject.toml` / requirements) names `v0.3.0`; a bundle written by
+  Its dependency pin (`server/requirements.txt`) names `v0.3.0`; a bundle written by
   0.4.0 is refused by `read_bundle` with the "upgrade mediacore" message, which is the
   designed behaviour (§12) until it re-pins. Excluded by the `release-original-year` README:
   re-pins are separate features after `v0.4.0` is tagged. musicMap (its PR #43) and
