@@ -1,39 +1,34 @@
-# <Feature title>
+# Backlog mirror cleanup after the v0.4.0 re-pins
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+`release-original-year` (PR #22, tagged `v0.4.0`) left two mirror entries in
+`plans/BACKLOG.md` for work that lived in the consumer repos: the vinylCatalogue adapter
+filling `Release.original_year`, and the three consumers re-pinning from `v0.3.0`. Two of the
+three consumers have since done so — musicMap (its PR #43, `mediacore-0-4-0`) and
+vinylCatalogue (its PR #158, `bundle-original-year`, whose export fills `original_year`) both
+merged on 2026-09-25. Built by hand (`--method hand`): a documentation-only change to
+`plans/BACKLOG.md`.
+
+## Decisions
+
+1. **The adapter entry is deleted.** Its closing assertion (a signed-off `reissue` record
+   exports `"original_year": 1969` with `"schema_version": 3`, an `original` or unanswered
+   record exports `null`) is pinned by vinylCatalogue's
+   `tests/test_acceptance_bundle_original_year.py` on its `main`.
+2. **The re-pin entry is narrowed to humanNetworkMap**, the one consumer still on `v0.3.0`.
+   It records that musicMap and vinylCatalogue re-pinned, and keeps its closing assertion
+   for humanNetworkMap alone. Whether humanNetworkMap re-pins is the user's call, so the
+   entry stays open rather than being deleted.
+3. Nothing else changes: no code, no spec, no README beyond the backlog.
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Confirms the two consumer PRs are merged and the remaining entry is truthful. |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- Starting the humanNetworkMap re-pin (out of scope; the user decides).
 
 ## Machine-readable
 
