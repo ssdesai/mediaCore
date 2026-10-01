@@ -1,39 +1,20 @@
-# <Feature title>
+# pull-agenttooling-pr73
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+Propagate agentTooling PR 73 (#65–#73), split `bd603c3481cb007a8bfc809bf162aec11de30642`,
+into this repo's vendored `agentTooling/` subtree via `agentTooling/update.sh`, and
+commit what the pulled `sync-plans.sh` wrote outside `agentTooling/`.
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Reviews the subtree pull and the sync's effects outside `agentTooling/`. |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- Turning the sandbox on. `sync-plans.sh` writes the root `.claude/settings.json`
+  `sandbox` block with `"enabled": false`, which is correct and deliberate per
+  agentTooling PR #73 — this pull does not flip it on.
 
 ## Machine-readable
 
