@@ -1,39 +1,39 @@
-# <Feature title>
+# INTEGRATION.md §7/§8 catch up with humanNetworkMap's import
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+Four humanNetworkMap features changed what its release import does and each left a
+backlog entry (hNM `plans/BACKLOG.md`) saying mediaCore's `INTEGRATION.md` still
+describes the original behaviour: `import-default-link` (a name-matched candidate is now
+the default link), `import-audio-credit-items` (`Release.audio` is imported; a credit
+sentence goes on its edge only), `import-into-existing-source` (a re-import links the
+existing source and stamps edges with `hnm:edge-key`) and `import-links-on-entities` (a
+re-import moves a source-only link onto its nodes). The document lives here, so the
+wording is fixed here, in one PR. Built by hand (`--method hand`): documentation only.
+
+## Decisions
+
+1. **§7's candidate rule is split per consumer.** hNM now proposes a link to any
+   candidate; musicMap still defaults a name-only match to *create*
+   (`backend/app/services/README.md` → `_default_link_or_create`). §7 says both, rather
+   than generalising hNM's rule to a consumer that does not follow it.
+2. **The hNM-specific re-import mechanics go in §7's Re-import bullet** (the backlog
+   assertion names it), marked as hNM's; §8 points back to it from the source bullet and
+   the model additions.
+3. **One §13 entry records the catch-up.** No contract shape changes, no version bump,
+   no re-pin.
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Checks each of the four hNM backlog assertions against the new wording, and that nothing outside §7/§8/§13 changed. |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- **Removing the four entries from hNM's `plans/BACKLOG.md`.** That file belongs to the
+  humanNetworkMap repo; its coordinator closes them once this PR merges.
+- **musicMap's behaviour.** Described as it is, not changed.
+- **The hNM data cleanups** (duplicate credit sentences, duplicate sources/edges from
+  pre-feature re-imports). hNM backlog items, not wording.
 
 ## Machine-readable
 
