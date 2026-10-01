@@ -44,7 +44,7 @@ wording is fixed here, in one PR. Built by hand (`--method hand`): documentation
   "plans": ["01-review-opus"],
   "branches": ["integration-hnm-wording"],
   "base": "main",
-  "session_window": {"from": "2026-10-01T18:05:26Z", "to": null},
+  "session_window": {"from": "2026-10-01T18:05:26Z", "to": "2026-10-01T18:08:24Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": ["185a39e9-8256-4ca3-9452-a9182ca84880"],
