@@ -25,7 +25,7 @@ commit what the pulled `sync-plans.sh` wrote outside `agentTooling/`.
   "plans": ["01-review-opus"],
   "branches": ["pull-agenttooling-pr73"],
   "base": "main",
-  "session_window": {"from": "2026-10-01T16:31:17Z", "to": null},
+  "session_window": {"from": "2026-10-01T16:31:17Z", "to": "2026-10-01T16:36:21Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],
