@@ -98,7 +98,9 @@ go wrong quietly:
   session was not on this feature's branch — the coordinator-on-`main` case. A subagent
   inherits its parent's `gitBranch` at spawn and never records its own, so an architect
   spawned from `main` is invisible to `branches` and `session_window` alike; pinning its
-  id claims it outright. Find the id with
+  id claims it outright. Pin with `python3 agentTooling/analysis/manifest.py <slug>
+  pin-subagent <agent-id>` — the one writer of this list; a repeat is a no-op and a
+  malformed id is refused — never by editing the fence. Find the id with
   `python3 agentTooling/analysis/capture_planning.py --list-subagents --since <date>`,
   which prints each one's cost and opening prompt. A subagent whose parent *is* on the
   branch needs no pin — it is claimed with its parent when its own start is in the window.
