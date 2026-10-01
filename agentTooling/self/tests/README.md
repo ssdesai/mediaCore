@@ -134,9 +134,14 @@ copy is an import error in every script that prices anything. **Every sandbox th
   of template-version 2 is gone; and that a
   `--self` start from an agentTooling **vendored** one directory inside the primary
   commits the feature directory with `agentTooling/self/features/<slug>/routing.json`
-  inside it, and names that prefixed path in its output — a
+  inside it, and names that prefixed path in its output, and writes no nested
+  `agentTooling/.claude/settings.json` (`S6h`) — a
   second, smaller scaffold built from `$AT`'s first commit with `git archive`, since the
-  main one is a standalone checkout by construction. Most features it later **merges** are
+  main one is a standalone checkout by construction. The sandbox copies the real
+  `hooks/{policy.py,wire-settings.py,allow-repo-commands.sh}` and ignores
+  `.claude/settings.json`, so **S1v** can assert the start regenerates the primary's own
+  untracked settings file when it is missing — byte for byte the generator's output, the
+  primary still clean, and a line saying so. Most features it later **merges** are
   started with no session id (`start_unrouted`), which is simply the cheaper fixture; the
   routed case, two features one router starts from one `main`, is **MR** below. The first **S1** step
   also asserts the printed "Next" names `feature-close.sh --self S` as what opens the PR
@@ -150,7 +155,8 @@ copy is an import error in every script that prices anything. **Every sandbox th
   session's instant, the remote's `main` ref is unchanged, the worktree is clean and
   present, the worktree session is claimed by branch with its `cwd`; a delegate of a
   coordinator on `main` whose brief names `S` and that no route claims is a **warning**
-  line naming its id and the `"subagents"` pin, and a sibling briefed for `S-two` is never
+  line naming its id, the `"subagents"` pin and the command that writes it,
+  `manifest.py --self S pin-subagent <id>` (C1i2), and a sibling briefed for `S-two` is never
   **warned** about (it is named once, in the residue, which is the corpus's listing and not
   this feature's); the router's routing record, refreshed from the router transcript
   planted for it, gains a cost and rides the commit. **C3**, the residue the retired weekly
@@ -160,7 +166,10 @@ copy is an import error in every script that prices anything. **Every sandbox th
   and NOT the router that started `S`, whose spend is routing overhead rather than an
   unclaimed remainder — while the capture still exits 0. **C2**: a later line in the session and a second
   capture move `to` LATER, rewrite `planning.json` in a second cost commit, and meet no
-  refusal or already-captured skip. **N1**: a feature no routing record names captures
+  refusal or already-captured skip; before that capture C1's warned-about delegate is
+  pinned with the worktree copy's `manifest.py pin-subagent`, and the capture claims it as
+  `pinned` under the coordinator on `main`, stops warning about it, and pushes the pin in
+  its cost commit (C2f–C2i, `../features/manifest-pin-subagent/`). **N1**: a feature no routing record names captures
   with no word about routing. **V1**, a clean round
   (`../DESIGN-2026-09-17-close-and-review-rounds.md` §3 and §9): with a review edit in the
   tree, the pass commits `S: review round 1` carrying that edit, stamps a `plan_end` with
@@ -263,7 +272,8 @@ copy is an import error in every script that prices anything. **Every sandbox th
   **C3a2**: the residue also carries `refresh_rates.py --check`'s result against
   `fixtures/pricing/litellm-sample.json` (`RATES_CHECK_SOURCE`), which differs from the
   seeded history — a `rates` line naming `claude-opus-5-5` and a `WARN` naming
-  `refresh_rates.py` — while the capture still exits 0.
+  `refresh_rates.py` — while the capture still exits 0. **C3a3**: and exactly one
+  `tiers` line, in one of the two summary wordings `refresh_rates.py --tiers` ends on.
   **C4**: with the sandbox's own `analysis/rates_history.json` rewritten to an ancient
   `checked` (restored immediately after), a capture warns in its residue that the
   rate history is stale and still exits 0 — every figure depends on that history, and one
@@ -1096,6 +1106,29 @@ copy is an import error in every script that prices anything. **Every sandbox th
   exited 2 for all of them, so "non-zero" would have passed vacuously. The fence markers
   in its readers are spelled `chr(96)*3`: three backticks inside a double-quoted shell
   word are a command substitution. No model, no network, no git.
+- `manifest-pin-subagent.sh` — `analysis/manifest.py pin-subagent`, the only sanctioned
+  writer of a manifest's `subagents[]` (`../features/manifest-pin-subagent/`). Two
+  throwaway checkouts under one `mktemp -d` — an agentTooling one for `--self` and a
+  consuming repo with `agentTooling/analysis/` vendored and `plans/features/` beside it,
+  each with `analysis/{pricing,roots,transcript,routing,manifest,capture_planning}.py`
+  plus `rates_history.json` and a bare `mkdir .git` — and under a redirected `$HOME` a
+  coordinator on `main` with one delegate briefed for the feature. Its manifests carry an
+  example ```json fence above the real one. Asserts: a pin is appended and echoed as
+  `subagents = [...]`, and every other byte of the file — prose, the example fence, every
+  other key — is unchanged (P1); a repeat is a no-op, exit 0, byte-identical (P2); a
+  second id lands after the first (P3); an empty, blank, `agent-`-prefixed, truncated,
+  uppercase, `<agent-id>` or session-UUID id is refused with exit **1** and a `refusing:`
+  line, the file byte-identical, the `agent-` case naming the prefix to drop (P4); a fence
+  with no `subagents` key gains one (P5); the consumer layout, without `--self`, pins and
+  re-pins the same way (P6); the delegate — which inherits `main` and no route can reach —
+  leaves the capture refusing a `$0.00` record before the pin and is claimed as `pinned`
+  under its real parent after it, its coordinator staying out of `sessions[]` (P7);
+  `--list-subagents --unclaimed --for` lists it with advice naming `pin-subagent`, and
+  drops it once pinned and captured (P8, the pre-pin listing being the guard); and
+  `capture_planning.parse_manifest is routing.parse_manifest` (P9). Exit 1 rather than
+  non-zero because argparse exited 2 for every call before the subcommand existed. The
+  end-to-end half through the real `feature-capture.sh` is `feature-lifecycle.sh` C1i2
+  and C2f–C2i. No model, no network, no git.
 - `timestamps-are-utc.sh` — same scaffolding, asserting the UTC convention in
   `analysis/README.md` → "Every instant is UTC": `transcript.utc_date` dates an offset
   timestamp by its UTC day (`2026-07-01T23:00:00-04:00` → `2026-07-02`), a session's start
@@ -1165,7 +1198,10 @@ copy is an import error in every script that prices anything. **Every sandbox th
   --check`, `ls -la`, `du -sh`), so a closure that over-reached fails here rather than
   in a consuming repo; that every **opaque** shape is denied with a reason naming the
   rewrite — a heredoc into an interpreter, `-c`/`-e` code as a string (including behind
-  `xargs` and `find -exec`), a pipe into an interpreter, a `$CMD`/`$(…)` program, a
+  `xargs` and `find -exec`), a pipe into an interpreter — with a redirect after it too
+  (`ls | sh > out`, `ls | sh 2>&1`, `cat <<'EOF' | python3 > out`, `ls |` then `sh` on
+  the next line), while an input redirect from a file is the script and keeps prompting
+  (`ls | python3 < src/a.py`; `../features/hook-pipe-redirect/`) — a `$CMD`/`$(…)` program, a
   `$(…)` inside a path, a one-line `for`/`while`/`if`/`until`/`case` — while the
   exemptions are not: a heredoc feeding `cat`, `git commit -m "$(cat <<'EOF' … EOF)"`,
   `x=$(cd dir && pwd)`, a whole-argument `$(…)`, an interpreter named in a flag's
@@ -1217,7 +1253,11 @@ copy is an import error in every script that prices anything. **Every sandbox th
   cd && ls` became `cat README.md > cd && ls` to keep its point
   (`../features/shell-write-rewrite/NOTES.md`); that `self/tests/fixtures/hook-replay-2026-09-18.json`
   replays with the verdict each record claims and each denial's reason (its `echo x > f`
-  record is REWRITE now);
+  record is REWRITE now, and its `git stash list` record ALLOW, with `git stash pop` the
+  git-deny record in its place); that `git stash list` and `git stash show` are approved
+  (behind `-C <root>` too) while every mutating stash form — bare, a leading flag or
+  pathspec, `push`/`save`/`pop`/`apply`/`drop`/`clear`/`branch`/`create`/`store`, an
+  unknown subcommand, `git stash -q list` — is denied;
   that a read-only git subcommand **behind the global
   location options** is judged by the subcommand (`git -C <root> status`,
   `git --git-dir=<root>/.git log`, `git --work-tree=<root> status` approved; `git -C /tmp
@@ -1287,11 +1327,16 @@ copy is an import error in every script that prices anything. **Every sandbox th
   `ask` with the escalation's own reason. Depends on
   `OPAQUE_REWRITE_ATTEMPTS` being 2 and on
   the state directory being an explicit name under `$TMPDIR`. No model, no network.
-- `hook-wiring.sh` — sixteen throwaway repos, one per starting state of
+- `hook-wiring.sh` — twenty-six throwaway repos, one per starting state of
   `.claude/settings.json` (absent, unrelated content, hook only, deny rules only, a
   partial deny list with a repo's own rule in it, the hook and the `Edit` rules but no
-  `Bash` rules, everything but the ask rule, complete, a different hook, seven malformed
-  shapes), plus three more for the
+  `Bash` rules, everything but the ask rule, everything but the sandbox block, complete,
+  complete plus the retired `Bash(git stash:*)` and a repo's own rule, a sandbox block
+  carrying the repo's own domain, `denyRead` path and `excludedCommands`, a sandbox
+  switched off by hand, the complete block with only `enabled` flipped against the
+  generator's switch, a different hook, twelve malformed shapes — a non-object `sandbox`,
+  a non-list `allowedDomains`, and an explicit `null` for `sandbox`, `allowedDomains` and
+  `permissions.deny`, which a write used to crash on, among them), plus three more for the
   two modes. The `Bash` deny list is **imported** from `hooks/policy.py` rather than
   retyped, so a rule added to the table reaches this file with nobody editing it.
   Asserts `hooks/wire-settings.py --check` and `--write` report the
@@ -1306,7 +1351,21 @@ copy is an import error in every script that prices anything. **Every sandbox th
   both modes and untouched; that a file carrying the
   hook and the `Edit` rules and no `Bash` rules reports `UNWIRED` naming the count of
   missing `Bash` rules and no other gap, and that the write then appends exactly those,
-  in order; that a file missing only the ask rule names it and nothing else; and that
+  in order; that a file missing only the ask rule names it and nothing else; that a
+  file carrying a **retired** rule (`policy.retired_bash_deny_rules()`) reports `UNWIRED`
+  naming it to remove, the write takes out exactly that rule where it stood, and no case
+  leaves one behind — the one removal the merge makes; that every written file carries
+  the **sandbox block** (`self/features/runner-sandbox/`) — `enabled` equal to
+  `wire-settings.py`'s `SANDBOX_ENABLED` switch (`SANDBOX_ENABLED_EXPECTED`, **false**
+  since `self/features/sandbox-consumer-reads/`; flip the two together),
+  `failIfUnavailable` true and `allowUnsandboxedCommands` false (once the switch is on,
+  Claude Code's built-in write deny of `.git/hooks` follows from them), no `autoAllowBashIfSandboxed`, the three secret `denyRead` paths and never `~`
+  or `~/.claude`, every generator domain (read from a fresh write, not retyped, with the
+  seven-domain minimum asserted beside it) and no duplicates — that a repo's own domain,
+  `denyRead` path and unowned sandbox key are kept first and in place with the
+  generator's entries appended after, and that a hand-set owned value is set back to the
+  generator's in either direction — a file with only `enabled` flipped against the switch
+  reports one owned setting and is written back to the generated block; that
   `--self` writes `${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh`
   and the ask rules `Edit(**/hooks/**)`, `Edit(/hooks/**)` and differs from an ordinary
   run in nothing else — the two files
@@ -1316,8 +1375,44 @@ copy is an import error in every script that prices anything. **Every sandbox th
   repointed at the vendored path, and a merely REORDERED deny list each fail
   `--self --check` — all three of which the merge check read as complete — the message
   names the line and the entry, `--self --write` restores the generated bytes exactly,
-  and this checkout's own committed `.claude/settings.json` passes the same call
+  `--self` writes the same sandbox block an ordinary run does with `enabled` per the
+  switch, and a hand-added allowed domain (named in the message) or an `enabled` flipped by
+  hand against the switch fails `--self --check`,
+  and this checkout's own generated (untracked) `.claude/settings.json` passes the same call
   `self/gate.sh` records.
+- `self-settings.sh` — agentTooling's own `.claude/settings.json` is untracked and
+  generated per checkout (`self/features/self-settings-untracked/`). Stages the real
+  `hooks/{policy.py,wire-settings.py,allow-repo-commands.sh}`, `self/worktree-setup.sh`,
+  `self/gate.sh` and `.gitignore` into throwaway git repos and asserts: **A** — the setup
+  hook, run in a fresh standalone worktree the way `feature-start.sh` runs it (from the
+  worktree root, by absolute path), writes the file byte for byte what
+  `wire-settings.py --self --write` writes into an empty directory, the worktree stays
+  clean (ignored), and a second run changes nothing; **B** — `self/gate.sh`'s
+  `permission policy wired into .claude/settings.json` section (read from the staged
+  `gate-report.txt`; every other section fails there, since no other suite is staged, and
+  is not read) exits 0 on that file, 1 on a missing file and on a drifted one, naming
+  `python3 -B <abs>/hooks/wire-settings.py --self --repo <abs worktree> --write` both
+  times, and 0 again once that very command has been run; **C** — in the **vendored**
+  layout (`agentTooling/` inside a consuming repo whose root is wired by
+  `wire-settings.py` without `--self`) the setup hook writes no nested
+  `agentTooling/.claude/`, exactly one `settings.json` in the worktree names
+  `allow-repo-commands.sh` and it is the root's (the backlog assertion this closed),
+  `--self --check` and the gate's section pass on the absence, a nested copy is
+  `UNWIRED`, and `--self --write` writes nothing over one or into none; **D** — the real
+  checkout tracks no `.claude/settings.json` (`git ls-files`) and `.gitignore` covers it
+  (`git check-ignore --no-index`), which is what keeps it out of every subtree pull;
+  **E** — the sandbox block in each layout (`self/features/runner-sandbox/`): the self
+  worktree's file carries it with `enabled` at the `SANDBOX_ENABLED` switch (`False`
+  today; the test's `SANDBOX_ENABLED_EXPECTED` flips with it), fail-closed and no
+  unsandboxed retry, the three secret `denyRead` paths and the package domains; a domain
+  hand-added there fails the gate's section and the regenerate restores the bytes; the
+  vendored layout's root file carries the same owned settings, a consumer's own domain
+  survives a re-run of the wiring, first, with the generator's domains unioned in after
+  it, and a consumer's `enabled` flipped by hand is set back to the switch (E8).
+  Depends on the gate section's label staying that string, and on the vendored rule being
+  "no `.git` here and one above" — a scratch directory with no git anywhere above it is a
+  standalone checkout, which is what `hook-wiring.sh`'s `--self` cases rely on. No model,
+  no network; a few seconds.
 - `policy-table.sh` — the odd one out beside `template-versions.sh`: it stands up no
   sandbox at all, reading the checked-in `hooks/` instead. It imports `hooks/policy.py`,
   the one table the hook's git deny and `wire-settings.py`'s prefix rules are both built
@@ -1325,11 +1420,15 @@ copy is an import error in every script that prices anything. **Every sandbox th
   `.sh` name) so the two halves can be compared directly. Asserts that
   `bash_deny_rules()` renders exactly one rule per MUTATING entry and none for a
   READ_ONLY one, in the documented order (push force ×3, `reset --hard`, the
-  always-mutating verbs, worktree ×7, checkout, switch, branch ×6), with nothing
-  rendered twice; that every rule is a `Bash(git …:*)` prefix and none is an allow rule;
+  always-mutating verbs, stash ×9, worktree ×7, checkout, switch, branch ×6, then the
+  exact `Bash(git stash)`), with nothing rendered twice; that no rule matches `git stash
+  list` or `git stash show` and the retired `Bash(git stash:*)` is listed for removal
+  rather than rendered; that every rule is a `Bash(git …:*)` prefix or the exact rule for
+  a bare verb, and none is an allow rule;
   that the hook's own `git_mutates` **denies the command each rendered rule names** —
   the twin check, which is what a drift in either direction fails — and does not deny
-  the table's read-only spellings (`git worktree list`, `git branch --list <pattern>`, a
+  the table's read-only spellings (`git worktree list`, `git stash list`, `git stash
+  show`, `git branch --list <pattern>`, a
   plain `git push`, `git reset <file>`); and that neither script keeps a copy of the
   table, by reading their source for a `BASH_DENY_RULES` tuple and a `GIT_*` frozenset
   that must no longer be there, and by checking the hook's constants are the table's own
@@ -1357,8 +1456,34 @@ copy is an import error in every script that prices anything. **Every sandbox th
   the stub number unconditionally in both modes (`../PROJECT_FACTS.md` → "Plan numbers are
   per feature, from 01") and on `$HOME` being redirected, since a start derives its routing
   record from the running session's transcript.
-- `rates-history.sh` — copies `analysis/pricing.py`, `analysis/refresh_rates.py` and
-  `analysis/rates_history.json` into throwaway `analysis/` directories under one
+- `start-takeover.sh` — `plan-numbering.sh`'s `--self` scaffolding (one throwaway
+  agentTooling checkout, a real git repo with a bare `origin`, the real `feature-start.sh`,
+  `plan-runner-roots.sh`, `analysis/{roots,manifest,pricing,transcript,routing}.py`,
+  `analysis/rates_history.json` and the manifest template, `$HOME` redirected and no
+  session id), plus a stub gate (`GATE_STUB_VERDICT`) and a stub setup hook that, under
+  `HOOK_MODE=kill`, copies the running start's lock to `HOOK_LOCK_OUT` and `SIGKILL`s the
+  PID it names — an interrupt after `worktree add -b` and before `S: start`, which is what
+  its `half_start` helper builds. Asserts the takeover of an abandoned half-start
+  (`../features/start-takeover/`): **K1** the killed start leaves branch, worktree and a
+  lock at `$(git -C <worktree> rev-parse --absolute-git-dir)/feature-start.lock` whose
+  `pid=` line names the start, now gone; **K2** a re-run of the same slug succeeds —
+  `S: start` on `origin/main`, a clean worktree, no lock left, a `took over` line;
+  **L1** a lock forged to name a live PID (a `sleep` started outside any job) is refused
+  naming it, branch, worktree and lock untouched, and **L2** the same re-run succeeds once
+  that process is killed; **D1** a dirty half-start worktree is refused, its untracked file
+  kept, the refusal saying `uncommitted`; **M1** a branch that moved since creation is
+  refused with its commit kept; **N1** a lockless half-start made by hand with
+  `git worktree add -b` — the shape every start before this feature left — is taken over;
+  **G1** a red gate refuses leaving worktree and lock, the lock now carrying a `refused=`
+  line and a PID that is gone, and **G2** the retry with the gate green succeeds (the
+  flaky-base case); **P1** a start of another slug prunes a dead-locked half-start with its
+  branch and keeps a live-locked one, a lockless one (it cannot tell that from a start
+  between `worktree add` and its lock write — `feature-lifecycle.sh` S4g2 is the same rule)
+  and a dirty dead-locked one, named on a `kept` line. Depends on `feature-start.sh`'s
+  `START_LOCK_NAME` and its `pid=` / `refused=` lines, and on `ps -p` answering for a PID.
+  No model, no network.
+- `rates-history.sh` — copies `analysis/pricing.py`, `analysis/refresh_rates.py`,
+  `analysis/rates_history.json` and `analysis/roots.py` into throwaway `analysis/` directories under one
   `mktemp -d`, so every refresh writes a copy and never the committed history, and feeds
   `refresh_rates.py` `fixtures/pricing/litellm-sample.json` through `--source`
   (`self/features/litellm-pricing/README.md`, "Spec"). **H1**, seed parity: for every
@@ -1388,8 +1513,20 @@ copy is an import error in every script that prices anything. **Every sandbox th
   against a refreshed history it exits 0 and writes nothing, `checked` included; a missing
   `--source` exits `FETCH_FAILED_EXIT` naming the path, and so does a write-mode run, which
   writes nothing. **H9**: `--history <path>` writes that file and leaves the default alone.
-  Depends on `pricing.HISTORY_PATH` being the history beside `pricing.py` and on
-  `refresh_rates.RATE_DECIMALS` / `FETCH_FAILED_EXIT`. RED until litellm-pricing landed.
+  **T1–T8b**, `--tiers` (`self/features/rates-tier-check/`), over a sandbox corpus at
+  `<sandbox>/self/features/` — a `planning.json` naming `claude-sonnet-4-5-20250929` and
+  `claude-haiku-4-5`, a `usage.json` naming `claude-sonnet-4-5`: exit 1; Sonnet 4.5's line
+  is exactly its standard above-200k rates, not the fixture's `_batches` ones; Haiku 4.5 is
+  `no tier` and out of the summary; the last line is the residue's summary verbatim;
+  Opus 5.5, tiered in the fixture but not in the corpus, is never named; nothing is
+  written. A flat-only corpus exits 0 on "no model in the corpus carries a tiered rate";
+  a missing `--source` exits `FETCH_FAILED_EXIT` naming it on the last line; and
+  `TIER_SUFFIXES` holds `_above_200k_tokens`. `$TMP/plans/features` is never created, so
+  each sandbox's own records are its whole corpus.
+  Depends on `pricing.HISTORY_PATH` being the history beside `pricing.py`, on
+  `roots.features_root(True)` resolving beside the copied script, and on
+  `refresh_rates.RATE_DECIMALS` / `FETCH_FAILED_EXIT` / `TIER_SUFFIXES`. RED until
+  litellm-pricing landed; T RED until rates-tier-check landed.
   No model, no network.
 - `sync-check.sh` — copies the real `sync-plans.sh`, `update.sh` and `templates/` (a
   missing `update.sh` is tolerated — RED until plan 77 lands, the `cost-recovery.sh`
@@ -1424,7 +1561,9 @@ copy is an import error in every script that prices anything. **Every sandbox th
   feature deduplicates against nothing and is counted twice. Fixture B is a subtree cycle: a bare `$TMP/upstream.git`, a `$TMP/work` clone
   that commits the same three copies as `main`, and `$TMP/consumer2`, which
   `git subtree add`s it at `agentTooling/`, seeds `plans/` and fills
-  `PROJECT_FACTS.md`; it asserts `update.sh`: a pull with a clean tree brings across a
+  `PROJECT_FACTS.md`, then checks out a started feature's branch `pull-agenttooling-pr9`
+  with its manifest committed, since `update.sh` pulls nowhere else (its refusals off
+  such a branch are `propagation-pull.sh`'s); it asserts `update.sh`: a pull with a clean tree brings across a
   new upstream file and re-runs `sync-plans.sh`, exit 0; a dirty tree refuses without
   pulling, naming the untracked file, exit 1; running it from the source checkout
   itself (no prefix to pull into) refuses naming "source checkout", exit 1; and an
@@ -1446,6 +1585,28 @@ copy is an import error in every script that prices anything. **Every sandbox th
   fixture (`$TMP/consumer-routing-check`) leaves `plans/routing/<id>.json` in place,
   byte-identical, and writes no `routing.json` (14a-e) — `--check`'s branch never
   calls `migrate_routing`, which sits below it, on the write path only.
+- `propagation-pull.sh` — a propagation pull as its own feature
+  (`../features/propagation-as-feature/`, `../../LIFECYCLE.md` → "Propagate"). A bare
+  upstream holding the real `update.sh` and a stub `sync-plans.sh` (it prints one line, so
+  the pulled copy is seen to run), a consumer that `git subtree add`s it at
+  `agentTooling/`, and a linked worktree `.worktrees/pull-agenttooling-pr7` on its own
+  branch with `plans/features/pull-agenttooling-pr7/README.md` committed — made by the
+  fixture with `git worktree add`, since the start is `feature-lifecycle.sh`'s to test.
+  Asserts that `update.sh` refuses, exit 1, pulling nothing and moving no ref, on the
+  consumer's `main` (naming `feature-start.sh`, `--method hand` and
+  `pull-agenttooling-pr`; P1), on a detached HEAD (P2), and on a branch with no feature
+  manifest (naming the `plans/features/<branch>/README.md` it looked for; P3); that the
+  worktree's copy, run from outside every checkout, pulls onto the feature's branch — the
+  upstream file in the worktree's prefix, `main` unmoved, nothing in the primary, the
+  `refs/heads` list unchanged, the squash commit's `git-subtree-split:` equal to the
+  upstream head and printed on a `split` line, the stub sync run (P4); that the real
+  `hooks/allow-repo-commands.sh` denies neither a `git subtree pull` from the worktree nor
+  `update.sh` by either spelling (P5 — a prompt is fine, a deny would block the recipe);
+  and that no prefix rule `hooks/policy.py`'s `bash_deny_rules()` renders matches the
+  pull, `update.sh` or a `git merge` (P6). RED until `update.sh` refused off a started
+  feature's branch and printed the split. Depends on `git subtree`, on a consumer's
+  features living at `plans/features/`, and on `policy.BASH_RULE_TEMPLATE` being
+  `Bash(%s:*)`-shaped. No model, no network.
 - `audit-fixes.sh` — the two items from the 2026-09-16 audit with no home in another file
   (`../DESIGN-2026-09-16-lifecycle-restructure.md` §3.8), each a gap that read as correct
   output. Two sandboxes under one `mktemp -d`, no model and no network. **A.** A throwaway

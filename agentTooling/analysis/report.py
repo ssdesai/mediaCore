@@ -39,8 +39,8 @@ from typing import NamedTuple
 
 from pricing import HISTORY_FILENAME, RATES_VERIFIED, is_rates_stale
 from roots import add_self_flag, artifact_root, features_root
-# `parse_manifest` is routing.py's: the one copy both this module and routing.py's
-# pinned-session predicate read a manifest through.
+# `parse_manifest` is routing.py's: the one copy this module, capture_planning.py and
+# routing.py's pinned-session predicate all read a manifest through.
 from routing import load_records, parse_manifest, routers_of, split_pinned, started_slugs
 from transcript import to_utc
 

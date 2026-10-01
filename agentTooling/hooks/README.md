@@ -36,15 +36,21 @@ only.
   refuse: a token it does not understand makes the whole command fall through to the prompt.
 - `policy.py` — the git policy as **data**, and the one file both scripts above and below
   read it from. Constants: `GIT_PROGRAM`; `READ_ONLY` / `MUTATING` (how an entry is
-  marked); `GIT_ALWAYS_MUTATING` (`clean`, `stash`, `rebase`); `GIT_PUSH` with
+  marked); `GIT_ALWAYS_MUTATING` (`clean`, `rebase`); `GIT_STASH` with
+  `GIT_STASH_SUBCOMMANDS` (`list`, `show` READ_ONLY; `push`, `save`, `pop`, `apply`,
+  `drop`, `clear`, `branch`, `create`, `store` MUTATING); `GIT_PUSH` with
   `GIT_PUSH_FORCE_FLAGS` and `GIT_PUSH_FORCE_LEASE_FLAG`; `GIT_RESET` with
   `GIT_RESET_MUTATING_FLAG`; `GIT_WORKTREE` with `GIT_WORKTREE_SUBCOMMANDS`
   (`list` READ_ONLY; `add`, `remove`, `prune`, `move`, `lock`, `unlock`, `repair`
   MUTATING); `GIT_CHECKOUT` / `GIT_CHECKOUT_BRANCH_FLAGS`; `GIT_SWITCH` /
   `GIT_SWITCH_BRANCH_FLAGS`; `GIT_BRANCH` / `GIT_BRANCH_MUTATING_FLAGS` /
-  `GIT_BRANCH_LIST_FLAGS`; and `BASH_RULE_TEMPLATE`. Functions: `worktree_read_only()`,
-  `worktree_mutating()`, `denied_git_commands()` and `bash_deny_rules()`, which renders
-  the `permissions.deny` prefix twin in the fixed order below. Every constant a rule is
+  `GIT_BRANCH_LIST_FLAGS`; `BASH_RULE_TEMPLATE` (a prefix rule) and
+  `BASH_EXACT_RULE_TEMPLATE` (an exact one); `GIT_BARE_DENIED` (`stash`, denied bare by
+  an exact rule); and `RETIRED_DENIED_GIT_COMMANDS` (`git stash`, whose old prefix rule
+  denied `git stash list` too). Functions: `worktree_read_only()`, `worktree_mutating()`,
+  `stash_read_only()`, `stash_mutating()`, `denied_git_commands()`, `bash_deny_rules()`,
+  which renders the `permissions.deny` twin in the fixed order below, and
+  `retired_bash_deny_rules()`, what a merge removes. Every constant a rule is
   rendered from is an **ordered tuple**, not a frozenset: the rendering is compared byte
   for byte with the committed settings file, and a set has no order to compare.
   Both scripts import it by **sibling path**
@@ -56,7 +62,10 @@ only.
   `py_compile hooks` line and asserted by `self/tests/policy-table.sh`.
 - `wire-settings.py` — `wire-settings.py [--self] --repo <dir> (--check | --write)`.
   Maintains the `PreToolUse` entry for `allow-repo-commands.sh`, the `Edit` and `Bash`
-  deny rules and the `hooks/` **ask** rule in `<dir>/.claude/settings.json`. The Bash
+  deny rules, the `hooks/` **ask** rule and the OS **`sandbox` block** (below, "The
+  sandbox block": `SANDBOX_ENABLED` — off today — `SANDBOX_OWNED_SETTINGS`,
+  `SANDBOX_DENY_READ`, `SANDBOX_ALLOWED_DOMAINS`) in `<dir>/.claude/settings.json`, and removes
+  any `policy.retired_bash_deny_rules()` it finds there. The Bash
   rules are `policy.bash_deny_rules()`, never a list of its own. Prints one
   `status<TAB>message` line for the
   caller to format and exits 0 when nothing needs attention, 1 otherwise. Statuses:
@@ -64,9 +73,15 @@ only.
   `INVALID` for `--write`. `--self` works on agentTooling's own checkout instead of a
   consuming repo's, and differs in more than the spelling: that file is wholly
   **generated**, so `--check` is a byte comparison against a fresh write (`INVALID` is a
-  merge status and never reached there) and `--write` restores those bytes. Called by
-  `sync-plans.sh` (without `--self`) and by `self/gate.sh` (with it, in `--check`);
-  tested by `self/tests/hook-wiring.sh`.
+  merge status and never reached there) and `--write` restores those bytes; that file is
+  **untracked**, and a `--check` failure (`missing` or `UNWIRED`) names the exact command
+  that regenerates it, `python3 -B <abs>/hooks/wire-settings.py --self --repo <abs root>
+  --write`. Under `--self` a **vendored** `--repo` — no `.git` of its own and one in an
+  ancestor — carries no file at all: both modes report `in-sync` on the absence and
+  `UNWIRED` on a nested copy, and `--write` writes nothing. Called by `sync-plans.sh`
+  (without `--self`); with `--self`, by `self/worktree-setup.sh` and
+  `feature-start.sh --self` (`--write`) and by `self/gate.sh` (`--check`); tested by
+  `self/tests/hook-wiring.sh` and `self/tests/self-settings.sh`.
 
 ## Why `allow-repo-commands.sh` exists
 
@@ -151,19 +166,27 @@ The constants behind all of this are `policy.py`'s, not this script's: the same 
 `wire-settings.py` renders the `permissions.deny` prefix rules from.
 
 Denied: `push` with `--force`, `-f` or `--force-with-lease[=…]`; `reset --hard`; `clean`;
-`stash`; `rebase`; `worktree` with any subcommand but `list` — `add`, `remove`, `prune`,
+`rebase`; `stash` unless its first argument is `list` or `show` — bare `git stash`, a
+leading flag or pathspec (`git stash -u`, `git stash -- src`, each a push), `push`,
+`save`, `pop`, `apply`, `drop`, `clear`, `branch`, `create`, `store` and an unknown
+subcommand; `worktree` with any subcommand but `list` — `add`, `remove`, `prune`,
 `move`, `lock`, `unlock`, `repair`, and an unknown one, since a subcommand the table has
 not heard of is not one it can vouch for; `checkout -b`/`-B`;
 `switch -c`/`-C`; `branch` with a positional argument or `-d`/`-D`/`--delete`/`-m`/`-M`/
-`--move`. `clean`, `stash` and `rebase` are denied whatever follows, read-only spellings
-included — `git stash list` is one keystroke from `git stash`, and the prompt is the right
-place to tell them apart.
+`--move`. `clean` and `rebase` are denied whatever follows.
+
+**`git stash list` and `git stash show` are read-only git** (2026-09-26,
+`self/features/hook-pipe-redirect/`), approved like `git worktree list`. `stash` used to be
+denied whatever followed, on the grounds that `list` is one keystroke from `git stash`;
+but `CONVENTIONS.md` tells a worktree session to find its own stash entry by tag, which
+that deny made impossible. The first argument decides, not the first positional as for
+`worktree`, because a stash's leading flag makes it a push.
 
 Not denied: `git branch --show-current`, `git branch --merged main` (the value of a
 listing flag is not a positional), `git branch --list 'feat*'` (after `--list` or `-l` a
 positional is a pattern to filter by, not a name to create — the mutating flags are
 judged first, so `git branch --list --delete old` is still denied),
-`git worktree list`, a plain `git push`,
+`git worktree list`, `git stash list`, `git stash show`, a plain `git push`,
 `git checkout -- <file>`, `git reset <file>`. Nor is anything the analysis cannot read,
 for the same reason the `cd` deny leaves those alone: a heredoc, a `#`, a line that does
 not tokenize (which the opaque check below denies with its own reason — the *git* deny
@@ -242,7 +265,7 @@ Seven shapes. Six hide code from anyone reading the command line:
 |---|---|
 | a heredoc feeding anything but `cat` | `python3 - <<'EOF'`, `bash <<EOF` |
 | code as a string at a command position | `python3 -c`, `bash -c`, `node -e`, `perl -ne`, `eval`, and the same behind `xargs` or `find -exec`/`-execdir`/`-ok`/`-okdir`. The scan for the code flag stops at the first non-flag word, so a *script's* own `-c` is the script's business: `python3 tool.py -c config.yaml` is readable and is not denied. |
-| a pipe into an interpreter with no script | `… \| sh`, `… \| python3` |
+| a pipe into an interpreter with no script, a redirect after it or not | `… \| sh`, `… \| python3 > out`, `… \| sh 2>&1`. Read by `piped_into_interpreter` over `redirect_members`' members, whose words have every redirect taken out — `opaque_segments` kept `>` and its target as words, so `ls \| sh > out` read as `sh` running a script named `>` and prompted. An input redirect from a file is the script: `ls \| python3 < a.py` stays readable. A pipe whose right-hand side starts on the next line (`ls \|` then `sh`) is still a pipe. |
 | a program decided at run time | `$CMD …`, `${CMD} …`, `$(which x) …` |
 | a `$(…)` or backtick inside a word that is a path | `ls $(cd dir && pwd)/src`, ``cat `pwd`/README.md`` |
 | a one-line compound | `for … do … done`, `while`, `until`, `if`, `case` |
@@ -294,8 +317,9 @@ And a line carrying any heredoc is judged on the heredoc alone,
 since its body lines read as commands to every scanner here — the same guard the other
 three denies keep. **With one exception**: when every heredoc feeds `cat`, the segments
 *before the first line break* are still checked for a pipe into an interpreter and for
-code as a string, because that first line is a command line and not a body. Otherwise
-`cat <<'EOF' | python3` and `bash -c "$(cat <<'EOF' … EOF)"` — the first two rewrites a
+code as a string, because that first line is a command line and not a body (the pipe on
+`redirect_members(…, stop_at_line_break=True)`, so `cat <<'EOF' | python3 > out` is the
+same deny). Otherwise `cat <<'EOF' | python3` and `bash -c "$(cat <<'EOF' … EOF)"` — the first two rewrites a
 model reaches for once `python3 - <<EOF` is denied — would read as a plain `cat`, fall
 through to the human's prompt, and reset the escalation counter on the way. The body
 lines are after that break, so they stay unjudged and the `git commit -m "$(cat <<'EOF' …
@@ -666,7 +690,9 @@ forms match at any depth, so a worktree's copies are covered; the two root-ancho
 are insurance for the two that matter most. Deny rules reach the Edit and Write tools and
 `> file` redirects,
 not a subprocess that opens a file itself — which is also why `sync-plans.sh` can still
-write `.claude/settings.json` through this helper. OS-level enforcement is sandboxing.
+write `.claude/settings.json` through this helper. OS-level enforcement is the sandbox
+block (below), which binds the subprocess too once its `SANDBOX_ENABLED` switch is on — it
+is off today.
 
 **`hooks/` is an `ask` rule, not a deny**, and it is the one rule whose spelling depends
 on the mode:
@@ -695,7 +721,8 @@ root. The cost, stated where a consuming repo will meet it: `Edit(**/hooks/**)` 
 the right trade here and is why the vendored spelling keeps its `agentTooling/` segment.
 
 A consuming repo that already has the old `Edit(**/agentTooling/hooks/**)` **deny** rule
-keeps it: the merge never removes a rule. Its next `sync-plans.sh` adds the ask rule
+keeps it: the merge never removes a rule except a retired `Bash` deny (below), and this
+one is neither. Its next `sync-plans.sh` adds the ask rule
 beside it, and deny wins over ask, so editing `hooks/` there stays refused until a human
 deletes the deny line by hand. Nothing here reaches into another repo to do it.
 
@@ -706,7 +733,10 @@ rewrite history — written where `/permissions` will show it:
 
 ```
 Bash(git push --force:*)   Bash(git push -f:*)   Bash(git push --force-with-lease:*)
-Bash(git reset --hard:*)   Bash(git clean:*)     Bash(git stash:*)   Bash(git rebase:*)
+Bash(git reset --hard:*)   Bash(git clean:*)     Bash(git rebase:*)
+Bash(git stash push:*)     Bash(git stash save:*)     Bash(git stash pop:*)
+Bash(git stash apply:*)    Bash(git stash drop:*)     Bash(git stash clear:*)
+Bash(git stash branch:*)   Bash(git stash create:*)   Bash(git stash store:*)
 Bash(git worktree add:*)   Bash(git worktree remove:*)   Bash(git worktree prune:*)
 Bash(git worktree move:*)  Bash(git worktree lock:*)     Bash(git worktree unlock:*)
 Bash(git worktree repair:*)
@@ -714,17 +744,143 @@ Bash(git checkout -b:*)    Bash(git checkout -B:*)
 Bash(git switch -c:*)      Bash(git switch -C:*)
 Bash(git branch -d:*)      Bash(git branch -D:*)      Bash(git branch --delete:*)
 Bash(git branch -m:*)      Bash(git branch -M:*)      Bash(git branch --move:*)
+Bash(git stash)
 ```
 
-These are **prefix** rules: each matches only a command that begins with the text it
-names, so `git -C /repo worktree add x`, `x=$(git rebase main)` and `ls && git stash`
-match none of them. The enforcement is the hook's git deny above, which reads every
+These are **prefix** rules but the last: each matches only a command that begins with the
+text it names, so `git -C /repo worktree add x`, `x=$(git rebase main)` and `ls && git
+stash` match none of them. `Bash(git stash)` is an **exact** rule, for the bare verb: its
+prefix spelling `Bash(git stash:*)` matched `git stash list` too, and a deny rule beats
+the hook's allow, so the prefix is retired (`policy.RETIRED_DENIED_GIT_COMMANDS`) and a
+consuming repo's merge removes it. A leading-flag push (`git stash -u`) has no rule for
+the same reason — any prefix that named it would name the listing — and is the hook's
+alone. The enforcement is the hook's git deny above, which reads every
 command on the line; these rules are the visible half of the same policy. They are not a
 second list any more: `policy.bash_deny_rules()` renders them from the same table the
 hook reads, in the order above — push force ×3, `reset --hard`, the always-mutating
-verbs, worktree ×7, checkout, switch, branch — so an entry added to the table reaches
-both halves and `self/tests/policy-table.sh` asserts that it did. A rule here is never an
-allow rule; nothing this helper writes ever is.
+verbs, stash ×9, worktree ×7, checkout, switch, branch, then the exact `git stash` — so an
+entry added to the table reaches both halves and `self/tests/policy-table.sh` asserts
+that it did. A rule here is never an allow rule; nothing this helper writes ever is.
+
+## The sandbox block
+
+**The block is generated, but OFF by default.** `wire-settings.py`'s one switch,
+`SANDBOX_ENABLED = False`, writes `"enabled": false`
+(`self/features/sandbox-consumer-reads`). The reason: where the user's
+`permissions.blockReadsOutsideWorkingDirectories` is on, the sandbox refuses every read
+under the home directory, so a consumer's verify pass cannot reach the Playwright browser
+cache, and this repo-level file cannot re-open it (see `SANDBOX_DENY_READ` below). **To
+turn it on:** first re-open the cache in the machine's *user* settings
+(`~/.claude/settings.json` → `sandbox.filesystem.allowRead`), or turn the read block off.
+Then set `SANDBOX_ENABLED = True` and run a propagation pull: `sync-plans.sh` sets every
+consumer's `enabled` back to the constant, and `--self --write` regenerates this
+checkout's file. That is the whole procedure. Everything else below is written either way,
+and it binds nothing until the switch is on. Until then the runners execute without the OS
+boundary, as they did before `runner-sandbox` (#72).
+
+Every rule above binds a *tool call*. None of them binds what a Bash command does once it
+runs: a subprocess that opens `~/.ssh/id_rsa` itself, writes `.git/hooks/pre-commit`, or
+posts to an arbitrary host is outside them all — and the verify and review passes run
+Bash unattended (`--permission-mode acceptEdits`, `--allowedTools Bash`), where the
+realistic threat is prompt injection from something the executor reads. The boundary
+under the subprocess is Claude Code's OS sandbox (Seatbelt on macOS), and
+`wire-settings.py` writes it into the same file, in both layouts — today with the switch
+off:
+
+```json
+"sandbox": {
+  "enabled": false,
+  "failIfUnavailable": true,
+  "allowUnsandboxedCommands": false,
+  "filesystem": { "denyRead": ["~/.ssh", "~/.aws", "~/.config/gh"] },
+  "network": { "allowedDomains": ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org",
+               "api.anthropic.com", "github.com", "api.github.com",
+               "objects.githubusercontent.com"] }
+}
+```
+
+- **`SANDBOX_ENABLED`** — the switch above, the source of the owned `enabled` value.
+- **`SANDBOX_OWNED_SETTINGS`** — `enabled` (from `SANDBOX_ENABLED`), `failIfUnavailable`
+  and `allowUnsandboxedCommands`. The last two are inert while the switch is off and
+  correct once it is on: `failIfUnavailable` (a batch never runs unsandboxed without
+  saying so: where the sandbox cannot start, the session refuses to) and
+  `allowUnsandboxedCommands: false` (no retry outside the sandbox for a command that
+  failed inside it). **`autoAllowBashIfSandboxed` is never written**: Bash approval stays
+  where it was — the runner's `--allowedTools`, this hook's policy, the human.
+- **`SANDBOX_DENY_READ`** — the sandbox's own read default is open, so only the
+  credential stores are closed. This block never denies `~/` or `~/.claude`: the
+  Playwright browser cache and `analysis/`'s reads of `~/.claude/projects` need them.
+  **But another settings layer can close far more.** Where
+  `permissions.blockReadsOutsideWorkingDirectories` is on (user settings, or the `dev/`
+  folder's), the sandbox enforces that at the OS level too: in the validation run a Bash
+  subprocess could not list `~/Library/Caches` (`Operation not permitted`), and the
+  session's effective `denyRead` held the home directory with only the worktree and a few
+  `~/.claude` subdirectories allowed back. A consumer's verify pass that runs Playwright
+  (browsers under `~/Library/Caches/ms-playwright`) or a home-directory toolchain (pyenv,
+  nvm, `~/.npm`) may therefore be refused a read this block never asked for — and it will
+  look like broken code. **This block cannot re-open it.** While
+  `permissions.blockReadsOutsideWorkingDirectories` is on, Claude Code drops
+  `sandbox.filesystem.allowRead` (and `allowWrite`) entries that come from *repository*
+  settings — "While the block is in force, `allowRead` and `allowWrite` entries from
+  repository settings don't count" (Claude Code 2.1.286,
+  <https://code.claude.com/docs/en/settings-reference.md> → "Sandboxed commands under the
+  block", checked 2026-09-30). A probe confirmed it: with an `allowRead` for
+  `~/Library/Caches/ms-playwright` in this generated file, a sandboxed `claude -p` still
+  got `Operation not permitted` listing the cache
+  (`self/features/sandbox-consumer-reads/NOTES.md`). So `wire-settings.py` writes no
+  `allowRead`. The re-allow is a **per-machine user-settings entry**: `allowRead` in
+  `~/.claude/settings.json` → `sandbox.filesystem`, naming the cache
+  (`~/Library/Caches/ms-playwright` on macOS, `~/.cache/ms-playwright` on Linux) — the doc
+  excludes only repository entries, so a user-settings one should count, though no run has
+  shown it yet. Nothing in this harness writes it; `self/BACKLOG.md` tracks the consumer
+  verify run that would prove it.
+- **`SANDBOX_ALLOWED_DOMAINS`** — the package registries, the model API and GitHub,
+  extended only by what a real run under the sandbox was refused
+  (`self/features/runner-sandbox/NOTES.md` records the run that set this list).
+- **No `denyWrite`.** Writes are confined to the working directory (and `--add-dir`
+  directories) already, and with `enabled` on Claude Code applies its **built-in write
+  denies** with no setting of ours and no exemption: `.git/hooks`, `.git/config`,
+  `.git/HEAD`, `objects/`, `refs/`, every `.claude/settings*` file,
+  `.claude/{skills,agents,commands,hooks,workflows}/`, `.mcp.json`, `.bashrc`, `.zshrc`,
+  `.gitconfig`, `~/.claude/` and `~/.claude.json` (Claude Code 2.1.284,
+  <https://code.claude.com/docs/en/sandboxing.md>, checked 2026-09-30). A narrow
+  `denyWrite` of our own would only restate that list. A denied write sees `Operation not
+  permitted`; a refused host sees a `host-not-allowed` error or a refused connection — and
+  a run failing under the sandbox looks exactly like the code broke, so read the stream
+  for those first.
+
+**`strictAllowlist` is left off, on purpose.** Project settings govern the user's
+*interactive* sessions in the repo too, and there a prompt for a new domain is useful —
+the human approves it once and can add it here. In `claude -p` there is nobody to answer
+that prompt, so the same setting refuses the domain for a headless executor: attended
+sessions prompt, the runners' executors are denied. Turning it on would make interactive
+sessions refuse silently for no gain in the runners.
+
+**Once the switch is on, these reach every developer, not just the runners.** Project
+settings govern interactive sessions too, so `failIfUnavailable: true` means a machine where the sandbox
+cannot start (Linux without bubblewrap, WSL1) cannot run Claude Code in that repo at all,
+and `allowUnsandboxedCommands: false` removes the human's own escape hatch for a command
+the sandbox breaks. That is the ruling (`self/features/runner-sandbox/NOTES.md`): the
+alternative is a batch that runs unsandboxed without saying so, and a repo that needs
+the hatch overrides it in its gitignored `.claude/settings.local.json`, which wins over
+the project file and which this helper never touches — and which then unsandboxes that
+checkout's runners too, since `claude -p` reads it as well.
+
+**Merge semantics** differ from the rules above in one way: the three owned keys are set
+to the generator's value *wherever they stand* — a consuming repo that flipped its
+`enabled` by hand is set back to `SANDBOX_ENABLED` by its next `sync-plans.sh` (switched
+off today, on once the constant is), so the constant is the one place to flip it — while
+`denyRead` and `allowedDomains` are **unions**: the repo's own entries stay first and in
+place, and the generator's missing ones are appended after them. Every other sandbox key
+(`excludedCommands`, `network.allowUnixSockets`, `credentials`, …) is the repo's and is
+never touched. A `sandbox`, `sandbox.filesystem` or `sandbox.network` that is not an
+object, or a `denyRead` / `allowedDomains` that is not a list, is `INVALID` and the file
+is left untouched. Under `--self` the block is generated like the rest of the file, so a
+domain hand-added there is drift the gate refuses; add it to `SANDBOX_ALLOWED_DOMAINS`
+and regenerate.
+
+**Not covered:** Linux/WSL (bubblewrap) specifics, `credentials` masking, and TLS
+termination at the proxy — see `self/BACKLOG.md`.
 
 ## What `wire-settings.py` will and won't touch
 
@@ -732,8 +888,15 @@ allow rule; nothing this helper writes ever is.
 everything is **merged,
 not copied**. The hook entry is appended when no hook command anywhere in the file
 mentions `allow-repo-commands.sh`; each deny and ask rule is appended when its exact
-string is absent. Otherwise the file is left byte-for-byte alone. It never removes,
-reorders or rewrites another entry, and it never adds an allow rule.
+string is absent. Otherwise the file is left byte-for-byte alone. It never reorders or
+rewrites another entry, and it never adds an allow rule. It removes exactly one kind of
+entry: a `Bash` deny rule it once wrote itself and the table has since retired
+(`policy.retired_bash_deny_rules()`, today only `Bash(git stash:*)`), because a deny rule
+left behind would go on overriding the hook's approval of what the table now calls
+read-only. `--check` reports such a file `UNWIRED` with "N retired Bash deny rule(s) (…)
+to remove"; `--write` takes the rule out where it stands and reports what it removed.
+And it owns three values in the `sandbox` block, which it sets wherever they stand, while
+unioning its `denyRead` paths and domains into the repo's own ("The sandbox block" above).
 
 **Under `--self` the file is wholly generated**, because nothing else writes
 agentTooling's own: there is no repo to own it but this one. So `--check` compares it
@@ -746,6 +909,18 @@ run, or a reordered deny list all left `self/gate.sh` green while this file said
 failed it. They fail it now. The corollary is that a hand edit to that file is **lost**
 on the next write rather than merged — which is what "generated" means, and why the
 `Edit(/.claude/**)` deny rule refuses to let one be made through the Edit tool at all.
+
+**And under `--self` the file is untracked.** `.gitignore` lists `.claude/settings.json`,
+so it never ships with the subtree: a tracked copy handed every consuming repo an
+`agentTooling/.claude/settings.json` naming `${CLAUDE_PROJECT_DIR}/hooks/…`, a path that
+does not exist there. Each self checkout writes its own — `self/worktree-setup.sh` in
+every new feature worktree, before the gate and before any session there loads it, and
+`feature-start.sh --self` in the primary checkout whenever the primary has lost it (a
+fast-forward over the commit that untracked it deletes it). `self/gate.sh` fails on a
+missing file as on a drifted one, and the message names the command to run. A
+**vendored** agentTooling — `--repo` with no `.git` of its own and one above it — is the
+other layout, and there `--self` expects *no* file: the consuming repo's hook, wired at
+its own root by `sync-plans.sh`, is the only one that loads.
 
 The hook marker is the script's basename, so a repo that hand-edits the entry — a
 different path, a narrower `matcher`, an added `if:` — keeps its version and never gets a
@@ -763,8 +938,10 @@ vendored repo's file reports `UNWIRED`, and an ordinary `--check` over this chec
 reports it too.
 
 A consuming repo's file that does not parse, or whose `hooks`, `hooks.PreToolUse`,
-`permissions`, `permissions.deny` or `permissions.ask` values are the wrong type, is
-reported `INVALID` and left untouched. `--self` never reports `INVALID`: a generated file
+`permissions`, `permissions.deny`, `permissions.ask`, `sandbox`, `sandbox.filesystem`,
+`sandbox.filesystem.denyRead`, `sandbox.network` or `sandbox.network.allowedDomains`
+values are the wrong type — an explicit `null` included, which is present, not absent —
+is reported `INVALID` and left untouched. `--self` never reports `INVALID`: a generated file
 that does not parse is drift like any other, and the write replaces it.
 
 ## Cross-layer dependencies
@@ -803,26 +980,36 @@ that does not parse is drift like any other, and the write replaces it.
   the repo being guarded.
 - **`python3` on `PATH`** — `sync-plans.sh` skips the wiring with a `SKIPPED` line when it
   is absent. The hook itself is `#!/usr/bin/env python3`.
-- **`.claude/settings.json` must be committed** to reach worktrees. A `git worktree` gets no
-  `.claude/` of its own, and `.claude/settings.local.json` is ignored globally by Claude
-  Code's default `~/.config/git/ignore` entry. The shared file is the only copy a worktree
-  or a fresh clone can inherit. `sync-plans.sh` says so when it writes one.
-- **This checkout's own `.claude/settings.json` is written, not authored.**
-  `python3 -B hooks/wire-settings.py --self --repo <root> --write` produced the committed
-  file at the root of agentTooling, and `self/gate.sh` records
-  `wire-settings.py --self --repo <root> --check` as a blocking check, which compares it
-  byte for byte, so a hand edit of any kind — an added rule as much as a missing one —
-  fails the gate. Do not edit that file directly — the
-  `Edit(/.claude/**)` rule in it refuses anyway; change the constants here and re-run the
-  write. The file ships with the subtree like everything else in this directory, and a
+- **A consuming repo's `.claude/settings.json` must be committed** to reach worktrees. A
+  `git worktree` gets no `.claude/` of its own, and `.claude/settings.local.json` is
+  ignored globally by Claude Code's default `~/.config/git/ignore` entry. The shared file
+  is the only copy a worktree or a fresh clone can inherit. `sync-plans.sh` says so when
+  it writes one.
+- **This checkout's own `.claude/settings.json` is generated per checkout, and never
+  tracked.** `python3 -B hooks/wire-settings.py --self --repo <root> --write` writes it;
+  `self/worktree-setup.sh` runs that in every new self worktree (a worktree inherits
+  nothing untracked), and `feature-start.sh --self` runs it in the primary checkout when
+  the file is missing there. `self/gate.sh` records
+  `wire-settings.py --self --repo <root> --check` as a blocking check, which fails on a
+  missing file and compares a present one byte for byte, so a hand edit of any kind — an
+  added rule as much as a missing one — fails the gate, and the failure names the command
+  that regenerates. Do not edit that file directly — the `Edit(/.claude/**)` rule in it
+  refuses anyway; change the constants here and re-run the write. It does **not** ship
+  with the subtree (`.gitignore`), and a vendored agentTooling must carry none: a
   consuming repo's own wiring is the one at *its* root, written by `sync-plans.sh` without
-  `--self`.
+  `--self`. **After the merge that untracked it**, a primary checkout fast-forwarded over
+  that commit has lost the file; the next `feature-start.sh --self` puts it back, or by
+  hand, from the primary's root: `python3 -B hooks/wire-settings.py --self --repo
+  <primary root> --write`.
 - **The hook is trusted code that lives in the repo.** `update.sh` pulls it from the
   agentTooling upstream and re-runs the wiring, so that upstream is the trust root for
   the policy. The `Edit(**/agentTooling/hooks/**)` **ask** rule keeps an unattended
   executor from changing it through the Edit tool — a headless session cannot answer an
   ask, so it is refused there, while an attended one is prompted; a subprocess write is
-  the remaining path, and only the sandbox binds that.
+  the remaining path. The sandbox block, once switched on, binds subprocesses, but its
+  built-in write denies
+  do not name `hooks/` (it is inside the working directory, which the sandbox leaves
+  writable), so that path stays open to a Bash command the runner auto-approves.
 - **Hooks are read at session start.** A change to the wiring takes effect in the next
   session; `/hooks` shows what the current one loaded.
 
@@ -898,7 +1085,8 @@ and `GIT_WORKTREE_SUBCOMMANDS`; the hook imports them for `git_mutates`, and
 So a subcommand is added **once**, and what follows is: a `DENY` case and a `NOT_DENIED`
 case in `self/tests/allow-repo-commands.sh`, and
 `python3 -B hooks/wire-settings.py --self --repo <root> --write` to regenerate this
-checkout's `.claude/settings.json` (the gate's byte-for-byte check fails until you do).
+checkout's untracked `.claude/settings.json` — and every other self checkout's, each of
+which writes its own (the gate's byte-for-byte check fails until you do).
 `self/tests/hook-wiring.sh` and `self/tests/policy-table.sh` render the list from the
 table rather than repeating it, so neither needs editing. Consuming repos pick the new
 rule up on their next `sync-plans.sh`.

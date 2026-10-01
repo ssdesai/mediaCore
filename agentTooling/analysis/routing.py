@@ -222,8 +222,9 @@ MIGRATE_REMOVED_DIR = "removed {directory} — the legacy routing directory is e
 # pins in `sessions` is that feature's, and its routing record — written before
 # `feature-start.sh --pin` stopped writing one, or by hand — must not also be counted as
 # routing overhead. The manifest is the last ```json fence of `<slug>/README.md`, read by
-# `parse_manifest` below, which `report.py` imports from here rather than keeping a copy
-# of its own (this module is the leaf every other analysis module already imports).
+# `parse_manifest` below, which `report.py` and `capture_planning.py` import from here
+# rather than keeping a copy of their own (this module is the leaf every other analysis
+# module already imports).
 MANIFEST_NAME = "README.md"
 MANIFEST_FENCE_RE = re.compile(r"```json\n(.*?)\n```", re.DOTALL)
 MANIFEST_SESSIONS_KEY = "sessions"

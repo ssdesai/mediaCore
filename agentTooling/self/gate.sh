@@ -150,6 +150,7 @@ shell_scripts=(
   self/tests/session-share.sh
   self/tests/session-claims.sh
   self/tests/manifest-window.sh
+  self/tests/manifest-pin-subagent.sh
   self/tests/direct-timing.sh
   self/tests/stale-failed-sidecars.sh
   self/tests/stream-capture.sh
@@ -166,14 +167,17 @@ shell_scripts=(
   self/tests/recover-duration.sh
   self/tests/check-plans.sh
   self/tests/sync-check.sh
+  self/tests/propagation-pull.sh
   self/tests/audit-fixes.sh
   self/tests/template-versions.sh
   self/tests/open-session.sh
   self/tests/allow-repo-commands.sh
   self/tests/hook-escalation.sh
   self/tests/hook-wiring.sh
+  self/tests/self-settings.sh
   self/tests/policy-table.sh
   self/tests/plan-numbering.sh
+  self/tests/start-takeover.sh
   self/tests/rates-history.sh
   run-escalation-plan.sh
   templates/plans/gate.sh
@@ -208,6 +212,7 @@ record "claims ledger self-test" bash self/tests/claims-ledger.sh
 record "session share self-test" bash self/tests/session-share.sh
 record "session claims self-test" bash self/tests/session-claims.sh
 record "manifest window self-test" bash self/tests/manifest-window.sh
+record "manifest pin-subagent self-test" bash self/tests/manifest-pin-subagent.sh
 record "direct timing self-test" bash self/tests/direct-timing.sh
 record "stale failed sidecars self-test" bash self/tests/stale-failed-sidecars.sh
 record "stream capture self-test" bash self/tests/stream-capture.sh
@@ -226,6 +231,10 @@ record "recover at close self-test" bash self/tests/recover-at-close.sh
 record "recover duration self-test" bash self/tests/recover-duration.sh
 record "check plans self-test" bash self/tests/check-plans.sh
 record "sync check self-test" bash self/tests/sync-check.sh
+# A propagation pull is its own hand feature in the consuming repo: update.sh pulls only
+# on a started feature's branch, in its worktree, and nothing in the permission policy
+# denies the merge it performs (LIFECYCLE.md -> "Propagate").
+record "propagation pull self-test" bash self/tests/propagation-pull.sh
 record "audit fixes self-test" bash self/tests/audit-fixes.sh
 # Reads the checked-in templates rather than driving a runner, but blocking for the same
 # reason as the rest: a template body edited without a version bump reports `in-sync` in
@@ -244,6 +253,9 @@ record "allow repo commands self-test" bash self/tests/allow-repo-commands.sh
 # fall-through and the scratch entry point, none of which a single decision can show.
 record "hook escalation self-test" bash self/tests/hook-escalation.sh
 record "hook wiring self-test" bash self/tests/hook-wiring.sh
+# This checkout's own settings file is untracked and generated: the setup hook writes it,
+# the check below fails without it, and a vendored copy carries none.
+record "self settings self-test" bash self/tests/self-settings.sh
 # The table both of them read (hooks/policy.py): the prefix rules it renders must cover
 # every mutating entry, and the hook's own reader must deny each one. This is what keeps
 # the two halves of the git policy from drifting apart again.
@@ -252,6 +264,10 @@ record "policy table self-test" bash self/tests/policy-table.sh
 # (self/PROJECT_FACTS.md) — one rule, both modes, and the start script is the only thing
 # that writes that number.
 record "plan numbering self-test" bash self/tests/plan-numbering.sh
+# A start stopped between `worktree add -b` and its `S: start` commit is taken over by the
+# next start of its slug, and pruned by any start, only when its lock proves it dead
+# (self/features/start-takeover/).
+record "start takeover self-test" bash self/tests/start-takeover.sh
 # Every dollar figure is tokens times analysis/rates_history.json: the seed must price
 # exactly as the hand table it replaced did, and a LiteLLM refresh may only ever append
 # (self/features/litellm-pricing/README.md).
@@ -269,8 +285,11 @@ record "py_compile hooks" python3 -m py_compile hooks/policy.py hooks/wire-setti
 echo "=== gate: permission policy ==="
 # This checkout's .claude/settings.json is not hand-authored: hooks/wire-settings.py
 # --self writes it, exactly as sync-plans.sh writes a consuming repo's (hooks/README.md).
-# Blocking, because a committed file that has drifted from the helper is a policy nobody
-# is enforcing — the deny rules a session actually loads are whatever the file says.
+# Blocking, because a file that has drifted from the helper is a policy nobody is
+# enforcing — the deny rules a session actually loads are whatever the file says — and
+# because the file is untracked, a missing one fails too: it means sessions here run with
+# no hook at all. The failure names the exact regenerate command. In a vendored
+# agentTooling the check instead passes on the absence and fails on a nested copy.
 # -B: leave no hooks/__pycache__ behind in the tree the gate is checking.
 record "permission policy wired into .claude/settings.json" \
   python3 -B hooks/wire-settings.py --self --repo "$REPO_DIR" --check

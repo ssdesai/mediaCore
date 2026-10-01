@@ -34,6 +34,25 @@ that picks between the two is in that file, from the measurements in `harness/EX
   not settle. Briefed with `NOTES.md`, the failed plan's `.progress.md`, and the one
   relevant spec section — never "read the design doc". Dies on delivery.
 
+## Coordinator shapes
+
+Two, and the number of features decides which.
+
+- **One feature → coordinate from inside its worktree.** `feature-start.sh --open`
+  launches the session there (`LIFECYCLE.md` → step 2); it and every delegate it spawns
+  carry the feature's branch and are claimed with no pin.
+- **A wave of features → one coordinator, wherever it runs, spawning an implementer or
+  architect per feature** and pinning each with `manifest.py <slug> pin-subagent <id>`
+  as it spawns it. Never peer coordinators opened with `--open`, one per feature: twenty
+  standing sessions each idling on a large context is the token leak below, twenty times
+  over. The coordinator is the router that started them, so its own spend is routing
+  overhead and it is never pinned; it runs each feature's review and close by the
+  worktree copy's absolute path rather than `cd`-ing in, since a router whose transcript
+  shows it working in a worktree is refused at that feature's close as its builder.
+  A propagation round is this shape too: one `pull-agenttooling-pr<N>` hand feature per
+  consuming repo, a delegate per pull, each pinned in its own repo (`LIFECYCLE.md` →
+  "Propagate").
+
 ## Why
 
 Every agent wake re-bills its entire context, so an agent whose main activity is
@@ -77,8 +96,9 @@ warm context, persisted, at a fraction of the cost.
   those fields is working around a step it skipped.
 - A delegate's transcript inherits the coordinator's `gitBranch`, so an architect
   spawned from `main` is invisible to the feature's `branches`. Pin its agent id in the
-  manifest's `subagents`, found with
-  `capture_planning.py --list-subagents --unclaimed`.
+  manifest's `subagents` with `analysis/manifest.py [--self] <slug> pin-subagent <id>` —
+  the id the Agent tool returned, or `capture_planning.py --list-subagents --unclaimed`
+  finds it.
 - **Every delegate brief opens with `feature: <repo>/<slug>`** — the repo's directory
   name and the feature directory it is for, on the first line, before anything else.
   That line is what `capture_planning.py --list-subagents --unclaimed` reads to

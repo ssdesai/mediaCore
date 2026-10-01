@@ -34,7 +34,9 @@ set -uo pipefail
 #       INSIDE the feature directory at self/features/S/routing.json, commits both as `S: start`, ran the hook and the
 #       gate inside the worktree, and prints the worktree path, the `feature: <repo>/S`
 #       line, feature-close.sh as what opens the PR, and a last step that says merging the
-#       PR is the end of it;
+#       PR is the end of it; and a primary with no .claude/settings.json (untracked and
+#       generated, so a fast-forward over its untracking deletes it) has it back after
+#       the start, byte for byte what hooks/wire-settings.py --self writes (S1v);
 #   S2. it refuses a slug that fails the pattern, a slug whose branch exists, a slug
 #       whose worktree path is already taken, and being run from a worktree's copy —
 #       creating nothing in each case;
@@ -57,7 +59,7 @@ set -uo pipefail
 #       self/tests/open-session.sh runs the body and checks the path survives them;
 #   S6. a --self start from an agentTooling VENDORED one directory inside the primary
 #       (REL_REPO non-empty) commits agentTooling/self/features/<slug>/ with the routing
-#       record inside it in `S: start`;
+#       record inside it in `S: start`, and writes no nested agentTooling/.claude/ (S6h);
 #   T1. run-review.sh files a brief whose line begins with @@TODO@@ to failed/ without
 #       calling claude, and opens no PR;
 #   C1. feature-capture.sh run from the worktree, after a commit of work, stamps `to` from
@@ -66,14 +68,19 @@ set -uo pipefail
 #       report.*, the manifest with `to` set and the routing record the capture refreshed,
 #       the remote's main is unchanged, and the worktree is clean and still there; a
 #       delegate whose brief names S and that no route claims is a WARNING naming its id
-#       and how to pin it, never a refusal, and a sibling briefed for S-two is not named;
+#       and the command that pins it (`manifest.py --self S pin-subagent <id>`, C1i2),
+#       never a refusal, and a sibling briefed for S-two is not named;
 #   C3. the capture prints the residue the retired weekly sweep used to print (design
 #       §3.5), after what planning.json claims and before its commit: the rate history's
-#       checked date and its `refresh_rates.py --check` against a fixture (C3a2), and the corpus-wide sessions and delegates no feature claims — the `main`
+#       checked date and its `refresh_rates.py --check` against a fixture (C3a2), one
+#       `tiers` line from `refresh_rates.py --tiers` (C3a3), and the corpus-wide sessions and delegates no feature claims — the `main`
 #       session with no `feature-start.sh` call is listed, the router that started S is
 #       not, and neither listing makes the capture exit non-zero;
 #   C2. a second capture after more work — a later transcript instant — moves `to`
 #       LATER, rewrites planning.json, and meets no refusal about a frozen prior record;
+#       and with C1's warned-about delegate pinned by `manifest.py pin-subagent` first,
+#       that capture claims it as `pinned`, stops warning about it, and the pin rides the
+#       cost commit (C2f-C2i);
 #   N1. a feature no routing record names captures without a word about routing;
 #   V1. a clean review pass records its verdict and stops: the pass is committed as
 #       `S: review round 1` carrying its own fix, `plan_end` carries verdict=clean,
@@ -195,6 +202,11 @@ for f in pricing.py rates_history.json refresh_rates.py roots.py transcript.py c
 done
 cp "$HERE/templates/plans/features/TEMPLATE.md" "$AT/templates/plans/features/TEMPLATE.md"
 cp "$HERE/self/pr.sh" "$AT/self/pr.sh" 2>/dev/null || true
+# The settings generator the start runs over the primary's own checkout (S1v, S6h).
+mkdir -p "$AT/hooks"
+for f in policy.py wire-settings.py allow-repo-commands.sh; do
+  cp "$HERE/hooks/$f" "$AT/hooks/$f" 2>/dev/null || true
+done
 # The seeded template, outside the repo: P2 runs it as a consuming repo's plans/pr.sh.
 PR_TEMPLATE="$TMP/pr-template.sh"
 cp "$HERE/templates/plans/pr.sh" "$PR_TEMPLATE" 2>/dev/null || true
@@ -310,7 +322,12 @@ export RATES_CHECK_SOURCE="$HERE/self/tests/fixtures/pricing/litellm-sample.json
 VERDICT_LINE_CLEAN="Verdict: clean"
 VERDICT_LINE_ESCALATED="Verdict: escalated"
 
-printf 'self/gate-report*.txt\nself/review-report.md\n' > "$AT/.gitignore"
+printf 'self/gate-report*.txt\nself/review-report.md\n.claude/settings.json\n' > "$AT/.gitignore"
+# What the generator writes into an empty directory — the primary's file after S1.
+SETTINGS_REL=".claude/settings.json"
+EXPECTED_SETTINGS_DIR="$TMP/expected-settings"
+mkdir -p "$EXPECTED_SETTINGS_DIR"
+python3 -B "$HERE/hooks/wire-settings.py" --self --repo "$EXPECTED_SETTINGS_DIR" --write >/dev/null 2>&1
 # Another feature's corpus, numbered under the rule that ran before this one: a plan
 # number is a feature's own, so what this holds must not move the stub number below (S1f).
 echo "an older feature's review plan, at a number nothing else may inherit" > "$AT/self/features/old/review/complete/07-review-opus.md"
@@ -502,6 +519,8 @@ echo "feature lifecycle"
 SLUG="lifecycle-one"
 WT="$(wt_path "$SLUG")"
 FD="$WT/self/features/$SLUG"
+S1_SETTINGS_BEFORE="absent"
+if [[ -e "$AT/$SETTINGS_REL" ]]; then S1_SETTINGS_BEFORE="present"; fi
 out="$(start "$SLUG")"; rc=$?
 check "S1a. feature-start.sh exits 0 (got $rc)" '[[ $rc -eq 0 ]]'
 check "S1b. worktree R-S exists on branch S" '[[ -d "$WT" && "$(git -C "$WT" branch --show-current 2>/dev/null)" == "$SLUG" ]]'
@@ -536,6 +555,12 @@ check "S1t. ... naming this slug in features_started, and the router's own id" \
   '[[ "$(pj "$S1_RECORD" "[f[\"slug\"] for f in d[\"features_started\"]]")" == *"'"'"'$SLUG'"'"'"* && "$(pj "$S1_RECORD" "d[\"session_id\"]")" == "$PIN" ]]'
 check "S1u. ... and it is part of the S: start commit" \
   'git -C "$WT" show --name-only --format= HEAD | grep -qx "self/features/$SLUG/routing.json"'
+# The primary's own .claude/settings.json is untracked and generated: a fast-forward over
+# the commit that untracked it deletes it, and the start after that is what puts it back.
+check "S1v. the primary started with no $SETTINGS_REL, and the start wrote it" \
+  '[[ "$S1_SETTINGS_BEFORE" == "absent" && -f "$AT/$SETTINGS_REL" ]]'
+check "S1v2. ... byte for byte what the generator writes, and said so" \
+  'cmp -s "$AT/$SETTINGS_REL" "$EXPECTED_SETTINGS_DIR/$SETTINGS_REL" && grep -q "settings" <<<"$out" && grep -qF "$SETTINGS_REL" <<<"$out"'
 
 # ── S2. refusals create nothing ───────────────────────────────────────────────
 before="$(branches)"
@@ -808,6 +833,9 @@ check "S6f. the start named the prefixed record in its output" \
   'grep -q "agentTooling/self/features/$VENDOR_SLUG/routing.json" <<<"$vendor_out"'
 check "S6g. the worktree is clean and the consumer's primary untouched" \
   '[[ -z "$(git -C "$VENDOR_WT" status --porcelain)" && -z "$(git -C "$VENDOR" status --porcelain)" ]]'
+# The consuming repo's hook is wired at ITS root; a vendored copy carries none of its own.
+check "S6h. the start wrote no nested agentTooling/$SETTINGS_REL into the consumer" \
+  '[[ ! -e "$VENDOR_AT/$SETTINGS_REL" && ! -e "$VENDOR_WT/agentTooling/$SETTINGS_REL" ]]'
 
 # ── T1. a stub brief cannot run ───────────────────────────────────────────────
 rm -f "$CLAUDE_CALLED_OUT"
@@ -870,6 +898,8 @@ check "C1h. the session launched in the worktree is claimed by branch, cwd recor
   '[[ "$(pj "$PJ" "[(s[\"selected_by\"], s[\"cwd\"]) for s in d[\"sessions\"] if s[\"session_id\"]==\"$SESSION_W\"]")" == "[('"'"'branch'"'"', '"'"'$WT'"'"')]" ]]'
 check "C1i. the unclaimed delegate briefed for S is a warning naming its id and the subagents pin" \
   'grep "$AGENT_D" <<<"$out" | grep -q "warn" && grep -q "\"subagents\"" <<<"$out"'
+check "C1i2. ... and the remedy it names is the command, manifest.py pin-subagent with that id, not a hand edit" \
+  'grep "$AGENT_D" <<<"$out" | grep "warn" | grep -q "manifest.py --self $SLUG pin-subagent $AGENT_D"'
 # The warning is this FEATURE's: only a delegate whose brief names S is a pin S's manifest
 # is missing. The sibling briefed for S-two is somebody else's pin and is never warned
 # about here — it is named once, in the corpus-wide residue below (C3c2), where it is one
@@ -891,6 +921,8 @@ check "C3a. the capture prints a residue section with the rate table's date" \
   '[[ -n "$residue" ]] && grep -q "rates  *verified " <<<"$residue"'
 check "C3a2. ... and the LiteLLM check's result as news, naming a model that would change" \
   'grep -q "rates .*claude-opus-5-5" <<<"$residue" && grep -q "WARN .*refresh_rates.py" <<<"$residue"'
+check "C3a3. ... and exactly one tiers line, in one of the two wordings refresh_rates.py --tiers ends on" \
+  '[[ "$(grep -c "^  tiers " <<<"$residue")" -eq 1 ]] && grep -qE "^  tiers +(no model in the corpus carries a tiered rate|[0-9]+ model\(s\) carry an above-[0-9k/]+ tier: .* — tiered pricing is unbuilt, see self/BACKLOG\.md)$" <<<"$residue"'
 check "C3b. ... an unclaimed listing naming the main session no feature claims" \
   'grep -q "$SESSION_M" <<<"$residue"'
 check "C3c. ... and the delegates nobody claimed" 'grep -q "$AGENT_D" <<<"$residue"'
@@ -908,6 +940,10 @@ check "C3f. ... and an unclaimed session did not fail the capture" '[[ $rc -eq 0
 # no frozen-record refusal, no "already captured" skip.
 T_C2="$(shift_z "$T_C1" 3600)"
 session_line "$SESSION_W" "$WT" "$SLUG" "msg-w2" "$MODEL" "$T_C2" 100 3000 0 0 0 >> "$WP/$SESSION_W.jsonl"
+# And the remedy C1i named is taken: the delegate briefed for S is pinned with the command
+# (self/features/manifest-pin-subagent), from the worktree's own copy. The manifest is a
+# cost record, so the dirty README passes the capture's stray check and rides its commit.
+outpin="$(HOME="$FAKE_HOME" python3 -B "$WT/analysis/manifest.py" --self "$SLUG" pin-subagent "$AGENT_D" 2>&1)"; rcpin=$?
 out="$(capture "$WT" "$SLUG")"; rc=$?
 check "C2a. a second capture exits 0 (got $rc)" '[[ $rc -eq 0 ]]'
 check "C2b. ... moving to later, onto the new last instant" \
@@ -917,6 +953,13 @@ check "C2c. ... rewriting planning.json in a second cost commit" \
 check "C2d. ... with no refusal and no already-captured skip" '! grep -qi "already captured\|refus" <<<"$out"'
 check "C2e. ... and the branch pushed again" \
   '[[ "$(git -C "$ORIGIN" rev-parse "refs/heads/$SLUG" 2>/dev/null)" == "$(git -C "$WT" rev-parse HEAD)" && -z "$(git -C "$WT" status --porcelain)" ]]'
+check "C2f. manifest.py pin-subagent pinned the warned-about delegate (got $rcpin: $outpin)" \
+  '[[ $rcpin -eq 0 && "$outpin" == "subagents = [\"$AGENT_D\"]" ]]'
+check "C2g. ... and the capture claims it as pinned, under the coordinator on main" \
+  '[[ "$(pj "$PJ" "[(a[\"agent_id\"], a[\"selected_by\"], a[\"parent_session_id\"]) for a in d[\"subagents\"] if a[\"agent_id\"]==\"$AGENT_D\"]")" == "[('"'"'$AGENT_D'"'"', '"'"'pinned'"'"', '"'"'$SESSION_M'"'"')]" ]]'
+check "C2h. ... so it is no longer warned about" '! grep "$AGENT_D" <<<"$out" | grep -q "warn"'
+check "C2i. ... and the pin rode the cost commit to the remote's S" \
+  '[[ "$(remote_fence "$SLUG" "d[\"subagents\"]")" == "['"'"'$AGENT_D'"'"']" ]]'
 
 # ── N1. no routing record, no routing talk ────────────────────────────────────
 NWT="$(wt_path lifecycle-noenv)"

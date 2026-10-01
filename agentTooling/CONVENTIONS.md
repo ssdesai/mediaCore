@@ -35,7 +35,7 @@ not, they are still the difference between a call that runs and a call that stop
 
 Reads and tests, confined to the project root: `ls`, `cat`, `head`, `tail`, `wc`, `grep`,
 `rg`, `find`, `sed -n …p`, `stat`, `du`, a read-only `git` (`status`, `log`, `diff`,
-`show`, `branch --show-current`, `worktree list` — behind `-C <path inside the root>` as
+`show`, `branch --show-current`, `worktree list`, `stash list` — behind `-C <path inside the root>` as
 well), the test and lint runners (pytest, ruff, mypy, `npx playwright test`, the named
 `npm run` scripts), and the harness's own read-only entry points (`gate.sh`,
 `check-plans.sh`, `bash -n`, `shellcheck`, `py_compile`, `report.py`, a listing
@@ -60,7 +60,7 @@ it, and do not work around it with `pushd` or a subshell, which are denied too.
 | a brace group the expansion refuses (a quote or backslash mixed into an unquoted brace group, nesting, past the cap) | `cat {a,{b,c}}` | expand it yourself, or write a script |
 | a heredoc feeding anything but `cat` | `python3 - <<'EOF'`, `bash <<EOF` | write the script to the scratchpad and run it by name |
 | code handed to an interpreter as a string, including behind `xargs` and `find -exec` | `python3 -c`, `bash -c`, `node -e`, `perl -ne`, `eval` | the same |
-| a pipe into an interpreter with no script file | `… \| sh`, `… \| python3` | the same |
+| a pipe into an interpreter with no script file, redirect or not | `… \| sh`, `… \| python3 > out` | the same |
 | a program decided at run time | `$CMD …`, `$(which x) …` | the same |
 | a `$(…)` or backtick inside a word that is a path | `ls $(cd dir && pwd)/src` | inline the literal |
 | a one-line `for`, `while`, `until`, `if` or `case` | | write the script and run it by name |

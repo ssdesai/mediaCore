@@ -487,6 +487,32 @@ Both are asserted end to end in `self/tests/stream-capture.sh` phase 10, through
 `claude` that records its own environment and prompt — the only way to see what the
 launch site really handed the executor.
 
+**When `SANDBOX_ENABLED` is on, the executor runs inside the OS sandbox. It is off
+today**, so the runners currently execute without the OS boundary, as they did before
+`runner-sandbox` (#72). Where `permissions.blockReadsOutsideWorkingDirectories` is on, a
+sandboxed verify pass cannot read the Playwright cache, and the repo's file cannot fix
+that (below; `self/features/sandbox-consumer-reads`). Nothing at the launch site turns
+the sandbox on: `claude -p` reads the repo's `.claude/settings.json`, and
+`hooks/wire-settings.py` writes a `sandbox` block there in both layouts
+(`hooks/README.md` → "The sandbox block", which also gives the procedure for switching it
+on). With the switch on, the block means: failing closed where the sandbox cannot start,
+no unsandboxed retry, reads of `~/.ssh`, `~/.aws` and `~/.config/gh` refused, the network
+limited to an allowlist, and Claude Code's built-in write denies (`.git/hooks`,
+`.git/config`, `.claude/settings*`, …) binding every Bash subprocess, which the
+permission rules cannot see into. Subagents inherit it. What it changes for a run: **a refused write says `Operation not permitted`, and a refused host a
+`host-not-allowed` error or a refused connection** — and a pass failing that way looks
+exactly like the code broke. Read the stream (`<plan>.stream.jsonl`) for those strings
+before touching the code; a domain a real run needs goes into `SANDBOX_ALLOWED_DOMAINS`,
+not into one repo's file by hand. A read refused under the home directory (the
+Playwright browser cache, where `permissions.blockReadsOutsideWorkingDirectories` is on)
+cannot be re-opened from the repo's file at all — repository `allowRead` entries don't
+count under that block — so it is a per-machine `sandbox.filesystem.allowRead` entry in
+`~/.claude/settings.json` (Claude Code 2.1.286; `hooks/README.md` → "The sandbox block").
+An unlisted domain is *prompted* for in an attended
+session and, with nobody to answer, refused here — `strictAllowlist` is left off for that
+reason. The scratch directory above is covered by the launch's `--add-dir`
+(`self/features/runner-sandbox/NOTES.md` records the run that confirmed it).
+
 ## Capturing the stream
 
 **`claude` writes `<plan>.stream.jsonl` itself.** Its stdout — with stderr merged into it,

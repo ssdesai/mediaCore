@@ -16,6 +16,13 @@ self/gate-report*.txt
 # self/pr.sh opens. See the consuming-repo note in the root .gitignore.
 self/review-report.md
 
+# This checkout's own permission policy, GENERATED per checkout by
+# `python3 -B hooks/wire-settings.py --self --repo <root> --write` — self/worktree-setup.sh
+# runs it in each new worktree, feature-start.sh --self in a primary that has lost it.
+# Never tracked: a tracked copy ships with the subtree and hands every consuming repo an
+# agentTooling/.claude/settings.json naming a hook path that does not exist there.
+.claude/settings.json
+
 # analysis/ scripts are stdlib-only and run directly, but python still writes these.
 __pycache__/
 *.py[cod]

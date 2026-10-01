@@ -25,8 +25,11 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
 - `hooks/` — the permission policy: the `PreToolUse` hook, the `policy.py` table both it
   and the wiring read (the git deny's constants and the `bash_deny_rules()` that renders
   their `permissions.deny` twin), and the helper that wires them.
-  This checkout has its own committed `.claude/settings.json` at the top level, generated
-  by `python3 -B hooks/wire-settings.py --self --repo <root> --write` and never by hand;
+  This checkout has its own `.claude/settings.json` at the top level, **untracked**
+  (`.gitignore`) and generated per checkout by
+  `python3 -B hooks/wire-settings.py --self --repo <root> --write` and never by hand —
+  `self/worktree-setup.sh` writes it in each new worktree, `feature-start.sh --self` in a
+  primary that has lost it, and a vendored agentTooling carries none;
   `self/gate.sh` records the matching `--check` as a blocking check, and under `--self`
   that check is **byte for byte**, so editing the
   constants without re-running the write fails the gate — and so does editing the file.
@@ -87,7 +90,9 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
   (refresh the corpus's `also_claimed_by` from the claims ledger; the capture runs it),
   `python3 analysis/report.py --self <slug>`, `python3 analysis/report.py --self --all`
   (writes any missing `report.json` first, then the trend table),
-  `python3 analysis/manifest.py [--self] <slug> set-plans <stem>...`.
+  `python3 analysis/manifest.py [--self] <slug> set-plans <stem>...`, and the pins —
+  `… pin-session <id>` and `… pin-subagent <agent-id>`, the only writers of the fence's
+  `sessions` and `subagents`.
 - `--self` is always the **first** argument, before any slug.
 
 ## Tests
@@ -100,8 +105,9 @@ with. What `self/gate.sh` runs is:
   skips it when absent.
 - `python3 -m py_compile analysis/*.py`, and `hooks/{policy.py,wire-settings.py,
   allow-repo-commands.sh}` — the hook keeps a `.sh` name and is Python.
-- `python3 -B hooks/wire-settings.py --self --repo <root> --check` — the committed
-  `.claude/settings.json` is byte for byte what the constants generate.
+- `python3 -B hooks/wire-settings.py --self --repo <root> --check` — the generated,
+  untracked `.claude/settings.json` exists and is byte for byte what the constants
+  generate; a failure names the command that regenerates it.
 - `self/tests/*.sh` — plain bash scripts the gate `record`s directly, each exiting
   non-zero on a failed assertion. They stand up a throwaway checkout in a `mktemp -d`
   with a stub `claude` and a stub gate, so they assert runner *behaviour* without calling

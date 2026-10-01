@@ -214,11 +214,15 @@ SED_ALLOWED_FLAGS = frozenset(["-n", "-E", "-r", "-nE", "-En", "-nr", "-rn"])
 SED_ADDRESS = r"(?:\d+|\$|/[^/]*/)"
 SED_PRINT_SCRIPT_RE = re.compile(r"^(?:%s(?:,%s)?)?p$" % (SED_ADDRESS, SED_ADDRESS))
 
-# git subcommands that only read; `branch` and `worktree` are narrowed further
+# git subcommands that only read; `branch`, `stash` and `worktree` are narrowed further
 GIT_READ_ONLY_SUBCOMMANDS = frozenset([
     "blame", "branch", "describe", "diff", "log", "ls-files", "rev-parse",
-    "shortlog", "show", "status", "worktree",
+    "shortlog", "show", "stash", "status", "worktree",
 ])
+# Which `stash` subcommands read (`list`, `show`) is the table's answer too, for the same
+# reason as `worktree` below
+GIT_STASH = policy.GIT_STASH
+GIT_STASH_READ_ONLY = policy.stash_read_only()
 # Which `worktree` subcommands read is the table's answer, not a second opinion: the
 # approval side and the deny side must agree about `list`, or a command is denied and
 # approved at once.
@@ -259,8 +263,8 @@ GIT_PROGRAM = policy.GIT_PROGRAM
 GIT_GLOBAL_VALUE_FLAGS = frozenset([
     "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env",
 ])
-# Denied whatever their arguments, read-only spellings included: `git stash list` is one
-# keystroke from `git stash`, and the prompt is the right place to tell them apart.
+# Denied whatever their arguments. `stash` is not among them any more: it is denied
+# unless its first argument is one of GIT_STASH_READ_ONLY (`git_mutates`).
 GIT_ALWAYS_MUTATING = policy.GIT_ALWAYS_MUTATING
 GIT_PUSH = policy.GIT_PUSH
 GIT_PUSH_FORCE_FLAGS = policy.GIT_PUSH_FORCE_FLAGS
@@ -423,6 +427,10 @@ SUBSTITUTION_OPEN = "$("
 BACKTICK = "`"
 PIPE_CHAR = "|"
 OR_OPERATOR = "||"
+# An input redirect from a file. On an interpreter it IS the script — `ls | python3 <
+# a.py` runs a.py, which anyone can open — so a member carrying one is not a pipe into an
+# interpreter with no script. A heredoc or herestring is `<<`/`<<<`, never this.
+REDIRECT_SCRIPT_OP = "<"
 # Segment breaks for the opaque scanner. Unlike shlex this never raises and never drops a
 # heredoc body or a `#`: the opaque analysis has to read exactly the text the approval
 # analysis could not.
@@ -730,6 +738,10 @@ def git_mutates(args):
     subcommand, rest = args[0], args[1:]
     if subcommand in GIT_ALWAYS_MUTATING:
         return True
+    if subcommand == GIT_STASH:
+        # Only the FIRST argument names a stash subcommand: bare `git stash`, a leading
+        # flag or pathspec (both a push) and an unknown subcommand are all denied.
+        return not rest or rest[0] not in GIT_STASH_READ_ONLY
     if subcommand == GIT_PUSH:
         return any(a in GIT_PUSH_FORCE_FLAGS
                    or a.split(FLAG_VALUE_SEP, 1)[0] == GIT_PUSH_FORCE_LEASE_FLAG
@@ -1108,14 +1120,23 @@ def code_as_string(words):
     return False
 
 
-def piped_into_interpreter(sep, words):
-    """True when this segment is the right-hand side of a pipe and is an interpreter with
-    no script to run — `… | sh`, `… | python3`. `||` is not a pipe, and a lone `-` is
-    not a script."""
-    if PIPE_CHAR not in sep or OR_OPERATOR in sep:
+def piped_into_interpreter(sep, member):
+    """True when this `redirect_members` member is the right-hand side of a pipe and is an
+    interpreter with no script to run — `… | sh`, `… | python3`. `||` is not a pipe, and
+    a lone `-` is not a script.
+
+    It reads a member rather than an `opaque_segments` segment because a segment keeps a
+    redirect's operator and target as words: `ls | sh > out` read as `sh` running a
+    script named `>`, and printed nothing where the line without the redirect is this
+    deny (self/features/hook-pipe-redirect). The member's words have every redirect taken
+    out already. An input redirect from a file (REDIRECT_SCRIPT_OP) is the script, so
+    `ls | python3 < a.py` stays readable, as it was."""
+    if sep not in PIPE_SEPARATORS:
         return False
-    head = program_words(words)
+    head = program_words(member.words)
     if not head or command_name(head[0]) not in INTERPRETER_CODE_LETTER:
+        return False
+    if any(op == REDIRECT_SCRIPT_OP for op, _target in member.redirects):
         return False
     return not any(not a.startswith(FLAG_PREFIX) for a in head[1:])
 
@@ -1214,6 +1235,10 @@ def is_opaque(command):
     if not segments:
         return False
     heredocs = heredoc_programs(segments)
+    # The pipe is judged on redirect_members' members, whose words carry no redirect —
+    # on a heredoc's first line only, the same cut segments_before_line_break makes.
+    piped = any(piped_into_interpreter(sep, member) for sep, member
+                in redirect_members(command, stop_at_line_break=bool(heredocs)))
     if heredocs:
         if any(p not in HEREDOC_LITERAL_PROGRAMS for p in heredocs):
             return True
@@ -1224,11 +1249,12 @@ def is_opaque(command):
         # `python3 - <<EOF` is denied would read as a plain `cat` and reset the counter.
         # Only the two shapes that can hide code on that line are checked; a `$(…)` in a
         # path or a one-line compound there is still judged on the heredoc alone.
-        return any(code_as_string(words) or piped_into_interpreter(sep, words)
-                   for sep, words in segments_before_line_break(segments))
-    for sep, words in segments:
+        return piped or any(code_as_string(words)
+                            for _sep, words in segments_before_line_break(segments))
+    if piped:
+        return True
+    for _sep, words in segments:
         if (code_as_string(words)
-                or piped_into_interpreter(sep, words)
                 or program_decided_at_run_time(words)
                 or substitution_in_path(words)
                 or one_line_compound(words)):
@@ -1597,10 +1623,15 @@ def redirect_members(command, stop_at_line_break):
             index += len(op)
             continue
         elif ch in LINE_BREAK_CHARS:
+            flushed = len(members)
             flush(index)
             if stop_at_line_break:
                 return members
-            sep, start = ch, index + 1
+            # `ls |` then a line break is still one pipeline, as bash reads it: a break
+            # that ends no member keeps the pipe it follows as the next member's separator
+            if not (len(members) == flushed and sep in PIPE_SEPARATORS):
+                sep = ch
+            start = index + 1
         elif ch in AUTHORING_SEPARATOR_CHARS:
             flush(index)
             end = index
@@ -2170,6 +2201,8 @@ def git_allowed(args):
         return False
     if args[0] == "worktree":
         return len(args) >= 2 and args[1] in GIT_WORKTREE_READ_ONLY
+    if args[0] == GIT_STASH:
+        return len(args) >= 2 and args[1] in GIT_STASH_READ_ONLY
     if args[0] == "branch":
         return all(
             a in GIT_BRANCH_ALLOWED_FLAGS or a.startswith(GIT_BRANCH_ALLOWED_FLAG_PREFIXES)
