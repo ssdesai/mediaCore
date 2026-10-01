@@ -41,7 +41,10 @@ the verdict each must get, which nothing can synthesize — the commands are the
   (Sonnet 4.6), a new model (Mythos preview), float noise (Sonnet 5 — per-token figures a
   ulp off, so × 10⁶ is not exact), an entry missing its 1h rate (`claude-3-haiku-20240307`),
   and other providers' keys (openrouter, vertex, openai). Mythos 5.1 is deliberately
-  absent. Read by `../rates-history.sh` through `--source`, and by
+  absent. For `--tiers`: Sonnet 4.5 carries LiteLLM's real above-200k fields (and their
+  `_batches` variants, which must not be read) at flat rates equal to the history's, so
+  the refresh tests see no change for it; Opus 5.5 carries an above-200k input rate only;
+  Haiku 4.5 is flat. Read by `../rates-history.sh` through `--source`, and by
   `../feature-lifecycle.sh` and `../recover-at-close.sh` through `RATES_CHECK_SOURCE`,
   so no capture under test reaches the network.
 

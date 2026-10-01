@@ -274,8 +274,9 @@ The manifest ends with a machine-readable fence:
 - `subagents` — optional. Agent ids (`agent-<id>.jsonl` under the parent session's
   `subagents/` directory) to claim outright. Needed only when the delegate's parent was
   not on the feature's branch — a plan author spawned from a coordinator sitting on
-  `main` inherits `main` as its `gitBranch` and can never be branch-matched. A delegate
-  whose parent is selected is claimed with it, by window, without a pin. A pin outranks
+  `main` inherits `main` as its `gitBranch` and can never be branch-matched. Pinned with
+  `analysis/manifest.py [--self] <slug> pin-subagent <id>`, never by editing the fence. A
+  delegate whose parent is selected is claimed with it, by window, without a pin. A pin outranks
   an `exclude_sessions` entry on its parent (runner sessions excepted), so a coordinator
   can be excluded from a feature while its architect is kept. A pin is resolved across
   every project directory, since a delegate's transcript is filed under its parent's

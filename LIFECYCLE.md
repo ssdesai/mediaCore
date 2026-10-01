@@ -42,7 +42,10 @@ branches have merged into `origin/main` — the whole of post-merge teardown, an
 is committed or pushed by it — creates branch `S` and worktree
 `R/.worktrees/S`, runs `plans/worktree-setup.sh` and the repo's gate inside the new worktree, writes the
 feature directory — the manifest with its fence filled, and a review-brief stub carrying
-`@@TODO@@` — and commits it as `S: start`.
+`@@TODO@@` — and commits it as `S: start`. Under `--self` the setup hook is
+`self/worktree-setup.sh`, which writes agentTooling's own `.claude/settings.json` into the
+worktree — that file is untracked and generated per checkout (`hooks/README.md`) — and the
+start also regenerates the primary's copy when it is missing.
 
 **Start before you edit.** A session asked to change something runs this first and then
 edits inside the worktree; nothing is written in the primary to be moved across later.
@@ -53,6 +56,23 @@ would have old code write into a new branch. When `main` lags `origin/main` the 
 fast-forwards it, starts nothing, and exits 3 with the command to run again — the rerun
 is the new code. A primary off `main`, diverged, or with a local change in the way is
 refused untouched.
+
+**A start that stops half-way is taken over by the next one.** Between its
+`git worktree add -b` and its `S: start` commit a start holds a lock carrying its PID
+(`feature-start.lock` in the worktree's own admin dir, `.git/worktrees/<name>/`). A hook
+or gate refusal in that stretch — a flaky base gate is the common one — leaves the
+worktree **for inspection** and leaves the lock, a `refused=` line appended saying why; an
+interrupt leaves the lock as written. Re-running the same start **takes that half-start
+over** — removes it and starts afresh from the current base — when the branch is still at
+the commit it was created from, the worktree is clean, and the earlier start is provably
+dead: its lock names a PID that no longer exists, or there is no lock (a half-start from
+before the lock). A lock naming a live PID is a concurrent start of the same slug and is
+refused, naming it; a dirty or moved one is somebody's work and is refused as before. The
+prune reads the same lock, so any later start of any slug removes a clean half-start
+whose lock is dead, while a live or missing lock keeps it — among branches cut from
+`origin/main`; a half-start off a stacked `--base` is left to a re-run of its own slug. Inspect a refused start
+before the next start runs, or commit or leave a file in it to keep it. Nobody deletes a
+branch by hand: the prune and the takeover are the only places a ref goes.
 
 **The session that runs it is a router, and a router is never pinned.** Its spend is
 routing overhead, a category of its own: it opens several features and belongs to none of
@@ -100,7 +120,10 @@ per `AGENT_PLANS.md`, then `./agentTooling/run-batch.sh <slug>` drains them
 goes. Whichever it is, the work happens in the worktree. A delegate spawned by a
 coordinator launched inside the worktree inherits its branch and is claimed with it; one
 spawned from anywhere else — a coordinator in the primary checkout included — is pinned
-in the manifest's `subagents` while its transcript still exists.
+in the manifest's `subagents` while its transcript still exists, with
+`analysis/manifest.py [--self] S pin-subagent <agent-id>` (the id `capture_planning.py
+--list-subagents --unclaimed` prints, or the Agent tool returned). The manifest is a cost
+record, so the pin rides the capture's commit.
 
 ## 5. Review
 
@@ -250,16 +273,68 @@ merge (step 6), and refuses from anywhere else — naming this capture for the r
 
 ## Propagate
 
-Not a step of a feature — a step of *this directory*. A change here ships to every
-consuming repo on its next pull: `./agentTooling/update.sh` in each of them pulls this
-directory and runs `sync-plans.sh`, whose report names the repo-owned scripts that need a
-hand-merge (`README.md` → "Updating").
+Not a step of a feature in *this* directory — a feature of its own in each consuming
+repo. A change here ships to every consuming repo on its next pull, and **each pull is a
+`--method hand` feature in that repo**, so the session that performs it is routed and its
+cost lands in that feature's record rather than in every capture's unclaimed residue. For
+agentTooling PR `N` merged, in each consuming repo `R`:
+
+1. **Start** — from `R`'s primary checkout,
+   `./agentTooling/feature-start.sh pull-agenttooling-pr<N> --method hand` (step 2). The
+   slug is always `pull-agenttooling-pr<N>`, `N` the agentTooling PR being propagated; a
+   pull of several merged PRs at once is named for the newest. Add `--pin` when the
+   session running the start will also run the pull (below).
+2. **Pull** — `R/.worktrees/pull-agenttooling-pr<N>/agentTooling/update.sh`, the
+   worktree's copy, by absolute path. It pulls onto the feature's branch and runs the
+   freshly pulled `sync-plans.sh` (`README.md` → "Updating"); it creates no branch, and it
+   refuses `main`, a detached HEAD and any branch no start wrote a manifest for, since a
+   pull there is spend no feature counts. Its `split` line is the agentTooling sha
+   pulled. Commit what the sync wrote, and any hand-merge its `DRIFT` lines ask for, on
+   the branch.
+3. **Prose** — the manifest above the fence names the agentTooling PR and the `split`
+   sha pulled, the goal is "propagate agentTooling PR `N`", and the plan table has the
+   one review row (step 3).
+4. **Claim the session that did it.** Every pin below is run as the worktree's copy,
+   `R/.worktrees/pull-agenttooling-pr<N>/agentTooling/analysis/manifest.py`, by absolute
+   path: `manifest.py` edits the manifest in the checkout its own copy sits in, and the
+   manifest exists only on the feature's branch — the primary's copy, on `main`, finds
+   none. Which session depends on who ran the pull:
+   - the session that ran the start ran the pull too — started with `--pin`, or pinned
+     afterwards with `analysis/manifest.py pull-agenttooling-pr<N> pin-session <id>`.
+     Unpinned, it is a router, and a router that runs `update.sh` by absolute path never
+     `cd`s into the worktree, so the close's unpinned-builder check does not see it and
+     its pull would be counted as routing overhead;
+   - a session launched inside the worktree (`--open`) — claimed by branch, no pin;
+   - a delegate, for a round across several repos run by one coordinator
+     (`ORCHESTRATION.md` → "Coordinator shapes") — its brief opens
+     `feature: <repo>/pull-agenttooling-pr<N>`, and the coordinator pins it in that repo
+     with `analysis/manifest.py pull-agenttooling-pr<N> pin-subagent <id>` as it spawns
+     it. The coordinator is the router, unpinned, and runs each review and close by the
+     worktree copy's absolute path.
+5. **Review** — yes, every pull: write the brief (what was pulled, that the prefix diff
+   is the upstream range and nothing else, that `sync-plans.sh --check` is clean and the
+   gate green) and run `run-review.sh` (step 5). The close refuses without a clean one,
+   and on 2026-09-26 it cost about a dollar per pull — less than one bad hand-merge of a
+   repo-owned script found after the merge.
+6. **Close** — `feature-close.sh pull-agenttooling-pr<N>` from the worktree (step 6),
+   which captures the pull's cost on the branch and opens the PR.
+7. **Merge** — by the human (step 7).
+
+After a round done this way, `feature-capture.sh`'s residue lists none of the round's
+sessions or delegates, and each consuming repo's `report.py pull-agenttooling-pr<N>`
+shows what its pull cost.
+
+What a pull ships is the tracked tree and nothing else: agentTooling's own
+`.claude/settings.json` is untracked, so the first pull after `self-settings-untracked`
+deletes the `agentTooling/.claude/settings.json` earlier pulls left in each consuming repo,
+whose own wiring at its root is untouched.
 
 **There is no weekly cost sweep any more.** Every step of it either belongs to a feature's
 own capture (step 6) or is a repair somebody reaches for with a reason:
 
 - the rate history's age, its diff against LiteLLM (`analysis/refresh_rates.py --check`,
-  which writes nothing) and the corpus-wide sessions and delegates nobody has claimed are
+  which writes nothing), whether any model the corpus uses carries a tiered rate
+  (`refresh_rates.py --tiers`, one line) and the corpus-wide sessions and delegates nobody has claimed are
   printed by `feature-capture.sh`, after its report and before its commit — informational,
   never a refusal;
 - the frozen-record annotation (`sessions[].also_claimed_by`) runs at capture too, from
@@ -279,7 +354,8 @@ own capture (step 6) or is a repair somebody reaches for with a reason:
    primary checkout, on `main`, which reaches the worktree because the worktree sits
    inside it, or wherever a session began before the feature existed — is claimed only
    by pinning its id in the manifest's `sessions`, and its delegates only by pinning
-   theirs in `subagents`. Never by widening `branches`. **A pin is now the exception**:
+   theirs in `subagents` — `manifest.py pin-session` and `pin-subagent`, never a hand
+   edit (rule 3). Never by widening `branches`. **A pin is now the exception**:
    `feature-start.sh` pins nothing unless asked (`--pin`), because the session that
    starts a feature is a router whose spend is its own category (step 2), and the
    coordinator belongs in the worktree where no pin is needed.

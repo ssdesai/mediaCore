@@ -39,6 +39,15 @@ set -uo pipefail
 #       fetch failure prints its reason and exits `FETCH_FAILED_EXIT`, which is neither of
 #       those nor argparse's 2, and a write-mode refresh that cannot fetch writes nothing.
 #   H9. `--history <path>` writes that file and leaves the default one alone.
+#   T1-T8. `--tiers` (self/features/rates-tier-check): over a sandbox corpus whose records
+#       name Sonnet 4.5 (a dated alias in `planning.json`, the bare id in a `usage.json`)
+#       and Haiku 4.5, it reports Sonnet 4.5's above-200k rates from the fixture — the
+#       standard ones, never the `_batches` variants — reports Haiku 4.5 as carrying no
+#       tier, never names Opus 5.5 (tiered in the fixture, absent from the corpus), ends on
+#       the summary line `feature-capture.sh`'s residue prints, exits 1, and writes
+#       nothing; a corpus of flat models ends on "no model in the corpus carries a tiered
+#       rate" and exits 0; a fetch failure exits `FETCH_FAILED_EXIT` naming the source;
+#       and the suffixes it reads are the named constant `TIER_SUFFIXES`.
 #
 # RED until the feature lands: the sandbox has no `rates_history.json` or
 # `refresh_rates.py` and `pricing.py` still holds `RATES`. A missing file fails its own
@@ -58,7 +67,7 @@ BEFORE="2026-09-01"
 sandbox() {
   mkdir -p "$TMP/$1/analysis"
   local f
-  for f in pricing.py refresh_rates.py rates_history.json; do
+  for f in pricing.py refresh_rates.py rates_history.json roots.py; do
     cp "$HERE/analysis/$f" "$TMP/$1/analysis/$f" 2>/dev/null || true
   done
   echo "$TMP/$1/analysis"
@@ -339,6 +348,56 @@ cp "$A9/rates_history.json" "$TMP/default-before.json" 2>/dev/null
 refresh "$A9" --history "$TMP/other.json" --source "$SAMPLE" >/dev/null; rc9=$?
 check "H9. --history writes the named file and leaves the default alone (got $rc9)" \
   '[[ $rc9 -eq 0 ]] && [[ "$(H field "$TMP/other.json" checked)" == "$TODAY" ]] && cmp -s "$TMP/default-before.json" "$A9/rates_history.json"'
+
+# ── T. --tiers ───────────────────────────────────────────────────────────────
+# A sandbox's corpus is `<sandbox>/self/features` (roots.features_root(True), derived from
+# where the copied refresh_rates.py sits); `$TMP/plans/features`, the ordinary corpus, is
+# never created, so each sandbox's records are the whole corpus it sees.
+TIERED_SUMMARY="1 model(s) carry an above-200k tier: claude-sonnet-4-5 — tiered pricing is unbuilt, see self/BACKLOG.md"
+FLAT_SUMMARY="no model in the corpus carries a tiered rate"
+SONNET45_LINE="claude-sonnet-4-5: above 200k: input 6, output 22.5, cache_read 0.6, cache_creation_5m 7.5, cache_creation_1h 12"
+
+A10="$(sandbox tiers)"
+F10="$TMP/tiers/self/features/alpha"
+mkdir -p "$F10/review/complete"
+cat > "$F10/planning.json" <<'JSON'
+{"slug": "alpha", "priced": [
+  {"session_id": "s1", "agent_id": null, "model": "claude-sonnet-4-5-20250929", "cost_usd": 1.0},
+  {"session_id": "s1", "agent_id": null, "model": "claude-haiku-4-5", "cost_usd": 0.1}
+]}
+JSON
+cat > "$F10/review/complete/01-review-opus.usage.json" <<'JSON'
+{"plan": "01-review-opus", "model": "opus", "model_usage": {"claude-sonnet-4-5": {"costUSD": 1.0}},
+ "attempts": [{"session_id": "s2", "total_cost_usd": 1.0}]}
+JSON
+cp "$A10/rates_history.json" "$TMP/tiers-before.json" 2>/dev/null
+out10="$(refresh "$A10" --tiers --source "$SAMPLE")"; rc10=$?
+check "T1. --tiers over a corpus using a tiered model exits 1 (got $rc10)" '[[ $rc10 -eq 1 ]]'
+check "T2. ... reports the model's above-200k rates, the standard ones and not the _batches ones" \
+  'grep -qxF "$SONNET45_LINE" <<<"$out10"'
+check "T3. ... reports a flat model as carrying no tier, and the summary leaves it out" \
+  'grep -qxF "claude-haiku-4-5: no tier" <<<"$out10" && ! grep -q "haiku" <<<"$(tail -1 <<<"$out10")"'
+check "T4. ... ends on the residue's summary line, verbatim (got: $(tail -1 <<<"$out10"))" \
+  '[[ "$(tail -1 <<<"$out10")" == "$TIERED_SUMMARY" ]]'
+check "T5. ... never names a tiered model the corpus does not use (Opus 5.5)" \
+  '! grep -q "claude-opus-5-5" <<<"$out10"'
+check "T6. ... and writes nothing" 'cmp -s "$TMP/tiers-before.json" "$A10/rates_history.json"'
+
+A11="$(sandbox flat)"
+F11="$TMP/flat/self/features/beta"
+mkdir -p "$F11"
+cat > "$F11/planning.json" <<'JSON'
+{"slug": "beta", "priced": [{"session_id": "s3", "agent_id": null, "model": "claude-haiku-4-5-20251001", "cost_usd": 0.1}]}
+JSON
+out11="$(refresh "$A11" --tiers --source "$SAMPLE")"; rc11=$?
+check "T7. a corpus of flat models exits 0 and ends on \"$FLAT_SUMMARY\" (got $rc11: $(tail -1 <<<"$out11"))" \
+  '[[ $rc11 -eq 0 && "$(tail -1 <<<"$out11")" == "$FLAT_SUMMARY" ]]'
+out12="$(refresh "$A11" --tiers --source "$TMP/no-such-file.json")"; rc12=$?
+check "T8a. --tiers that cannot fetch exits FETCH_FAILED_EXIT and names the source (got $rc12: $out12)" \
+  '[[ -n "$FETCH_FAILED" && "$rc12" == "$FETCH_FAILED" ]] && grep -q "no-such-file" <<<"$(tail -1 <<<"$out12")"'
+t8b="$(H const "$A11" TIER_SUFFIXES)"
+check "T8b. the tier suffixes read are a named constant holding LiteLLM's above-200k suffix (got $t8b)" \
+  'grep -q "_above_200k_tokens" <<<"$t8b"'
 
 echo
 if (( fails > 0 )); then echo "rates-history: $fails assertion(s) FAILED"; exit 1; fi

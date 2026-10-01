@@ -19,12 +19,15 @@ set -uo pipefail
 # worktree path, the transcript directory a session launched there is filed under — with
 # nothing to configure and nothing an agent can drift from. In order, this script:
 #
-#   1. refuses a slug that fails the pattern, a branch or worktree that already exists,
-#      and being run from a worktree's copy (the worktree's copy is the wrong copy);
+#   1. refuses a slug that fails the pattern, a branch or worktree that already exists —
+#      unless the two are this slug's own ABANDONED HALF-START, which it takes over (see
+#      "Taking over a half-start" below) — and being run from a worktree's copy (the
+#      worktree's copy is the wrong copy);
 #   2. makes sure the common git dir's info/exclude ignores /.worktrees/ — so the
 #      primary's `git status` stays clean with the worktree inside it — then fetches
 #      origin, and when the primary's main is BEHIND origin/main, fast-forwards it and
-#      exits asking to be run again (see "A stale primary" below);
+#      exits asking to be run again (see "A stale primary" below); under --self it then
+#      regenerates the primary's own untracked .claude/settings.json if it is missing;
 #   3. prunes the features that have merged: every worktree under R/.worktrees/ whose
 #      branch has moved since it was created and is an ancestor of origin/main is
 #      removed and its local branch deleted (`git branch -D` — ancestry against
@@ -33,12 +36,17 @@ set -uo pipefail
 #      moved" is what keeps a concurrent start's brand-new branch alive: until its
 #      `S: start` commit lands it sits at its start point, an ancestor of origin/main
 #      with nothing merged (see "Merged" at prune_one). A merged branch whose reflog no
-#      longer records where it was created is kept, with one line saying so.
+#      longer records where it was created is kept, with one line saying so. The one
+#      unmoved branch it does take is an abandoned half-start of any slug: still at its
+#      creation commit, clean, and holding a start lock whose PID is gone (a live lock, or
+#      none, is left alone — see "Taking over a half-start").
 #      That is the whole of post-merge teardown. A worktree with uncommitted work is
 #      left in place with one line saying so, an unmerged one is never touched, and
 #      nothing is committed or pushed;
 #   4. adds the worktree R/.worktrees/S on a new branch S off origin/<base> (default
-#      main; `--base` records a stacked feature's base for the PR);
+#      main; `--base` records a stacked feature's base for the PR), and at once writes the
+#      START LOCK, `pid=<this process>` and `started=<UTC>`, into that worktree's own admin
+#      dir (`git rev-parse --absolute-git-dir` inside it, .git/worktrees/<name>/);
 #   5. runs the repo's setup hook inside it — plans/worktree-setup.sh, or
 #      self/worktree-setup.sh under --self — for the venv, npm install, dev port;
 #   6. runs the repo's gate inside it and stops unless the verdict is green: a red base
@@ -51,7 +59,8 @@ set -uo pipefail
 #      directory — plans/features/S/routing.json, self/features/ under --self — through
 #      analysis/routing.py, from that session's own transcript; unless --pin, since a
 #      pinned session is this feature's and never also a router;
-#   9. commits the feature directory, routing record and all, on S as `S: start`;
+#   9. commits the feature directory, routing record and all, on S as `S: start`, and
+#      removes the start lock;
 #  10. with `--open`, runs the repo's plans/open-session.sh (self/open-session.sh under
 #      --self) with the worktree path as its only argument, which is how the coordinator
 #      session is launched INSIDE the worktree;
@@ -84,7 +93,32 @@ set -uo pipefail
 # Otherwise the primary checkout's tracked tree is never touched: nothing here checks out,
 # stashes or commits in it, so it need not be clean and nothing else running in it is
 # disturbed. Its one other write outside the new worktree is the info/exclude entry, which
-# no repo tracks. On a refusal after step 4 the worktree is left in place for inspection.
+# no repo tracks.
+#
+# **Taking over a half-start.** A start that stops between steps 4 and 9 — a refusal from
+# the hook or the gate, or an interrupt — leaves branch S at the commit it was created
+# from and the worktree with no feature directory: a HALF-START. A refusal leaves it in
+# place for inspection, and leaves the start lock too, with a `refused=<reason>` line
+# appended, so the lock says which start abandoned it and why; an interrupt leaves the
+# lock as written. Before this, a re-run refused the existing branch for good, and agents
+# may not delete refs, so a flaky base gate stranded its slug until a human cleared it.
+# Now a re-run of S takes its own half-start over — removes the worktree and the branch
+# and starts afresh from the current base — only when ALL of these hold (assess_own_half_start):
+#
+#   - branch S exists and R/.worktrees/S is a worktree on it;
+#   - S is still at the commit its reflog's `branch: Created from` entry records;
+#   - the worktree is clean (untracked files count; ignored ones do not);
+#   - the earlier start is provably dead: its lock names a PID `ps` no longer lists, or
+#     there is no lock at all — the shape every start before the lock existed left.
+#
+# A lock naming a live PID is a concurrent start of the same slug and is refused, naming
+# the PID. The check runs twice — at once, so a refusal comes before anything is fetched or
+# pruned, and again just before the removal, after the fetch, so a concurrent start still
+# between its `worktree add` and its lock write has had seconds to write it. The prune
+# (step 3) reads the same lock with one difference: there a MISSING lock keeps the branch,
+# since a start of another slug cannot tell a pre-lock half-start from a start caught
+# between its `worktree add` and its lock write, and the prune never deletes what it
+# cannot prove. The prune and this takeover are the only places a ref is deleted.
 #
 # Exit codes: 2 usage; 1 any refusal; 3 main was fast-forwarded — run the same command again.
 
@@ -120,12 +154,25 @@ PRUNE_DELETE_FLAG="-D"
 # the oldest one left is some later commit, and reading that as "created here" would keep
 # a merged worktree without a word (see prune_one).
 BRANCH_CREATED_REFLOG_PREFIX="branch: Created from"
+# The start lock ("Taking over a half-start" in the header): its file name inside the new
+# worktree's own admin dir — .git/worktrees/<name>/, where the worktree's `git status`
+# never sees it and `git worktree remove` deletes it with the rest — and the `key=value`
+# lines it holds. self/tests/start-takeover.sh reads and forges the pid line by these
+# names.
+START_LOCK_NAME="feature-start.lock"
+START_LOCK_PID_KEY="pid"
+START_LOCK_STARTED_KEY="started"
+START_LOCK_REFUSED_KEY="refused"
 # The module that derives and writes the routing record, run from the new worktree's copy
 # so the record lands in the worktree's corpus and rides the `S: start` commit, and the
 # name it writes it under inside the feature directory (analysis/routing.py's
 # RECORD_NAME; this script only prints it, and the two move together).
 ROUTING_MODULE="analysis/routing.py"
 ROUTING_RECORD_NAME="routing.json"
+# Under --self: this checkout's own permission policy, which git does not track, and the
+# generator that writes it (hooks/README.md). Both relative to REPO_DIR.
+SELF_SETTINGS_REL=".claude/settings.json"
+WIRE_SETTINGS_LABEL="hooks/wire-settings.py"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The command as typed, for the "run it again" line a stale primary ends on.
@@ -139,7 +186,20 @@ usage() {
   echo "usage: feature-start.sh [--self] <slug> [--method direct|plans|hand] [--base <branch>] [--no-gate] [--pin] [--session <id>] [--open]" >&2
   exit "$USAGE_RC"
 }
-refuse() { echo "  refused  $*" >&2; exit "$REFUSED_RC"; }
+# This run's start lock, once step 4 has written it; empty before that and after step 9.
+START_LOCK=""
+# A refusal while this run holds its lock leaves a half-start: the lock stays, recording
+# the reason, so it names the start that abandoned it — a dead PID once this exits, which
+# is exactly what lets the next start of this slug take it over.
+refuse() {
+  echo "  refused  $*" >&2
+  if [[ -n "$START_LOCK" && -f "$START_LOCK" ]]; then
+    printf '%s=%s\n' "$START_LOCK_REFUSED_KEY" "$*" >> "$START_LOCK" 2>/dev/null
+    echo "           the half-start is left for inspection, its lock at $START_LOCK saying so;" >&2
+    echo "           while it stays clean, re-running this start takes it over, and a later start of any slug prunes it unless it was cut from a stacked --base" >&2
+  fi
+  exit "$REFUSED_RC"
+}
 
 SLUG="${1:-}"; [[ -n "$SLUG" ]] || usage; shift
 METHOD="$DEFAULT_METHOD"; BASE="$DEFAULT_BASE"; RUN_GATE=1; PIN=0; SESSION_OPT=""; OPEN=0
@@ -188,8 +248,97 @@ REPO_NAME="$(basename "$PRIMARY")"
 # record; under --pin it is the manifest's pin and names no record — never both.
 ROUTER_SESSION="${SESSION_OPT:-${CLAUDE_CODE_SESSION_ID:-}}"
 
-git -C "$PRIMARY" show-ref --verify --quiet "refs/heads/$SLUG" && refuse "branch '$SLUG' already exists"
-[[ -e "$WORKTREE" ]] && refuse "$WORKTREE already exists"
+# ── Half-starts: the readers the takeover and the prune share ─────────────────
+# branch_creation <branch> — the commit <branch> was created at, from the oldest entry of
+# its reflog, or nothing when that entry is not the creation record (no reflog, or gc has
+# expired it). See "Merged" at prune_one for why the oldest entry and why the prefix.
+branch_creation() {
+  local oldest
+  oldest="$(git -C "$PRIMARY" reflog show --format='%H %gs' "refs/heads/$1" 2>/dev/null | tail -n 1)"
+  case "${oldest#* }" in
+    "$BRANCH_CREATED_REFLOG_PREFIX"*) echo "${oldest%% *}" ;;
+  esac
+}
+
+# start_lock_state <worktree> — reads that worktree's start lock into three globals:
+#   LOCK_FILE   where the lock is, or would be
+#   LOCK_STATE  live  — it names a PID `ps` still lists: a start running now
+#               dead  — it names a PID `ps` no longer lists: a start that stopped
+#               none  — no lock, or one with no readable PID
+#   LOCK_PID    the PID it names, or empty
+# `ps -p` rather than `kill -0`, which answers "not permitted" for another user's process
+# and would read a live start as dead. A PID the OS has since reused reads as live — the
+# safe direction: a refusal naming it, never a takeover of a running start.
+start_lock_state() {
+  local admin pid
+  LOCK_FILE=""; LOCK_STATE="none"; LOCK_PID=""
+  admin="$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
+  [[ -n "$admin" ]] || return 0
+  LOCK_FILE="$admin/$START_LOCK_NAME"
+  [[ -f "$LOCK_FILE" ]] || return 0
+  pid="$(sed -n "s/^$START_LOCK_PID_KEY=//p" "$LOCK_FILE" 2>/dev/null | head -n 1)"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+  LOCK_PID="$pid"
+  if ps -p "$pid" >/dev/null 2>&1; then LOCK_STATE="live"; else LOCK_STATE="dead"; fi
+}
+
+# drop_half_or_merged <worktree> <branch> — removes the worktree, then deletes the branch
+# with $PRUNE_DELETE_FLAG. 0 both went; 1 `git worktree remove` refused (nothing changed);
+# 2 the worktree went and `git branch` refused the branch. The one place a ref is deleted:
+# the prune and the takeover both call it, each only after proving the branch holds no work.
+drop_half_or_merged() {
+  git -C "$PRIMARY" worktree remove "$1" >/dev/null 2>&1 || return 1
+  git -C "$PRIMARY" branch "$PRUNE_DELETE_FLAG" "$2" >/dev/null 2>&1 || return 2
+  return 0
+}
+
+# assess_own_half_start — 0 when this slug's existing branch and worktree are an abandoned
+# half-start this run may take over (the header's four conditions); otherwise 1, with the
+# refusal in HALF_START_WHY. Leaves start_lock_state's globals set for the caller's message.
+assess_own_half_start() {
+  local created
+  HALF_START_WHY=""
+  if ! git -C "$PRIMARY" show-ref --verify --quiet "refs/heads/$SLUG"; then
+    HALF_START_WHY="$WORKTREE already exists"
+    return 1
+  fi
+  if [[ ! -e "$WORKTREE" ]]; then
+    HALF_START_WHY="branch '$SLUG' already exists"
+    return 1
+  fi
+  if [[ "$(git -C "$WORKTREE" rev-parse --show-toplevel 2>/dev/null)" != "$WORKTREE" \
+      || "$(git -C "$WORKTREE" branch --show-current 2>/dev/null)" != "$SLUG" ]]; then
+    HALF_START_WHY="branch '$SLUG' already exists, and $WORKTREE is not a worktree on it"
+    return 1
+  fi
+  created="$(branch_creation "$SLUG")"
+  if [[ -z "$created" ]]; then
+    HALF_START_WHY="branch '$SLUG' already exists, and its reflog no longer records where it was created, so it cannot be shown to hold no work"
+    return 1
+  fi
+  if [[ "$(git -C "$PRIMARY" rev-parse "refs/heads/$SLUG")" != "$created" ]]; then
+    HALF_START_WHY="branch '$SLUG' already exists and has commits of its own — a started feature, not an abandoned start"
+    return 1
+  fi
+  if [[ -n "$(git -C "$WORKTREE" status --porcelain 2>/dev/null)" ]]; then
+    HALF_START_WHY="branch '$SLUG' already exists: an unfinished start whose worktree $WORKTREE has uncommitted changes, which are somebody's work, so it is not taken over"
+    return 1
+  fi
+  start_lock_state "$WORKTREE"
+  if [[ "$LOCK_STATE" == live ]]; then
+    HALF_START_WHY="a start of '$SLUG' is still running (pid $LOCK_PID, per $LOCK_FILE) — let it finish; if pid $LOCK_PID is not a feature-start.sh (a reused pid), a human removes that lock"
+    return 1
+  fi
+  return 0
+}
+
+# Checked here, before anything is fetched or pruned, so every refusal costs nothing; and
+# again at the takeover itself, below the stale-primary check (header).
+TAKEOVER=0
+if git -C "$PRIMARY" show-ref --verify --quiet "refs/heads/$SLUG" || [[ -e "$WORKTREE" ]]; then
+  assess_own_half_start || refuse "$HALF_START_WHY"
+  TAKEOVER=1
+fi
 
 # ── Keep the worktrees directory out of git ───────────────────────────────────
 # The worktree sits inside the primary checkout, so without an ignore entry the primary's
@@ -244,6 +393,45 @@ if (( FETCHED )) && git -C "$PRIMARY" show-ref --verify --quiet "refs/remotes/$P
     exit "$UPDATED_RC"
   fi
 fi
+# ── This checkout's own settings (--self)─────────────────────────────────────
+# agentTooling's .claude/settings.json is generated and untracked, so the fast-forward
+# above — over the commit that stopped tracking it — deletes it from the primary, and
+# every session there then runs with no hook. The fast-forward path cannot put it back:
+# it is by definition the OLD copy of this script. The rerun it asks for is the new copy,
+# and so is every later start, which is why this sits here: any --self start from a
+# primary that has lost the file writes it again. Only when missing — a primary's file is
+# never rewritten under a human who is experimenting with it; the gate reports drift. In
+# a vendored agentTooling the generator writes nothing (the consuming repo's own wiring
+# is at its root), and a failure here never stops the start.
+if (( SELF_MODE )) && [[ ! -e "$REPO_DIR/$SELF_SETTINGS_REL" ]]; then
+  if settings_out="$(python3 -B "$REPO_DIR/$WIRE_SETTINGS_LABEL" --self --repo "$REPO_DIR" --write 2>&1)"; then
+    if [[ -e "$REPO_DIR/$SELF_SETTINGS_REL" ]]; then
+      echo "  settings  $SELF_SETTINGS_REL was missing from $REPO_DIR; regenerated it (untracked, generated per checkout)"
+    fi
+  else
+    echo "  warn      could not regenerate $REPO_DIR/$SELF_SETTINGS_REL (${settings_out:-no output}); sessions in $REPO_DIR run with no hook until you run: python3 -B $REPO_DIR/$WIRE_SETTINGS_LABEL --self --repo $REPO_DIR --write"
+  fi
+fi
+# ── Take over this slug's own half-start ──────────────────────────────────────
+# After the stale-primary check, so a run that stops there has removed nothing; before the
+# prune, so the prune never reports this slug's half-start as some other start's. The
+# assessment is repeated: seconds have passed since the first, and a concurrent start of
+# this slug caught before its lock write has written it by now (header).
+if (( TAKEOVER )); then
+  assess_own_half_start || refuse "$HALF_START_WHY"
+  if [[ "$LOCK_STATE" == dead ]]; then
+    takeover_why="its start (pid $LOCK_PID) is gone"
+  else
+    takeover_why="it has no start lock, so no start is running it"
+  fi
+  drop_half_or_merged "$WORKTREE" "$SLUG"
+  case $? in
+    0) ;;
+    2) refuse "took the half-start's worktree $WORKTREE away, but git branch $PRUNE_DELETE_FLAG refused branch '$SLUG'" ;;
+    *) refuse "git worktree remove refused $WORKTREE, so the half-start of '$SLUG' could not be taken over" ;;
+  esac
+  echo "  takeover  took over the abandoned start of $SLUG — branch unmoved since its creation, worktree clean, and $takeover_why; starting it afresh"
+fi
 # ── Prune the features that have merged ───────────────────────────────────────
 # The whole of post-merge teardown, done here rather than by a close step, because the
 # next start is the first moment anyone is looking and the fetch above has just refreshed
@@ -263,44 +451,52 @@ fi
 # ($BRANCH_CREATED_REFLOG_PREFIX) — no reflog, or one gc has expired past its start — is
 # kept with a line saying so, since the prune never deletes what it cannot prove.
 #
+# **An abandoned half-start** is the one unmoved branch it takes: still at its creation
+# commit AND holding a start lock whose PID is gone (start_lock_state → dead) — a start of
+# some slug that was refused or interrupted after its `worktree add` (header, "Taking over
+# a half-start"). A live lock is a start running now, and so is — for the length of one
+# write — a missing lock, so both stay silent, as before.
+#
 # prune_one <worktree path> <branch>
 prune_one() {
-  local wt="$1" branch="$2" label oldest created
+  local wt="$1" branch="$2" label created reason
   [[ -n "$wt" && -n "$branch" ]] || return 0
   case "$wt" in "$WORKTREES_ROOT"/*) ;; *) return 0 ;; esac
   git -C "$PRIMARY" merge-base --is-ancestor "$branch" "$PRUNE_MERGED_INTO" 2>/dev/null || return 0
   label="${wt#"$PRIMARY"/}"
-  oldest="$(git -C "$PRIMARY" reflog show --format='%H %gs' "refs/heads/$branch" 2>/dev/null | tail -n 1)"
-  case "${oldest#* }" in
-    "$BRANCH_CREATED_REFLOG_PREFIX"*) created="${oldest%% *}" ;;
-    *)
-      echo "  kept      $label — an ancestor of $PRUNE_MERGED_INTO, but branch $branch's reflog no longer records where it was created, so it cannot be shown to have commits of its own"
-      return 0 ;;
-  esac
-  # Silent, like any unmerged worktree: this is a feature being started right now.
-  [[ "$(git -C "$PRIMARY" rev-parse "refs/heads/$branch")" != "$created" ]] || return 0
-  # Uncommitted work in a merged worktree is work the merge did not carry. Say so and
-  # leave it: the next start will offer to take it again once it is committed or dropped.
-  if [[ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]]; then
-    echo "  kept      $label — merged into $PRUNE_MERGED_INTO but has uncommitted changes"
+  created="$(branch_creation "$branch")"
+  if [[ -z "$created" ]]; then
+    echo "  kept      $label — an ancestor of $PRUNE_MERGED_INTO, but branch $branch's reflog no longer records where it was created, so it cannot be shown to have commits of its own"
     return 0
   fi
-  if git -C "$PRIMARY" worktree remove "$wt" >/dev/null 2>&1; then
-    # $PRUNE_DELETE_FLAG is -D, not -d, and that is deliberate: the merge-base check above
-    # has already proven this branch is an ancestor of $PRUNE_MERGED_INTO, so `-d`'s own
-    # check is both redundant and the WRONG one — it judges "merged" against the branch's
-    # upstream or the primary's HEAD, either of which lags origin/main whenever the PR
-    # merged on the forge and nobody pulled, and it refuses there. That left the worktree
-    # gone and the branch behind. A failure now is a real one (a branch checked out
-    # somewhere else), so it still gets a line of its own rather than a claimed deletion.
-    if git -C "$PRIMARY" branch "$PRUNE_DELETE_FLAG" "$branch" >/dev/null 2>&1; then
-      echo "  pruned    $label and branch $branch (merged into $PRUNE_MERGED_INTO)"
-    else
-      echo "  pruned    $label; kept branch $branch — git branch $PRUNE_DELETE_FLAG refused it"
-    fi
-  else
-    echo "  kept      $label — git worktree remove refused it"
+  reason="merged into $PRUNE_MERGED_INTO"
+  if [[ "$(git -C "$PRIMARY" rev-parse "refs/heads/$branch")" == "$created" ]]; then
+    # Silent, like any unmerged worktree, unless its start is provably dead: otherwise this
+    # is a feature being started right now.
+    start_lock_state "$wt"
+    [[ "$LOCK_STATE" == dead ]] || return 0
+    reason="an abandoned start, unmoved since its creation, whose start (pid $LOCK_PID) is gone"
   fi
+  # Uncommitted work in a merged worktree is work the merge did not carry, and in a
+  # half-start it is somebody's inspection. Say so and leave it: the next start will offer
+  # to take it again once it is committed or dropped.
+  if [[ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]]; then
+    echo "  kept      $label — $reason, but has uncommitted changes"
+    return 0
+  fi
+  # $PRUNE_DELETE_FLAG is -D, not -d, and that is deliberate: the merge-base check above
+  # has already proven this branch is an ancestor of $PRUNE_MERGED_INTO, so `-d`'s own
+  # check is both redundant and the WRONG one — it judges "merged" against the branch's
+  # upstream or the primary's HEAD, either of which lags origin/main whenever the PR
+  # merged on the forge and nobody pulled, and it refuses there. That left the worktree
+  # gone and the branch behind. A failure now is a real one (a branch checked out
+  # somewhere else), so it still gets a line of its own rather than a claimed deletion.
+  drop_half_or_merged "$wt" "$branch"
+  case $? in
+    0) echo "  pruned    $label and branch $branch ($reason)" ;;
+    2) echo "  pruned    $label; kept branch $branch — git branch $PRUNE_DELETE_FLAG refused it" ;;
+    *) echo "  kept      $label — git worktree remove refused it" ;;
+  esac
 }
 if git -C "$PRIMARY" show-ref --verify --quiet "refs/remotes/$PRUNE_MERGED_INTO"; then
   # `git worktree list --porcelain` prints one blank-line-separated block per worktree:
@@ -325,6 +521,16 @@ else
   refuse "base branch '$BASE' exists neither as origin/$BASE nor locally"
 fi
 git -C "$PRIMARY" worktree add -q "$WORKTREE" -b "$SLUG" "$START_POINT" || refuse "git worktree add failed"
+# The start lock, at once: from here to the `S: start` commit this run is a half-start,
+# and the lock is what tells a later start — of this slug or any — whether it is still
+# running (header, "Taking over a half-start").
+wt_admin="$(git -C "$WORKTREE" rev-parse --absolute-git-dir 2>/dev/null)"
+[[ -n "$wt_admin" ]] || refuse "cannot resolve the admin dir of the new worktree $WORKTREE; it is left in place without a start lock"
+if ! printf '%s=%s\n%s=%s\n' "$START_LOCK_PID_KEY" "$$" "$START_LOCK_STARTED_KEY" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+    > "$wt_admin/$START_LOCK_NAME"; then
+  refuse "cannot write the start lock $wt_admin/$START_LOCK_NAME; the worktree is left at $WORKTREE"
+fi
+START_LOCK="$wt_admin/$START_LOCK_NAME"
 echo "  branch    $SLUG off $START_POINT"
 echo "  worktree  $WORKTREE"
 
@@ -434,6 +640,9 @@ fi
     && git commit -q -m "$SLUG: start" ) \
   || refuse "could not commit the feature directory in $WORKTREE"
 echo "  commit    $SLUG: start"
+# No longer a half-start: the branch has moved, which is what every reader checks first.
+rm -f "$START_LOCK"
+START_LOCK=""
 
 # ── Open the coordinator session inside the worktree ──────────────────────────
 # The repo owns how a session is opened — a terminal, a tab, an editor — so this runs

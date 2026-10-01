@@ -24,7 +24,8 @@ file — are priced too. They carry the *parent's* `gitBranch` and `cwd`, not th
 (a plan author spawned from a coordinator on `main` says `main` even when its whole
 job was one feature branch), so they cannot be selected by branch. Two routes in:
 a subagent whose parent session is selected is priced when its own start falls in
-the `session_window`; and a manifest may pin `"subagents": ["<agent-id>"]` to claim
+the `session_window`; and a manifest may pin `"subagents": ["<agent-id>"]` (written by
+`manifest.py <slug> pin-subagent <agent-id>`, never by hand) to claim
 one whose parent is not selected at all — the coordinator-on-main case. Pinned
 subagents bypass the branch and window filters: the pin is the human's word.
 `--list-subagents [--since DATE]` prints every subagent this repo's transcripts
@@ -70,8 +71,12 @@ from roots import (
 # transcript by globbing the project directories, as `recover_attempts.py` does), so the
 # router predicate can live beside the record it explains. The feature worktree layout
 # lives there too (`WORKTREES_DIR_NAME`, `feature_worktree_path`), so the claim roots here
-# and the unpinned-builder check the close runs derive a worktree the same way.
-from routing import WORKTREES_DIR_NAME, feature_worktree_path, is_router_lines
+# and the unpinned-builder check the close runs derive a worktree the same way. So does
+# the one manifest reader, `parse_manifest` (the LAST ```json fence of a feature README):
+# imported, not copied, so this module and report.py cannot read a fence two ways. It is
+# bound here as a module global, which is what self/tests/session-claims.sh patches
+# (`capture_planning.parse_manifest = counting`) to count the claimant scan's parses.
+from routing import WORKTREES_DIR_NAME, feature_worktree_path, is_router_lines, parse_manifest
 from transcript import add_usage, iter_billable_messages, iter_billable_messages_at, to_utc
 
 # Claude Code's project-directory naming: every one of these characters in the launch cwd
@@ -79,6 +84,10 @@ from transcript import add_usage, iter_billable_messages, iter_billable_messages
 # `…-<R>--worktrees-<slug>`.
 TRANSCRIPT_DIR_MANGLED_CHARS = "/."
 TRANSCRIPT_DIR_MANGLE_TO = "-"
+
+# The one writer of a manifest's `subagents[]`, as `--list-subagents` advises it: the fence
+# is never hand-edited (LIFECYCLE.md rule 3). `{slug}` is filled per advice line.
+PIN_SUBAGENT_COMMAND = "manifest.py [--self] {slug} pin-subagent <agent-id>"
 
 
 def transcript_dir_name(repo_dir):
@@ -97,16 +106,6 @@ def transcript_dir_name(repo_dir):
         TRANSCRIPT_DIR_MANGLE_TO if char in TRANSCRIPT_DIR_MANGLED_CHARS else char
         for char in str(repo_dir)
     )
-
-
-def parse_manifest(readme_path):
-    """Find the *last* ```json fence in a feature README and parse it. There may
-    be earlier fences (examples, snippets) — only the last one is the manifest."""
-    text = readme_path.read_text()
-    matches = re.findall(r"```json\n(.*?)\n```", text, re.DOTALL)
-    if not matches:
-        raise ValueError(f"no ```json fence found in {readme_path}")
-    return json.loads(matches[-1])
 
 
 def normalize_window(manifest):
@@ -1407,20 +1406,22 @@ def list_subagents(
         print(
             f"{len(rows)} unclaimed subagent(s) briefed for {feature_ref}, "
             f"${sum(r[5] for r in rows):.2f} no feature counts. Pin each in "
-            f"{feature_ref}'s manifest as \"subagents\": [\"<agent-id>\"]."
+            f"{feature_ref}'s manifest (its \"subagents\") with "
+            f"{PIN_SUBAGENT_COMMAND.format(slug=only_feature[1])}."
         )
         return
     if unclaimed:
         print(
             f"{len(rows)} unclaimed subagent(s), ${sum(r[5] for r in rows):.2f} no feature "
-            "counts. Pin each in the manifest its brief names; a '-' brief predates the "
+            "counts. Pin each in the manifest its brief names with "
+            f"{PIN_SUBAGENT_COMMAND.format(slug='<slug>')}; a '-' brief predates the "
             "`feature:` header — read the prompt."
         )
         return
     print(
-        f"{len(rows)} subagent(s). Pin one to a feature with \"subagents\": [\"<agent-id>\"] "
-        "in its manifest; it is then priced regardless of its parent's branch or the "
-        "session_window."
+        f"{len(rows)} subagent(s). Pin one to a feature (its manifest's \"subagents\") with "
+        f"{PIN_SUBAGENT_COMMAND.format(slug='<slug>')}; it is then priced regardless of "
+        "its parent's branch or the session_window."
     )
 
 
