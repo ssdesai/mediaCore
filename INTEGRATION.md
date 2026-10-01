@@ -356,9 +356,8 @@ disk generalised — not a shared database. Logged in §13.
   pickable by hand when it did not), reusing its instance when `(source_type, date)` is
   the same. Every edge an import writes is stamped in its `refs` with the release refs,
   `vinylcat:record` when the bundle has one, and `hnm:edge-key` (the edge's proposal key
-  within that release;
-  not unique across releases on its own), so the preview can say which edges are
-  already present. Those start unticked, and ticking one updates that edge in place
+  within that release; not unique across releases on its own), so the preview can say
+  which edges are already present. Those start unticked, and ticking one updates that edge in place
   rather than adding a second (§8). hNM `import-into-existing-source`.
 - **Commit is atomic.** Preview and commit are two endpoints; commit takes the human's
   decisions and creates everything in one transaction. Preview stashes uploaded files
@@ -380,7 +379,7 @@ Rule 1.
 **The release becomes:**
 - One `information_source` — `source_name = "<artists> — <title> (<label> <catno>)"`,
   `refs` = release refs + `vinylcat:record`. Editable in the page. On a re-import, the
-  existing source it is linked to instead of a new one (§7).
+  existing source is linked instead of a new one being created (§7).
 - One `information_source_instance` on it — `source_type` default `"physical media"`
   (editable; the owner plans public/private filtering by source type later),
   `date` = `released` or `year` if known.
