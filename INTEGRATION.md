@@ -326,13 +326,17 @@ disk generalised — not a shared database. Logged in §13.
   per entity, the authority refs from the bundle *plus* provenance under
   `vinylcat:record` (the ULID) and, for files, `sha256`. Rows created by hand have an
   empty bag and are matched by name like anything else. Never store another app's UUIDs.
-- **Candidates, not matches.** For each incoming entity the preview lists existing rows
-  with the evidence that connects them, strongest first: (1) a shared known authority
-  ref — strong signal, default action *link*, but still shown for confirmation; (2)
-  equal `normalize_text(name)` — default action *create* with the candidate offered;
-  (3) nothing — *create*. The human can always override to link/create/skip, including
-  linking to a row that shares no evidence at all (that is how a hand-made node and its
-  Discogs entry become one thing).
+- **Candidates proposed as defaults, confirmed by the human.** For each incoming entity
+  the preview lists existing rows with the evidence that connects them, strongest first:
+  (1) a shared known authority ref; (2) equal `normalize_text(name)`; (3) nothing —
+  default action *create*. A ref candidate is proposed as the default *link* in both
+  consumers. A name candidate's default is each consumer's call: humanNetworkMap
+  proposes a link to the first candidate of either kind (ref candidates before name
+  ones; hNM `import-default-link`), while musicMap defaults a name-only match to
+  *create* with the candidate offered (§9). Either way a default is a proposal, not a
+  match: nothing is committed until the human has seen every row, and the human can
+  always override to link/create/skip, including linking to a row that shares no
+  evidence at all (that is how a hand-made node and its Discogs entry become one thing).
 - **Linking accumulates evidence.** When the human links an incoming entity to an
   existing row, the row's `refs` is merged additively with the incoming refs: existing
   keys are kept, missing keys are added, and on a per-key conflict the existing value
@@ -347,7 +351,14 @@ disk generalised — not a shared database. Logged in §13.
   lets the human continue or cancel. Continuing runs the same matching; previously
   created rows appear as exact candidates. Nothing is ever overwritten silently —
   importers *add*; edits to existing rows happen only where the page explicitly offers
-  them.
+  them. In humanNetworkMap a re-import does not create a second source: the source
+  decision links the existing source (pre-selected when the preview matched it by ref,
+  pickable by hand when it did not), reusing its instance when `(source_type, date)` is
+  the same. Every edge an import writes is stamped in its `refs` with the release refs,
+  `vinylcat:record` when the bundle has one, and `hnm:edge-key` (the edge's proposal key
+  within that release; not unique across releases on its own), so the preview can say
+  which edges are already present. Those start unticked, and ticking one updates that edge in place
+  rather than adding a second (§8). hNM `import-into-existing-source`.
 - **Commit is atomic.** Preview and commit are two endpoints; commit takes the human's
   decisions and creates everything in one transaction. Preview stashes uploaded files
   under an import id so commit does not re-upload.
@@ -361,12 +372,14 @@ disk generalised — not a shared database. Logged in §13.
 ## 8. humanNetworkMap mapping
 
 **Model additions:** `refs` on `nodes`, `information_sources`, `media` (media's `refs`
-carries `sha256`). Alembic migration. `NodeOut`/`InformationSourceOut`/`MediaOut` gain
-`refs`; README field lists updated per Rule 1.
+carries `sha256`), and later `edges` (the §7 re-import stamp). Alembic migrations.
+`NodeOut`/`InformationSourceOut`/`MediaOut` gain `refs`; README field lists updated per
+Rule 1.
 
 **The release becomes:**
 - One `information_source` — `source_name = "<artists> — <title> (<label> <catno>)"`,
-  `refs` = release refs + `vinylcat:record`. Editable in the page.
+  `refs` = release refs + `vinylcat:record`. Editable in the page. On a re-import, the
+  existing source is linked instead of a new one being created (§7).
 - One `information_source_instance` on it — `source_type` default `"physical media"`
   (editable; the owner plans public/private filtering by source type later),
   `date` = `released` or `year` if known.
@@ -381,18 +394,27 @@ carries `sha256`). Alembic migration. `NodeOut`/`InformationSourceOut`/`MediaOut
   - artist → label: type `released on`, `year_started` = year.
   - credited person → artist: type = the credit role as the authority spells it
     (`Written-By`), description `"<position> '<track title>' on <title>"`.
-- Information items citing the instance: on every created/linked node and edge, one
-  item — e.g. artist: `Released IT'S SAXY (A. A. E. SAAE 1012), South Africa`; label:
-  `Released IT'S SAXY by The Duke's Combo (SAAE 1012)`; credit: `Written-By on B5 'Ma
-  Belle Amie' — IT'S SAXY`; edge: the same sentence as its endpoint's credit.
+- Information items citing the instance, each sentence written once — e.g. artist node:
+  `Released IT'S SAXY (A. A. E. SAAE 1012), South Africa`; label node: `Released IT'S
+  SAXY by The Duke's Combo (SAAE 1012)`. A credit sentence (`Written-By on B5 'Ma Belle
+  Amie' — IT'S SAXY`) goes on its credit edge only, not also on the credited person's
+  node; the node carries it only when that edge is not created (unticked, or the credit
+  collapsed into the release artist). A node whose every sentence sits on an edge gets
+  no item of its own. (hNM `import-audio-credit-items`; releases imported before it
+  still carry each credit sentence twice.)
 - Media: every `MediaFile` uploaded to the store and attached to the source
   (`source_ids`), with `refs.sha256`; a re-import skips files whose sha256 already
   exists in the project.
-- Links: a link that resolved to nodes lives on those nodes only; the source carries
-  just the entity-less links — the release's own, or one whose entities were all skipped
-  (so the evidence is retained somewhere). Duplicate URLs within a project are not
-  re-added. (Amended 2026-08-27 — see decisions log; originally every link also landed
-  on the source.)
+- Audio: every `AudioFile` likewise uploaded and attached to the source alone, named
+  `<position> '<track title>'` (e.g. `A1 'LOVE GROWS'`), `refs` = the source's refs +
+  `sha256` + `release:position`; deduplicated by sha256 like photos. (hNM
+  `import-audio-credit-items`; earlier imports ignored `Release.audio`.)
+- Links: a link whose refs overlap an entity's is attached to that entity's node(s)
+  only; the source carries just the entity-less links — the release's own, or one whose
+  entities were all skipped (so the evidence is retained somewhere). A re-import moves a
+  link an older import left on the source alone onto its nodes. Duplicate URLs within a
+  project are not re-added. (Amended 2026-08-27 — see decisions log; originally every
+  link also landed on the source. Re-import move: hNM `import-links-on-entities`.)
 
 **Endpoints:** `POST /api/projects/{pid}/imports/release/preview` (multipart) →
 `ReleaseImportPreviewOut`; `POST /api/projects/{pid}/imports/release/commit` →
@@ -655,6 +677,17 @@ Each WP is executed in its own repo with that repo's plan workflow
 by an agent briefed with this file.
 
 ## 13. Decisions log
+
+- **2026-10-01 — §7/§8 brought up to date with humanNetworkMap's import.** Four hNM
+  features changed what its import does while this document still described the
+  original: `import-default-link` (any candidate, an equal normalized name included, is
+  proposed as the default link), `import-audio-credit-items` (`Release.audio` imported
+  onto the source; a credit sentence on its edge only), `import-into-existing-source`
+  (a re-import links the existing source and stamps edges with `hnm:edge-key`), and
+  `import-links-on-entities` (a re-import moves a source-only link onto its nodes). Each
+  was the consumer's own call under principle 5 and left a backlog entry for this
+  wording; no contract shape changed and no re-pin follows. musicMap's name-match default
+  stays *create*.
 
 - **2026-09-24 — `Release.original_year`, and `schema_version` 3.** The bundle could not
   carry vinylCatalogue's original-or-reissue answer (its spec §6.2 `issue`, §7.10, both
