@@ -27,6 +27,14 @@ set -euo pipefail
 # hooks/allow-repo-commands.sh, which approves repo-confined reads and tests and denies a
 # chained `cd`. It is merged, never copied — see hooks/README.md.
 # A repo that hand-edits or removes the entry keeps its version; nothing is re-added.
+# The same file also gets the OS `sandbox` block, and there the merge is NOT hands-off:
+# `enabled`, `failIfUnavailable` and `allowUnsandboxedCommands` are set back to
+# wire-settings.py's `SANDBOX_ENABLED` (OFF today) / on / off on every run, even over a
+# repo that changed them — and once the switch is on they govern every developer's
+# interactive sessions in that repo, not just the runners (a machine where the sandbox
+# cannot start will refuse to run Claude Code there). `denyRead` and
+# `allowedDomains` are unions: the repo's own entries stay. hooks/README.md → "The
+# sandbox block".
 #
 # Scope: apart from that one entry, this writes into the CONSUMING repo's plans/ only.
 # agentTooling's own corpus under self/ is hand-written and is never generated from
@@ -44,7 +52,8 @@ STATUS_COL_WIDTH=11
 
 # The Claude Code hook wiring. Merged into the repo's .claude/settings.json rather than
 # copied from a template: that file is repo-owned and may hold unrelated settings, so the
-# helper appends one PreToolUse entry when absent and touches nothing else.
+# helper appends its entries and rules when absent and touches nothing else — except the
+# three owned sandbox switches above, which it sets wherever they stand.
 WIRE_SETTINGS="$SCRIPT_DIR/hooks/wire-settings.py"
 
 # The routing-record migration. A record used to live at plans/routing/<session-id>.json,

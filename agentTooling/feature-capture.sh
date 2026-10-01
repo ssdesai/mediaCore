@@ -50,7 +50,9 @@ set -uo pipefail
 #        capture's own claims, so a delegate claimed through its parent is not listed;
 #     8. prints the RESIDUE — the rate history's checked date and staleness, its
 #        `refresh_rates.py --check` against LiteLLM (news only; the capture never writes
-#        the history), and the corpus-wide sessions and
+#        the history), one `tiers` line from `refresh_rates.py --tiers` (does any model
+#        the corpus uses carry an above-200k rate nothing here prices), and the
+#        corpus-wide sessions and
 #        delegates no feature claims, routers excluded. About the corpus rather than this
 #        feature, and never a refusal: this is where the retired weekly sweep's last step
 #        went (self/DESIGN-2026-09-16-lifecycle-restructure.md §3.5);
@@ -356,7 +358,7 @@ while IFS= read -r row; do
   esac
   agent="$(awk '{print $2}' <<<"$row")"
   case "$PINNED_AGENTS" in *"\"$agent\""*) continue ;; esac
-  echo "  warn      delegate $agent names $REPO_NAME/$SLUG and no route claims it — pin it in $MANIFEST_REL as \"subagents\": [\"$agent\"] and run $RERUN_HINT again"
+  echo "  warn      delegate $agent names $REPO_NAME/$SLUG and no route claims it — pin it into the \"subagents\" of $MANIFEST_REL with python3 $SCRIPT_DIR/analysis/manifest.py ${SELF_FLAG[@]+"${SELF_FLAG[@]} "}$SLUG pin-subagent $agent, then run $RERUN_HINT again"
 done <<<"$DELEGATES"
 
 # ── 8. The residue: what this repo's corpus accounts for nobody ───────────────
@@ -388,6 +390,12 @@ done <<<"$RATES_OUT"
 if (( RATES_RC == RATES_CHANGED_RC )); then
   echo "  WARN      rates differ from litellm; refresh analysis/rates_history.json with analysis/refresh_rates.py in an agentTooling self feature, never here"
 fi
+# One line, whatever --tiers finds: its last line is the summary (or, on a fetch failure,
+# the one line saying why), and the per-model lines above it are for a human running it
+# by hand. A second fetch of the same source, bounded by FETCH_TIMEOUT_S like the first.
+RATES_CHECK_ARGS[0]=--tiers
+TIERS_OUT="$(python3 -B "$SCRIPT_DIR/analysis/refresh_rates.py" "${RATES_CHECK_ARGS[@]}" 2>&1)"
+echo "  tiers     $(tail -n 1 <<<"$TIERS_OUT")"
 LOOKBACK_DATE="$(python3 -B -c 'import datetime as d, sys; print((d.datetime.now(d.timezone.utc) - d.timedelta(days=int(sys.argv[1]))).strftime("%Y-%m-%d"))' "$RESIDUE_LOOKBACK_DAYS")"
 "${CAPTURE_PY[@]}" --list-sessions --unclaimed --since "$LOOKBACK_DATE"
 "${CAPTURE_PY[@]}" --list-subagents --unclaimed --since "$LOOKBACK_DATE"

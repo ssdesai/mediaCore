@@ -5,118 +5,87 @@ the assertion that would catch it, with the feature that raised it. Remove an en
 feature that closes it. Same shape as a consuming repo's `plans/BACKLOG.md`; this one is
 agentTooling's own, for the harness rather than for a product.
 
-- **A vendored `agentTooling/.claude/settings.json` is a hook path that does not exist in
-  the consuming repo.** This checkout's own settings file ships with the subtree, so a
-  repo that vendors agentTooling gets `agentTooling/.claude/settings.json` naming
-  `${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh` — a path that resolves to nothing
-  there. Claude Code reads project settings from the project root, so nothing reads that
-  nested file today and the consuming repo's own wiring at its root is unaffected; if a
-  future version reads settings from subdirectories, the consumer inherits a hook command
-  that cannot run. Closing it means either excluding `.claude/` from the subtree split or
-  making the `--self` hook command resolve in both layouts. Assertion: a repo that
-  vendors agentTooling and opens a session loads exactly one `allow-repo-commands.sh`
-  hook, and it is the one at its own root.
-  Raised by `permissions-policy-inherit`.
+- **`feature-start.sh --self` regenerating the primary's settings "only when missing" is
+  untested.** S1v covers the missing file; nothing asserts that a present but drifted
+  primary `.claude/settings.json` is left byte for byte as it was (the start must never
+  rewrite a human's experiment — the gate reports drift instead), or that a failing
+  generator costs a `warn` line and never the start. Assertion: a second `--self` start
+  over a primary whose file was hand-edited leaves those bytes alone and exits 0. Rider:
+  `hooks/policy.py`'s docstring still calls that file "committed" — it is generated and
+  untracked (the review could not edit it: `hooks/` is behind the `Edit` ask rule).
+  Raised by `self-settings-untracked`.
 
-- **Two design points from the 2026-09-16 audit are still undecided.** `self/DESIGN-2026-09-16-lifecycle-restructure.md`
-  §4 leaves both open, and this feature built neither: a **per-feature budget** in the
-  manifest fence (the runners cap per pass, so a feature that reworks three times has no
-  figure that can refuse the fourth), and **relaxing the `git stash list` deny** (the hook
-  denies the whole `git stash` verb, so the read-only listing that would let an agent see
-  whose stash it is about to step on is denied with it — `CONVENTIONS.md` tells a worktree
-  session to find its own entry by tag, which that denial makes impossible). Neither is a
-  defect; both are decisions nobody has taken. Assertions, once taken: a fence carrying a
-  budget refuses a pass that would exceed the feature's remaining total; and `git stash
-  list` is approved while every mutating `git stash` form stays denied.
-  Raised by `sweep-retirement-and-audit-fixes`.
+- **A dead half-start cut from a stacked `--base` is never pruned.** Since
+  `start-takeover`, the prune removes another slug's abandoned half-start (branch at its
+  creation commit, clean, start lock naming a dead PID), but only among branches that are
+  ancestors of `origin/main` — the prune's first test. A half-start made with
+  `--base <unmerged branch>` sits on that branch's tip, which is not an ancestor of
+  `origin/main`, so only a re-run of its own slug takes it over; a slug nobody re-runs
+  keeps its worktree and branch until a human removes them. Closing it means the prune
+  testing a half-start against its creation commit instead of against `origin/main`.
+  Assertion: a start of slug A prunes a clean, dead-locked half-start of slug B that was
+  started with `--base other`.
+  Raised by `start-takeover`.
 
-- **A pipe into an interpreter followed by a redirect is not read as one.**
-  `piped_into_interpreter` counts every non-flag word after the interpreter as a script,
-  and `opaque_segments` keeps a redirect's operator and target as words, so
-  `cat <<'EOF' | python3 > out` (and `ls | sh > out`) reads as `python3` running a script
-  named `>` and prints nothing, where the same line without the redirect is the opaque
-  deny. Found while building the shell-authored-file shape, whose own reader
-  (`redirect_members`) already takes redirects out of a member's words; not fixed there
-  because it is a different shape's defect. Assertion: `cat <<'EOF' | python3 > out\n…\nEOF`
-  and `ls | sh > out` are denied with `OPAQUE_DENY_REASON`.
-  Raised by `shell-write-rewrite`.
+- **A start killed while its hook or gate is running leaves that child running.**
+  `feature-start.sh` runs the setup hook and the gate as children; a `SIGKILL` of the start
+  itself (not of its process group) leaves them running inside the worktree while the
+  start lock's PID is already dead, so a takeover or a prune in that window removes the
+  worktree under a live gate. A Ctrl-C signals the whole foreground group and does not
+  hit this. Closing it means recording the child's PID (or the process group) in the lock
+  and treating the half-start as live while any of them exists. Assertion: a start whose
+  PID is killed while its stub gate sleeps is refused by a re-run of its slug until the
+  gate exits.
+  Raised by `start-takeover`.
 
-- **A start interrupted between `git worktree add` and its `<slug>: start` commit blocks
-  its own slug for good.** `feature-start.sh` creates the branch and the worktree first
-  (`worktree add -b`), then runs the setup hook and the gate, and only then writes and
-  commits the feature directory. A refusal in that stretch leaves the worktree "for
-  inspection" by design, and an interrupt leaves it too. A re-run then refuses the
-  existing branch and worktree. The prune never takes a branch whose tip is still its
-  `Created from` commit, since that is also what a concurrent start looks like. Agents
-  may not delete refs. So only a human's `!` clears it, although the half-made start holds
-  no work. Seen 2026-09-23: an interrupted `feature-start.sh --self
-  carry-stream-sections` left `.worktrees/carry-stream-sections` at its base with no
-  feature directory. Closing it means the start taking over its own abandoned
-  half-start: branch unmoved since creation, no `<slug>: start` commit, clean worktree,
-  **and** evidence that the earlier start is dead, such as a lock file carrying its PID,
-  so a live concurrent start of the same slug is never taken. The prune would use the
-  same predicate. Assertion: a start killed during its gate, re-run with the same slug,
-  succeeds, while a second start of a slug whose first start is still running is
-  refused.
-  Raised by `carry-stream-sections`.
+- **`feature-lifecycle.sh` T5 writes its brief into a directory that does not exist.**
+  Line ~1450 prints `No such file or directory` for
+  `$AT/self/features/lifecycle-one/review/incomplete/99-review-opus.md` — the primary's
+  `main` does not carry `lifecycle-one`'s feature directory at that point — on `main` as
+  well as on `start-takeover`. The run still reports all assertions passed, so T5 ("a
+  review run from the primary on main commits nothing") may be passing without the brief
+  it meant to run. Assertion: T5's brief exists before its review runs, and the test
+  prints nothing on stderr.
+  Raised by `start-takeover` (seen while gating it).
 
-- **An annotated frozen report still carries renderer drift into another feature's
-  commit.** `feature-capture.sh`'s annotate step re-renders every frozen record whose
-  `also_claimed_by` it changed, and `report.py` renders the frozen data with the current
-  code. So the re-rendered report also takes on whatever the renderer has gained since the
-  record was frozen, and all of it lands in the closing feature's `<slug>: cost records`
-  commit. On 2026-09-23, re-rendering the 28 frozen self reports with no streams changed
-  most of them: new keys (`rounds`, `unmeasured_attempts`), reworded warnings, and the
-  "Rates last verified" footer. `carry-stream-sections` stopped the data loss in the
-  stream sections. It did not stop this, which is the same frozen data in the renderer's
-  newer format. No figure is wrong, but a reviewer of feature X sees edits to feature Y that
-  X did not cause, and every renderer or rate-table change makes the next annotation
-  noisier. Three ways to close it:
-  (a) accept it, since a re-render uses the current renderer by design;
-  (b) a one-time self feature that re-renders the whole corpus, so the drift lands once in
-  its own commit, repeated whenever the renderer changes;
-  (c) have the annotate step update only the shared-session lines of a frozen report.
-  Option (c) is the only complete fix, but it is a second, partial writer of
-  `report.md`/`report.json`. Assertion, once decided: a feature's close that annotates an
-  older record changes nothing in that record's `report.*` but `cost.shared_sessions[]`
-  and the footnote under the Cost table.
-  Raised by `router-built-pin`, from `carry-stream-sections`' probe.
-
-- **`capture_planning.py` keeps its own `parse_manifest`.** `report.py`'s copy now
-  imports `routing.parse_manifest`, the one the pinned-session predicate reads through;
-  `capture_planning.py` still defines an identical function of its own, and
-  `self/tests/session-claims.sh` monkeypatches that name on the module, so folding it in
-  is a small change with a test to adjust rather than a free one. Assertion:
-  `capture_planning.parse_manifest is routing.parse_manifest`, with session-claims.sh's
-  counter still counting.
-  Raised by `shell-write-rewrite`.
-
-- **Long-context (above 200k input tokens) and other tiered pricing is not priced.**
-  `analysis/rates_history.json` holds one flat rate per field, and `refresh_rates.py`
-  reads only LiteLLM's five flat per-token fields, ignoring its
-  `*_above_200k_tokens` variants — as the hand table before it did. A request whose
-  prompt crosses the threshold is billed at the higher tier and priced here at the lower,
-  so every such session is under-counted. Adding it changes which figures are correct,
-  not just where the rates come from, so it needs its own decision (a per-request tier
-  is invisible in an aggregate; `transcript.py` would have to price per message).
-  Assertion: a transcript message with more than 200k input tokens on a model whose
+- **Long-context (above 200k input tokens) and other tiered pricing is not priced —
+  parked until the tier report flips.** `analysis/rates_history.json` holds one flat rate
+  per field, and the refresh reads only LiteLLM's five flat per-token fields. Since
+  `rates-tier-check`, `refresh_rates.py --tiers` reports, for every model the corpus's
+  cost records name, whether its LiteLLM entry carries a tiered rate (`TIER_SUFFIXES`,
+  `*_above_200k_tokens` among them), and `feature-capture.sh`'s residue prints its summary
+  on every capture. **Finding, 2026-09-27:** the five corpora on this machine (agentTooling
+  self, vinylCatalogue, musicMap, mediaCore, humanNetworkMap) use Fable 5, Fable 5.1,
+  Haiku 4.5, Opus 4.8, Opus 5, Opus 5.5 and Sonnet 5, and **none carries a tier** in
+  LiteLLM — the only Anthropic entry with one is Sonnet 4.5, which no corpus uses. Prompts
+  past 200k are common (about a third of Opus 5 responses in the transcripts), so this is
+  not moot, only flat-priced upstream today. Nothing to build until the residue's `tiers`
+  line reads "N model(s) carry an above-200k tier"; then tiered pricing is due, to this
+  assertion: a transcript message with more than 200k input tokens on a model whose
   LiteLLM entry carries `input_cost_per_token_above_200k_tokens` prices at that rate, and
-  one below the threshold at the flat rate.
-  Raised by `litellm-pricing`.
+  one below the threshold at the flat rate (per message — a per-request tier is invisible
+  in an aggregate, so `transcript.py` would have to price per message).
+  Raised by `litellm-pricing`. **Ruled 2026-09-26:** first have `refresh_rates.py` report
+  whether any model the corpus uses carries an above-200k tier; build tiered pricing only if
+  one does. Planned as `rates-tier-check`, which built the report and found none
+  (`self/features/rates-tier-check/NOTES.md`).
 
-- **Propagation has no cost record.** After every agentTooling PR, a session pulls the
-  subtree into each consuming repo (`LIFECYCLE.md` → "Propagate"). Those sessions and
-  their delegates are launched in `~/dev`, on no feature branch, and name no feature. So
-  every capture's residue lists them as unclaimed, and no report counts them. As of
-  2026-09-23 there were 24 such delegates totalling $16.55, spent propagating every
-  agentTooling merge from 2026-09-16 (PR #44 or earlier) through PR #60. This is a gap in
-  the design, like routing before `routing.json`, not a set of pins nobody made. Closing
-  it means giving propagation its own record: written by `update.sh`, or by the session
-  that runs the pulls, and keyed to the agentTooling PR or sha it propagated, so the
-  residue stops listing that spend. Assertion: after a propagation round,
-  `feature-capture.sh`'s residue lists none of that round's delegates, and some report
-  shows their total.
-  Raised by `litellm-pricing`.
+- **No end-to-end test of a propagation pull's cost record.** `LIFECYCLE.md` →
+  "Propagate" makes each pull a `pull-agenttooling-pr<N>` hand feature, and
+  `self/tests/propagation-pull.sh` asserts `update.sh`'s half (it pulls only inside a
+  started feature's worktree, on its branch). That the round's delegates then leave the
+  residue is argued from parts tested elsewhere — a worktree session claimed by branch, a
+  pinned delegate claimed as `pinned` (`feature-lifecycle.sh` C1–C2) — not asserted
+  through one fixture: `feature-lifecycle.sh` drives a standalone `--self` checkout, where
+  `update.sh` refuses as the source checkout, and a consumer-shaped lifecycle (vendored
+  prefix, `plans/gate.sh`, `pr.sh`, `worktree-setup.sh` stubs, an upstream to pull from)
+  does not exist yet. Assertion: in a consumer fixture, a coordinator on `main` starts
+  `pull-agenttooling-pr1 --method hand`, a delegate briefed `feature: consumer/
+  pull-agenttooling-pr1` runs the worktree's `update.sh` and is pinned with
+  `pin-subagent`, the review is clean, and `feature-close.sh`'s capture claims the
+  delegate, lists no delegate of that round in its `=== residue ===`, and
+  `report.py pull-agenttooling-pr1` shows its cost.
+  Raised by `propagation-as-feature`.
 
 - **Unclaimed delegates that belong to a feature in another repo.**
   `abdc44b0d582d0b92` (2026-09-22, $8.74) is the direct implementer for
@@ -129,4 +98,66 @@ agentTooling's own, for the harness rather than for a product.
   no feature. Pin them to whatever feature that session went on to build, or record them
   as that session's routing overhead. Assertion: `capture_planning.py --list-subagents
   --unclaimed --everywhere` lists none of these three ids.
-  Raised by `litellm-pricing`.
+  Raised by `litellm-pricing`. **Ruled 2026-09-26:** pin `abdc44b0d582d0b92` with
+  `manifest.py audio-checked-mark pin-subagent abdc44b0d582d0b92` in vinylCatalogue once
+  `manifest-pin-subagent` has been propagated there; the two exploration
+  delegates are recorded as `a60214fa`'s routing overhead.
+
+- **No consumer verify pass has run under the sandbox, and the read surface there is
+  narrower than the block asks for.** `runner-sandbox` validated the block with one
+  agentTooling review pass (no network used, `.git/hooks` write refused). On this
+  machine `permissions.blockReadsOutsideWorkingDirectories` is on, and the sandbox
+  enforces it at the OS level: `ls ~/Library/Caches` from a sandboxed Bash subprocess is
+  `Operation not permitted`. A consumer verify pass that runs `npx playwright test`
+  (browsers under `~/Library/Caches/ms-playwright`) or a home-directory toolchain (pyenv,
+  nvm, `~/.npm`), or that installs a package from a registry not yet listed, will
+  probably fail in a way that looks like broken code. **The fix is not in
+  `wire-settings.py`:** under that block Claude Code 2.1.286 drops `allowRead` entries
+  from repository settings (`sandbox-consumer-reads` proved it live and cites the doc
+  sentence in its `NOTES.md`), so the re-allow is a per-machine user-settings entry,
+  `sandbox.filesystem.allowRead` in `~/.claude/settings.json`, naming
+  `~/Library/Caches/ms-playwright` (and any home-directory toolchain path a run shows
+  refused). Until then the block ships **switched off** (`SANDBOX_ENABLED = False` in
+  `hooks/wire-settings.py`, since `sandbox-consumer-reads`), so the runners execute
+  without the OS boundary. Assertion: with the user-settings `allowRead` present,
+  `SANDBOX_ENABLED` is set to `True`, a propagation pull carries `"enabled": true` into
+  vinylCatalogue, and `run-verify.sh` on a known-green vinylCatalogue feature with
+  Playwright is green under those synced settings;
+  every path it needed is named in `hooks/README.md` → "The sandbox block" as a
+  user-settings prerequisite, and any host a `SANDBOX_ALLOWED_DOMAINS` entry, each with
+  the run that needed it. Raised by `runner-sandbox` (its review found the read limit);
+  narrowed by `sandbox-consumer-reads`.
+
+- **The runner's gate executes agent-authored code outside the sandbox.**
+  `run_level_gate` and the batch re-gate run `plans/gate.sh` / `self/gate.sh` from the
+  runner's own shell, not from `claude -p`, so pytest conftests, `package.json` scripts,
+  Playwright configs and every test a build pass wrote run with no sandbox around them;
+  the sandbox block bounds the executor's Bash only. Locking `gate.sh` itself (an Edit ask
+  rule plus a write deny) would not close it, because the code the gate runs is the
+  agent's. Assertion: a test file that writes `.git/hooks/pre-commit` fails with
+  `Operation not permitted` when the runner's gate executes it, and the gate is otherwise
+  green. Raised by the router session on 2026-09-30 while deciding whether Playwright
+  belongs in the sandboxed verify pass.
+
+- **The sandbox block is unvalidated on Linux/WSL.** `hooks/wire-settings.py`'s block is
+  platform-neutral settings, but it was run only under macOS Seatbelt. On Linux the
+  sandbox needs bubblewrap and socat, and with `failIfUnavailable: true` a machine
+  without them cannot run Claude Code in a consuming repo at all; WSL1 is unsupported.
+  Assertion: on a Linux checkout with bubblewrap, `self/gate.sh` and one review pass are
+  green under the generated settings, and `hooks/README.md` → "The sandbox block" names
+  the Linux prerequisites. Raised by `runner-sandbox` (deliberately excluded there).
+
+- **A sandboxed Bash subprocess can still rewrite the permission hook itself.** The
+  sandbox block writes no `denyWrite` and relies on Claude Code's built-in write denies
+  (`.git/hooks`, `.git/config`, `.claude/settings*`, …), none of which names
+  `agentTooling/hooks/` — it is inside the working directory, which the sandbox leaves
+  writable. So `allow-repo-commands.sh` and `policy.py`, which the
+  `Edit(**/agentTooling/hooks/**)` ask rule keeps from an unattended Edit, stay open to a
+  `python3 <script>` a verify or review pass auto-approves; a prompt-injected executor
+  could widen the policy every later session runs under. `hooks/README.md` → "Cross-layer
+  dependencies" states the gap. A `filesystem.denyWrite` on that path in consumer mode is
+  the obvious fix, but `update.sh`'s `git subtree pull` writes there through Bash too, and
+  under `--self` the build legitimately edits `hooks/`, so it needs a ruling on which
+  sessions may write it. Assertion: in a consuming repo, a sandboxed Bash subprocess that
+  opens `agentTooling/hooks/allow-repo-commands.sh` for writing fails with `Operation not
+  permitted`, and `update.sh` still pulls. Raised by `runner-sandbox`'s review.

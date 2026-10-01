@@ -15,8 +15,11 @@ set -uo pipefail
 #
 # Asserts:
 #   1. every MUTATING entry in the table renders exactly one prefix rule, in the fixed
-#      order hooks/README.md documents, and every READ_ONLY entry renders none;
-#   2. every rule is a `Bash(git …:*)` PREFIX rule and none is an allow rule;
+#      order hooks/README.md documents, and every READ_ONLY entry renders none — no rule
+#      matches `git stash list`/`show`, and the retired `Bash(git stash:*)` is listed for
+#      removal rather than rendered;
+#   2. every rule is a `Bash(git …:*)` PREFIX rule, or the EXACT `Bash(git stash)` for
+#      the bare verb, and none is an allow rule;
 #   3. the hook's own `git_mutates` denies the command each rendered rule names — the
 #      twin check, which is what a drift in either direction fails;
 #   4. and it does NOT deny the table's read-only spellings (`git worktree list`,
@@ -81,17 +84,45 @@ RULES = policy.bash_deny_rules()
 # ── 1: the rendering covers the table, in the documented order ────────────────
 MUTATING_WORKTREE = policy.worktree_mutating()
 READ_ONLY_WORKTREE = policy.worktree_read_only()
+MUTATING_STASH = policy.stash_mutating()
+READ_ONLY_STASH = policy.stash_read_only()
 EXPECTED = (
     ["push --force", "push -f", "push --force-with-lease", "reset --hard"]
     + list(policy.GIT_ALWAYS_MUTATING)
+    + ["stash %s" % s for s in MUTATING_STASH]
     + ["worktree %s" % s for s in MUTATING_WORKTREE]
     + ["checkout %s" % f for f in policy.GIT_CHECKOUT_BRANCH_FLAGS]
     + ["switch %s" % f for f in policy.GIT_SWITCH_BRANCH_FLAGS]
     + ["branch %s" % f for f in policy.GIT_BRANCH_MUTATING_FLAGS]
 )
-check("1a. one prefix rule per mutating entry, in the table's order",
-      list(RULES) == ["Bash(git %s:*)" % c for c in EXPECTED],
+# The bare verbs a prefix cannot name without also naming their read-only subcommands:
+# `Bash(git stash:*)` denied `git stash list` too, so bare `git stash` is an EXACT rule,
+# rendered after every prefix rule.
+EXPECTED_EXACT = ["stash"]
+check("1a. one prefix rule per mutating entry, in the table's order, then the exact ones",
+      list(RULES) == (["Bash(git %s:*)" % c for c in EXPECTED]
+                      + ["Bash(git %s)" % c for c in EXPECTED_EXACT]),
       "got %s" % list(RULES))
+check("1f. every MUTATING stash subcommand has a rule (%d)" % len(MUTATING_STASH),
+      all("Bash(git stash %s:*)" % s in RULES for s in MUTATING_STASH), MUTATING_STASH)
+# A prefix rule matches every command that begins with its text, so a rule that begins
+# a read-only spelling denies it whatever the hook says — deny rules beat the hook's allow.
+READ_ONLY_STASH_COMMANDS = ["git stash %s" % s for s in READ_ONLY_STASH]
+
+
+def rule_matches(rule, command):
+    if rule.endswith(":*)"):
+        return command.startswith(rule[len("Bash("):-len(":*)")])
+    return command == rule[len("Bash("):-len(")")]
+
+
+check("1g. no rule matches a READ_ONLY stash spelling (%s)" % READ_ONLY_STASH_COMMANDS,
+      not any(rule_matches(r, c) for r in RULES for c in READ_ONLY_STASH_COMMANDS),
+      [r for r in RULES for c in READ_ONLY_STASH_COMMANDS if rule_matches(r, c)])
+check("1h. `Bash(git stash:*)` is retired: not rendered, and listed for removal",
+      "Bash(git stash:*)" not in RULES
+      and "Bash(git stash:*)" in policy.retired_bash_deny_rules()
+      and not set(policy.retired_bash_deny_rules()) & set(RULES))
 check("1b. every MUTATING worktree subcommand has a rule (%d)" % len(MUTATING_WORKTREE),
       all(any("worktree %s" % s in r for r in RULES) for s in MUTATING_WORKTREE),
       MUTATING_WORKTREE)
@@ -105,14 +136,18 @@ check("1d. every branch mutating flag has a rule (%d)"
 check("1e. no rule is rendered twice", len(set(RULES)) == len(RULES))
 
 # ── 2: they are prefix rules, and never allow rules ──────────────────────────
-check("2a. every rule is a Bash(git …:*) prefix rule",
-      all(r.startswith("Bash(git ") and r.endswith(":*)") for r in RULES))
+check("2a. every rule is a Bash(git …:*) prefix rule, or an exact one for a bare verb",
+      all(r.startswith("Bash(git ") and (r.endswith(":*)")
+                                         or r in ["Bash(git %s)" % c
+                                                  for c in EXPECTED_EXACT])
+          for r in RULES))
 check("2b. nothing here renders an allow rule",
       not any("allow" in r.lower() for r in RULES))
 
 # ── 3: the twin — the hook denies what each rule names ───────────────────────
 for rule in RULES:
-    command = rule[len("Bash("):-len(":*)")]
+    suffix = ":*)" if rule.endswith(":*)") else ")"
+    command = rule[len("Bash("):-len(suffix)]
     args = hook.git_subcommand_args(command.split())
     check("3. the hook denies %r" % command,
           args is not None and hook.git_mutates(args))
@@ -120,6 +155,7 @@ for rule in RULES:
 # ── 4: and does not deny the table's read-only spellings ─────────────────────
 READ_ONLY_COMMANDS = (
     ["git worktree %s" % s for s in READ_ONLY_WORKTREE]
+    + READ_ONLY_STASH_COMMANDS
     + ["git branch %s feat*" % f for f in policy.GIT_BRANCH_LIST_FLAGS]
     + ["git push", "git push origin main", "git reset README.md",
        "git branch --show-current", "git branch --merged main"]

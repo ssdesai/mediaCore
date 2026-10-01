@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Refresh `rates_history.json` from LiteLLM's public price list.
 
-    python3 analysis/refresh_rates.py [--check] [--source <path or url>] [--history <path>]
+    python3 analysis/refresh_rates.py [--check | --tiers] [--source <path or url>] [--history <path>]
 
 Reads the entries of LiteLLM's `model_prices_and_context_window.json` whose
 `litellm_provider` is "anthropic" and whose key starts with "claude-", normalizes each
@@ -26,6 +26,16 @@ exits CHANGES_EXIT with changes and NO_CHANGES_EXIT without. A fetch failure pri
 reason and exits FETCH_FAILED_EXIT, in both modes, having written nothing. Either mode
 first prints the history's `checked` date and whether it is stale.
 
+`--tiers` writes nothing either. It lists the models the corpus's cost records name
+(`planning.json` and `usage.json` under both features roots), and for each prints whether
+its LiteLLM entry — chosen by the same key rule as the refresh — carries a tiered rate
+(`TIER_SUFFIXES`, e.g. `input_cost_per_token_above_200k_tokens`) and at what rates per
+million; the last line is the summary `feature-capture.sh`'s residue prints. It exits
+TIERS_FOUND_EXIT when some corpus model carries a tier, NO_TIERS_EXIT when none does, and
+FETCH_FAILED_EXIT as above. Nothing prices a tier yet (self/BACKLOG.md); this reports
+whether one matters (self/features/rates-tier-check/NOTES.md). No copy of LiteLLM's list
+is cached: offline, pass `--source <local file>`.
+
 The history ships to every consuming repo through the subtree: run the write mode only
 in an agentTooling self feature, never in a consuming repo.
 """
@@ -41,6 +51,7 @@ import urllib.request
 from pathlib import Path
 
 import pricing
+import roots
 
 # Where LiteLLM publishes its price list.
 LITELLM_PRICES_URL = (
@@ -68,14 +79,38 @@ TOKENS_PER_MILLION = 1_000_000
 # any real price step, far above the float noise of multiplying by a million.
 RATE_DECIMALS = 6
 
+# Tiered pricing (`--tiers`): threshold label <- the suffix LiteLLM appends to a flat
+# per-token field for the rate charged once a request's prompt crosses that threshold.
+# Every `_above_<N>k_tokens` suffix in LiteLLM's list on 2026-09-27, across all providers;
+# among Anthropic's own `claude-*` entries only 200k occurred. Each also comes in
+# `_batches`, `_priority` and `_flex` service-tier variants, which are other price lists
+# and deliberately not read (self/features/rates-tier-check/NOTES.md).
+TIER_SUFFIXES = {
+    "32k": "_above_32k_tokens",
+    "128k": "_above_128k_tokens",
+    "200k": "_above_200k_tokens",
+    "256k": "_above_256k_tokens",
+    "272k": "_above_272k_tokens",
+    "512k": "_above_512k_tokens",
+}
+# The cost records `--tiers` reads the corpus's models from, under each features root.
+PLANNING_GLOB = "*/planning.json"
+USAGE_GLOB = "*usage.json"
+# The two summary wordings feature-capture.sh's residue prints (the last line of --tiers).
+NO_TIER_SUMMARY = "no model in the corpus carries a tiered rate"
+TIER_UNBUILT_NOTE = "tiered pricing is unbuilt, see self/BACKLOG.md"
+
 # Entry bookkeeping.
 LITELLM_SOURCE = "litellm"
 FIRST_ENTRY_FROM = "0000-01-01"
 
-# Exit codes. 2 is argparse's usage error, so a fetch failure is 3.
+# Exit codes. 2 is argparse's usage error, so a fetch failure is 3. `--tiers` reuses the
+# pair: 0 when no corpus model carries a tier, 1 when one does.
 NO_CHANGES_EXIT = 0
 CHANGES_EXIT = 1
 FETCH_FAILED_EXIT = 3
+NO_TIERS_EXIT = NO_CHANGES_EXIT
+TIERS_FOUND_EXIT = CHANGES_EXIT
 
 JSON_INDENT = "  "
 
@@ -115,8 +150,9 @@ def _key_rank(key: str, normalized: str) -> tuple[int, str]:
     return (0, key[len(normalized) + 1:])
 
 
-def upstream_rates(data: dict) -> tuple[dict[str, dict], list[str]]:
-    """({normalized model: {field: rate}}, [incomplete upstream keys, with what they lack])."""
+def upstream_entries(data: dict) -> tuple[dict[str, dict], list[str]]:
+    """({normalized model: the winning upstream entry}, [incomplete upstream keys, with what
+    they lack]). The one selection rule both the refresh and `--tiers` read from."""
     winners: dict[str, tuple[tuple[int, str], dict]] = {}
     incomplete: dict[str, list[str]] = {}
     for key, entry in data.items():
@@ -130,13 +166,98 @@ def upstream_rates(data: dict) -> tuple[dict[str, dict], list[str]]:
         if missing:
             incomplete.setdefault(normalized, []).append(f"{key}: missing {', '.join(missing)}")
             continue
-        rates = {field: per_million(entry[src]) for field, src in LITELLM_FIELDS.items()}
         rank = _key_rank(key, normalized)
         if normalized not in winners or rank > winners[normalized][0]:
-            winners[normalized] = (rank, rates)
+            winners[normalized] = (rank, entry)
     skipped = [line for model, lines in sorted(incomplete.items())
                if model not in winners for line in lines]
-    return {model: rates for model, (_, rates) in winners.items()}, skipped
+    return {model: entry for model, (_, entry) in winners.items()}, skipped
+
+
+def upstream_rates(data: dict) -> tuple[dict[str, dict], list[str]]:
+    """({normalized model: {field: rate}}, [incomplete upstream keys, with what they lack])."""
+    entries, skipped = upstream_entries(data)
+    return {model: {field: per_million(entry[src]) for field, src in LITELLM_FIELDS.items()}
+            for model, entry in entries.items()}, skipped
+
+
+def entry_tiers(entry: dict) -> dict[str, dict]:
+    """{threshold label: {history field: rate per million}} for every TIER_SUFFIXES
+    threshold at which `entry` carries at least one of the five rates; {} for a flat entry.
+    Only `<flat field><suffix>` exactly — a service-tier variant (`…_batches`, `…_priority`,
+    `…_flex`) is a different price list, and `…_above_1hr` is the 1h cache write, not a tier."""
+    tiers: dict[str, dict] = {}
+    for label, suffix in TIER_SUFFIXES.items():
+        rates = {field: per_million(entry[src + suffix]) for field, src in LITELLM_FIELDS.items()
+                 if isinstance(entry.get(src + suffix), (int, float))}
+        if rates:
+            tiers[label] = rates
+    return tiers
+
+
+def corpus_models(features_dirs: list[Path]) -> list[str]:
+    """Every model id the corpora's cost records name, normalized, sorted: `planning.json`'s
+    `priced[].model`, and each `*usage.json`'s `model_usage` keys and its attempts'
+    `rates_applied` and `recovered_tokens` keys. A file that cannot be read is skipped."""
+    found: set[str] = set()
+    for features_dir in features_dirs:
+        if not features_dir.is_dir():
+            continue
+        for path in features_dir.glob(PLANNING_GLOB):
+            record = _read_json(path)
+            for row in record.get("priced") or []:
+                if isinstance(row, dict) and isinstance(row.get("model"), str):
+                    found.add(row["model"])
+        for path in features_dir.rglob(USAGE_GLOB):
+            record = _read_json(path)
+            found.update(record.get("model_usage") or {})
+            for attempt in record.get("attempts") or []:
+                if isinstance(attempt, dict):
+                    found.update(attempt.get("rates_applied") or {})
+                    found.update(attempt.get("recovered_tokens") or {})
+    return sorted({pricing.normalize_model_id(m) for m in found
+                   if m.startswith(CLAUDE_KEY_PREFIX)})
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def describe_tiers(model: str, tiers: dict[str, dict] | None) -> str:
+    if tiers is None:
+        return f"{model}: not in litellm"
+    if not tiers:
+        return f"{model}: no tier"
+    parts = [f"above {label}: " + ", ".join(f"{f} {rates[f]}" for f in pricing.RATE_FIELDS if f in rates)
+             for label, rates in tiers.items()]
+    return f"{model}: " + "; ".join(parts)
+
+
+def tier_summary(tiered: dict[str, dict[str, dict]]) -> str:
+    """The one line `feature-capture.sh`'s residue prints: the last line of `--tiers`."""
+    if not tiered:
+        return NO_TIER_SUMMARY
+    labels = "/".join(label for label in TIER_SUFFIXES
+                      if any(label in tiers for tiers in tiered.values()))
+    return (f"{len(tiered)} model(s) carry an above-{labels} tier: {', '.join(tiered)}"
+            f" — {TIER_UNBUILT_NOTE}")
+
+
+def report_tiers(data: dict, models: list[str]) -> tuple[list[str], dict[str, dict[str, dict]]]:
+    """([one line per corpus model], {tiered model: its tiers}) — the `--tiers` report."""
+    entries, _ = upstream_entries(data)
+    lines, tiered = [], {}
+    for model in models:
+        tiers = entry_tiers(entries[model]) if model in entries else None
+        lines.append(describe_tiers(model, tiers))
+        if tiers:
+            tiered[model] = tiers
+    return lines, tiered
 
 
 def plan_changes(history: dict, upstream: dict[str, dict], today: str) -> list[tuple[str, dict, dict | None]]:
@@ -197,15 +318,41 @@ def status_line(history: dict, today: str) -> str:
     return f"verified {checked} (fresh)"
 
 
+def run_tiers(source: str) -> int:
+    """`--tiers`: one line per corpus model, then the summary line; writes nothing. The
+    history's status line is `--check`'s to print, so the last line is always the summary
+    (or, on a fetch failure, the one line saying why)."""
+    try:
+        data = fetch(source)
+    except FetchError as exc:
+        print(f"litellm fetch failed, tiers not checked: {exc}", file=sys.stderr)
+        return FETCH_FAILED_EXIT
+    models = corpus_models(roots.all_features_roots())
+    if not models:
+        print("the corpus's cost records name no model")
+    lines, tiered = report_tiers(data, models)
+    for line in lines:
+        print(line)
+    print(tier_summary(tiered))
+    return TIERS_FOUND_EXIT if tiered else NO_TIERS_EXIT
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--check", action="store_true",
-                        help="diff against LiteLLM and write nothing; exit 1 if anything would change")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--check", action="store_true",
+                      help="diff against LiteLLM and write nothing; exit 1 if anything would change")
+    mode.add_argument("--tiers", action="store_true",
+                      help="report which models the corpus uses carry a tiered (above-N-tokens) "
+                           "rate in LiteLLM; write nothing; exit 1 if any does")
     parser.add_argument("--source", default=LITELLM_PRICES_URL,
                         help="a URL or path to read LiteLLM's price list from (default: LITELLM_PRICES_URL)")
     parser.add_argument("--history", type=Path, default=pricing.HISTORY_PATH,
                         help="the rate history to read and append to (default: rates_history.json beside pricing.py)")
     args = parser.parse_args(argv)
+
+    if args.tiers:
+        return run_tiers(args.source)
 
     today = pricing.utc_today()
     history = pricing.load_history(args.history)

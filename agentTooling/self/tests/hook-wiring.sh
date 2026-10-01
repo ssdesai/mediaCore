@@ -6,10 +6,15 @@ set -uo pipefail
 # consuming repo's .claude/settings.json (hooks/README.md). Run by self/gate.sh, or by
 # hand: bash self/tests/hook-wiring.sh
 #
-# Builds sixteen throwaway repos under mktemp -d, one per starting state of the settings
+# Builds twenty-six throwaway repos under mktemp -d, one per starting state of the settings
 # file — absent, unrelated content only, hook only, deny rules only, a partial deny list
 # with a repo's own rule in it, the hook and the Edit rules but no Bash rules, everything
-# but the ask rule, complete, a different hook, and seven malformed shapes — and asserts,
+# but the ask rule, everything but the sandbox block, complete, complete plus a RETIRED
+# rule (`Bash(git stash:*)`, which the write removes and nothing else with it), a sandbox
+# block carrying the repo's own domain, denyRead path and excludedCommands, a sandbox
+# switched off by hand, the complete block with only `enabled` flipped against the
+# generator's switch, a different hook, and twelve malformed shapes (three of them an
+# explicit null, which a write would otherwise crash on) — and asserts,
 # for each, that --check and --write report the documented status and exit code and agree
 # with each other; that after a write every deny and ask rule is present and exactly one
 # hook entry mentions the script; that nothing the repo already had is removed or changed,
@@ -18,6 +23,15 @@ set -uo pipefail
 # A file carrying the hook and the Edit rules and no Bash rules reports UNWIRED naming
 # the count of missing Bash rules, and the write appends exactly those, in order.
 # Malformed files are reported INVALID by both modes and left untouched.
+#
+# The sandbox block (self/features/runner-sandbox): every written file has
+# sandbox.enabled equal to wire-settings.py's SANDBOX_ENABLED switch — OFF today
+# (self/features/sandbox-consumer-reads) — failIfUnavailable and
+# allowUnsandboxedCommands=false (the generator owns those three and overrides a repo's in
+# either direction: a repo that switched the sandbox on by hand is switched back to the
+# constant), no autoAllowBashIfSandboxed, the three secret denyRead paths and every
+# generator domain; a repo's own domains, denyRead paths and unowned sandbox keys are kept
+# where they stood and the generator's are unioned in after.
 #
 # The Bash deny list is NOT retyped here: it is rendered from hooks/policy.py, the one
 # table the hook reads too, so a rule added to the table reaches this test with nobody
@@ -28,7 +42,7 @@ set -uo pipefail
 # Edit(/hooks/**) in place of the vendored spelling, --check compares it BYTE FOR BYTE
 # with a fresh write, so a hand-added allow rule or a repointed hook command fails it
 # where the merge check would have passed, and --write restores those bytes. The
-# checkout's own committed .claude/settings.json is checked with it, the same call
+# checkout's own generated (untracked) .claude/settings.json is checked with it, the same call
 # self/gate.sh records. No allow rule is ever added. No model, no network.
 
 AT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -60,9 +74,66 @@ EDIT_DENY = ["Edit(/.git/**)", "Edit(**/.git/**)", "Edit(**/.git)", "Edit(/.clau
              "Edit(**/node_modules/**)"]
 BASH_DENY = list(policy.bash_deny_rules())
 ALL_DENY = EDIT_DENY + BASH_DENY
+# Rules this helper once wrote and the table no longer renders. A merge removes exactly
+# these — `Bash(git stash:*)` denied `git stash list` too, and a deny rule beats the
+# hook's allow — and nothing else the repo carries.
+RETIRED = list(policy.retired_bash_deny_rules())
 ASK = ["Edit(**/agentTooling/hooks/**)"]
 SELF_ASK = ["Edit(**/hooks/**)", "Edit(/hooks/**)"]
 OK_WRITE = ("created", "wired", "kept")
+
+# The OS sandbox block (self/features/runner-sandbox). The generator OWNS three scalars
+# and the secrets-only denyRead; allowedDomains starts from at least these and grows with
+# what a real run needed. `enabled` is wire-settings.py's SANDBOX_ENABLED switch, OFF
+# since sandbox-consumer-reads: under the user's blockReadsOutsideWorkingDirectories a
+# sandboxed verify pass cannot read the Playwright cache, and a repo's allowRead cannot
+# re-open it. Flip SANDBOX_ENABLED_EXPECTED here together with that constant.
+# failIfUnavailable and allowUnsandboxedCommands=false stay written: inert while off,
+# correct once on. autoAllowBashIfSandboxed is never written: Bash approval stays the
+# runner's --allowedTools. The write-deny of .git/hooks, .git/config and .claude/settings*
+# is Claude Code's built-in list, on whenever enabled=true, so it is not in the block.
+SANDBOX_ENABLED_EXPECTED = False
+SANDBOX_OWNED = {"enabled": SANDBOX_ENABLED_EXPECTED, "failIfUnavailable": True,
+                 "allowUnsandboxedCommands": False}
+SANDBOX_DENY_READ = ["~/.ssh", "~/.aws", "~/.config/gh"]
+SANDBOX_MIN_DOMAINS = ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org",
+                       "api.anthropic.com", "github.com", "api.github.com",
+                       "objects.githubusercontent.com"]
+# A consuming repo's own additions, which a merge keeps where they stand
+OWN_DOMAIN = "internal.example.invalid"
+OWN_DENY_READ = "~/.netrc"
+OWN_EXCLUDED = ["docker"]
+
+
+def generated_sandbox():
+    """The block a write into an empty repo produces: the generator's full domain list,
+    read from its output rather than retyped, so a domain added after a validation run
+    reaches this test with nobody editing it."""
+    repo = os.path.join(TMP, "sandbox-reference")
+    os.makedirs(repo)
+    subprocess.run(["python3", HELPER, "--repo", repo, "--write"], capture_output=True)
+    with open(os.path.join(repo, ".claude", "settings.json")) as f:
+        return json.load(f).get("sandbox", {})
+
+
+GEN_SANDBOX = generated_sandbox()
+GEN_DOMAINS = list(((GEN_SANDBOX.get("network") or {}).get("allowedDomains")) or [])
+
+
+def sandbox_with(**overrides):
+    block = json.loads(json.dumps(GEN_SANDBOX))
+    block.update(overrides)
+    return block
+
+
+CONSUMER_SANDBOX = {
+    "enabled": True, "failIfUnavailable": True, "allowUnsandboxedCommands": False,
+    "excludedCommands": list(OWN_EXCLUDED),
+    "filesystem": {"denyRead": [OWN_DENY_READ, SANDBOX_DENY_READ[0]]},
+    "network": {"allowedDomains": [OWN_DOMAIN] + GEN_DOMAINS[:2]},
+}
+DISABLED_SANDBOX = sandbox_with(enabled=False, allowUnsandboxedCommands=True,
+                                failIfUnavailable=False)
 
 CASES = {
     "fresh":        (None, "missing", "created"),
@@ -78,9 +149,33 @@ CASES = {
                      "UNWIRED", "wired"),
     "no-ask":       ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
                       "permissions": {"deny": list(ALL_DENY)}}, "UNWIRED", "wired"),
-    "complete":     ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
+    "no-sandbox":   ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
                       "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)}},
+                     "UNWIRED", "wired"),
+    "complete":     ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
+                      "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
+                      "sandbox": sandbox_with()},
                      "in-sync", "kept"),
+    "retired":      ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
+                      "permissions": {"deny": ["Edit(/secrets/**)"] + RETIRED
+                                      + list(ALL_DENY), "ask": list(ASK)},
+                      "sandbox": sandbox_with()},
+                     "UNWIRED", "wired"),
+    "sandbox-own":  ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
+                      "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
+                      "sandbox": CONSUMER_SANDBOX},
+                     "UNWIRED", "wired"),
+    "sandbox-off":  ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
+                      "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
+                      "sandbox": DISABLED_SANDBOX},
+                     "UNWIRED", "wired"),
+    # The complete block with ONLY `enabled` flipped away from the switch — a repo that
+    # turned the sandbox on by hand while the generator has it off (or the reverse, once
+    # the switch is flipped). The generator owns `enabled`, so it is set back.
+    "enabled-flip": ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
+                      "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
+                      "sandbox": sandbox_with(enabled=not SANDBOX_ENABLED_EXPECTED)},
+                     "UNWIRED", "wired"),
     "other-hook":   ({"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
                         {"type": "command", "command": "/x/other.sh"}]}]}}, "UNWIRED", "wired"),
     "broken":       ("{not json", "INVALID", "INVALID"),
@@ -90,6 +185,12 @@ CASES = {
     "deny-dict":    ({"permissions": {"deny": {}}}, "INVALID", "INVALID"),
     "ask-dict":     ({"permissions": {"ask": {}}}, "INVALID", "INVALID"),
     "top-list":     ([], "INVALID", "INVALID"),
+    "sandbox-list": ({"sandbox": []}, "INVALID", "INVALID"),
+    "domains-dict": ({"sandbox": {"network": {"allowedDomains": {}}}}, "INVALID", "INVALID"),
+    # An explicit null is not an absence: a write would setdefault() into it and crash
+    "sandbox-null": ({"sandbox": None}, "INVALID", "INVALID"),
+    "domains-null": ({"sandbox": {"network": {"allowedDomains": None}}}, "INVALID", "INVALID"),
+    "deny-null":    ({"permissions": {"deny": None}}, "INVALID", "INVALID"),
 }
 
 
@@ -157,6 +258,15 @@ for name, (content, want_check, want_write) in CASES.items():
         check("no-ask: --check names the missing ask rule and nothing else",
               ("%d Edit ask rule(s)" % len(ASK)) in message
               and "deny rule" not in message and "hook" not in message, message)
+    if name == "no-sandbox":
+        check("no-sandbox: --check names the missing sandbox block and nothing else",
+              "sandbox" in message and "rule(s)" not in message and "hook" not in message,
+              message)
+    if name == "retired":
+        check("retired: --check names the retired rule to remove and nothing else",
+              ("%d retired Bash deny rule(s)" % len(RETIRED)) in message
+              and "missing" not in message and "ask rule" not in message
+              and "hook" not in message, message)
     check("%s: --check writes nothing" % name,
           (raw(repo) if content is not None else None) == before_raw)
     status, message, rc = run(repo, "--write")
@@ -184,14 +294,62 @@ for name, (content, want_check, want_write) in CASES.items():
     if name == "edit-only":
         check("edit-only: --write appended exactly the Bash rules, in order",
               deny == EDIT_DENY + BASH_DENY, "got %s" % deny)
+    # The sandbox block: the negative half of the backlog assertion. Once SANDBOX_ENABLED
+    # is on, with unsandboxed commands refused, Claude Code's built-in write deny
+    # (.git/hooks, .git/config, .claude/settings*) binds every Bash subprocess — no path of
+    # ours needed. While it is off, the owned values are still written and asserted here.
+    sandbox = after.get("sandbox") or {}
+    check("%s: enabled is the switch's value (%s), fail-closed and no unsandboxed retry "
+          "still written" % (name, SANDBOX_ENABLED_EXPECTED),
+          all(sandbox.get(k) is v for k, v in SANDBOX_OWNED.items()),
+          "got %s" % {k: sandbox.get(k) for k in SANDBOX_OWNED})
+    check("%s: Bash is never auto-allowed by the sandbox" % name,
+          "autoAllowBashIfSandboxed" not in sandbox, "got %r" % sandbox)
+    deny_read = (sandbox.get("filesystem") or {}).get("denyRead") or []
+    domains = (sandbox.get("network") or {}).get("allowedDomains") or []
+    check("%s: the three secret paths are denied to reads" % name,
+          all(p in deny_read for p in SANDBOX_DENY_READ), "got %s" % deny_read)
+    check("%s: never the home directory or ~/.claude" % name,
+          not any(p.rstrip("/") in ("~", "~/.claude") for p in deny_read), "got %s" % deny_read)
+    check("%s: every generator domain is allowed, the minimum among them" % name,
+          all(d in domains for d in GEN_DOMAINS + SANDBOX_MIN_DOMAINS), "got %s" % domains)
+    check("%s: no domain or path is listed twice" % name,
+          len(set(domains)) == len(domains) and len(set(deny_read)) == len(deny_read),
+          "got %s / %s" % (domains, deny_read))
+    if name == "sandbox-own":
+        # A consumer's own additions stay where they stood; the generator's are unioned in
+        check("sandbox-own: the repo's own domain and denyRead path are kept, first",
+              domains[0] == OWN_DOMAIN and deny_read[0] == OWN_DENY_READ,
+              "got %s / %s" % (domains, deny_read))
+        check("sandbox-own: a sandbox key the generator does not own is untouched",
+              sandbox.get("excludedCommands") == OWN_EXCLUDED, "got %r" % sandbox)
+        check("sandbox-own: the union appended exactly the generator's missing entries",
+              domains == [OWN_DOMAIN] + GEN_DOMAINS[:2] + GEN_DOMAINS[2:]
+              and deny_read == [OWN_DENY_READ] + SANDBOX_DENY_READ, "got %s" % domains)
+    if name == "sandbox-off":
+        check("sandbox-off: the generator's owned settings override the repo's",
+              after["sandbox"] == GEN_SANDBOX, "got %r" % after["sandbox"])
+    if name == "enabled-flip":
+        check("enabled-flip: --write names exactly one owned setting",
+              "1 owned setting(s)" in message, message)
+        check("enabled-flip: a hand-flipped enabled is set back to the switch, the rest "
+              "of the block unchanged",
+              sandbox.get("enabled") is SANDBOX_ENABLED_EXPECTED
+              and after["sandbox"] == GEN_SANDBOX, "got %r" % after["sandbox"])
+    check("%s: no retired rule is left" % name, not any(r in deny for r in RETIRED),
+          "got %s" % [r for r in RETIRED if r in deny])
+    if name == "retired":
+        check("retired: --write removed exactly the retired rules, in place",
+              deny == ["Edit(/secrets/**)"] + ALL_DENY, "got %s" % deny)
     marked = [h for e in after["hooks"]["PreToolUse"] for h in e["hooks"]
               if "allow-repo-commands.sh" in h["command"]]
     check("%s: exactly one hook entry names the script" % name, len(marked) == 1,
           "%d entries" % len(marked))
     if isinstance(content, dict):
         kept_keys = all(after.get(k) == v for k, v in content.items()
-                        if k not in ("hooks", "permissions"))
-        kept_deny = all(r in deny for r in (content.get("permissions") or {}).get("deny") or [])
+                        if k not in ("hooks", "permissions", "sandbox"))
+        kept_deny = all(r in deny for r in (content.get("permissions") or {}).get("deny") or []
+                        if r not in RETIRED)
         kept_allow = all(r in after["permissions"].get("allow", [])
                          for r in (content.get("permissions") or {}).get("allow") or [])
         kept_hooks = all(e in after["hooks"]["PreToolUse"]
@@ -273,12 +431,33 @@ write_raw(selfrepo, reordered)
 check("so does a reordered deny list, which the merge check reads as complete",
       run(selfrepo, "--check", self_mode=True)[0] == "UNWIRED")
 run(selfrepo, "--write", self_mode=True)
+# The sandbox block is generated too, so here a hand-added domain is drift rather than a
+# consumer's addition to keep — the opposite of the merge's rule, and on purpose.
+check("--self writes the same sandbox block an ordinary run does, enabled per the switch",
+      s.get("sandbox") == v.get("sandbox") == GEN_SANDBOX
+      and GEN_SANDBOX.get("enabled") is SANDBOX_ENABLED_EXPECTED,
+      "got %r" % s.get("sandbox"))
+widened = json.loads(generated.decode())
+widened.setdefault("sandbox", {}).setdefault("network", {}).setdefault(
+    "allowedDomains", []).append(OWN_DOMAIN)
+write_raw(selfrepo, widened)
+status, message, _ = run(selfrepo, "--check", self_mode=True)
+check("a hand-added allowed domain fails --self --check, naming it",
+      status == "UNWIRED" and OWN_DOMAIN in message, "got %s: %s" % (status, message))
+run(selfrepo, "--write", self_mode=True)
+flipped = json.loads(generated.decode())
+flipped.setdefault("sandbox", {})["enabled"] = not SANDBOX_ENABLED_EXPECTED
+write_raw(selfrepo, flipped)
+check("so does a sandbox switched %s by hand, against the switch"
+      % ("on" if not SANDBOX_ENABLED_EXPECTED else "off"),
+      run(selfrepo, "--check", self_mode=True)[0] == "UNWIRED")
+run(selfrepo, "--write", self_mode=True)
 check("and a write over an unchanged file reports kept",
       run(selfrepo, "--write", self_mode=True)[0] == "kept")
 
-# The committed file, through the same call self/gate.sh records
+# This checkout's own generated file, through the same call self/gate.sh records
 status, message, rc = run(AT, "--check", self_mode=True)
-check("this checkout's committed .claude/settings.json passes --self --check",
+check("this checkout's generated .claude/settings.json passes --self --check",
       status == "in-sync" and rc == 0, "got %s: %s" % (status, message))
 
 sys.exit(1 if fails else 0)

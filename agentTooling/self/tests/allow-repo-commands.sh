@@ -8,7 +8,7 @@ set -uo pipefail
 # LIFECYCLE.md rule 2, denies an assignment at command position whose own `$NAME` is used
 # later on the same line with a reason saying to inline the literal, denies a command its
 # own analysis cannot read — a heredoc into an interpreter, code as a string, a pipe into
-# an interpreter, a program decided at run time, a `$(…)` inside a path, a one-line
+# an interpreter (a redirect after it or not), a program decided at run time, a `$(…)` inside a path, a one-line
 # compound — with a reason naming the rewrite, denies a line that does not tokenize at all
 # with a reason naming the quote, and expands simple brace lists before
 # checking each word. The escalation counter, the headless fall-through and the
@@ -33,8 +33,9 @@ set -uo pipefail
 # that motivated the hook are denied when chained and approved once rewritten as a
 # standalone `cd` and the command; that every ref-moving git shape is denied wherever it
 # appears — after a separator, inside a `$(…)` substitution, behind `-C`, `--git-dir=` or
-# `-c k=v`, `git worktree move|lock|unlock|repair` and `git branch --delete|--move`
-# included — while the read-only forms (`git branch --list <pattern>` among them) and the
+# `-c k=v`, `git worktree move|lock|unlock|repair`, `git branch --delete|--move` and every
+# mutating `git stash` form included — while the read-only forms (`git branch --list
+# <pattern>`, `git stash list`/`show` among them) and the
 # heredoc/`#`/quoted guards are
 # not; that each REWRITABLE shape is denied with a reason naming the member and the
 # rewrite — a `$NAME` the shell expands, a `~`, a brace group the expansion refuses, a
@@ -284,6 +285,15 @@ OPAQUE_DENY = [
     # a pipe into an interpreter with no script file
     "ls | sh", "ls |& sh", "cat src/a.py | python3", "cat src/a.py | bash",
     "grep -rn x src | python3",
+    # ...followed by a redirect, which is not a script: its operator and target come out
+    # of the member's words before the script is looked for (hook-pipe-redirect), on the
+    # heredoc's first line as on any other
+    "ls | sh > out", "ls | sh >out", "ls | sh>out", "ls | sh 2>&1", "ls |& bash >> log",
+    "cat src/a.py | python3 > out.txt 2>&1", "ls | python3 - > out",
+    "cat <<'EOF' | python3 > out\nprint(1)\nEOF",
+    "cat <<'EOF' | python3 2> err.log\nprint(1)\nEOF",
+    # a pipe whose right-hand side starts on the next line is still a pipe
+    "ls |\nsh",
     # a program decided at run time
     "$CMD ls", "${CMD} ls", "$(which ls) src", "`which ls` src",
     # a `$(…)` inside a word that is a path
@@ -321,6 +331,10 @@ OPAQUE_NOT_DENIED = [
     # a SCRIPT's own `-c`/`-e` flag is the script's business: the code-flag scan stops at
     # the first word that is not a flag, so `python3 tool.py -c config.yaml` is readable
     ("python3 src/a.py -c conf.yaml", "prompt"), ("bash self/gate.sh -c x", "prompt"),
+    # an input redirect from a FILE is the script: the interpreter reads its code from a
+    # file anyone can open, so the line is readable, piped or not (hook-pipe-redirect)
+    ("ls | python3 < src/a.py", "prompt"), ("ls | sh <src/a.py", "prompt"),
+    ("python3 < src/a.py", "prompt"), ("ls | python3 src/a.py > out", "prompt"),
     ("grep -n 'python3 -c' src", "ALLOW"), ("echo python3 -c foo", "ALLOW"),
     ("grep -n 'for f in x' src", "ALLOW"), ("find . -name for", "ALLOW"),
     # a quoted `<<` is not a heredoc; it lexes as a punctuation token, which the
@@ -483,7 +497,15 @@ GIT_DENY = [
     "git push --force", "git push -f origin main", "git push --force-with-lease origin main",
     "git push --force-with-lease=main:abc123 origin", "git push origin main --force",
     "git reset --hard", "git reset --hard HEAD~1", "git reset --hard origin/main",
-    "git clean", "git clean -fdx src", "git stash", "git stash pop", "git stash list",
+    "git clean", "git clean -fdx src",
+    # every mutating `git stash` form; `list` and `show` read, and are below
+    # (hook-pipe-redirect). A leading flag or pathspec is a `push`, and a subcommand the
+    # table has not heard of is not one it can vouch for.
+    "git stash", "git stash pop", "git stash push", "git stash push -m x src",
+    "git stash save x", "git stash apply", "git stash drop", "git stash clear",
+    "git stash branch b", "git stash create", "git stash store abc", "git stash -u",
+    "git stash -m x", "git stash -- src", "git stash nosuch", "git stash -q list",
+    "git stash list && git stash pop",
     "git rebase main", "git rebase -i HEAD~3", "git rebase --continue",
     "git worktree add x", f"git worktree add {ROOT}/.worktrees/y -b y",
     "git worktree remove wt", "git worktree prune", "git worktree add /tmp/x",
@@ -510,6 +532,12 @@ GIT_DENY = [
 GIT_NOT_DENIED = [
     ("git branch --show-current", "ALLOW"), ("git worktree list", "ALLOW"),
     ("git worktree list --porcelain", "ALLOW"),
+    # `git stash list` and `git stash show` read, and are approved like `worktree list`
+    # (self/BACKLOG.md, raised by sweep-retirement-and-audit-fixes); git's exec-through
+    # flags still prompt behind them
+    ("git stash list", "ALLOW"), ("git stash show", "ALLOW"),
+    ("git stash list --oneline", "ALLOW"), ("git stash show -p", "ALLOW"),
+    (f"git -C {ROOT} stash list", "ALLOW"), ("git stash show --ext-diff", "prompt"),
     ("git branch -a", "ALLOW"), ("git branch -v --list", "ALLOW"),
     ("git branch --merged main", "prompt"), ("git branch --contains HEAD", "prompt"),
     # After `--list`/`-l` a positional is a PATTERN to filter by, not a name to create.
@@ -841,6 +869,13 @@ group("does not deny an exempt substitution, a cat heredoc, or a merely refused 
       OPAQUE_NOT_DENIED, run)
 group("the opaque deny names the rewrite",
       [(c, "ok") for c in ["python3 -c 'print(1)'", "python3 - <<'EOF'\nprint(1)\nEOF"]],
+      lambda c: deny_reason_ok(c, OPAQUE_REASON_WORDS))
+# A pipe into an interpreter is the same opaque deny, reason and all, with a redirect
+# after it or without one (self/BACKLOG.md, raised by shell-write-rewrite)
+group("a pipe into an interpreter gets the opaque reason, redirect or not",
+      [(c, "ok") for c in ["ls | sh", "ls | sh > out", "ls |\nsh",
+                           "cat <<'EOF' | python3\nprint(1)\nEOF",
+                           "cat <<'EOF' | python3 > out\nprint(1)\nEOF"]],
       lambda c: deny_reason_ok(c, OPAQUE_REASON_WORDS))
 
 # ── The three outcomes (design 2026-09-18) ───────────────────────────────────

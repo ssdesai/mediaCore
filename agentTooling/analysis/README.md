@@ -52,7 +52,9 @@ refreshes `sessions[].also_claimed_by` on every other already-captured record in
 corpus from the claims ledger (`capture_planning.py --annotate-frozen`) and re-renders
 those features' reports, then prints the **residue**: the rate history's `checked` date
 and staleness and `refresh_rates.py --check`'s diff against LiteLLM (news only — the
-capture never writes the history), and the sessions and delegates of the last week that no feature claims, routers excluded.
+capture never writes the history), one `tiers` line — the summary of
+`refresh_rates.py --tiers`, whether any model the corpus uses carries a tiered rate —
+and the sessions and delegates of the last week that no feature claims, routers excluded.
 Informational — it is about the corpus rather than this feature, and nothing in it can
 refuse a capture.
 
@@ -182,9 +184,11 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   features_dir)` is the other half**, for records already on disk: it returns `(kept,
   skipped)`, skipping every record whose `session_id` some manifest in the corpus pins in
   `sessions` (`pinned_sessions(features_dir)` → `{session_id: [slug, …]}`, read through
-  `parse_manifest`, the last ```json fence of `<slug>/README.md` — report.py imports it
-  from here rather than keeping its own copy, since every analysis module already imports
-  this one and it imports none of them). The Routing table, its fraction and the "routed
+  `parse_manifest`, the last ```json fence of `<slug>/README.md` — report.py and
+  capture_planning.py import it from here rather than keeping copies of their own, since
+  every analysis module already imports this one and it imports none of them;
+  `capture_planning.parse_manifest is routing.parse_manifest`, asserted by
+  `self/tests/manifest-pin-subagent.sh` P9). The Routing table, its fraction and the "routed
   by" line all call it; none of them reads a manifest on its own, and no reader modifies a
   record file. Without it a pinned router's cost sat in the feature's frozen total *and*
   in the Routing table, both sides of `--all`'s fraction. `load_records`, `routers_of`
@@ -316,7 +320,7 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   refused at the close until it is pinned (RB) — by `self/tests/feature-lifecycle.sh`.
 - `pricing.py` — cost calculator over the rate history; holds no rates itself. Loads `rates_history.json` **from its own directory at import** (`HISTORY_FILENAME`, `HISTORY_PATH`, `load_history(path)`) — a missing or malformed file is an import error, so every sandbox that copies `pricing.py` copies `rates_history.json` beside it. Exposes `utc_today()` (today's UTC date — the wall-clock source for everything here, since `date.today()` is the machine's *local* date and would disagree with every transcript-derived date for part of each day), `RATES_VERIFIED` (the history's `checked` date, under its old name), `STALENESS_THRESHOLD_DAYS`, `RATE_FIELDS` (the five rate keys), `normalize_model_id(model_id)`, `get_rates(model_id, as_of) -> RatesApplied | None` (the model's last entry whose `from` is on or before `as_of`; `None` for an unknown model), `compute_cost(model_id, tokens, as_of) -> (cost_usd | None, rates_applied | None)` (never `(0.0, None)`: an unknown model is `(None, None)`), `is_rates_stale(today=None, checked=None) -> bool`. **`RatesApplied { model, input, output, cache_read, cache_creation_5m, cache_creation_1h, tier, from, source }`** — the `rates_applied` written into `planning.json`'s `priced[]` and a `usage.json` attempt: `model` is the normalized id, the five rates are USD per million, `tier` is always `"standard"` (kept for readers of records written when Sonnet 5's price was an `"intro"` window), `from` is the applied entry's start date and `source` is `"litellm"` or `"manual"`. Records written before litellm-pricing carry no `from`/`source` and may say `tier: "intro"`. Any script that prices tokens imports `compute_cost` / `get_rates` / `is_rates_stale` from here rather than hardcoding rates — the history lives in exactly one place.
 - `rates_history.json` — the dated rate history every figure here is priced from. `{ checked, source_url, models{<normalized model id>: [{from, input, output, cache_read, cache_creation_5m, cache_creation_1h, source}]} }`: rates are absolute USD per million tokens (no multipliers); each model's entries are sorted by `from` (`YYYY-MM-DD`), the first at `0000-01-01`, and an entry applies from its `from` until the next one's; `source` is `"manual"` (the seed, and anything added by hand) or `"litellm"` (appended by `refresh_rates.py`); `checked` is the last date anyone checked it against its source; `source_url` is LiteLLM's raw price list. **Append-only**: an entry is never rewritten or removed, which is what makes re-pricing any session dated before a change give the dollars it gave before — and why `--recapture` reproduces the figures it replaces. Written one entry per line (`refresh_rates.serialize`) so a diff is one line per price. Seeded from the hand-maintained table `pricing.py` held until litellm-pricing, figure for figure (`self/tests/rates-history.sh` H1 holds it to a fixture of that table's output); Sonnet 5's old introductory window is two ordinary entries, 3/15 from `0000-01-01` and 2/10 from `2026-08-22` — a start date inferred from observed billing ratios in this repo's own corpus, not read off a price list (see "Repair tools" → "The rate history"). Ships to every consuming repo with the subtree: refresh it only in an agentTooling self feature.
-- `refresh_rates.py` — `refresh_rates.py [--check] [--source <path or url>] [--history <path>]`: appends to `rates_history.json` from LiteLLM's `model_prices_and_context_window.json` (`LITELLM_PRICES_URL`; `--source` for another URL or a local file, which is how the tests stay offline; `--history` for another history file, default `pricing.HISTORY_PATH`). Stdlib only (`urllib.request`, `json`). Reads the entries whose `litellm_provider` is `"anthropic"` and whose key starts `claude-`, normalized with `pricing.normalize_model_id` — an undated key beats a dated one, and among dated keys only the latest date wins; an entry missing any of the five rates is skipped and named. Converts `input_cost_per_token`, `output_cost_per_token`, `cache_read_input_token_cost`, `cache_creation_input_token_cost` (→ `cache_creation_5m`) and `cache_creation_input_token_cost_above_1hr` (→ `cache_creation_1h`) to per-million and rounds to `RATE_DECIMALS` (6), so conversion noise never reads as a change; integral rates are stored as integers. For each model whose rates differ from its latest entry it appends one from today (UTC), `source: "litellm"`; a model with no entry gets its first at `0000-01-01`; a model LiteLLM lacks is untouched; then `checked` is set to today. `--check` prints the same diff and writes nothing, exiting `NO_CHANGES_EXIT` (0) or `CHANGES_EXIT` (1). Either mode prints the history's `checked` date and staleness first, and a source that cannot be read or parsed exits `FETCH_FAILED_EXIT` (3) with the reason, having written nothing. Fetches time out after `FETCH_TIMEOUT_S`. Run by `feature-capture.sh`'s residue as `--check` (with `--source "$RATES_CHECK_SOURCE"` when that is set — the tests' seam); rulings in `self/features/litellm-pricing/NOTES.md`; asserted by `self/tests/rates-history.sh`.
+- `refresh_rates.py` — `refresh_rates.py [--check | --tiers] [--source <path or url>] [--history <path>]`: appends to `rates_history.json` from LiteLLM's `model_prices_and_context_window.json` (`LITELLM_PRICES_URL`; `--source` for another URL or a local file, which is how the tests stay offline; `--history` for another history file, default `pricing.HISTORY_PATH`). Stdlib only (`urllib.request`, `json`). Reads the entries whose `litellm_provider` is `"anthropic"` and whose key starts `claude-`, normalized with `pricing.normalize_model_id` — an undated key beats a dated one, and among dated keys only the latest date wins; an entry missing any of the five rates is skipped and named. Converts `input_cost_per_token`, `output_cost_per_token`, `cache_read_input_token_cost`, `cache_creation_input_token_cost` (→ `cache_creation_5m`) and `cache_creation_input_token_cost_above_1hr` (→ `cache_creation_1h`) to per-million and rounds to `RATE_DECIMALS` (6), so conversion noise never reads as a change; integral rates are stored as integers. For each model whose rates differ from its latest entry it appends one from today (UTC), `source: "litellm"`; a model with no entry gets its first at `0000-01-01`; a model LiteLLM lacks is untouched; then `checked` is set to today. `--check` prints the same diff and writes nothing, exiting `NO_CHANGES_EXIT` (0) or `CHANGES_EXIT` (1). Either mode prints the history's `checked` date and staleness first, and a source that cannot be read or parsed exits `FETCH_FAILED_EXIT` (3) with the reason, having written nothing. Fetches time out after `FETCH_TIMEOUT_S`. **`--tiers`** (mutually exclusive with `--check`) writes nothing either: it lists the models the corpus's cost records name (`corpus_models` over `roots.all_features_roots()` — `*/planning.json` `priced[].model` and every `*usage.json`'s `model_usage`, `attempts[].rates_applied` and `attempts[].recovered_tokens` keys, normalized; `PLANNING_GLOB`, `USAGE_GLOB`), and prints one line per model — `<model>: no tier`, `<model>: not in litellm`, or `<model>: above 200k: input …, output …, …` in USD per million — read from the **same winning entry** the refresh reads (`upstream_entries`, which `upstream_rates` now calls). **`TIER_SUFFIXES`** is `{label: suffix}` for every `_above_<N>k_tokens` threshold in LiteLLM's list (32k, 128k, 200k, 256k, 272k, 512k; only 200k occurs on Anthropic's entries), and a tier rate is read only as one of the five flat fields plus that suffix exactly (`entry_tiers`) — so the `_batches`/`_priority`/`_flex` service-tier variants are never read, and `…_above_1hr` (the 1h cache write) is never a tier. Its **last line** is the summary, `NO_TIER_SUMMARY` ("no model in the corpus carries a tiered rate") or "N model(s) carry an above-200k tier: <models> — " + `TIER_UNBUILT_NOTE` ("tiered pricing is unbuilt, see self/BACKLOG.md"); it skips the history's status line so that holds, and a fetch failure's one stderr line is the last line instead. Exits `TIERS_FOUND_EXIT` (1) when a corpus model carries a tier, `NO_TIERS_EXIT` (0) when none does, `FETCH_FAILED_EXIT` (3). **No copy of LiteLLM's list is cached**: offline, pass `--source <file>`. Run by `feature-capture.sh`'s residue as `--check` and then `--tiers` (each with `--source "$RATES_CHECK_SOURCE"` when that is set — the tests' seam), the second printed as one `tiers` line, the last line of its output. Imports `roots` (so every sandbox copying this file copies `roots.py`). Rulings in `self/features/litellm-pricing/NOTES.md` and `self/features/rates-tier-check/NOTES.md`; asserted by `self/tests/rates-history.sh` (H1–H9, T1–T8b) and `self/tests/feature-lifecycle.sh` C3a3.
 - `transcript.py` — session-transcript parsing shared by `capture_planning.py` and
   `recover_attempts.py`. Exposes `to_utc(timestamp) -> aware datetime | None`,
   `utc_date(timestamp) -> "YYYY-MM-DD" | None`, `SYNTHETIC_MODEL`,
@@ -683,7 +687,10 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   **parent is selected** is priced when its own start is inside the `session_window`;
   and a manifest's `"subagents": ["<agent-id>"]` **pins** one on its id alone,
   bypassing branch and window — the coordinator-on-`main` case, where the pin is the
-  human's word. A pin also outranks an `exclude_sessions` entry on its parent, so a
+  human's word, written with `manifest.py <slug> pin-subagent <agent-id>` (below) and
+  never by editing the fence; every advice line `--list-subagents` prints names that
+  command (`PIN_SUBAGENT_COMMAND`), as does `feature-capture.sh`'s unclaimed-delegate
+  warning, filled in with the id. A pin also outranks an `exclude_sessions` entry on its parent, so a
   feature can drop the coordinator's context cost and keep its architect; only
   runner-spawned sessions (already priced by a usage.json) refuse pins. A pin is also
   honoured across repos: the transcript is filed under the *parent's* cwd, so an
@@ -1193,7 +1200,7 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `python3 agentTooling/analysis/report.py --all`.
 - `manifest.py` — reads and writes a feature manifest's machine-readable fence, and reads
   what its `planning.json` claimed: the JSON edits the lifecycle scripts need, kept out of
-  bash. Seven subcommands, `--self` first as everywhere. `init --method M --branch B --base
+  bash. Eight subcommands, `--self` first as everywhere. `init --method M --branch B --base
   BASE --from TS [--session ID]… [--plan STEM]…` writes `<features root>/<slug>/README.md`
   from `templates/plans/features/TEMPLATE.md` with the template's fence replaced by a
   filled one, and refuses if the file exists — `feature-start.sh` runs it once, in the new
@@ -1263,6 +1270,21 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   so that nobody has to edit the fence by hand. The manifest is one of `COST_FILES`, so
   the dirty `README.md` it leaves passes the close's stray check on the re-run, and the
   capture commits it.
+  `pin-subagent <agent-id>` is its twin for the fence's `subagents[]`, and **the only
+  sanctioned writer of that list**: same output (`subagents = [...]`, or `subagents
+  already pins <id>` with nothing written), same exit codes. It refuses, exit 1 with the
+  file untouched, an empty id, one still carrying the transcript filename's `agent-`
+  prefix (naming the bare id to pin instead), and anything else that is not 17 lowercase
+  hex characters (`AGENT_ID_RE`) — the shape of every `agentId` Claude Code has written
+  and every id `capture_planning.py --list-subagents` prints, so a session UUID, a
+  truncated column or the template's `<agent-id>` placeholder is refused rather than
+  pinned as an id that matches nothing. It does **not** look at other manifests: a
+  delegate another feature already claims is judged by the capture (the two-manifest
+  warning, and the claims ledger's double-claim refusal across repos). It is how a
+  coordinator launched outside the feature's worktree claims a delegate it spawned
+  (`../LIFECYCLE.md` rule 1, `../ORCHESTRATION.md` → "Coordinator shapes"), and the command
+  `feature-capture.sh`'s unclaimed-delegate warning prints. Asserted by
+  `self/tests/manifest-pin-subagent.sh`, and end to end by `feature-lifecycle.sh` C2f–C2i.
   `claimed` prints the sessions and subagents `planning.json` holds, each with how it was
   selected and where it was launched, plus the total — what `feature-capture.sh` shows the
   human before the number is quoted. The fence it writes is
@@ -1284,7 +1306,8 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   `manifest.py` on behalf of `feature-start.sh` (`init`) and `feature-capture.sh`
   (`set-window-to`: `--replace` on the branch, `--tighten` under `--recapture` after the
   merge; the bound comes from
-  `capture_planning.py --last-branch-instant`, not from the wall clock); read by
+  `capture_planning.py --last-branch-instant`, not from the wall clock), and by a
+  coordinator through `pin-session` / `pin-subagent` for `sessions` / `subagents`; read by
   `capture_planning.py` (`branches`, `session_window`,
   `exclude_sessions`, `exclude_subagents`, `sessions`, `subagents`),
   by `report.py` (`method`, `plans`) and by `run-review.sh` (`base`, through

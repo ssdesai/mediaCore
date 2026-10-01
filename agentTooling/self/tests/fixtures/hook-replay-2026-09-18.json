@@ -1,5 +1,5 @@
 {
-  "provenance": "Composed from the shapes DESIGN-2026-09-18-hook-rewrite-or-ask.md §1 names, one record per shape and per approved read, not transcribed from a transcript: the coordinator's 2026-09-18 replay was reported as counts (5 approved, 18 prompted with no reason, 1 denied) and the commands themselves were not recorded anywhere this build could read. See self/features/hook-rewrite-or-ask/NOTES.md, ruling 9. One record moved verdict since: `echo x > f` was ASK and is REWRITE (a file authored through the shell) — self/features/shell-write-rewrite/NOTES.md.",
+  "provenance": "Composed from the shapes DESIGN-2026-09-18-hook-rewrite-or-ask.md §1 names, one record per shape and per approved read, not transcribed from a transcript: the coordinator's 2026-09-18 replay was reported as counts (5 approved, 18 prompted with no reason, 1 denied) and the commands themselves were not recorded anywhere this build could read. See self/features/hook-rewrite-or-ask/NOTES.md, ruling 9. One record moved verdict since: `echo x > f` was ASK and is REWRITE (a file authored through the shell) — self/features/shell-write-rewrite/NOTES.md. And `git stash list` was DENY and is ALLOW (a read-only git), its git-deny record replaced by `git stash pop` — self/features/hook-pipe-redirect/NOTES.md.",
   "cwd": "the throwaway project root self/tests/allow-repo-commands.sh builds, so every path here is relative to it",
   "verdicts": {
     "ALLOW": "approved silently",
@@ -30,7 +30,8 @@
 
     {"command": "R=repo; ls $R/src", "verdict": "DENY", "reason_contains": "inline"},
     {"command": "cd .worktrees/wt && ls", "verdict": "DENY", "reason_contains": "chain cd"},
-    {"command": "git stash list", "verdict": "DENY", "reason_contains": "LIFECYCLE"},
+    {"command": "git stash pop", "verdict": "DENY", "reason_contains": "LIFECYCLE"},
+    {"command": "git stash list", "verdict": "ALLOW", "reason_contains": ""},
 
     {"command": "git diff main...HEAD", "verdict": "ASK", "reason_contains": ""},
     {"command": "git add -A && git commit -m 'x'", "verdict": "ASK", "reason_contains": ""},

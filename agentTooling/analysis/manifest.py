@@ -9,6 +9,7 @@ planning.json claimed — the JSON edits the lifecycle scripts need, kept out of
     python3 agentTooling/analysis/manifest.py [--self] <slug> set-window-to [TS] [--tighten|--replace]
     python3 agentTooling/analysis/manifest.py [--self] <slug> set-window-from TS --session ID
     python3 agentTooling/analysis/manifest.py [--self] <slug> pin-session ID
+    python3 agentTooling/analysis/manifest.py [--self] <slug> pin-subagent AGENT_ID
     python3 agentTooling/analysis/manifest.py [--self] <slug> claimed
 
 `init` writes `<features>/<slug>/README.md` from `templates/plans/features/TEMPLATE.md`
@@ -43,6 +44,12 @@ stub in it — and refuses a stem that is not `NN-name-MODEL` (a sentinel is nev
 one — the remedy `feature-close.sh` names when the feature's router worked in its
 worktree unpinned (self/features/router-built-pin). The manifest is a cost record, so the
 change it leaves passes the close's dirty-files check and rides the capture's commit.
+`pin-subagent` is its twin for `subagents[]`, and the only sanctioned writer of that list:
+it appends one agent id idempotently and refuses an empty one, one still carrying the
+`agent-` filename prefix, and anything else not shaped like an agent id (`AGENT_ID_RE`) —
+how a coordinator launched outside the worktree claims a delegate it spawned for the
+feature, and the remedy `feature-capture.sh` names when a delegate briefed for the feature
+is claimed by no route.
 `claimed` prints the sessions and subagents
 `planning.json` holds, each with how it was selected and where it was launched, and the
 total — what `feature-capture.sh` shows the human before the number is quoted.
@@ -85,6 +92,18 @@ KNOWN_METHODS = ("plans", "direct", "hand")
 # The fence key `pin-session` appends to: the sessions claimed outright, regardless of
 # branch, window or cwd.
 SESSIONS_KEY = "sessions"
+# The fence key `pin-subagent` appends to: delegates claimed outright, whatever branch
+# their parent session was on.
+SUBAGENTS_KEY = "subagents"
+# An agent id as Claude Code writes it — the `<id>` of `<session>/subagents/agent-<id>.jsonl`
+# and the `agentId` on that transcript's lines, which is what `capture_planning.py
+# --list-subagents` reads (`agent_id_of`) and prints. Every one on record is 17 lowercase
+# hex characters (`abdc44b0d582d0b92`). The shape is checked so the plausible pastes are
+# refused rather than pinned as ids that match nothing: the `agent-<id>` form `claimed`
+# prints, a column cut short, a session UUID, the template's `<agent-id>` placeholder.
+AGENT_ID_RE = re.compile(r"^[0-9a-f]{17}$")
+# The filename prefix a pasted id may still carry; named in the refusal, never stripped.
+AGENT_FILE_PREFIX = "agent-"
 # A plan stem: number, kebab name, model — the filename without `.md`. `NN-gate` is a
 # sentinel, not a plan, and never belongs in `plans[]`; the model alternation excludes it.
 PLAN_STEM_RE = re.compile(r"^[0-9]+-[a-z0-9-]+-(haiku|sonnet|opus)$")
@@ -445,6 +464,50 @@ def cmd_pin_session(args):
     return 0
 
 
+def cmd_pin_subagent(args):
+    """Add one agent id to the fence's `subagents[]`, idempotently — how a coordinator
+    launched outside the feature's worktree claims a delegate it spawned for it
+    (LIFECYCLE.md rule 1). The only sanctioned writer of that list; nothing else in the
+    file moves.
+
+    Whether another feature already pins the id is NOT checked here: the capture is where
+    a double claim is judged (it warns on two manifests pinning one id and refuses a
+    delegate the claims ledger already holds for another feature, across every repo on
+    this machine), and this module reads no other manifest. See
+    self/features/manifest-pin-subagent/NOTES.md."""
+    agent_id = args.agent_id.strip()
+    if not agent_id:
+        print("refusing: an empty agent id pins nothing", file=sys.stderr)
+        return 1
+    if agent_id.startswith(AGENT_FILE_PREFIX):
+        print(
+            f"refusing: {agent_id!r} is a transcript name — pin the id without the "
+            f"`{AGENT_FILE_PREFIX}` prefix: {agent_id[len(AGENT_FILE_PREFIX):]}",
+            file=sys.stderr,
+        )
+        return 1
+    if not AGENT_ID_RE.match(agent_id):
+        print(
+            f"refusing: {agent_id!r} is not an agent id — 17 lowercase hex characters, "
+            "as `capture_planning.py --list-subagents` prints them (a session id belongs "
+            "in `sessions`: pin-session)",
+            file=sys.stderr,
+        )
+        return 1
+    path = manifest_path(args)
+    text = path.read_text()
+    match, obj = last_fence(text)
+    subagents = list(obj.get(SUBAGENTS_KEY) or [])
+    if agent_id in subagents:
+        print(f"{SUBAGENTS_KEY} already pins {agent_id}")
+        return 0
+    subagents.append(agent_id)
+    obj[SUBAGENTS_KEY] = subagents
+    path.write_text(text[: match.start(1)] + render_fence(obj) + text[match.end(1):])
+    print(f"{SUBAGENTS_KEY} = {json.dumps(subagents)}")
+    return 0
+
+
 def cmd_claimed(args):
     planning = features_root(args.self_mode) / args.slug / "planning.json"
     if not planning.exists():
@@ -541,6 +604,14 @@ def main():
     )
     p_pin.add_argument("session_id", metavar="ID")
     p_pin.set_defaults(func=cmd_pin_session)
+
+    p_pin_sub = sub.add_parser(
+        "pin-subagent",
+        help="add an agent id to the fence's subagents[] — how a coordinator outside the "
+        "worktree claims a delegate it spawned for this feature",
+    )
+    p_pin_sub.add_argument("agent_id", metavar="AGENT_ID")
+    p_pin_sub.set_defaults(func=cmd_pin_subagent)
 
     p_claimed = sub.add_parser("claimed", help="what planning.json claims, and the total")
     p_claimed.set_defaults(func=cmd_claimed)

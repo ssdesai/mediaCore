@@ -178,7 +178,8 @@ brief** plus this paragraph, adapted:
 > is the only record: read it, write one, then continue.
 
 That is the hint-not-truth rule the runners apply to a `.progress.md` log. Pin the
-second implementer's agent id beside the first in the manifest's `subagents`; the
+second implementer's agent id beside the first in the manifest's `subagents`
+(`analysis/manifest.py [--self] <slug> pin-subagent <id>`); the
 build row in the report is their sum (see "Cost and time").
 
 **Model: opus.** This is the judgment case. A feature small enough that sonnet would do
@@ -235,7 +236,8 @@ branch), so `capture_planning.py` freezes its dollars and its transcript span in
 Planning proper, the coordinator's minutes on the two briefs, is not separated out.
 An implementer spawned by a coordinator launched inside the worktree is claimed with its
 parent and needs no pin; one spawned from anywhere else is pinned while its transcript
-exists (`capture_planning.py --list-subagents --unclaimed`), and a rework one-shot's the
+exists (`manifest.py pin-subagent`, the id from `capture_planning.py --list-subagents
+--unclaimed`), and a rework one-shot's the
 same way — `feature-capture.sh` warns, naming the id, about any delegate briefed for the
 feature that neither route claims. A feature that was resumed claims every implementer
 that touched it; the build row is their sum.

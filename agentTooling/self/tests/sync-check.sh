@@ -271,6 +271,15 @@ git -C "$CONSUMER2" subtree add --prefix=agentTooling "$UPSTREAM" main --squash 
 "$CONSUMER2/agentTooling/sync-plans.sh" >/dev/null 2>&1
 echo "consumer2 fact" >> "$CONSUMER2/plans/PROJECT_FACTS.md"
 git -C "$CONSUMER2" add -A && git -C "$CONSUMER2" commit -q -m "seed plans and fill facts"
+# update.sh pulls only on a started feature's branch (LIFECYCLE.md -> "Propagate"), so
+# the pulls below run on one — its branch and committed manifest, as a start leaves them.
+# The refusals off such a branch are self/tests/propagation-pull.sh's.
+PULL_SLUG="pull-agenttooling-pr9"
+git -C "$CONSUMER2" checkout -q -b "$PULL_SLUG"
+mkdir -p "$CONSUMER2/plans/features/$PULL_SLUG"
+printf '# pull\n\n```json\n{"slug": "%s", "method": "hand", "plans": [], "branches": ["%s"]}\n```\n' \
+  "$PULL_SLUG" "$PULL_SLUG" > "$CONSUMER2/plans/features/$PULL_SLUG/README.md"
+git -C "$CONSUMER2" add -A && git -C "$CONSUMER2" commit -q -m "$PULL_SLUG: start"
 
 echo "marker" > "$WORK/MARKER.txt"
 git -C "$WORK" add -A && git -C "$WORK" commit -q -m "add MARKER.txt"
