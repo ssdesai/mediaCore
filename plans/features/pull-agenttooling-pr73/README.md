@@ -29,7 +29,7 @@ commit what the pulled `sync-plans.sh` wrote outside `agentTooling/`.
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],
-  "subagents": []
+  "subagents": ["a2dc0b1368e566883"]
 }
 ```
 
