@@ -197,7 +197,8 @@ for f in feature-start.sh feature-capture.sh feature-close.sh plan-runner-roots.
          run-plans.sh run-verify.sh run-review.sh run-batch.sh stamp-timing.sh; do
   cp "$HERE/$f" "$AT/$f" 2>/dev/null || true
 done
-for f in pricing.py rates_history.json refresh_rates.py roots.py transcript.py capture_planning.py report.py manifest.py routing.py recover_attempts.py; do
+export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
+for f in pricing.py litellm_prices.py rates_history.json refresh_rates.py roots.py transcript.py capture_planning.py report.py manifest.py routing.py recover_attempts.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f" 2>/dev/null || true
 done
 cp "$HERE/templates/plans/features/TEMPLATE.md" "$AT/templates/plans/features/TEMPLATE.md"

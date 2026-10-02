@@ -368,10 +368,13 @@ UNREADABLE_DENY = [
 # The two guards the other denies keep hold here too: a heredoc's body and a `#`
 # comment are text, not a command line, so a quote inside either is nobody's business —
 # `cat <<'EOF' … don't … EOF` is a file being written, not a command that will not parse.
+# Nor is a `$'…'` that escapes a quote: shlex will not tokenize it and the shell runs it.
 UNREADABLE_NOT_DENIED = [
     ("cat <<'EOF'\ndon't\nEOF", "prompt"), ("cat <<EOF\nit's fine\nEOF", "prompt"),
     ("ls src # don't", "prompt"), ("cat a#<<EOF\ncat 'x\nEOF", "prompt"),
     ("ls src", "ALLOW"), ("cat 'a$b'", "ALLOW"),
+    ("echo $'\\''", "prompt"), ("grep $'it\\'s' README.md", "prompt"),
+    ("grep $$'\\'#' README.md", "prompt"),
 ]
 
 PROMPT = [
@@ -474,6 +477,26 @@ DENY = [
     f"cd {ROOT}/../other && ls", f"cd {ROOT}/src || cd /etc; ls",
     f"cd {ROOT}/link-home && ls", f"cd {ROOT}/dir && cat esc",
     f"cd {ROOT} && cat $HOME/x", "cd /tmp && ls ~",
+    # a `#` inside quotes or behind a backslash is a literal, not a comment, and does not
+    # excuse the chain (hook-hash-chained-cd: the reported command was approved)
+    f"cd {ROOT}; grep -n '^#' README.md | head -300; wc -l README.md",
+    f'cd {ROOT} && grep -n "^#" README.md', f"cd {ROOT} && grep -n \\# README.md",
+    f"cd {ROOT} && grep -n '^'\"#\" README.md", f"cd {ROOT} && grep $'#' README.md",
+    f"cd {ROOT} && grep \\$'#' README.md", f"cd {ROOT} && grep $$'#' README.md",
+    f"cd {ROOT} && grep $'a\\\\' README.md",
+]
+# A chain the deny cannot judge — an unquoted `#`, a `$'…'` escaping a quote — is never
+# approved either: Claude Code's reads fence cannot follow a cd and stops it after any
+# hook approval, so the approval analysis refuses every chained cd and the line goes to
+# the ordinary flow. The `$'…\'…'` rows are lines bash and zsh do run the cd of; the
+# deny leaves them because shlex would end the quote at the escaped one, and the last
+# two are why: zsh reads a comment where bash reads a quoted `#`, and neither runs the
+# `cd` shlex finds in the last.
+CHAINED_NOT_APPROVED = [
+    f"cd {ROOT} && ls a#b", f"cd {ROOT}/src && cat a.py # read it", f"ls # && cd {ROOT}",
+    f"cd {ROOT} && grep $'\\'#' README.md", f"cd {ROOT} && grep $$$'\\'#' README.md",
+    f"cd {ROOT} && grep $'it\\'s' README.md",
+    f"ls $$'a\\' ' # '; cd {ROOT}", f"ls $'a\\'; cd {ROOT} '\\'",
 ]
 # `cd` that is not a chained command: a standalone cd, cd as an argument or inside quotes,
 # a heredoc body, a substitution quoted or not (its cd moves no outer path), a word after a
@@ -488,7 +511,12 @@ NOT_DENIED = [
     ('git commit -m "cd x && ls"', "prompt"), ("cat <<'EOF'\ncd x\nEOF", "prompt"),
     (f'AT="$(cd "$(dirname {ROOT}/x)/.." && pwd)"', "prompt"),
     ("cat a#<<EOF\ncd x\nls\nEOF", "prompt"),
-]
+    # `$'\''` is one quote character, so the `#` after it is a real comment and the
+    # `cd` is never run (an escaped `\$'…'` is a plain single quote: DENY above)
+    ("ls $'\\'' # '; cd src", "prompt"), ("echo $'\\'' # x' && cd src", "prompt"),
+    # bash reads `$$'a\'` as the PID and a plain quote, so the `#` is a comment; zsh
+    # reads a `$` and an ANSI-C quote. A line the two read differently is not judged
+    ("ls $$'a\\' # b'; cd src", "prompt"),]
 
 # A git command that moves a ref, rewrites history or throws work away is denied
 # wherever it sits on the line — after a separator, inside a `$(…)` substitution, or
@@ -846,6 +874,8 @@ group("refuses an unchained escape", [(cw, "prompt") for cw in UNCHAINED_PROMPT]
       lambda cw: run(cw[0], cwd=cw[1]))
 group("denies every chained cd", [(c, "DENY") for c in DENY], run)
 group("does not deny cd that is not chained", NOT_DENIED, run)
+group("never approves a chained cd the deny cannot judge",
+      [(c, "prompt") for c in CHAINED_NOT_APPROVED], run)
 group("approves simple brace lists", [(c, "ALLOW") for c in BRACE_ALLOW], run)
 group("refuses brace bypasses", [(c, "prompt") for c in BRACE_PROMPT], run)
 group("denies every ref-moving git shape", [(c, "DENY") for c in GIT_DENY], run)

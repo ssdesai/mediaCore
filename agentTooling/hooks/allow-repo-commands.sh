@@ -153,6 +153,7 @@ HARMLESS_REDIRECT_RE = re.compile(
 # command substitution. Inside single quotes they are literal.
 SHELL_ACTIVE_CHARS = frozenset("<>$`")
 QUOTE_SINGLE, QUOTE_DOUBLE, ESCAPE = "'", '"', "\\"
+ANSI_C_QUOTE_PREFIX = "$"   # `$'…'`: a quote whose backslashes escape
 # Text the analysis cannot see through even when quoted: parent traversal, line breaks,
 # and a NUL, which bash truncates at while this analysis would read past it
 UNANALYSABLE = ("..", "\n", "\r", "\x00")
@@ -615,11 +616,61 @@ def program_name(token):
     return RUNNER_ALIASES.get(base, base) if base in RUNNER_BASENAMES else token
 
 
+def never_judged(text):
+    """True when no deny or rewrite may judge the line — the guard every one of them
+    keeps, for the two places the readers here would not read it as the shell does.
+
+    A `#` outside quotes and unescaped is either a comment, whose text the shell never
+    runs, or a mid-word literal the readers cannot place against a heredoc
+    (`cat a#<<EOF`); either way a deny would be a guess. A `#` inside single or double
+    quotes or behind a backslash is a literal to the shell and to every reader here, so
+    `grep -n '^#' f` is judged like `grep -n '^x' f`. A line whose quotes never close
+    counts when it holds a `#` at all, since where the quote was meant to end cannot be
+    known.
+
+    A `$'…'` that escapes a quote (`$'\\''`) is the other, `#` or no `#`. That is ANSI-C
+    quoting: the backslash makes the quote a character, and every reader here — shlex
+    among them — ends the quote at it instead. So `ls $'\\'' # '; cd x` had its comment
+    read as quoted and a `cd` the shell never runs denied (review round 1,
+    escalations/01), and `echo $'\\''` was told to close a quote that is closed. Any `$`
+    before the quote counts: bash reads `$$'…'` as the PID and a plain quote, zsh as a
+    `$` and an ANSI-C one, and a line the two read differently is not one to deny. A
+    `$'…'` with no such escape ends where a plain quote does, and is read as one."""
+    in_single = in_double = in_ansi = escaped = after_dollar = False
+    for ch in text:
+        literal = escaped
+        if escaped:
+            if in_ansi and ch == QUOTE_SINGLE:
+                return True
+            escaped = False
+        elif in_ansi:
+            if ch == ESCAPE:
+                escaped = True
+            elif ch == QUOTE_SINGLE:
+                in_ansi = False
+        elif ch == ESCAPE and not in_single:
+            escaped = True
+        elif ch == QUOTE_SINGLE and not in_double:
+            if after_dollar:
+                in_ansi = True
+            else:
+                in_single = not in_single
+        elif ch == QUOTE_DOUBLE and not in_single:
+            in_double = not in_double
+        elif ch == COMMENT_CHAR and not (in_single or in_double):
+            return True
+        after_dollar = (ch == ANSI_C_QUOTE_PREFIX and not literal
+                        and not (in_single or in_double or in_ansi))
+    return (in_single or in_double or in_ansi) and COMMENT_CHAR in text
+
+
 def chains_chdir(command):
     """True when a cd or pushd shares the command with any other command. What it cannot
     tokenize, anything carrying a heredoc (whose body lines would read as commands), and
-    anything with a `#` (which may hide a heredoc behind what bash reads as a comment) is
+    anything `never_judged` holds back (an unquoted `#`, a `$'…'` escaping a quote) is
     never judged a chain: a deny must not fire on a guess."""
+    if never_judged(command):
+        return False
     lexer = shlex.shlex(command, posix=True, punctuation_chars=CHAIN_PUNCTUATION)
     lexer.whitespace = CHAIN_WHITESPACE
     lexer.whitespace_split = True
@@ -628,7 +679,7 @@ def chains_chdir(command):
         tokens = list(lexer)
     except ValueError:
         return False
-    if any(t.startswith(HEREDOC_OPERATOR) or COMMENT_CHAR in t for t in tokens):
+    if any(t.startswith(HEREDOC_OPERATOR) for t in tokens):
         return False
     # A `$(…)` substitution is its own scope: a cd inside it moves no path the outer
     # command resolves (`x=$(cd dir && pwd)` is how a path is made absolute), so nothing
@@ -667,8 +718,10 @@ def command_words(command):
     """Every command on the line as its own word list — across separators, subshells and
     `$(…)` substitutions alike, since a deny is owed wherever the command runs. None when
     the line cannot be judged: text that does not tokenize, a heredoc (whose body lines
-    would read as commands), or a `#` that may hide one. Those guards are `chains_chdir`'s,
-    for the same reason: a deny must not fire on a guess."""
+    would read as commands), or one `never_judged` holds back. Those guards are
+    `chains_chdir`'s, for the same reason: a deny must not fire on a guess."""
+    if never_judged(command):
+        return None
     lexer = shlex.shlex(command, posix=True, punctuation_chars=CHAIN_PUNCTUATION)
     lexer.whitespace = CHAIN_WHITESPACE
     lexer.whitespace_split = True
@@ -677,7 +730,7 @@ def command_words(command):
         tokens = list(lexer)
     except ValueError:
         return None
-    if any(t.startswith(HEREDOC_OPERATOR) or COMMENT_CHAR in t for t in tokens):
+    if any(t.startswith(HEREDOC_OPERATOR) for t in tokens):
         return None
 
     commands, current, at_head, redirect_target, prev_word = [], [], True, False, ""
@@ -1207,9 +1260,11 @@ def does_not_tokenize(command):
     heredoc's body and the text after a `#` are data, not a command line, so an
     apostrophe in either is nobody's business — `cat <<'EOF' … don't … EOF` writes a
     file and is not a command that will not parse. They are looked for in the RAW text,
-    since a line that will not tokenize cannot be asked where its quotes are.
+    since a line that will not tokenize cannot be asked where its quotes are — which is
+    why `never_judged` counts any `#` on a line whose quotes never close. Its other
+    case matters most here: shlex refuses `echo $'\\''`, which the shell runs.
     """
-    if HEREDOC_OPERATOR in command or COMMENT_CHAR in command:
+    if HEREDOC_OPERATOR in command or never_judged(command):
         return False
     lexer = shlex.shlex(command, posix=True, punctuation_chars=CHAIN_PUNCTUATION)
     lexer.whitespace = CHAIN_WHITESPACE
@@ -1487,7 +1542,7 @@ def rewrite_reason_lines(command, cwd, root):
     Called only once the approval analysis has declined and the seven opaque shapes have
     passed, so everything here is a command that used to print nothing.
     """
-    if HEREDOC_OPERATOR in command or COMMENT_CHAR in command:
+    if HEREDOC_OPERATOR in command or never_judged(command):
         return []
     lines = []
     if carries_line_break(command):
@@ -1741,10 +1796,11 @@ def authoring_reason_lines(command):
 
     On a line carrying a heredoc only the text before the first line break is judged: the
     body is data, so a Markdown body full of `> quote` lines is never read as redirects.
-    A `#` on the judged text means the line is not judged, the guard every rewrite keeps.
+    A member `never_judged` holds back (an unquoted `#`, a `$'…'` escaping a quote) means
+    the line is not judged, the guard every rewrite keeps.
     """
     members = redirect_members(command, stop_at_line_break=HEREDOC_OPERATOR in command)
-    if any(COMMENT_CHAR in member.text for _sep, member in members):
+    if any(never_judged(member.text) for _sep, member in members):
         return []
     lines, previous = [], None
     for sep, member in members:
@@ -2231,16 +2287,15 @@ def runner_allowed(head):
 
 
 def subcommand_allowed(parts, cwd, root):
-    """(allowed, cwd after this subcommand)."""
     if not parts or any(all(ch in PUNCTUATION for ch in p) for p in parts):
-        return False, cwd
+        return False
 
     # An assignment at command position is an ENVIRONMENT PREFIX: bash runs the NEXT
     # word as the program. program_name() would take this word's basename instead, so
     # `X=/tmp/e/pytest src/a.py` read `src/a.py` as an argument to an allowlisted runner
     # while bash executed it. The analysis does not follow a prefix, so it refuses one.
     if ASSIGNMENT_RE.match(parts[0]):
-        return False, cwd
+        return False
 
     program_token = parts[0]
     prog = program_name(program_token)
@@ -2248,49 +2303,45 @@ def subcommand_allowed(parts, cwd, root):
 
     if prog == "cd":
         # A bare `cd` goes home; a relative target resolves somewhere we cannot see.
-        if len(args) != 1 or not args[0].startswith(os.sep) or not inside(args[0], root):
-            return False, cwd
-        return True, os.path.realpath(args[0])
+        return len(args) == 1 and args[0].startswith(os.sep) and inside(args[0], root)
 
     if program_token.startswith(os.sep) and not (
         lexically_inside(program_token, root) or inside(program_token, root)
     ):
-        return False, cwd
+        return False
 
     if prog == "sed":
         allowed, files = sed_allowed(args)
-        return allowed and all(token_confined(a, cwd, root) for a in files), cwd
+        return allowed and all(token_confined(a, cwd, root) for a in files)
 
     # Before the root check, and the only rule that reaches past it: the runners' own
     # per-pass scratch directory is under $TMPDIR by construction, so a script written
     # there can never be confined to the project root.
     if scratch_entry_allowed(prog, args, cwd, root):
-        return True, cwd
+        return True
 
     if not all(token_confined(a, cwd, root) for a in args):
-        return False, cwd
+        return False
 
     if harness_entry_allowed(program_token, prog, args, cwd, root):
-        return True, cwd
+        return True
 
     if prog == "git":
-        return git_allowed(args), cwd
+        return git_allowed(args)
     if prog in READ_ONLY_PROGRAMS:
-        return not any(flag_forbidden(prog, a) for a in args), cwd
-    return runner_allowed([prog] + args), cwd
+        return not any(flag_forbidden(prog, a) for a in args)
+    return runner_allowed([prog] + args)
 
 
 def expansion_allowed(parts, cwd, root):
-    """(allowed, cwd after this subcommand). Both the literal tokens and their brace
-    expansion must pass: the literal pass keeps a quoted `'{-a,-v}'` from approving
-    what its expansion would, and the expanded pass checks every word bash will see,
-    including a `~` that only appears after expansion."""
+    """Both the literal tokens and their brace expansion must pass: the literal pass
+    keeps a quoted `'{-a,-v}'` from approving what its expansion would, and the expanded
+    pass checks every word bash will see, including a `~` that only appears after
+    expansion."""
     expanded = expanded_argv(parts)
     if not expanded or any(w.startswith(TILDE) for w in expanded):
-        return False, cwd
-    literal_ok, _ = subcommand_allowed(parts, cwd, root)
-    expanded_ok, next_cwd = subcommand_allowed(expanded, cwd, root)
-    return literal_ok and expanded_ok, next_cwd
+        return False
+    return subcommand_allowed(parts, cwd, root) and subcommand_allowed(expanded, cwd, root)
 
 
 def command_allowed(command, cwd, root):
@@ -2313,9 +2364,15 @@ def command_allowed(command, cwd, root):
     groups = split_subcommands(tokens)
     if not groups:
         return False
+    # A cd is approved only on its own. Claude Code re-checks every path a hook-approved
+    # command reads against the reads fence, which cannot follow a cd, so approving a
+    # chain approves nothing: it stops for the human anyway, and the model is never told
+    # the rewrite. Refusing it here sends every chain `chains_chdir` cannot judge to the
+    # ordinary flow instead, whichever guard let it through.
+    if len(groups) > 1 and any(parts[0] in CHDIR_PROGRAMS for parts in groups):
+        return False
     for parts in groups:
-        allowed, cwd = expansion_allowed(parts, cwd, root)
-        if not allowed:
+        if not expansion_allowed(parts, cwd, root):
             return False
     return True
 

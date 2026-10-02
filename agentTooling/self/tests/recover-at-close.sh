@@ -233,7 +233,8 @@ check "A8. a leftover stream from a killed run is harvested as a 'killed' attemp
 # ── B. recover_attempts.py --for <slug> ──────────────────────────────────────
 CA="$TMP/recover/agentTooling"
 mkdir -p "$CA/analysis" "$CA/self/features"
-for f in pricing.py rates_history.json roots.py transcript.py recover_attempts.py; do
+export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
+for f in pricing.py litellm_prices.py rates_history.json roots.py transcript.py recover_attempts.py; do
   cp "$HERE/analysis/$f" "$CA/analysis/$f" 2>/dev/null || true
 done
 PROJ="$FAKE_HOME/.claude/projects/recover-fixtures"
@@ -279,7 +280,7 @@ mkdir -p "$LA/analysis" "$LA/self/features" "$LA/templates/plans/features"
 for f in feature-start.sh feature-capture.sh plan-runner-roots.sh plan-runner-lib.sh stamp-timing.sh; do
   cp "$HERE/$f" "$LA/$f" 2>/dev/null || true
 done
-for f in pricing.py rates_history.json refresh_rates.py roots.py transcript.py capture_planning.py report.py manifest.py recover_attempts.py routing.py; do
+for f in pricing.py litellm_prices.py rates_history.json refresh_rates.py roots.py transcript.py capture_planning.py report.py manifest.py recover_attempts.py routing.py; do
   cp "$HERE/analysis/$f" "$LA/analysis/$f" 2>/dev/null || true
 done
 cp "$HERE/templates/plans/features/TEMPLATE.md" "$LA/templates/plans/features/TEMPLATE.md" 2>/dev/null || true

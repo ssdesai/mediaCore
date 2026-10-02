@@ -94,7 +94,8 @@ TMP="$(cd "$TMP" && pwd -P)"
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
 
-for f in pricing.py rates_history.json roots.py transcript.py capture_planning.py routing.py; do
+export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
+for f in pricing.py litellm_prices.py rates_history.json roots.py transcript.py capture_planning.py routing.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f"
 done
 

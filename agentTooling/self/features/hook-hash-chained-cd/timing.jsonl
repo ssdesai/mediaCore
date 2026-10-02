@@ -1,0 +1,20 @@
+{"at":"2026-10-01T22:36:49Z","event":"pass_start","queue":"review","round":"1"}
+{"at":"2026-10-01T22:36:49Z","event":"pass_end","queue":"review","reason":"stopped: 01-review-opus.md still contains @@TODO@@ (moved to failed; write the brief and move it back to incomplete/)","round":"1"}
+{"at":"2026-10-01T22:37:26Z","event":"pass_start","queue":"review","round":"1"}
+{"at":"2026-10-01T22:37:26Z","event":"plan_start","plan":"01-review-opus","queue":"review","round":"1"}
+{"at":"2026-10-01T22:40:02Z","event":"plan_end","plan":"01-review-opus","queue":"review","rc":"0","verdict":"escalated","head":"2159b5ef26e220f7414510b73c32109eb1113e0f","round":"1"}
+{"at":"2026-10-01T22:40:02Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"1"}
+{"at":"2026-10-01T22:45:44Z","event":"pass_start","queue":"review","round":"2"}
+{"at":"2026-10-01T22:45:44Z","event":"plan_start","plan":"02-review-sonnet","queue":"review","round":"2"}
+{"at":"2026-10-01T22:46:27Z","event":"plan_end","plan":"02-review-sonnet","queue":"review","rc":"0","verdict":"escalated","head":"f1f520b35d64cea8ef42ed2e9e6bf3ff3eb0a0b0","round":"2"}
+{"at":"2026-10-01T22:46:27Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"2"}
+{"at":"2026-10-01T23:01:31Z","event":"pass_start","queue":"review","round":"3"}
+{"at":"2026-10-01T23:01:31Z","event":"plan_start","plan":"03-review-sonnet","queue":"review","round":"3"}
+{"at":"2026-10-01T23:04:34Z","event":"plan_end","plan":"03-review-sonnet","queue":"review","rc":"0","verdict":"clean","head":"2a2cc4ba3906a384d732534fb47590fce24cb00e","round":"3"}
+{"at":"2026-10-01T23:04:34Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"3"}
+{"at":"2026-10-01T23:04:53Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/74","round":"3"}
+{"at":"2026-10-02T01:52:54Z","event":"pass_start","queue":"review","round":"4"}
+{"at":"2026-10-02T01:52:54Z","event":"plan_start","plan":"04-review-sonnet","queue":"review","round":"4"}
+{"at":"2026-10-02T01:58:36Z","event":"plan_end","plan":"04-review-sonnet","queue":"review","rc":"0","verdict":"clean","head":"16cc8ade4fc59d93b61e3053c445973efefe2422","round":"4"}
+{"at":"2026-10-02T01:58:36Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"4"}
+{"at":"2026-10-02T01:59:03Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/74","round":"4"}

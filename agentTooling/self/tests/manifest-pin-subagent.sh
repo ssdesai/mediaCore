@@ -49,7 +49,8 @@ mkdir -p "$AT/analysis" "$AT/self/features" "$CONSUMER/agentTooling/analysis" "$
 
 # manifest.py and capture_planning.py both import routing, which imports pricing, roots
 # and transcript; pricing loads rates_history.json from beside itself.
-ANALYSIS_FILES=(pricing.py rates_history.json roots.py transcript.py routing.py manifest.py capture_planning.py)
+export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
+ANALYSIS_FILES=(pricing.py litellm_prices.py rates_history.json roots.py transcript.py routing.py manifest.py capture_planning.py)
 for f in "${ANALYSIS_FILES[@]}"; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f"
   cp "$HERE/analysis/$f" "$CONSUMER/agentTooling/analysis/$f"

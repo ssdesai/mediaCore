@@ -63,7 +63,14 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from pricing import HISTORY_FILENAME, RATES_VERIFIED, compute_cost, is_rates_stale
+from pricing import (
+    HISTORY_FILENAME,
+    RATES_VERIFIED,
+    compute_cost,
+    is_live,
+    is_rates_stale,
+    live_price_warning,
+)
 from roots import (
     SELF_CORPUS_IDENTITY, add_self_flag, all_features_roots, features_root, session_root,
 )
@@ -3108,6 +3115,10 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         for e in [*sessions, *subagents]
         if e.get("duration_s") is None
     )
+
+    live_models = [row["model"] for row in priced if is_live(row.get("rates_applied"))]
+    if live_models:
+        warnings.append(live_price_warning(live_models))
 
     if is_rates_stale():
         warnings.append(

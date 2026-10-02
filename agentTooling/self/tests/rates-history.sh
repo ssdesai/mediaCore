@@ -4,13 +4,17 @@ set -uo pipefail
 # Self-test for the LiteLLM-sourced rate history (self/features/litellm-pricing/README.md,
 # "Spec"). Run by self/gate.sh, or by hand: bash self/tests/rates-history.sh
 #
-# Copies `analysis/pricing.py`, `analysis/refresh_rates.py` and `analysis/rates_history.json`
-# into throwaway checkouts under one mktemp -d — every run of `refresh_rates.py` here
-# writes a COPY of the history, never the committed one — and feeds the refresh
+# Copies `analysis/pricing.py`, `analysis/litellm_prices.py` and `analysis/refresh_rates.py`
+# into throwaway checkouts under one mktemp -d, beside a copy of
+# `fixtures/pricing/rates-history-2026-09-22.json` — the history the expectations below
+# were written against — as their `rates_history.json`: every run of `refresh_rates.py`
+# here writes a COPY of a history, never the committed one — and feeds the refresh
 # `fixtures/pricing/litellm-sample.json` through `--source`, a small file in the shape of
 # LiteLLM's `model_prices_and_context_window.json`. No model, no network.
 #
 # Asserts, in order:
+#   H0. the committed `analysis/rates_history.json` still holds every entry of the seed
+#       fixture, unchanged and in order: a refresh only ever appended to it.
 #   H1. seed parity: for every model, dated alias and date in
 #       `fixtures/pricing/rates-main-2026-09-22.json` — generated from main's
 #       `pricing.py` BEFORE the table was replaced — the new `get_rates` returns the same
@@ -48,6 +52,21 @@ set -uo pipefail
 #       nothing; a corpus of flat models ends on "no model in the corpus carries a tiered
 #       rate" and exits 0; a fetch failure exits `FETCH_FAILED_EXIT` naming the source;
 #       and the suffixes it reads are the named constant `TIER_SUFFIXES`.
+#   L1-L9. the live fallback (self/features/live-model-rates/README.md, "The spec"), every
+#       case through the offline seam — `RATES_CHECK_SOURCE` names a local file, and
+#       every phase above runs with `RATES_LIVE_LOOKUP=off`, the off switch, exported
+#       below. A model the history lacks and the source carries (Mythos preview) prices at
+#       the rates a refresh would append, `source: "litellm-live"`, `from: 0000-01-01`, a
+#       dated alias included (L1); a model the source lacks or holds incomplete is
+#       `(None, None)` (L2); a failed fetch is `(None, None)` and is not retried within
+#       the process, even once the source appears (L3); the off switch is `(None, None)`
+#       with a readable source (L4); importing `pricing` reads nothing — the source can
+#       appear after the import (L5); a model the history knows never fetches — the source
+#       vanishing afterwards leaves the next miss unpriced (L6); one fetch serves every
+#       later miss — the source vanishing after the first leaves the second priced (L7);
+#       the history file is never written (L8); and a capture over a live-priced session
+#       records the price with its source and names it in `warnings[]`, and the report
+#       over it names it too (L9).
 #
 # RED until the feature lands: the sandbox has no `rates_history.json` or
 # `refresh_rates.py` and `pricing.py` still holds `RATES`. A missing file fails its own
@@ -63,13 +82,27 @@ SAMPLE="$FIXTURES/litellm-sample.json"
 TODAY="$(date -u '+%Y-%m-%d')"
 BEFORE="2026-09-01"
 
-# A fresh throwaway analysis/ holding the three files under test.
+# pricing.py's live lookup is OFF for every phase but L, which turns it on per call and
+# points it at a local file. Without this an unknown model in H1 would reach the network.
+export RATES_LIVE_LOOKUP=off
+unset RATES_CHECK_SOURCE
+
+# Every sandbox prices from SEED_HISTORY, the history as it stood on 2026-09-22 — the
+# one every H/T/L expectation below was written against — never the committed
+# analysis/rates_history.json, which a refresh legitimately appends to (Mythos preview,
+# the H3d/L "model the history lacks", was appended by live-model-rates). H0 holds the
+# committed history to the seed: every seed entry still there, unchanged, in order.
+SEED_HISTORY="$FIXTURES/rates-history-2026-09-22.json"
+
+# A fresh throwaway analysis/ holding the files under test (litellm_prices.py: both
+# pricing.py and refresh_rates.py import it).
 sandbox() {
   mkdir -p "$TMP/$1/analysis"
   local f
-  for f in pricing.py refresh_rates.py rates_history.json roots.py; do
+  for f in pricing.py litellm_prices.py refresh_rates.py roots.py; do
     cp "$HERE/analysis/$f" "$TMP/$1/analysis/$f" 2>/dev/null || true
   done
+  cp "$SEED_HISTORY" "$TMP/$1/analysis/rates_history.json" 2>/dev/null || true
   echo "$TMP/$1/analysis"
 }
 
@@ -81,6 +114,8 @@ check() { if eval "$2"; then ok "$1"; else fail "$1"; fi; }
 cat > "$TMP/h.py" <<'PYEOF'
 import json
 import math
+import os
+import shutil
 import sys
 
 FIELDS = ["input", "output", "cache_read", "cache_creation_5m", "cache_creation_1h"]
@@ -201,6 +236,16 @@ def cmd_others_equal(args):
     print(same and not extra)
 
 
+def cmd_appended_only(args):
+    seed_path, live_path = args
+    seed, live = load(seed_path)["models"], load(live_path)["models"]
+    for model, entries in seed.items():
+        if live.get(model, [])[:len(entries)] != entries:
+            print(f"{model}: a seed entry was changed, removed or reordered")
+            return
+    print(True)
+
+
 def cmd_field(args):
     path, key = args
     print(load(path).get(key))
@@ -239,7 +284,98 @@ def cmd_cost_matches_parity(args):
     print(cost is not None and math.isclose(cost, want, rel_tol=1e-12))
 
 
+# ── L: the live fallback. The bash side sets RATES_CHECK_SOURCE / RATES_LIVE_LOOKUP. ──
+# One million of every token kind, so a cost is the sum of the five rates.
+LIVE_TOKENS = {f: 1_000_000 for f in FIELDS}
+# A model no history and no real price list holds, added to a copy of the sample for L7.
+EXTRA_MODEL = "claude-live-only-9"
+EXTRA_ENTRY = {
+    "litellm_provider": "anthropic",
+    "input_cost_per_token": 1e-06,
+    "output_cost_per_token": 2e-06,
+    "cache_read_input_token_cost": 1e-07,
+    "cache_creation_input_token_cost": 1.25e-06,
+    "cache_creation_input_token_cost_above_1hr": 2e-06,
+}
+LIVE_MODEL = "claude-mythos-preview"
+KNOWN_MODEL = "claude-opus-5-5"
+
+
+def source_of(pricing, model, d):
+    rates = pricing.get_rates(model, d)
+    return rates["source"] if rates else "NONE"
+
+
+def cmd_live_price(args):
+    analysis_dir, model, d = args
+    cost, rates = pricing_from(analysis_dir).compute_cost(model, LIVE_TOKENS, d)
+    print(json.dumps([cost, rates], sort_keys=True))
+
+
+def cmd_import_then_source(args):
+    analysis_dir, source_path, sample_path = args
+    pricing = pricing_from(analysis_dir)
+    shutil.copy(sample_path, source_path)
+    print(source_of(pricing, LIVE_MODEL, "2026-10-01"))
+
+
+def cmd_known_then_vanish(args):
+    analysis_dir, source_path = args
+    pricing = pricing_from(analysis_dir)
+    first = source_of(pricing, KNOWN_MODEL, "2026-10-01")
+    os.remove(source_path)
+    print(first, source_of(pricing, LIVE_MODEL, "2026-10-01"))
+
+
+def cmd_one_fetch(args):
+    analysis_dir, source_path, sample_path = args
+    data = load(sample_path)
+    data[EXTRA_MODEL] = EXTRA_ENTRY
+    with open(source_path, "w") as f:
+        json.dump(data, f)
+    pricing = pricing_from(analysis_dir)
+    first = source_of(pricing, LIVE_MODEL, "2026-10-01")
+    os.remove(source_path)
+    print(first, source_of(pricing, EXTRA_MODEL, "2026-10-01"))
+
+
+def cmd_failure_cached(args):
+    analysis_dir, source_path, sample_path = args
+    pricing = pricing_from(analysis_dir)
+    first = pricing.compute_cost(LIVE_MODEL, LIVE_TOKENS, "2026-10-01")
+    shutil.copy(sample_path, source_path)
+    second = pricing.compute_cost(LIVE_MODEL, LIVE_TOKENS, "2026-10-01")
+    print(first == (None, None), second == (None, None))
+
+
+def cmd_planning_live(args):
+    planning_path, model = args
+    d = load(planning_path)
+    rows = [r for r in d.get("priced", []) if r.get("model") == model]
+    print(json.dumps({
+        "sources": [(r.get("rates_applied") or {}).get("source") for r in rows],
+        "priced": all(r.get("cost_usd") is not None for r in rows) and bool(rows),
+        "partial": d.get("cost_usd", {}).get("total_is_partial"),
+        "warned": any("litellm-live" in w and model in w for w in d.get("warnings", [])),
+    }, sort_keys=True))
+
+
+def cmd_attempt_live_source(args):
+    usage_path, model = args
+    attempts = load(usage_path).get("attempts") or []
+    print(",".join(
+        str(((a.get("rates_applied") or {}).get(model) or {}).get("source")) for a in attempts
+    ))
+
+
 COMMANDS = {
+    "attempt_live_source": cmd_attempt_live_source,
+    "live_price": cmd_live_price,
+    "import_then_source": cmd_import_then_source,
+    "known_then_vanish": cmd_known_then_vanish,
+    "one_fetch": cmd_one_fetch,
+    "failure_cached": cmd_failure_cached,
+    "planning_live": cmd_planning_live,
     "parity": cmd_parity,
     "from": cmd_from,
     "rate": cmd_rate,
@@ -247,6 +383,7 @@ COMMANDS = {
     "no_table": cmd_no_table,
     "entries": cmd_entries,
     "others_equal": cmd_others_equal,
+    "appended_only": cmd_appended_only,
     "field": cmd_field,
     "set_checked": cmd_set_checked,
     "noise_premise": cmd_noise_premise,
@@ -262,6 +399,11 @@ H() { python3 -B "$TMP/h.py" "$@" 2>&1 | tail -1; }
 refresh() { python3 -B "$1/refresh_rates.py" "${@:2}" 2>&1; }
 
 echo "rates history"
+
+# ── H0. the committed history only ever grew from the seed ───────────────────
+h0="$(H appended_only "$SEED_HISTORY" "$HERE/analysis/rates_history.json")"
+check "H0. analysis/rates_history.json holds every seed entry unchanged, in order — refreshes only appended (got $h0)" \
+  '[[ "$h0" == "True" ]]'
 
 # ── H1-H2. the seed ──────────────────────────────────────────────────────────
 A1="$(sandbox seed)"
@@ -398,6 +540,104 @@ check "T8a. --tiers that cannot fetch exits FETCH_FAILED_EXIT and names the sour
 t8b="$(H const "$A11" TIER_SUFFIXES)"
 check "T8b. the tier suffixes read are a named constant holding LiteLLM's above-200k suffix (got $t8b)" \
   'grep -q "_above_200k_tokens" <<<"$t8b"'
+
+# ── L. the live fallback ─────────────────────────────────────────────────────
+# LIVE <source> <command> ...: the helper with the lookup ON and pointed at <source>, a
+# local path — the seam feature-capture.sh's residue already uses. Never the network.
+LIVE() { local src="$1"; shift; env -u RATES_LIVE_LOOKUP RATES_CHECK_SOURCE="$src" python3 -B "$TMP/h.py" "$@" 2>&1 | tail -1; }
+LIVE_RATES='"cache_creation_1h": 20, "cache_creation_5m": 12.5, "cache_read": 1, "from": "0000-01-01", "input": 10'
+LIVE_PRICE="[93.5, {$LIVE_RATES, \"model\": \"claude-mythos-preview\", \"output\": 50, \"source\": \"litellm-live\", \"tier\": \"standard\"}]"
+NO_PRICE="[null, null]"
+
+AL="$(sandbox live)"
+cp "$AL/rates_history.json" "$TMP/live-before.json" 2>/dev/null
+l1="$(LIVE "$SAMPLE" live_price "$AL" claude-mythos-preview 2026-10-01)"
+check "L1a. a model the history lacks prices from the source: the rates a refresh would append (H3d), litellm-live, from 0000-01-01 (got $l1)" \
+  '[[ "$l1" == "$LIVE_PRICE" ]]'
+l1b="$(LIVE "$SAMPLE" live_price "$AL" claude-mythos-preview-20260101 2026-10-01)"
+check "L1b. ... under a dated alias too (got $l1b)" '[[ "$l1b" == "$LIVE_PRICE" ]]'
+l2a="$(LIVE "$SAMPLE" live_price "$AL" claude-not-a-real-model-9 2026-10-01)"
+l2b="$(LIVE "$SAMPLE" live_price "$AL" claude-3-haiku 2026-10-01)"
+check "L2. a model the source lacks, or holds without every rate, is (None, None) (got $l2a, $l2b)" \
+  '[[ "$l2a" == "$NO_PRICE" && "$l2b" == "$NO_PRICE" ]]'
+l3="$(LIVE "$TMP/late-source.json" failure_cached "$AL" "$TMP/late-source.json" "$SAMPLE")"
+rm -f "$TMP/late-source.json"
+check "L3. a failed fetch is (None, None), and is not retried once the source appears (got $l3)" \
+  '[[ "$l3" == "True True" ]]'
+l4="$(RATES_LIVE_LOOKUP=off RATES_CHECK_SOURCE="$SAMPLE" python3 -B "$TMP/h.py" live_price "$AL" claude-mythos-preview 2026-10-01 2>&1 | tail -1)"
+check "L4. RATES_LIVE_LOOKUP=off is (None, None) with a readable source (got $l4)" '[[ "$l4" == "$NO_PRICE" ]]'
+l5="$(LIVE "$TMP/after-import.json" import_then_source "$AL" "$TMP/after-import.json" "$SAMPLE")"
+rm -f "$TMP/after-import.json"
+check "L5. importing pricing reads no source: one that appears after the import is used (got $l5)" \
+  '[[ "$l5" == "litellm-live" ]]'
+cp "$SAMPLE" "$TMP/vanishing.json"
+l6="$(LIVE "$TMP/vanishing.json" known_then_vanish "$AL" "$TMP/vanishing.json")"
+check "L6. a model the history knows fetches nothing: the source vanishing after it leaves the next miss unpriced (got $l6)" \
+  '[[ "$l6" == "manual NONE" ]]'
+l7="$(LIVE "$TMP/once.json" one_fetch "$AL" "$TMP/once.json" "$SAMPLE")"
+check "L7. one fetch serves every later miss: the source vanishing after the first leaves the second priced (got $l7)" \
+  '[[ "$l7" == "litellm-live litellm-live" ]]'
+check "L8. no live price writes the history" 'cmp -s "$TMP/live-before.json" "$AL/rates_history.json"'
+
+# L9: a capture over one session on a model only the source prices, then its report.
+source "$HERE/self/tests/fixtures/transcripts/build-transcript.sh"
+TMPP="$(cd "$TMP" && pwd -P)"
+R9="$TMPP/capture/agentTooling"
+SLUG9="live-cap"
+SID9="1111aaaa-0000-0000-0000-000000000009"
+HOME9="$TMPP/home"
+mkdir -p "$R9/analysis" "$R9/self/features/$SLUG9" "$R9/.git"
+for f in pricing.py litellm_prices.py roots.py transcript.py capture_planning.py routing.py report.py manifest.py; do
+  cp "$HERE/analysis/$f" "$R9/analysis/$f" 2>/dev/null || true
+done
+cp "$SEED_HISTORY" "$R9/analysis/rates_history.json" 2>/dev/null || true
+printf '# %s\n\nTest fixture only.\n\n```json\n{"slug": "%s", "method": "direct", "plans": [], "branches": ["%s"], "base": "main", "session_window": {"from": "2026-06-01T00:00:00Z", "to": "2026-06-02T00:00:00Z"}, "exclude_sessions": [], "exclude_subagents": [], "sessions": [], "subagents": []}\n```\n' \
+  "$SLUG9" "$SLUG9" "$SLUG9" > "$R9/self/features/$SLUG9/README.md"
+P9="$HOME9/.claude/projects/$(echo "$R9" | tr '/.' '--')"
+mkdir -p "$P9"
+session_line "$SID9" "$R9" "$SLUG9" "m-live" claude-mythos-preview "2026-06-01T10:00:00.000Z" 100 5000 0 0 0 > "$P9/$SID9.jsonl"
+cap9="$(HOME="$HOME9" env -u RATES_LIVE_LOOKUP RATES_CHECK_SOURCE="$SAMPLE" python3 -B "$R9/analysis/capture_planning.py" --self "$SLUG9" 2>&1)"; rc9c=$?
+l9="$(H planning_live "$R9/self/features/$SLUG9/planning.json" claude-mythos-preview)"
+check "L9a. a capture over a live-priced session exits 0 (got $rc9c)" '[[ $rc9c -eq 0 ]]'
+check "L9b. ... prices it, records source litellm-live, is not partial, and warns naming the model (got $l9)" \
+  '[[ "$l9" == "{\"partial\": false, \"priced\": true, \"sources\": [\"litellm-live\"], \"warned\": true}" ]]'
+rep9="$(HOME="$HOME9" python3 -B "$R9/analysis/report.py" --self "$SLUG9" 2>&1)"
+check "L9c. the report's printed warnings name the live price" 'grep -q "WARN:.*litellm-live.*claude-mythos-preview" <<<"$rep9"'
+check "L9d. ... and so does report.md" 'grep -q "litellm-live.*claude-mythos-preview" "$R9/self/features/$SLUG9/report.md"'
+
+# L10: the other two visibility paths. A feature whose planning.json holds NO live row (its
+# one captured session is on a model the seed history knows) but whose review sidecar is an
+# unpriced attempt on a model only the source prices. recover_attempts.py prices it live and
+# names it on its `live:` line; report.py then warns from the recovered attempt alone.
+source "$HERE/self/tests/fixtures/usage/build-usage.sh"
+SLUG10="live-rec"
+SID10="1111aaaa-0000-0000-0000-000000000010"
+SIDREV10="1111aaaa-0000-0000-0000-000000000011"
+FD10="$R9/self/features/$SLUG10"
+mkdir -p "$FD10/review/complete"
+cp "$R9/self/features/$SLUG9/README.md" "$FD10/README.md"
+sed -i.bak -e "s/$SLUG9/$SLUG10/g" -e 's/"plans": \[\]/"plans": ["01-review-opus"]/' "$FD10/README.md"; rm -f "$FD10/README.md.bak"
+echo "a review plan" > "$FD10/review/complete/01-review-opus.md"
+cp "$HERE/analysis/recover_attempts.py" "$R9/analysis/recover_attempts.py" 2>/dev/null || true
+session_line "$SID10" "$R9" "$SLUG10" "m-known" claude-opus-5-5 "2026-06-01T10:00:00.000Z" 100 5000 0 0 0 > "$P9/$SID10.jsonl"
+HOME="$HOME9" env -u RATES_LIVE_LOOKUP RATES_CHECK_SOURCE="$SAMPLE" python3 -B "$R9/analysis/capture_planning.py" --self "$SLUG10" >/dev/null 2>&1
+U10="$FD10/review/complete/01-review-opus.usage.json"
+write_unpriced_usage_json "$U10" "$SIDREV10" opus
+transcript_line "m-rev" claude-mythos-preview "2026-06-01T11:00:00.000Z" 1000 500 2000 0 0 > "$P9/$SIDREV10.jsonl"
+rec10="$(HOME="$HOME9" env -u RATES_LIVE_LOOKUP RATES_CHECK_SOURCE="$SAMPLE" python3 -B "$R9/analysis/recover_attempts.py" --self --for "$SLUG10" 2>&1)"; rc10=$?
+src10="$(H attempt_live_source "$U10" claude-mythos-preview)"
+live10="$(H planning_live "$FD10/planning.json" claude-mythos-preview)"
+check "L10a. planning.json of the feature has no live row for the model (got $live10)" \
+  '[[ "$live10" != *litellm-live* ]]'
+check "L10b. a recovered attempt on a model only the source prices records rates_applied.source litellm-live (rc $rc10, got ${src10:-<absent>})" \
+  '[[ $rc10 -eq 0 && "$src10" == "litellm-live" ]]'
+check "L10c. ... and recover_attempts.py prints a live: line naming the model (got: $(grep '^live:' <<<"$rec10"))" \
+  'grep -q "^live: .*litellm-live.*claude-mythos-preview" <<<"$rec10"'
+rep10="$(HOME="$HOME9" python3 -B "$R9/analysis/report.py" --self "$SLUG10" 2>&1)"
+check "L10d. report.py warns naming the model from the recovered attempt alone" \
+  'grep -q "WARN:.*litellm-live.*claude-mythos-preview" <<<"$rep10"'
+check "L10e. ... and the warning tells the reader to refresh, then --recapture" \
+  'grep -q "WARN:.*refresh_rates.py in an agentTooling self feature, then capture_planning.py --recapture this feature" <<<"$rep10"'
 
 echo
 if (( fails > 0 )); then echo "rates-history: $fails assertion(s) FAILED"; exit 1; fi

@@ -140,9 +140,39 @@ The check runs before, and independently of, the approval analysis, and it needs
 `CLAUDE_PROJECT_DIR` nor `cwd`: the shape is wrong wherever it runs. It deliberately does
 not deny a standalone `cd`; `cd` as an argument (`echo cd`, `find . -name cd`) or inside
 quotes; a redirect target; a heredoc body — any command containing `<<` is never denied;
-any command containing `#`, since a mid-word `#` bash reads literally could otherwise
-hide a heredoc; or a command that does not tokenize (an unbalanced quote). Those fall through to the
-approval analysis as before.
+any command `never_judged` holds back; or a command that does not tokenize (an unbalanced
+quote). Those fall through to the approval analysis.
+
+`never_judged` is the one guard every deny and rewrite below keeps, for the two places
+the readers here would not read a line as the shell does:
+
+- **An unquoted `#`**, which is either a comment or a mid-word literal that could hide a
+  heredoc. A `#` inside single or double quotes or behind a backslash is a literal and is
+  no guard, so `cd <root>; grep -n '^#' f` is denied like `grep -n '^x' f` — before
+  `hook-hash-chained-cd` any `#` at all skipped the check.
+- **A `$'…'` that escapes a quote** (`$'it\'s'`), `#` or no `#`. That is ANSI-C quoting:
+  the backslash makes the quote a character, and shlex — which every reader here lexes
+  with — ends the quote at it. Judged anyway, `ls $'\'' # '; cd x` had its comment read
+  as quoted and a `cd` the shell never runs denied, and `echo $'\''` was told to close a
+  quote that is closed. Any `$` before the quote counts, because the shells disagree:
+  bash reads `$$'…'` as the PID and a plain quote, zsh as a `$` and an ANSI-C one. A
+  `$'…'` with no escaped quote ends where a plain quote does and is judged as one.
+
+The cost is a real chain that carries such a quote: `cd x && grep $'it\'s' f` gets no
+rewrite and reaches the ordinary flow, like a chain with a trailing comment. It is never
+approved (below). The guard is a model of shell quoting, so it is checked against the
+shells: `self/tests/hook-quote-oracle.sh` puts every short string over `' " \ $ # space a`
+to bash, and to zsh where installed, and fails if the guard lets through a line either
+reads a comment or an unquoted `#` in, or holds one back without one of the two reasons
+above.
+
+**The approval analysis never approves a chained `cd` either.** `command_allowed`
+approves a `cd` only as the whole command; one sharing the line with anything else is
+refused, so a chain the deny cannot judge reaches the ordinary flow rather than an
+`allow`. An `allow` there bought nothing: Claude Code re-checks every path a
+hook-approved command reads against the reads fence, which cannot follow a `cd`, and
+stopped for the human anyway — with no rewrite told to the model. The analysis
+therefore threads no directory from one member to the next.
 
 In a consuming repo the deny also reaches the runners' Bash-enabled executors (verify,
 review). That is intended: they are held to the same convention.
@@ -188,7 +218,8 @@ positional is a pattern to filter by, not a name to create — the mutating flag
 judged first, so `git branch --list --delete old` is still denied),
 `git worktree list`, `git stash list`, `git stash show`, a plain `git push`,
 `git checkout -- <file>`, `git reset <file>`. Nor is anything the analysis cannot read,
-for the same reason the `cd` deny leaves those alone: a heredoc, a `#`, a line that does
+for the same reason the `cd` deny leaves those alone: a heredoc, a line `never_judged`
+holds back (an unquoted `#`, a `$'…'` escaping a quote), a line that does
 not tokenize (which the opaque check below denies with its own reason — the *git* deny
 does not judge it), a `git …` that is an argument rather than a command (`echo 'git rebase'`),
 or a word carrying a brace — no brace expansion happens here, so `git branch {-a,new}`
@@ -241,7 +272,8 @@ re-reads on the same line, and is not denied. Nor is an assignment nobody derefe
 (`X=/p`), a `$NAME` with no assignment on the line (`cat $HOME/f`), a `$` the shell will
 not act on (`echo '$X'`, a backslash-escaped one), or a `$(…)` substitution, which is not
 a variable use. The three guards the other denies keep hold here too, through the same
-`command_words`: a heredoc, a `#`, or a line that will not tokenize is never judged.
+`command_words`: a heredoc, a line `never_judged` holds back, or a line that will not
+tokenize is never judged.
 
 **There is no prefix-rule twin for this one**, unlike the git deny. A
 `permissions.deny` entry is a command *prefix*, and this is a relation between two tokens
@@ -414,7 +446,9 @@ printed nothing, or was the opaque deny, before it — and like every REWRITE it
 toward `OPAQUE_REWRITE_ATTEMPTS`.
 
 **The same two guards the three shape denies keep hold over all seven**: a line carrying a
-heredoc, or a `#` anywhere, is judged on the shapes above alone. A heredoc's body lines
+heredoc, or one `never_judged` holds back — a `#` outside quotes anywhere (any `#` on a
+line whose quotes never close), a `$'…'` escaping a quote —
+is judged on the shapes above alone. A heredoc's body lines
 and the text after a `#` are data, not a command line, so `cat <<'EOF' … cd x … EOF` is a
 file being written and not a relative `cd`, and `ls src # X=/p; cat $X` is a comment and
 not a variable the shell will expand. A deny must not fire on a guess about a body.

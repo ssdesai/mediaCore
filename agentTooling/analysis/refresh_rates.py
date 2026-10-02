@@ -43,41 +43,29 @@ in an agentTooling self feature, never in a consuming repo.
 from __future__ import annotations
 
 import argparse
-import http.client
 import json
 import os
 import sys
-import urllib.request
 from pathlib import Path
 
 import pricing
 import roots
-
-# Where LiteLLM publishes its price list.
-LITELLM_PRICES_URL = (
-    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+# The fetch, the selection and the conversion are litellm_prices's — the same ones
+# pricing.py's live fallback reads, so a live price and this refresh cannot disagree
+# (self/features/live-model-rates/README.md, spec 2). Re-bound here under their old names.
+from litellm_prices import (  # noqa: F401  (RATE_DECIMALS, FETCH_TIMEOUT_S: read by callers)
+    CLAUDE_KEY_PREFIX,
+    FETCH_TIMEOUT_S,
+    FIRST_ENTRY_FROM,
+    LITELLM_FIELDS,
+    LITELLM_PRICES_URL,
+    RATE_DECIMALS,
+    FetchError,
+    fetch,
+    per_million,
+    upstream_entries,
+    upstream_rates,
 )
-# How long a fetch may take before it counts as failed — a capture runs --check, and a
-# hung network must not hang a capture.
-FETCH_TIMEOUT_S = 15
-URL_SCHEMES = ("https://", "http://")
-
-# Which upstream entries are Anthropic's own list prices.
-ANTHROPIC_PROVIDER = "anthropic"
-CLAUDE_KEY_PREFIX = "claude-"
-
-# History field <- LiteLLM per-token field.
-LITELLM_FIELDS = {
-    "input": "input_cost_per_token",
-    "output": "output_cost_per_token",
-    "cache_read": "cache_read_input_token_cost",
-    "cache_creation_5m": "cache_creation_input_token_cost",
-    "cache_creation_1h": "cache_creation_input_token_cost_above_1hr",
-}
-TOKENS_PER_MILLION = 1_000_000
-# Decimal places of USD per million kept from a conversion: $0.000001/Mtok, far below
-# any real price step, far above the float noise of multiplying by a million.
-RATE_DECIMALS = 6
 
 # Tiered pricing (`--tiers`): threshold label <- the suffix LiteLLM appends to a flat
 # per-token field for the rate charged once a request's prompt crosses that threshold.
@@ -100,9 +88,8 @@ USAGE_GLOB = "*usage.json"
 NO_TIER_SUMMARY = "no model in the corpus carries a tiered rate"
 TIER_UNBUILT_NOTE = "tiered pricing is unbuilt, see self/BACKLOG.md"
 
-# Entry bookkeeping.
+# Entry bookkeeping. (FIRST_ENTRY_FROM is litellm_prices's: a live price shares it.)
 LITELLM_SOURCE = "litellm"
-FIRST_ENTRY_FROM = "0000-01-01"
 
 # Exit codes. 2 is argparse's usage error, so a fetch failure is 3. `--tiers` reuses the
 # pair: 0 when no corpus model carries a tier, 1 when one does.
@@ -113,72 +100,6 @@ NO_TIERS_EXIT = NO_CHANGES_EXIT
 TIERS_FOUND_EXIT = CHANGES_EXIT
 
 JSON_INDENT = "  "
-
-
-class FetchError(Exception):
-    """The price list could not be read or is not a JSON object."""
-
-
-def fetch(source: str) -> dict:
-    """LiteLLM's price list from a URL or a local path."""
-    try:
-        if source.startswith(URL_SCHEMES):
-            with urllib.request.urlopen(source, timeout=FETCH_TIMEOUT_S) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        else:
-            with open(source) as f:
-                data = json.load(f)
-    # URLError is an OSError, JSONDecodeError a ValueError, and a truncated response an
-    # HTTPException — uncaught, it would exit 1, which reads as CHANGES_EXIT.
-    except (OSError, ValueError, http.client.HTTPException) as exc:
-        raise FetchError(f"{source}: {exc}") from exc
-    if not isinstance(data, dict):
-        raise FetchError(f"{source}: not a JSON object")
-    return data
-
-
-def per_million(cost_per_token: float) -> float | int:
-    """A per-token cost as USD per million, rounded to RATE_DECIMALS; integral -> int."""
-    rate = round(cost_per_token * TOKENS_PER_MILLION, RATE_DECIMALS)
-    return int(rate) if rate == int(rate) else rate
-
-
-def _key_rank(key: str, normalized: str) -> tuple[int, str]:
-    """Higher wins: an undated key beats every dated one; a later date beats an earlier."""
-    if key == normalized:
-        return (1, "")
-    return (0, key[len(normalized) + 1:])
-
-
-def upstream_entries(data: dict) -> tuple[dict[str, dict], list[str]]:
-    """({normalized model: the winning upstream entry}, [incomplete upstream keys, with what
-    they lack]). The one selection rule both the refresh and `--tiers` read from."""
-    winners: dict[str, tuple[tuple[int, str], dict]] = {}
-    incomplete: dict[str, list[str]] = {}
-    for key, entry in data.items():
-        if not isinstance(entry, dict) or not key.startswith(CLAUDE_KEY_PREFIX):
-            continue
-        if entry.get("litellm_provider") != ANTHROPIC_PROVIDER:
-            continue
-        normalized = pricing.normalize_model_id(key)
-        missing = [src for src in LITELLM_FIELDS.values()
-                   if not isinstance(entry.get(src), (int, float))]
-        if missing:
-            incomplete.setdefault(normalized, []).append(f"{key}: missing {', '.join(missing)}")
-            continue
-        rank = _key_rank(key, normalized)
-        if normalized not in winners or rank > winners[normalized][0]:
-            winners[normalized] = (rank, entry)
-    skipped = [line for model, lines in sorted(incomplete.items())
-               if model not in winners for line in lines]
-    return {model: entry for model, (_, entry) in winners.items()}, skipped
-
-
-def upstream_rates(data: dict) -> tuple[dict[str, dict], list[str]]:
-    """({normalized model: {field: rate}}, [incomplete upstream keys, with what they lack])."""
-    entries, skipped = upstream_entries(data)
-    return {model: {field: per_million(entry[src]) for field, src in LITELLM_FIELDS.items()}
-            for model, entry in entries.items()}, skipped
 
 
 def entry_tiers(entry: dict) -> dict[str, dict]:

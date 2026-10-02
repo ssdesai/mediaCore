@@ -20,9 +20,15 @@ missing copy is an `ImportError` in every capture rather than one failed asserti
 narrower override, deliberately: one that moved the ledger alone would let a test write
 the ledger under `mktemp -d` while still reading the machine's own transcripts.
 
-**Every sandbox that copies `pricing.py` copies `rates_history.json` too**, for the same
-reason: `pricing.py` loads the history from its own directory at import, so a missing
-copy is an import error in every script that prices anything. **Every sandbox that runs
+**Every sandbox that copies `pricing.py` copies `rates_history.json` and
+`litellm_prices.py` too**, for the same reason: `pricing.py` loads the history from its
+own directory and imports `litellm_prices` at import, so a missing copy is an import
+error in every script that prices anything. **And every one exports
+`RATES_LIVE_LOOKUP=off`**, beside that copy: `pricing.py` prices a model the history
+lacks by fetching LiteLLM's list (`analysis/README.md` → `pricing.py`, "The live
+fallback"), and off is what keeps an unknown fixture model `(None, None)` and the run
+offline when a test is run by hand; `../gate.sh` exports it as well. Only
+`rates-history.sh` L turns it back on, per call, pointed at a local file. **Every sandbox that runs
 `feature-capture.sh` also copies `refresh_rates.py` and exports `RATES_CHECK_SOURCE`** to
 `fixtures/pricing/litellm-sample.json`: the capture's residue runs `refresh_rates.py
 --check`, and without that seam it would fetch LiteLLM over the network
@@ -1278,6 +1284,25 @@ copy is an import error in every script that prices anything. **Every sandbox th
   escalation state and every opaque command is a plain `deny`: the counter, the `ask`
   and the scratch entry point are `hook-escalation.sh`'s. The list of bypasses is
   `hooks/README.md` → What the audit found.
+- `hook-quote-oracle.sh` — `never_judged`, the guard every deny and rewrite in
+  `hooks/allow-repo-commands.sh` keeps, checked against the shells themselves. Loads the
+  hook as a module by path and puts every string of up to five characters from
+  `' " \ $ # space a`, plus 20,000 longer ones from a fixed seed, to `bash` and — where it
+  is installed, since Claude Code runs the Bash tool in the user's own shell and on macOS
+  that is zsh by default — `zsh`, as
+  `: <string> ; echo OK` under `eval`: once as written (no `OK` and status 0 is a comment)
+  and once with every `#` spaced out (which makes any `#` the shell reads unquoted a
+  comment). Asserts per shell that the guard lets through no line the shell reads a
+  comment in, none it reads an unquoted `#` in, none it cannot parse that carries a `#`,
+  and that whatever it lets through and `shlex` refuses to split the shell refuses too
+  (the "does not tokenize" deny must not tell the model to close a closed quote); and
+  across the shells that a line is held back only for a reason — an unquoted `#`, an open
+  quote with a `#`, or a `$'…'` escaping a quote — so a guard that held everything back
+  fails. Depends on the hook's `CHAIN_PUNCTUATION`, `CHAIN_WHITESPACE` and
+  `SHLEX_NO_COMMENTERS`, which it lexes with as the denies do. The shells run `:` and
+  `echo` only; the alphabet has no separator, redirect or substitution. It exists because
+  three review rounds of `hook-hash-chained-cd` each found the guard's quote model wrong
+  by reasoning about bash, and none found that zsh reads `$$'…'` the other way.
 - `hook-escalation.sh` — the other half of the same policy, with `$TMPDIR` redirected to
   its own `mktemp -d` for the whole run, since that is where the hook keeps its state.
   One throwaway root, a scratch directory holding `x.sh`, `x.py` and a symlink out, and
@@ -1482,11 +1507,18 @@ copy is an import error in every script that prices anything. **Every sandbox th
   and a dirty dead-locked one, named on a `kept` line. Depends on `feature-start.sh`'s
   `START_LOCK_NAME` and its `pid=` / `refused=` lines, and on `ps -p` answering for a PID.
   No model, no network.
-- `rates-history.sh` — copies `analysis/pricing.py`, `analysis/refresh_rates.py`,
-  `analysis/rates_history.json` and `analysis/roots.py` into throwaway `analysis/` directories under one
-  `mktemp -d`, so every refresh writes a copy and never the committed history, and feeds
-  `refresh_rates.py` `fixtures/pricing/litellm-sample.json` through `--source`
-  (`self/features/litellm-pricing/README.md`, "Spec"). **H1**, seed parity: for every
+- `rates-history.sh` — copies `analysis/pricing.py`, `analysis/litellm_prices.py`,
+  `analysis/refresh_rates.py` and `analysis/roots.py` into throwaway `analysis/`
+  directories under one `mktemp -d`, beside a copy of
+  `fixtures/pricing/rates-history-2026-09-22.json` as their `rates_history.json` — the
+  history every expectation below was written against, **not** the committed one, which a
+  refresh legitimately appends to (live-model-rates appended Mythos preview, the model
+  H3d and L call new) — so every refresh writes a copy and never the committed history,
+  and feeds `refresh_rates.py` `fixtures/pricing/litellm-sample.json` through `--source`
+  (`self/features/litellm-pricing/README.md`, "Spec"). Exports `RATES_LIVE_LOOKUP=off`
+  for every phase but L. **H0**: the committed `analysis/rates_history.json` still holds
+  every entry of that seed fixture, unchanged and in order — refreshes only appended.
+  **H1**, seed parity: for every
   model, three dated aliases and eleven dates (Sonnet 5's `2026-08-21`/`2026-08-22`
   boundary among them) in `fixtures/pricing/rates-main-2026-09-22.json` — generated from
   main's `pricing.py` before its table was replaced — `get_rates` returns main's five
@@ -1523,10 +1555,41 @@ copy is an import error in every script that prices anything. **Every sandbox th
   a missing `--source` exits `FETCH_FAILED_EXIT` naming it on the last line; and
   `TIER_SUFFIXES` holds `_above_200k_tokens`. `$TMP/plans/features` is never created, so
   each sandbox's own records are its whole corpus.
+  **L1–L10**, `pricing.py`'s live fallback (`self/features/live-model-rates/`), each call
+  with `RATES_LIVE_LOOKUP` unset and `RATES_CHECK_SOURCE` naming a **local** file — the
+  offline seam — and every "was it fetched?" question answered black-box, by making the
+  source appear or vanish between calls in one process: Mythos preview, absent from the
+  seed and present in the sample, prices at exactly the rates H3d's refresh appends
+  (10/50/1/12.5/20, $93.5 for a million of each), `source: "litellm-live"`, `from:
+  0000-01-01`, under a dated alias too (L1); `claude-not-a-real-model-9` (absent upstream)
+  and `claude-3-haiku` (upstream entry incomplete) are `(None, None)` (L2); a missing
+  source is `(None, None)` and stays so after the file appears — the failure is cached
+  (L3); `RATES_LIVE_LOOKUP=off` is `(None, None)` with a readable source (L4); a source
+  created after `import pricing` is still read — the import fetched nothing (L5); pricing
+  a known model then deleting the source leaves the next miss unpriced — the known model
+  fetched nothing (L6); deleting the source after the first miss leaves a second model
+  (`claude-live-only-9`, added to a copy of the sample) priced — one fetch served both
+  (L7); the sandbox history is byte-identical afterwards (L8). **L9**: a `--self` capture
+  (`capture_planning.py`, in a sandbox with a bare `.git` and `$HOME` redirected) of one
+  Mythos-preview session records `source: "litellm-live"`, a priced row, `total_is_partial:
+  false` and a `warnings[]` line naming `litellm-live` and the model; `report.py` over it
+  prints that warning as a `WARN:` line and writes it into `report.md`. **L10**, the other
+  two visibility paths, in a second feature of L9's sandbox whose `planning.json` holds no
+  live row (its one session is on a model the seed knows) and whose `review/complete/`
+  sidecar is an unpriced attempt on Mythos preview, a transcript for it under the redirected
+  `$HOME`: `recover_attempts.py --self --for` (lookup on, `RATES_CHECK_SOURCE` at the local
+  sample) writes `rates_applied.source: "litellm-live"` on the attempt (L10b) and prints a
+  `live:` line naming the model (L10c); `report.py` then prints a `WARN:` line naming it
+  from the recovered attempt alone (L10d), ending "… then capture_planning.py --recapture
+  this feature" (L10e). Each was seen to fail with its path broken (`is_live` dropped in
+  `recover_attempts.py` fails L10c; in `report.live_priced_models` fails L10d/L10e;
+  `LIVE_SOURCE` altered fails L10b).
   Depends on `pricing.HISTORY_PATH` being the history beside `pricing.py`, on
-  `roots.features_root(True)` resolving beside the copied script, and on
-  `refresh_rates.RATE_DECIMALS` / `FETCH_FAILED_EXIT` / `TIER_SUFFIXES`. RED until
-  litellm-pricing landed; T RED until rates-tier-check landed.
+  `roots.features_root(True)` resolving beside the copied script, on
+  `refresh_rates.RATE_DECIMALS` / `FETCH_FAILED_EXIT` / `TIER_SUFFIXES`, and on
+  `pricing.py` reading `RATES_CHECK_SOURCE` / `RATES_LIVE_LOOKUP` at the first miss rather
+  than at import. RED until litellm-pricing landed; T RED until rates-tier-check landed;
+  L RED until live-model-rates landed.
   No model, no network.
 - `sync-check.sh` — copies the real `sync-plans.sh`, `update.sh` and `templates/` (a
   missing `update.sh` is tolerated — RED until plan 77 lands, the `cost-recovery.sh`

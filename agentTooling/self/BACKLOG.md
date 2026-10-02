@@ -161,3 +161,14 @@ agentTooling's own, for the harness rather than for a product.
   sessions may write it. Assertion: in a consuming repo, a sandboxed Bash subprocess that
   opens `agentTooling/hooks/allow-repo-commands.sh` for writing fails with `Operation not
   permitted`, and `update.sh` still pulls. Raised by `runner-sandbox`'s review.
+
+- **Consuming repos' records short on `claude-sonnet-5-5` / `claude-mythos-preview` are
+  not repaired.** live-model-rates refreshed the history and recaptured this corpus's one
+  short record (`sandbox-consumer-reads`); records in a consuming repo's `plans/features/`
+  captured before that refresh reached it still say `total_is_partial: true` with a "no
+  rate for model" warning for either model, and only that repo can recapture them, after
+  its next `subtree pull` and while their transcripts survive (about four weeks).
+  Deliberately excluded from live-model-rates ("Consuming repos' own corpora"). Known
+  case: humanNetworkMap `access-views-write` ($29.03 partial, four sonnet-5-5 helpers).
+  Assertion: in each consuming repo, no `planning.json` carries a "no rate for model
+  'claude-sonnet-5-5'" warning. Raised by `live-model-rates`.

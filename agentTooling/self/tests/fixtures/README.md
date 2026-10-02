@@ -31,7 +31,14 @@ the verdict each must get, which nothing can synthesize — the commands are the
   (for `tokens`) for every model it held plus three dated aliases, on each of `dates`.
   Generated **once, before** litellm-pricing replaced the table, so it cannot be
   regenerated: the code that produced it is gone. `../rates-history.sh` H1 holds the
-  seeded `analysis/rates_history.json` to it; `unknown[]` are ids that must stay unpriced.
+  seed history (below) to it; `unknown[]` are ids that must stay unpriced with the live
+  lookup off.
+- `pricing/rates-history-2026-09-22.json` — `analysis/rates_history.json` exactly as it
+  stood before live-model-rates' refresh (`checked` 2026-09-22, the seed plus nothing):
+  the history every `../rates-history.sh` sandbox prices from, so a later refresh of the
+  committed file — which appends, legitimately — cannot change what those tests see.
+  `../rates-history.sh` H0 holds the committed history to it: every entry here still
+  present there, unchanged and in order. Never edit it; a new seed is a new file.
 - `pricing/litellm-sample.json` — a small file in the shape of LiteLLM's
   `model_prices_and_context_window.json` (`<key>: {litellm_provider, mode,
   input_cost_per_token, output_cost_per_token, cache_read_input_token_cost,
@@ -44,7 +51,8 @@ the verdict each must get, which nothing can synthesize — the commands are the
   absent. For `--tiers`: Sonnet 4.5 carries LiteLLM's real above-200k fields (and their
   `_batches` variants, which must not be read) at flat rates equal to the history's, so
   the refresh tests see no change for it; Opus 5.5 carries an above-200k input rate only;
-  Haiku 4.5 is flat. Read by `../rates-history.sh` through `--source`, and by
+  Haiku 4.5 is flat. Read by `../rates-history.sh` through `--source` (and, for L, as
+  `pricing.py`'s live-lookup source through `RATES_CHECK_SOURCE`), and by
   `../feature-lifecycle.sh` and `../recover-at-close.sh` through `RATES_CHECK_SOURCE`,
   so no capture under test reaches the network.
 

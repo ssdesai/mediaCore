@@ -48,6 +48,7 @@ echo "audit-fixes"
 # ── A. report.py --all fills the missing reports ──────────────────────────────
 AT="$TMP/a/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
+export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
 for f in "$HERE"/analysis/*.py "$HERE"/analysis/rates_history.json; do
   cp "$f" "$AT/analysis/$(basename "$f")" 2>/dev/null || true
 done
