@@ -1,2 +1,4 @@
 {"at":"2026-10-02T21:15:54Z","event":"pass_start","queue":"review","round":"1"}
 {"at":"2026-10-02T21:15:54Z","event":"plan_start","plan":"01-review-opus","queue":"review","round":"1"}
+{"at":"2026-10-02T21:16:39Z","event":"plan_end","plan":"01-review-opus","queue":"review","rc":"0","verdict":"clean","head":"e84093ffb91c61ff374c6445d668693aaf7cf16a","round":"1"}
+{"at":"2026-10-02T21:16:39Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"1"}
