@@ -1,39 +1,23 @@
-# <Feature title>
+# Pull agentTooling PR 75
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+Goal: propagate agentTooling PR 75 (live-model-rates). `agentTooling/update.sh` pulled
+the subtree from `bd603c3481cb007a8bfc809bf162aec11de30642` (PR #73) to split
+`2a2a4a6b201bdc4afd813d956b3083c9d4e00d4a` (PRs #74 hook-hash-chained-cd and #75
+live-model-rates), which prices `claude-sonnet-5-5` in `analysis/rates_history.json`.
+The freshly pulled `sync-plans.sh` reported no DRIFT and left `plans/` and
+`.claude/settings.json` unchanged (all in sync), so no repo-owned script needed a
+hand-merge.
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Checks the subtree matches upstream `2a2a4a6b`, `sync-plans.sh --check` is clean, the gate is green, and nothing outside `agentTooling/` changed. |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- Nothing outside `agentTooling/` is edited: the sync wrote no changes, so there is no
+  hand-merge or repo-owned script change in this pull.
 
 ## Machine-readable
 
