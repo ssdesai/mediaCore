@@ -1,0 +1,56 @@
+{
+  "plan": "01-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "2a4b0651-72b1-4502-915f-d4c0460bfb1e",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 19,
+  "duration_ms": 154083,
+  "total_cost_usd": 0.9244216,
+  "usage": {
+    "input_tokens": 30,
+    "cache_creation_input_tokens": 65458,
+    "cache_read_input_tokens": 854588,
+    "output_tokens": 11486
+  },
+  "model_usage": {
+    "claude-opus-5-5": {
+      "inputTokens": 30,
+      "outputTokens": 11486,
+      "cacheReadInputTokens": 854588,
+      "cacheCreationInputTokens": 65458,
+      "webSearchRequests": 0,
+      "costUSD": 0.9244216,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 4923,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 2,
+  "tool_counts": {
+    "Bash": 9,
+    "Edit": 3,
+    "Read": 4,
+    "Write": 2
+  },
+  "files_edited": [
+    "/var/folders/w1/sjvnhgn11ml_fj_s_kch9xv40000gn/T/plan-capture.CnX0x3/scratch/probe.py",
+    "hooks/allow-repo-commands.sh",
+    "self/review-report.md"
+  ],
+  "edit_count": 5,
+  "attempts": [
+    {
+      "session_id": "2a4b0651-72b1-4502-915f-d4c0460bfb1e",
+      "outcome": "complete",
+      "total_cost_usd": 0.9244216,
+      "num_turns": 19,
+      "duration_ms": 154083
+    }
+  ]
+}
