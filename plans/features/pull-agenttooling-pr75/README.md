@@ -28,7 +28,7 @@ hand-merge.
   "plans": ["01-review-opus"],
   "branches": ["pull-agenttooling-pr75"],
   "base": "main",
-  "session_window": {"from": "2026-10-02T21:13:34Z", "to": null},
+  "session_window": {"from": "2026-10-02T21:13:34Z", "to": "2026-10-02T21:16:39Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],
