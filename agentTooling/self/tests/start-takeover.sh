@@ -72,7 +72,8 @@ mkdir -p "$AT/analysis" "$AT/self/features" "$AT/templates/plans/features"
 for f in feature-start.sh plan-runner-roots.sh; do
   cp "$HERE/$f" "$AT/$f" 2>/dev/null || true
 done
-for f in roots.py manifest.py pricing.py rates_history.json transcript.py routing.py; do
+export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
+for f in roots.py manifest.py pricing.py litellm_prices.py rates_history.json transcript.py routing.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f" 2>/dev/null || true
 done
 cp "$HERE/templates/plans/features/TEMPLATE.md" "$AT/templates/plans/features/TEMPLATE.md" 2>/dev/null || true

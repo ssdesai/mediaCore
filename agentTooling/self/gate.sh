@@ -172,6 +172,7 @@ shell_scripts=(
   self/tests/template-versions.sh
   self/tests/open-session.sh
   self/tests/allow-repo-commands.sh
+  self/tests/hook-quote-oracle.sh
   self/tests/hook-escalation.sh
   self/tests/hook-wiring.sh
   self/tests/self-settings.sh
@@ -197,6 +198,12 @@ if command -v shellcheck >/dev/null 2>&1; then
 else
   echo "  skip  shellcheck (not installed)"
 fi
+
+# pricing.py prices a model the rate history lacks from LiteLLM, live; nothing the gate
+# runs may reach the network. Each self-test that prices also exports this itself, so a
+# test run by hand is offline too; rates-history.sh L turns it back on per call, pointed
+# at a local fixture (self/features/live-model-rates/README.md).
+export RATES_LIVE_LOOKUP=off
 
 echo "=== gate: level sentinels ==="
 # The one behavioural check this repo has: drives the real runners in a throwaway
@@ -249,6 +256,9 @@ record "open session self-test" bash self/tests/open-session.sh
 # first is a bypass that once approved a read outside the tree, a write, or an
 # execution, and the second asserts the wiring never removes a repo's own settings.
 record "allow repo commands self-test" bash self/tests/allow-repo-commands.sh
+# The guard every deny keeps is a model of shell quoting, checked against bash and zsh
+# themselves: three review rounds found it wrong by reasoning, and one case none found.
+record "hook quote oracle self-test" bash self/tests/hook-quote-oracle.sh
 # The other half of the same policy: the per-session escalation counter, the headless
 # fall-through and the scratch entry point, none of which a single decision can show.
 record "hook escalation self-test" bash self/tests/hook-escalation.sh

@@ -12,8 +12,9 @@ any dollar figure. Every cost number in the output comes from a `usage.json`'s
 `total_cost_usd` or a `planning.json`'s `cost_usd`, summed or divided, never
 repriced. `pricing.RATES_VERIFIED` (the rate history's `checked` date),
 `pricing.HISTORY_FILENAME` and `pricing.is_rates_stale` are imported only to
-footnote rate freshness in the rendered report — display only, never
-used to compute a figure.
+footnote rate freshness in the rendered report, and `pricing.is_live` /
+`pricing.live_price_warning` only to name a figure the records say was priced
+live — display only, never used to compute a figure.
 
 Plan drift is a best-effort heuristic: it extracts backtick-quoted paths from
 under a plan's "## Files"-like heading and diffs them against the plan's
@@ -37,7 +38,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
 
-from pricing import HISTORY_FILENAME, RATES_VERIFIED, is_rates_stale
+from pricing import HISTORY_FILENAME, RATES_VERIFIED, is_live, is_rates_stale, live_price_warning
 from roots import add_self_flag, artifact_root, features_root
 # `parse_manifest` is routing.py's: the one copy this module, capture_planning.py and
 # routing.py's pinned-session predicate all read a manifest through.
@@ -2794,6 +2795,26 @@ def write_record(path, text):
     return True
 
 
+def live_priced_models(planning_data, loaded_plans):
+    """Every model a figure in this feature was priced for by pricing.py's live lookup
+    rather than the rate history: `planning.json`'s `priced[].rates_applied` and each
+    plan's recovered `attempts[].rates_applied`. Read from what the records say, never
+    re-priced (the no-recompute contract)."""
+    models = [
+        row.get("model")
+        for row in planning_data.get("priced") or []
+        if isinstance(row, dict) and is_live(row.get("rates_applied"))
+    ]
+    for _stem, usage_data, _path in loaded_plans:
+        for attempt in (usage_data or {}).get("attempts") or []:
+            if not isinstance(attempt, dict):
+                continue
+            for model, rates in (attempt.get("rates_applied") or {}).items():
+                if is_live(rates):
+                    models.append(model)
+    return sorted({m for m in models if m})
+
+
 def run_single_feature(repo_dir, features_dir, slug):
     warnings = []
     feature_dir = Path(features_dir, slug)
@@ -2875,6 +2896,9 @@ def run_single_feature(repo_dir, features_dir, slug):
     re_hunting = compute_re_hunting(loaded_plans, warnings, previous)
     plan_drift = compute_plan_drift(loaded_plans, warnings)
     edit_overlap = compute_edit_overlap(loaded_plans, repo_dir, warnings, previous)
+    live_models = live_priced_models(planning_data, loaded_plans)
+    if live_models:
+        warnings.append(live_price_warning(live_models))
 
     data = {
         "slug": slug,

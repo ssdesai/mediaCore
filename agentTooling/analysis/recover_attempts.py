@@ -56,7 +56,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from pricing import compute_cost
+from pricing import compute_cost, is_live, live_price_warning
 from roots import add_self_flag, features_root
 from transcript import add_usage, iter_billable_messages, to_utc
 
@@ -210,6 +210,8 @@ def main():
     recovered_dollars = 0.0
     unrecoverable = []
     partial = []
+    # Models a recovered attempt was priced for by the live lookup, not the history.
+    live_models = []
 
     for usage_path in sorted(features_dir.rglob("*.usage.json")):
         try:
@@ -243,6 +245,9 @@ def main():
             recovered_dollars += fields["recovered_cost_usd"]
             if fields.get("recovered_is_partial"):
                 partial.append((plan_stem, session_id, fields["unpriced_models"]))
+            live_models.extend(
+                model for model, rates in fields["rates_applied"].items() if is_live(rates)
+            )
 
         if changed:
             data["recovered_cost_usd"] = sum(
@@ -283,6 +288,8 @@ def main():
                 f"  {plan_stem}: session {session_id} could not price "
                 f"{', '.join(unpriced_models)}"
             )
+    if live_models:
+        print(f"live: {live_price_warning(live_models)}")
 
 
 if __name__ == "__main__":

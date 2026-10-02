@@ -6,21 +6,44 @@ rates (`input`, `output`, `cache_read`, `cache_creation_5m`, `cache_creation_1h`
 a `source` (`"manual"` or `"litellm"`). An entry applies from its `from` date until the
 next entry's. `refresh_rates.py` appends to that file from LiteLLM's public price list
 and never rewrites an entry, so a session priced once prices the same forever.
+
+The live fallback (self/features/live-model-rates/README.md). A model the history has no
+entry for at all — one released after the last refresh — is looked up in LiteLLM's list
+itself, through `litellm_prices` (the same fetch, selection and conversion the refresh
+uses), and priced with `source: "litellm-live"` and `from: FIRST_ENTRY_FROM`, the entry a
+refresh will later append for it. The list is fetched only on such a miss, at most once
+per process — success and failure are both cached — and never at import. The history is
+never written from here. `RATES_CHECK_SOURCE` points the lookup at another URL or a local
+file (the tests' seam, shared with `refresh_rates.py --check` in feature-capture.sh), and
+`RATES_LIVE_LOOKUP=off` turns it off.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import sys
 from datetime import date as _date
 from datetime import datetime as _datetime
 from datetime import timezone as _timezone
 from pathlib import Path
 from typing import Optional, TypedDict
 
+import litellm_prices
+# Re-exported: every caller imports the model-id rule from here.
+from litellm_prices import normalize_model_id  # noqa: F401
+
 # The rate history this module prices from, read once at import. A missing or
 # malformed file is an import error — loud, never a silent $0.
 HISTORY_FILENAME = "rates_history.json"
 HISTORY_PATH = Path(__file__).resolve().with_name(HISTORY_FILENAME)
+
+# The live fallback: the `source` a live price carries, the env var naming where to read
+# LiteLLM's list from (unset: LITELLM_PRICES_URL), and the one that switches it off.
+LIVE_SOURCE = "litellm-live"
+LIVE_SOURCE_ENV = "RATES_CHECK_SOURCE"
+LIVE_LOOKUP_ENV = "RATES_LIVE_LOOKUP"
+LIVE_LOOKUP_OFF_VALUES = ("off", "0")
 
 # Age, in days, past which the history's `checked` date must be treated as stale and
 # callers should warn (never fail) that it needs a refresh.
@@ -58,35 +81,62 @@ RatesApplied = TypedDict(
         "cache_creation_1h": float,
         "tier": str,  # always "standard"
         "from": str,  # the applied entry's `from` date
-        "source": str,  # "litellm" or "manual"
+        "source": str,  # "litellm", "manual", or LIVE_SOURCE ("litellm-live")
     },
 )
 
 
-def normalize_model_id(model_id: str) -> str:
-    """Strip a trailing -YYYYMMDD date suffix, e.g.
-    "claude-haiku-4-5-20251001" -> "claude-haiku-4-5". Leaves ids with no
-    suffix, or a suffix that isn't 8 digits, unchanged.
-    """
-    parts = model_id.rsplit("-", 1)
-    if len(parts) == 2 and len(parts[1]) == 8 and parts[1].isdigit():
-        return parts[0]
-    return model_id
+# The live lookup's one fetch, per process: None until the first miss asks, then the
+# upstream rates by normalized model — {} when the fetch failed, so it is never retried.
+_live_upstream: Optional[dict] = None
+
+
+def _live_lookup_enabled() -> bool:
+    return os.environ.get(LIVE_LOOKUP_ENV, "").strip().lower() not in LIVE_LOOKUP_OFF_VALUES
+
+
+def _live_rates(normalized: str) -> Optional[dict]:
+    """LiteLLM's five rates for `normalized`, or None. Fetches on the first call only."""
+    global _live_upstream
+    if not _live_lookup_enabled():
+        return None
+    if _live_upstream is None:
+        source = os.environ.get(LIVE_SOURCE_ENV) or litellm_prices.LITELLM_PRICES_URL
+        try:
+            _live_upstream, _ = litellm_prices.upstream_rates(litellm_prices.fetch(source))
+        except litellm_prices.FetchError as exc:
+            _live_upstream = {}
+            # Once, on stderr: the unknown-model warnings every caller already prints say
+            # which figures this left unpriced; this says why the fallback did not help.
+            print(f"pricing: live rate lookup failed, unknown models stay unpriced: {exc}",
+                  file=sys.stderr)
+    return _live_upstream.get(normalized)
 
 
 def get_rates(model_id: str, as_of: str) -> Optional[RatesApplied]:
     """Return the rates in effect for `model_id` on ISO date `as_of`, or None
-    if the history has no entry for the model on that date. `as_of` selects the
+    if neither the history nor the live lookup has a rate for it. `as_of` selects the
     entry — never the caller's wall-clock date — so a session keeps pricing at the
     rate in effect when it ran after a later entry is appended.
+
+    A model with no history entry at all is priced from LiteLLM's list, live, with
+    `source: LIVE_SOURCE` and `from: FIRST_ENTRY_FROM` (module docstring). A model the
+    history knows never triggers a fetch.
     """
     normalized = normalize_model_id(model_id)
-    applied = None
-    for entry in _HISTORY["models"].get(normalized, []):
-        if entry["from"] <= as_of:
-            applied = entry
-    if applied is None:
-        return None
+    entries = _HISTORY["models"].get(normalized)
+    if not entries:
+        live = _live_rates(normalized)
+        if live is None:
+            return None
+        applied = dict(live, **{"from": litellm_prices.FIRST_ENTRY_FROM, "source": LIVE_SOURCE})
+    else:
+        applied = None
+        for entry in entries:
+            if entry["from"] <= as_of:
+                applied = entry
+        if applied is None:
+            return None
 
     rates: RatesApplied = {"model": normalized}  # type: ignore[typeddict-item]
     for field in RATE_FIELDS:
@@ -124,6 +174,23 @@ def compute_cost(
     ) / 1_000_000
 
     return cost, rates
+
+
+def is_live(rates: Optional[dict]) -> bool:
+    """True when a `rates_applied` value came from the live lookup, not the history."""
+    return isinstance(rates, dict) and rates.get("source") == LIVE_SOURCE
+
+
+def live_price_warning(models) -> str:
+    """The one sentence every caller that surfaces price provenance uses for figures
+    priced live — capture_planning's and report.py's `warnings[]`, recover_attempts'
+    summary — so a figure resting on an unrefreshed history is never silent."""
+    return (
+        f"priced from LiteLLM live ({LIVE_SOURCE}), not from analysis/{HISTORY_FILENAME}: "
+        f"{', '.join(sorted(set(models)))} — refresh the history with "
+        f"analysis/refresh_rates.py in an agentTooling self feature, "
+        f"then capture_planning.py --recapture this feature"
+    )
 
 
 def utc_today() -> str:

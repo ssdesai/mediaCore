@@ -59,7 +59,8 @@ source "$HERE/self/tests/fixtures/usage/build-usage.sh"
 
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
-for f in pricing.py rates_history.json roots.py transcript.py recover_attempts.py; do
+export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
+for f in pricing.py litellm_prices.py rates_history.json roots.py transcript.py recover_attempts.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f" 2>/dev/null || true
 done
 

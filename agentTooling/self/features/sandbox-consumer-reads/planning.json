@@ -1,6 +1,6 @@
 {
   "slug": "sandbox-consumer-reads",
-  "captured_at": "2026-09-30T20:14:24.366901+00:00",
+  "captured_at": "2026-10-02T04:19:20.214185+00:00",
   "manifest_branches": [
     "sandbox-consumer-reads"
   ],
@@ -36,6 +36,8 @@
     "001cfbe0-b425-43c8-bffe-d22a29a455b9",
     "018db37a-fbc7-42d5-bfc6-4585c9ecea59",
     "0745c8b1-3188-4741-a03e-217ff22d3ddb",
+    "077027fa-2717-40ad-8b7a-8b7082191328",
+    "0803b8c7-9f61-4e47-9627-57ccf3bb3e6f",
     "0e9bdef1-d470-4d40-a1c3-5076b3817d82",
     "0f3c7676-2e55-423b-afd7-461a43121ad6",
     "10e9bb82-a9f4-4fee-a4ea-9a980c514564",
@@ -50,6 +52,7 @@
     "2370cfd4-0937-4ed6-ae85-aabf38c302a4",
     "239d99e7-969f-4b3f-aadc-f6c428fb0d56",
     "276aafb1-2283-4523-afd1-1bc20cddf715",
+    "2a4b0651-72b1-4502-915f-d4c0460bfb1e",
     "2a961374-24f8-45b8-8979-bc6707a4ad8d",
     "2baf43d0-9419-4a08-8481-eb7fdd488b75",
     "2e9ce097-2707-4206-9b1b-448cd112f6f9",
@@ -98,6 +101,7 @@
     "dcea8fd9-3b4f-49ed-9310-9ee1f5eecff5",
     "deb4f210-5325-4dd3-957b-c1d989ef9010",
     "e10f23f4-25bc-4e37-92ed-713a18b33cb3",
+    "e1550f85-eccd-4d64-9b76-f20dea181d00",
     "e306171f-5858-4264-b6f0-055739e0d199",
     "e38bbd92-82a7-4a42-b9d0-4dde1366ab92",
     "e5cafe29-e5db-472a-9609-2a71f06c9c37",
@@ -152,24 +156,32 @@
         "cache_creation_5m": 0,
         "cache_creation_1h": 20040
       },
-      "cost_usd": null,
-      "rates_applied": null
+      "cost_usd": 0.0917042,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.2,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm"
+      }
     }
   ],
   "cost_usd": {
-    "main": 0.0,
+    "main": 0.0917042,
     "sidechain": 3.1030826,
     "subagents": 3.1030826,
-    "total": 3.1030826,
-    "total_is_partial": true
+    "total": 3.1947868,
+    "total_is_partial": false
   },
   "duration_s": {
     "sessions": 4,
     "subagents": 1234,
     "entries_without_duration": []
   },
-  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-09-22",
-  "warnings": [
-    "no rate for model 'claude-sonnet-5-5' (session e2c3f2ec-d4a1-4f2b-867a-56e2f2f6d381); excluded from cost total"
-  ]
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-02",
+  "warnings": []
 }

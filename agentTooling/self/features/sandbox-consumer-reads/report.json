@@ -1,21 +1,21 @@
 {
   "slug": "sandbox-consumer-reads",
-  "generated_at": "2026-09-30T20:14:24.428676+00:00",
+  "generated_at": "2026-10-02T04:19:28.395053+00:00",
   "cost": {
     "method": "direct",
     "planning": 0.0,
-    "implementer": 3.1030826,
-    "build": 3.1030826,
+    "implementer": 3.1947868,
+    "build": 3.1947868,
     "verify": 0.0,
     "review": 0.8477779999999999,
-    "total": 3.9508606,
+    "total": 4.0425648,
     "planning_pct": 0.0,
-    "build_pct": 78.54194096344477,
+    "build_pct": 79.02870969439995,
     "verify_pct": 0.0,
-    "review_pct": 21.458059036555223,
-    "cost_per_plan": 3.9508606,
-    "cost_per_file": 1.3169535333333333,
-    "total_is_partial": true,
+    "review_pct": 20.971290305600046,
+    "cost_per_plan": 4.0425648,
+    "cost_per_file": 1.3475216,
+    "total_is_partial": false,
     "missing_usage_plans": [],
     "unpriced_plans": [],
     "multi_sidecar_stems": [],
@@ -60,7 +60,7 @@
   "rounds": [
     {
       "round": 1,
-      "build_usd": 3.1030826,
+      "build_usd": 3.1947868,
       "build_min": 20.633333333333333,
       "verify_usd": 0.0,
       "verify_min": 0.0,
@@ -73,7 +73,7 @@
   ],
   "planning_cost_split": {
     "subagents": 3.1030826,
-    "sessions": 0.0
+    "sessions": 0.09170420000000012
   },
   "cold_start_tax_tokens": 70520,
   "model_fit": [
