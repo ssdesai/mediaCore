@@ -48,7 +48,7 @@ Delete this section when the batch has a single level.
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],
-  "subagents": []
+  "subagents": ["afc4d522177bc3613"]
 }
 ```
 
