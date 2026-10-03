@@ -1,35 +1,28 @@
-@agentTooling/CONVENTIONS.md
+@CONVENTIONS.md
 
-# Project-specific instructions
+## What this directory is
 
-This repo is the **contract package** between vinylCatalogue (source) and
-humanNetworkMap / musicMap (consumers). `INTEGRATION.md` is the cross-repo design and
-decisions log — read it before changing anything under `src/`. It is also the
-management home for that integration: work in the other repos is briefed from here.
+The shared Claude Code conventions and delegated-plan harness, vendored into each repo
+with `git subtree`. A change here ships to **every** consuming repo on its next
+`subtree pull` — there is no such thing as a local-only fix in this directory.
 
-## Concrete examples for the README rules
+## Self-hosted work
 
-**Rule 1 — field lists for cross-module data shapes.** Every model in
-`src/mediacore/release.py` is consumed by three other repos, so its README entry lists
-every field:
-> - `release.py` — `Release { schema_version, refs, provenance, title, artists, labels, year, released, country, medium, format, genres, styles, tracks, credits, notes, tags, media, audio, links }` — the on-disk `release.json` shape.
+agentTooling builds its own features with its own harness. Its plan corpus is
+`self/features/<slug>/`, drained by `./run-plans.sh --self` and friends; the facts a
+plan author needs are in `self/PROJECT_FACTS.md`. See `RUNNER.md` → "Self-hosted mode"
+for how `--self` differs from an ordinary run, and `AGENT_PLANS.md` for how to author
+the plans themselves.
 
-**Rule 2 — naming non-obvious cross-layer dependencies.**
-> - `normalize.py` — `normalize_text` must stay byte-for-byte equivalent to `vinylcat.normalize.normalize_text` in the vinylCatalogue repo; `tests/test_normalize.py` pins the samples both must agree on.
+This file exists because a `--self` executor's cwd is this directory, not the consuming
+repo root — without it, such an executor would never load `CONVENTIONS.md` at all. In a
+consuming repo that root `CLAUDE.md` already imports `@agentTooling/CONVENTIONS.md`, so
+editing inside this directory loads the conventions twice. That is the accepted cost;
+see the `agenttooling-self-host` manifest's exclusions.
 
-## Commands
+### Commands
 
-- Install: `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`
-- Tests: `.venv/bin/python -m pytest -q`
-- Lint: `.venv/bin/python -m ruff check src tests`
-- Regenerate the fixture: `.venv/bin/python scripts/make_fixture_its_saxy.py`
-
-## Branch naming
-
-Bare camelCase, no prefix and no slash (`releaseContract`, `fixtureItsSaxy`). Manifests
-copy the name from `git branch --show-current`.
-
-## Delegated plan execution
-
-`agentTooling/AGENT_PLANS.md` governs plan authoring. Before writing plans, read
-`plans/PROJECT_FACTS.md`.
+- Mechanical gate: `./self/gate.sh` (syntax checks; there is no test suite)
+- Build a self feature: `./run-plans.sh --self <slug>`, then `./run-verify.sh --self <slug>`,
+  then `./run-review.sh --self <slug>` (or `./run-batch.sh --self <slug>` for all three)
+- Cost report: `python3 analysis/report.py --self <slug>`
