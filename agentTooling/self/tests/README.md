@@ -250,8 +250,9 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   starts a feature unpinned through `start_as`, so the start writes its routing record.
   The feature is reviewed clean, and then that router's transcript gains a line whose
   `cwd` is the worktree. The phase asserts:
-  - the close exits non-zero, naming the router and `pin-session <id>`, with no forge call
-    and the worktree's `HEAD` and status unchanged;
+  - the close exits non-zero, naming the router, `pin-session <id>` and the evidence
+    (`cwd <worktree>`, the line that made it a builder), with no forge call and the
+    worktree's `HEAD` and status unchanged;
   - `manifest.py pin-session` puts the id in the fence's `sessions`, and a second
     `pin-session` of the same id leaves the file byte-identical;
   - the same close then exits 0, and the pin is in the `S: cost records` commit.
@@ -408,6 +409,11 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   last instant + 1s; and that `--list-sessions` from it lists the sessions filed under `R`'s
   own project directory as well as the worktree's. F1 and F7 were RED until
   `session_root` followed a worktree's `.git` file to its primary (`worktree_primary`).
+  F8–F9 are the yield rule's manifest scan from the worktree's copy
+  (`../features/unpin-and-yield/`): a pin on the worktree delegate in the other worktree's
+  `plans/features` — the other corpus — yields nothing (F9), and one in its
+  `self/features` yields the delegate to `agentTooling/other-feat`, out of `subagents[]`,
+  on a recapture the frozen guard does not refuse (F8). RED until `corpus_copies`.
   Copies `routing.py` with `capture_planning.py`, per the rule above. No model, no network.
 - `routing-record.sh` — `session-share.sh`'s scaffolding (copies of
   `analysis/{pricing,roots,transcript,capture_planning,report,routing}.py` in a throwaway
@@ -476,12 +482,33 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   **R12** is `routing.py --unpinned-builder`, the predicate `feature-close.sh` refuses on
   (`../features/router-built-pin/`). Each case is a hand-written feature whose routing
   record names its own router, launched in the primary, with a `tool_line` helper that
-  writes one `tool_use` block. The router's id is printed, exit 0, for a router whose
-  `cwd` moved into `.worktrees/<slug>`, one that stayed in the primary but `Edit`ed a
-  worktree file, and one whose `NotebookEdit` landed there. Nothing is printed, still
-  exit 0, for:
+  writes one `tool_use` block. **Building is work in the worktree other than the
+  router's own writes** (`../features/router-brief-writes/`): a write at or under the
+  feature's `review/` there, or exactly its manifest `README.md`, does not count. A
+  builder prints one line, `<session-id><TAB><evidence>`, exit 0, the evidence being the
+  first transcript line that made it one — asserted verbatim in every builder case:
+  - a router whose `cwd` moved into `.worktrees/<slug>` (`cwd <path>`), one that stayed
+    in the primary but `Edit`ed a worktree file (`Edit <path>`), and one whose
+    `NotebookEdit` landed there;
+  - the near misses the carve-out must not reach, each a `Write` under the worktree:
+    `review-old/x.md`, `README.md.bak`, the `review/` of `<slug>-two` (a feature
+    directory sharing the slug's prefix), another feature's `review/`,
+    `auto/incomplete/x.md`, and `review/../../../../analysis/x.py` (compared normalized);
+  - a router that wrote a brief and then whose `cwd` entered the worktree — the `cwd` rule
+    is untouched, and the `cwd` is the evidence;
+  - in a consumer checkout with agentTooling vendored, a `--self` write to the standalone
+    layout's `self/features/<slug>/review/` — the feature directory is derived from where
+    the corpus sits in its checkout, so that path is not it.
+
+  Nothing is printed, still exit 0, for:
   - a router that only started the feature, `Read` a worktree file and `Write`d in the
     primary;
+  - one whose only write was the round-1 brief `review/incomplete/01-review-opus.md`, one
+    that `Edit`ed a re-review brief `review/incomplete/02-review-sonnet.md`, and one that
+    `Edit`ed the manifest `README.md`;
+  - in the vendored consumer checkout, a `--self` brief write under
+    `agentTooling/self/features/<slug>/review/`, and an ordinary (no `--self`) `Edit` to
+    `plans/features/<slug>/README.md`;
   - one that worked in `.worktrees/<slug>-two`, since containment is by path component;
   - one pinned in another feature's `sessions`;
   - one whose transcript is gone;
@@ -747,6 +774,20 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   own. RED until the ledger was written from `subagents[]` instead of from the priced
   rows — before that the id was in no feature's claims and every run told the human to
   write the pin that was already in the manifest.
+  Its phase **Y** is `unpin-and-yield`'s yield rule (`../features/unpin-and-yield/`, Y0–Y7),
+  over one parent on the branch with five delegates, a sibling manifest at
+  `.worktrees/sib/self/features/sib/README.md`, a `pinner` feature in the primary corpus and
+  ledger claims written as another capture would: the baseline claims them by parent with
+  `yielded_agent_ids: []` present (Y0); a delegate the sibling pins and one only a
+  `"pinned"` ledger claim of another repo holds both yield on a recapture that is not
+  refused as losing them, `yielded_agent_ids` naming each `{agent_id, to}` sorted, the total
+  dropping by exactly their cost, one output line each and the yielded id leaving the
+  ledger (Y1, Y2); another feature's `"parent"` claim does not yield — the double-claim
+  refusal stands (Y3); this feature's own pin still wins (Y4) and `exclude_subagents` still
+  lands in `excluded_agent_ids` (Y5); the pinning feature's capture then succeeds and
+  claims it as `pinned` (Y6); and when the parent claim came first, the pinner's refusal
+  names the other feature and `./feature-capture.sh --self <slug> --recapture`, whose run
+  then yields and lets the pinner through (Y7). RED until the yield arm landed.
 - `claims-ledger.sh` — `subagent-capture.sh`'s scaffolding, asserting what the ledger at
   `$HOME/.claude/subagent-claims.json` counts as claimed
   (`self/features/recovered-duration-lower-bound/README.md`, items 2 and 3, plus that
@@ -1135,6 +1176,25 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   non-zero because argparse exited 2 for every call before the subcommand existed. The
   end-to-end half through the real `feature-capture.sh` is `feature-lifecycle.sh` C1i2
   and C2f–C2i. No model, no network, no git.
+- `manifest-unpin.sh` — the fence's three removers, `analysis/manifest.py unpin-session`,
+  `unpin-subagent` and `unexclude-subagent` (`../features/unpin-and-yield/`).
+  `manifest-pin-subagent.sh`'s two checkouts (with `manifest.py` and its imports, no
+  `capture_planning.py`), a canonical fence with an example fence above it naming one of
+  the ids, and a hand-written one — keys out of order, odd spacing, a multi-line
+  `exclude_subagents`. Asserts: each remover takes the id out, echoes the list in its
+  twin's shape, and leaves every other line byte-identical (U1, U5); pin-then-unpin is
+  byte-identical, and the last id out leaves `[]` (U2, U5d); an id the list does not hold,
+  or a fence without the key, is a no-op saying `<key> does not hold <id>` (U3, U5e, U8);
+  an empty session id is refused, exit 1 (U4); the agent-id removers refuse exactly
+  `pin-subagent`'s cases — empty, blank, `agent-` prefix, truncated, uppercase,
+  placeholder, session UUID — exit 1, file byte-identical, the `agent-` refusal word for
+  word the pin's (U6); on the hand-written fence only the list's own lines change, collapsed
+  to one (U7); on a captured feature each prints the frozen-record note naming
+  `captured <at>`, `feature-capture.sh` and `--recapture`, and a no-op or an uncaptured
+  feature prints none (U9); the consumer layout works (U10); and a dirty manifest is not
+  stray to `plan-runner-roots.sh`'s `stray_paths` (U11, sourcing it as
+  `verdict-readers.sh` does). Exit 1 rather than non-zero because argparse exits 2 for an
+  unknown subcommand. No model, no network, no git.
 - `timestamps-are-utc.sh` — same scaffolding, asserting the UTC convention in
   `analysis/README.md` → "Every instant is UTC": `transcript.utc_date` dates an offset
   timestamp by its UTC day (`2026-07-01T23:00:00-04:00` → `2026-07-02`), a session's start

@@ -10,6 +10,9 @@ planning.json claimed — the JSON edits the lifecycle scripts need, kept out of
     python3 agentTooling/analysis/manifest.py [--self] <slug> set-window-from TS --session ID
     python3 agentTooling/analysis/manifest.py [--self] <slug> pin-session ID
     python3 agentTooling/analysis/manifest.py [--self] <slug> pin-subagent AGENT_ID
+    python3 agentTooling/analysis/manifest.py [--self] <slug> unpin-session ID
+    python3 agentTooling/analysis/manifest.py [--self] <slug> unpin-subagent AGENT_ID
+    python3 agentTooling/analysis/manifest.py [--self] <slug> unexclude-subagent AGENT_ID
     python3 agentTooling/analysis/manifest.py [--self] <slug> claimed
 
 `init` writes `<features>/<slug>/README.md` from `templates/plans/features/TEMPLATE.md`
@@ -50,6 +53,13 @@ it appends one agent id idempotently and refuses an empty one, one still carryin
 how a coordinator launched outside the worktree claims a delegate it spawned for the
 feature, and the remedy `feature-capture.sh` names when a delegate briefed for the feature
 is claimed by no route.
+`unpin-session`, `unpin-subagent` and `unexclude-subagent` are the removers, each the exact
+inverse of a writer: one id out of `sessions[]`, `subagents[]` or `exclude_subagents[]`
+(the last has no writer — it was only ever hand-written), echoed in the pin's shape, an
+absent id a no-op, an empty one refused, the agent-id ones validated as `pin-subagent`
+validates. Only that one list value is rewritten, in place, so a hand-written fence keeps
+every other byte. Like `set-window-from` they print the frozen-record note on a feature
+already captured (self/features/unpin-and-yield).
 `claimed` prints the sessions and subagents
 `planning.json` holds, each with how it was selected and where it was launched, and the
 total — what `feature-capture.sh` shows the human before the number is quoted.
@@ -95,6 +105,15 @@ SESSIONS_KEY = "sessions"
 # The fence key `pin-subagent` appends to: delegates claimed outright, whatever branch
 # their parent session was on.
 SUBAGENTS_KEY = "subagents"
+# The fence key `unexclude-subagent` removes from: delegates of a selected session this
+# feature disowns. Read by the capture, written by no command — legacy since the yield rule.
+EXCLUDE_SUBAGENTS_KEY = "exclude_subagents"
+# A fence value is written compact, one key per line: `["a", "b"]`, `{"from": …}`.
+FENCE_VALUE_SEPARATORS = (", ", ": ")
+# One flat JSON list as a fence value — what a remover rewrites in place, and nothing past
+# its closing bracket. A list of ids holds no bracket of its own; one that did is refused
+# by the parse-back check in `remove_from_fence` rather than guessed at.
+FENCE_LIST_VALUE_RE = r"\[[^\[\]]*\]"
 # An agent id as Claude Code writes it — the `<id>` of `<session>/subagents/agent-<id>.jsonl`
 # and the `agentId` on that transcript's lines, which is what `capture_planning.py
 # --list-subagents` reads (`agent_id_of`) and prints. Every one on record is 17 lowercase
@@ -144,7 +163,7 @@ def last_fence(text):
 def render_fence(obj):
     """One key per line, compact values — the hand-written shape."""
     keys = [k for k in FENCE_KEY_ORDER if k in obj] + [k for k in obj if k not in FENCE_KEY_ORDER]
-    lines = [f'  "{key}": {json.dumps(obj[key], separators=(", ", ": "))}' for key in keys]
+    lines = [f'  "{key}": {json.dumps(obj[key], separators=FENCE_VALUE_SEPARATORS)}' for key in keys]
     return "{\n" + ",\n".join(lines) + "\n}"
 
 
@@ -419,13 +438,24 @@ def cmd_set_window_from(args):
         return 1
     path.write_text(text[: match.start(1)] + new_fence + text[match.end(1):])
     print(f"session_window.from moved back: {current} -> {stamp}")
+    print_frozen_note(args)
+    return 0
+
+
+def print_frozen_note(args):
+    """After a fence edit: on a feature that already has a `planning.json`, say that the
+    frozen figure did not move. The fence is input to the NEXT capture, never to the one
+    already frozen — on the branch that is `feature-capture.sh`, after the merge
+    `--recapture`. One sentence for every writer that can leave a captured feature's fence
+    ahead of its record (`set-window-from` and the three removers), so they cannot drift."""
     captured_at = captured_at_of(args)
     if captured_at:
         print(
-            f"note: {args.slug} was captured {captured_at}; the frozen figure does not "
-            "move until capture_planning.py --recapture rebuilds it"
+            f"note: {args.slug} was captured {captured_at}; the fence is input to the next "
+            "capture, and the frozen figure does not move until one runs (on the branch: "
+            "feature-capture.sh; after the merge: feature-capture.sh --recapture, which "
+            "runs capture_planning.py --recapture)"
         )
-    return 0
 
 
 def cmd_set_plans(args):
@@ -440,6 +470,106 @@ def cmd_set_plans(args):
     path.write_text(text[: match.start(1)] + render_fence(obj) + text[match.end(1):])
     print(f"plans = {json.dumps(obj['plans'])}")
     return 0
+
+
+def agent_id_refusal(agent_id, verb):
+    """The `refusing: …` line for an agent id `pin-subagent` would not accept, or None.
+    ONE check for every command that takes an agent id — `pin-subagent`, `unpin-subagent`,
+    `unexclude-subagent` — so a remover refuses exactly what its twin refuses, by the same
+    `AGENT_ID_RE` and the same words. `verb` only fills the empty-id sentence ("an empty
+    agent id pins nothing")."""
+    if not agent_id:
+        return f"refusing: an empty agent id {verb} nothing"
+    if agent_id.startswith(AGENT_FILE_PREFIX):
+        return (
+            f"refusing: {agent_id!r} is a transcript name — give the id without the "
+            f"`{AGENT_FILE_PREFIX}` prefix: {agent_id[len(AGENT_FILE_PREFIX):]}"
+        )
+    if not AGENT_ID_RE.match(agent_id):
+        return (
+            f"refusing: {agent_id!r} is not an agent id — 17 lowercase hex characters, "
+            "as `capture_planning.py --list-subagents` prints them (a session id belongs "
+            "in `sessions`: pin-session)"
+        )
+    return None
+
+
+def remove_from_fence(args, key, value):
+    """Take one id out of the fence's list `key` — the shared body of the three removers.
+
+    An id the list does not hold (or a fence with no such key) is a no-op: exit 0, nothing
+    written, a line saying so. Otherwise ONLY that key's value is rewritten, in place, as a
+    one-line compact list (`FENCE_LIST_VALUE_RE`) — not the whole fence through
+    `render_fence`, as the pins do. On a fence in `manifest.py`'s own shape the two are the
+    same bytes, so pin-then-unpin is the identity; on a HAND-WRITTEN fence — and every
+    `exclude_subagents` list is hand-written, there being no writer — re-rendering would
+    move every other key's spacing and order, while this moves nothing but the one value.
+    The rewritten fence is parsed back and must equal the old one less the id, or nothing
+    is written."""
+    path = manifest_path(args)
+    text = path.read_text()
+    match, obj = last_fence(text)
+    current = obj.get(key)
+    if not isinstance(current, list) or value not in current:
+        print(f"{key} does not hold {value}")
+        return 0
+    remaining = [item for item in current if item != value]
+    fence_text = match.group(1)
+    pattern = re.compile(r'("' + re.escape(key) + r'"\s*:\s*)' + FENCE_LIST_VALUE_RE)
+    new_fence, n = pattern.subn(
+        lambda m: m.group(1) + json.dumps(remaining, separators=FENCE_VALUE_SEPARATORS),
+        fence_text, count=1,
+    )
+    try:
+        reparsed = json.loads(new_fence) if n == 1 else None
+    except json.JSONDecodeError:
+        reparsed = None
+    if reparsed != {**obj, key: remaining}:
+        print(
+            f"refusing: could not rewrite `{key}` in place without moving anything else "
+            "in the fence; nothing was written",
+            file=sys.stderr,
+        )
+        return 1
+    path.write_text(text[: match.start(1)] + new_fence + text[match.end(1):])
+    print(f"{key} = {json.dumps(remaining)}")
+    print_frozen_note(args)
+    return 0
+
+
+def cmd_unpin_session(args):
+    """Take one session id out of `sessions[]` — `pin-session`'s inverse. An absent id is a
+    no-op; an empty one is refused (exit 1), as the pin refuses it."""
+    session_id = args.session_id.strip()
+    if not session_id:
+        print("refusing: an empty session id removes nothing", file=sys.stderr)
+        return 1
+    return remove_from_fence(args, SESSIONS_KEY, session_id)
+
+
+def cmd_unpin_subagent(args):
+    """Take one agent id out of `subagents[]` — `pin-subagent`'s inverse, with its id
+    validation (`agent_id_refusal`)."""
+    agent_id = args.agent_id.strip()
+    refusal = agent_id_refusal(agent_id, "removes")
+    if refusal:
+        print(refusal, file=sys.stderr)
+        return 1
+    return remove_from_fence(args, SUBAGENTS_KEY, agent_id)
+
+
+def cmd_unexclude_subagent(args):
+    """Take one agent id out of `exclude_subagents[]`. The list has no writer — it was only
+    ever hand-written, and the yield rule (`capture_planning.py`: a parent-selected
+    delegate another feature pins is left to it) makes new entries unnecessary — so this
+    remover is how the legacy entries come out without a hand edit of the fence. Same id
+    validation as `pin-subagent`."""
+    agent_id = args.agent_id.strip()
+    refusal = agent_id_refusal(agent_id, "removes")
+    if refusal:
+        print(refusal, file=sys.stderr)
+        return 1
+    return remove_from_fence(args, EXCLUDE_SUBAGENTS_KEY, agent_id)
 
 
 def cmd_pin_session(args):
@@ -476,23 +606,9 @@ def cmd_pin_subagent(args):
     this machine), and this module reads no other manifest. See
     self/features/manifest-pin-subagent/NOTES.md."""
     agent_id = args.agent_id.strip()
-    if not agent_id:
-        print("refusing: an empty agent id pins nothing", file=sys.stderr)
-        return 1
-    if agent_id.startswith(AGENT_FILE_PREFIX):
-        print(
-            f"refusing: {agent_id!r} is a transcript name — pin the id without the "
-            f"`{AGENT_FILE_PREFIX}` prefix: {agent_id[len(AGENT_FILE_PREFIX):]}",
-            file=sys.stderr,
-        )
-        return 1
-    if not AGENT_ID_RE.match(agent_id):
-        print(
-            f"refusing: {agent_id!r} is not an agent id — 17 lowercase hex characters, "
-            "as `capture_planning.py --list-subagents` prints them (a session id belongs "
-            "in `sessions`: pin-session)",
-            file=sys.stderr,
-        )
+    refusal = agent_id_refusal(agent_id, "pins")
+    if refusal:
+        print(refusal, file=sys.stderr)
         return 1
     path = manifest_path(args)
     text = path.read_text()
@@ -612,6 +728,28 @@ def main():
     )
     p_pin_sub.add_argument("agent_id", metavar="AGENT_ID")
     p_pin_sub.set_defaults(func=cmd_pin_subagent)
+
+    p_unpin = sub.add_parser(
+        "unpin-session",
+        help="remove a session id from the fence's sessions[] — pin-session's inverse",
+    )
+    p_unpin.add_argument("session_id", metavar="ID")
+    p_unpin.set_defaults(func=cmd_unpin_session)
+
+    p_unpin_sub = sub.add_parser(
+        "unpin-subagent",
+        help="remove an agent id from the fence's subagents[] — pin-subagent's inverse",
+    )
+    p_unpin_sub.add_argument("agent_id", metavar="AGENT_ID")
+    p_unpin_sub.set_defaults(func=cmd_unpin_subagent)
+
+    p_unexclude = sub.add_parser(
+        "unexclude-subagent",
+        help="remove an agent id from the fence's exclude_subagents[] — the hand-written "
+        "legacy list, which a pinned delegate's yield has made unnecessary",
+    )
+    p_unexclude.add_argument("agent_id", metavar="AGENT_ID")
+    p_unexclude.set_defaults(func=cmd_unexclude_subagent)
 
     p_claimed = sub.add_parser("claimed", help="what planning.json claims, and the total")
     p_claimed.set_defaults(func=cmd_claimed)

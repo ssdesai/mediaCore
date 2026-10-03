@@ -102,10 +102,22 @@ def session_root(self_mode):
     the worktree left every session filed under the primary out of view.
     """
     start = artifact_root(self_mode)
-    for candidate in (start, *start.parents):
+    checkout = checkout_of(start)
+    if checkout is None:
+        return start
+    return worktree_primary(checkout) or checkout
+
+
+def checkout_of(path):
+    """The checkout `path` sits in: its nearest ancestor (inclusive) holding `.git`, or
+    None when there is none. A linked worktree is its own checkout here — `.git` is a
+    file there, hence `.exists()` — so `session_root` maps it home and
+    `routing.feature_dir_in_worktree` uses it as it stands."""
+    path = Path(path)
+    for candidate in (path, *path.parents):
         if (candidate / GIT_ENTRY).exists():
-            return worktree_primary(candidate) or candidate
-    return start
+            return candidate
+    return None
 
 
 def worktree_primary(checkout):

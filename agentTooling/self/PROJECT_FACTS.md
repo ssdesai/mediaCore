@@ -92,7 +92,9 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
   (writes any missing `report.json` first, then the trend table),
   `python3 analysis/manifest.py [--self] <slug> set-plans <stem>...`, and the pins —
   `… pin-session <id>` and `… pin-subagent <agent-id>`, the only writers of the fence's
-  `sessions` and `subagents`.
+  `sessions` and `subagents`, and their inverses `… unpin-session <id>`,
+  `… unpin-subagent <agent-id>` and `… unexclude-subagent <agent-id>` (the legacy
+  `exclude_subagents` has no writer).
 - `--self` is always the **first** argument, before any slug.
 
 ## Tests

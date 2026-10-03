@@ -172,3 +172,27 @@ agentTooling's own, for the harness rather than for a product.
   case: humanNetworkMap `access-views-write` ($29.03 partial, four sonnet-5-5 helpers).
   Assertion: in each consuming repo, no `planning.json` carries a "no rate for model
   'claude-sonnet-5-5'" warning. Raised by `live-model-rates`.
+
+- **Cross-repo pin over a parent claim.** A delegate yields to the feature that pins it
+  when the parent-selecting capture can see the pin — a manifest in its own corpus copies,
+  or a `"pinned"` ledger claim. Within a repo that always holds. Across repos it holds only
+  if the pinning feature captured FIRST: when the parent-selecting feature (repo A)
+  captured before the pin (repo B) existed, B's capture is refused by `check_claims`, writes
+  no ledger claim, and A's advised recapture cannot see B's pin, so it claims the delegate
+  again. The only way out today is a hand-written `exclude_subagents` entry in A, which no
+  command writes. The refusal says this rather than hiding it. Closing it: a pin-intent
+  record the refused capture may write to the ledger without touching A's claim (a separate
+  section, read by `other_feature_pins`). Assertion: repo B pins a delegate repo A already
+  claimed by parent; B's capture is refused; A's recapture then yields it; B's capture
+  succeeds. Raised by `unpin-and-yield`.
+
+- **The three humanNetworkMap manifests still carry the wave router's pin and hand-written
+  `exclude_subagents`.** `access-page`, `article-render-sandbox` and
+  `article-render-javascript` pin router `756102ea-…` (about $4.33) and exclude each other's
+  delegates. Once this agentTooling is pulled there (`pull-agenttooling-pr<N>`), on each
+  feature's own branch: `manifest.py <slug> unpin-session 756102ea-…`, `unexclude-subagent`
+  per id, then `feature-capture.sh <slug>` in its worktree. Not done from here: that work
+  is in that repo, and another session is active on those branches. Assertion: none of the
+  three manifests pins `756102ea-…` or carries an `exclude_subagents` entry, and each
+  `planning.json`'s `yielded_agent_ids` names the delegates the others pin. Raised by
+  `unpin-and-yield`.

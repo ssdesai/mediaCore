@@ -51,6 +51,16 @@ set -uo pipefail
 #      --list-subagents --unclaimed stops listing it — with the listing BEFORE the pin as
 #      the guard, since a delegate the list never held would satisfy the last check on
 #      its own.
+#   Y. a parent-selected delegate another feature PINS yields (self/features/unpin-and-yield):
+#      Y1 pinned by a sibling manifest under `.worktrees/<other>/` — recorded in
+#      `yielded_agent_ids` as `{agent_id, to}`, out of `subagents[]` and the total, one
+#      output line naming the pinner, and the recapture that newly yields it is not refused
+#      as "lost"; Y2 the same with the pin only in the ledger (another repo, `pinned`);
+#      Y3 a ledger claim by another feature with `selected_by: "parent"` does not yield;
+#      Y4 this feature's own pin still wins; Y5 `exclude_subagents` still excludes and
+#      lands in `excluded_agent_ids`; Y6 the pinning feature's capture then succeeds;
+#      Y7 the pin-over-parent refusal names the other feature and its recapture, and that
+#      recapture yields.
 #
 # All RED until the subagent walk landed in analysis/capture_planning.py; 19c-19e were RED
 # until the ledger was written from `subagents[]` rather than from the priced rows.
@@ -553,6 +563,134 @@ check "19e. and --unclaimed no longer lists it, by the same ledger lookup as any
   "! grep -q '$AGENT_ZERO' '$TMP/out19-after.txt'"
 check "19f. and the capture's own result line counts it among the subagents" \
   "grep -q '1 subagents' '$TMP/out19.txt'"
+
+# ── Y. a parent-selected delegate another feature PINS yields ─────────────────
+# self/features/unpin-and-yield, spec §2. A session a feature selects used to claim every
+# delegate it spawned in the window, even one another feature pins, and the ledger then
+# refused the pinning feature's capture as a double claim; `exclude_subagents`, written by
+# hand in the selecting feature, was the only way out. Now the parent arm checks first:
+# pinned by another feature's manifest (this corpus, in the primary or any
+# `.worktrees/*/` checkout) or by a `"pinned"` ledger claim of another (repo, slug), the
+# delegate is skipped and recorded in `yielded_agent_ids`. This feature's own pin and
+# `exclude_subagents` come first and are unchanged. RED until the yield arm landed.
+AGENT_Y1="b1111111111111111"   # pinned by a sibling manifest in .worktrees/sib
+AGENT_Y2="b2222222222222222"   # pinned only in the ledger, by a feature of another repo
+AGENT_YP="b3333333333333333"   # claimed in the ledger by another feature as "parent"
+AGENT_Y4="b4444444444444444"   # pinned by this feature AND by the sibling
+AGENT_Y5="b5555555555555555"   # excluded by this feature, pinned by the sibling
+AGENT_Y7="b7777777777777777"   # parent-claimed here first, pinned by `pinner` after
+SIB_README="$AT/.worktrees/sib/self/features/sib/README.md"
+PINNER_DIR="$AT/self/features/pinner"
+FAR_REPO="git@elsewhere:far.git"
+rm -rf "$PROJECTS"/* "$PLANNING" "$LEDGER"
+write_parent "$SESSION_P" "$BRANCH" "2026-07-01T10:00:00.000Z" 5000
+for a in "$AGENT_Y1" "$AGENT_Y2" "$AGENT_Y4" "$AGENT_Y5"; do
+  write_subagent "$SESSION_P" "$a" "$BRANCH" "2026-07-02T10:00:00.000Z" 8000 "Delegate $a"
+done
+write_manifest "[\"$AGENT_Y4\"]" "[]" "[\"$AGENT_Y5\"]"
+
+# other_manifest PATH SLUG BRANCH PINS_JSON — another feature's fence.
+other_manifest() {
+  mkdir -p "$(dirname "$1")"
+  printf '# %s\n\n```json\n{"slug": "%s", "branches": ["%s"], "session_window": {"from": "%s", "to": "%s"}, "exclude_sessions": [], "exclude_subagents": [], "sessions": [], "subagents": %s}\n```\n' \
+    "$2" "$2" "$3" "$WINDOW_FROM" "$WINDOW_TO" "$4" > "$1"
+}
+# ledger_set AGENT REPO REPO_NAME SLUG SELECTED_BY — one subagents-section claim, written
+# the way another capture would have (`record_claims`); `-` deletes the entry.
+ledger_set() {
+  python3 - "$LEDGER" "$@" <<'PY'
+import json, os, sys
+path, agent, repo, repo_name, slug, selected_by = sys.argv[1:7]
+d = json.load(open(path)) if os.path.exists(path) else {"subagents": {}, "sessions": {}}
+if repo == "-":
+    d["subagents"].pop(agent, None)
+else:
+    d["subagents"][agent] = {"repo": repo, "repo_name": repo_name, "slug": slug,
+                             "selected_by": selected_by, "cost_usd": 1.0,
+                             "claimed_at": "2026-07-01T00:00:00+00:00"}
+json.dump(d, open(path, "w"))
+PY
+}
+capture_pinner() { HOME="$FAKE_HOME" python3 "$AT/analysis/capture_planning.py" --self pinner --recapture 2>&1; }
+pinner_field() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2]))" "$PINNER_DIR/planning.json" "$1"; }
+
+# Y0 — the baseline, before anyone else pins anything: the parent route claims Y1 and Y2.
+capture > "$TMP/outY0.txt"
+base_total="$(total_of)"
+y12_cost="$(field "sum(p['cost_usd'] for p in d['priced'] if p['agent_id'] in ('$AGENT_Y1', '$AGENT_Y2'))")"
+check "Y0. baseline: the parent route claims Y1 and Y2, the own pin Y4, and Y5 stays excluded" \
+  "[ \"\$(field \"[(s['agent_id'], s['selected_by']) for s in d['subagents']]\")\" = \"[('$AGENT_Y1', 'parent'), ('$AGENT_Y2', 'parent'), ('$AGENT_Y4', 'pinned')]\" ]"
+check "Y0b. yielded_agent_ids is present, and empty, when nothing yields" \
+  "[ \"\$(field \"d['yielded_agent_ids']\")\" = '[]' ]"
+
+# Y1/Y2 — a sibling worktree's manifest pins Y1 (and Y4, Y5); another repo's ledger pin
+# holds Y2. The recapture yields both, and the frozen guard does not call them lost.
+other_manifest "$SIB_README" sib sib-branch "[\"$AGENT_Y1\", \"$AGENT_Y4\", \"$AGENT_Y5\"]"
+ledger_set "$AGENT_Y2" "$FAR_REPO" farRepo far-feature pinned
+capture > "$TMP/outY1.txt"; rcY1=$?
+check "Y1. the recapture that newly yields two priced delegates is not refused as losing them (rc $rcY1)" \
+  "[ $rcY1 -eq 0 ] && ! grep -q 'REFUSING' '$TMP/outY1.txt'"
+check "Y1b. yielded_agent_ids names each, sorted, with the feature that pins it (manifest, then ledger)" \
+  "[ \"\$(field \"[(y['agent_id'], y['to']) for y in d['yielded_agent_ids']]\")\" = \"[('$AGENT_Y1', '$REPO_NAME/sib'), ('$AGENT_Y2', 'farRepo/far-feature')]\" ]"
+check "Y1c. neither is in subagents[] any more" \
+  "[ \"\$(field \"[s['agent_id'] for s in d['subagents']]\")\" = \"['$AGENT_Y4']\" ]"
+check "Y1d. the feature's cost drops by exactly what the two cost" \
+  "near \"\$(python3 -c 'print($base_total - $y12_cost)')\" '$(total_of)'"
+check "Y1e. one output line per yielded id names the pinning feature" \
+  "grep '$AGENT_Y1' '$TMP/outY1.txt' | grep -q 'yield.*$REPO_NAME/sib' && grep '$AGENT_Y2' '$TMP/outY1.txt' | grep -q 'yield.*farRepo/far-feature'"
+check "Y1f. and the ledger no longer holds Y1 for this feature — it is free for the pinner" \
+  "[ \"$(claim "$AGENT_Y1")\" = None ]"
+check "Y2. the other repo's ledger pin is left exactly as it was" \
+  "[ \"$(claim "$AGENT_Y2")\" = \"('farRepo', 'far-feature', 'pinned')\" ]"
+check "Y4. this feature's own pin still wins: Y4 is 'pinned', not yielded, though the sibling pins it too" \
+  "[ \"\$(field \"[(s['agent_id'], s['selected_by']) for s in d['subagents'] if s['agent_id']=='$AGENT_Y4'] + [y for y in d['yielded_agent_ids'] if y['agent_id']=='$AGENT_Y4']\")\" = \"[('$AGENT_Y4', 'pinned')]\" ]"
+check "Y5. exclude_subagents still excludes, recorded in excluded_agent_ids and not yielded" \
+  "[ \"\$(field \"d['excluded_agent_ids']\")\" = \"['$AGENT_Y5']\" ] && [ \"\$(field \"'$AGENT_Y5' in [y['agent_id'] for y in d['yielded_agent_ids']]\")\" = False ]"
+
+# Y3 — only a pin outranks: another feature's PARENT claim in the ledger does not yield,
+# and the ordinary double-claim refusal stands.
+write_subagent "$SESSION_P" "$AGENT_YP" "$BRANCH" "2026-07-02T11:00:00.000Z" 8000 "Delegate claimed elsewhere"
+ledger_set "$AGENT_YP" "$FAR_REPO" farRepo par-feature parent
+cp "$PLANNING" "$TMP/planningY3.before"
+capture > "$TMP/outY3.txt"; rcY3=$?
+check "Y3. a ledger claim with selected_by parent does not yield — the double claim is refused (rc $rcY3)" \
+  "[ $rcY3 -ne 0 ] && grep -q '$AGENT_YP  claimed by farRepo/par-feature' '$TMP/outY3.txt' && cmp -s '$TMP/planningY3.before' '$PLANNING'"
+check "Y3b. and nothing says it yielded" "! grep '$AGENT_YP' '$TMP/outY3.txt' | grep -q 'yield'"
+ledger_set "$AGENT_YP" - - - -
+rm -f "$PROJECTS/$SESSION_P/subagents/agent-$AGENT_YP.jsonl"
+
+# Y6 — the pinning feature's own capture now succeeds: `pinner`, in this corpus, pins Y1.
+other_manifest "$SIB_README" sib sib-branch "[\"$AGENT_Y4\", \"$AGENT_Y5\"]"
+other_manifest "$PINNER_DIR/README.md" pinner pinner-branch "[\"$AGENT_Y1\"]"
+capture > "$TMP/outY6a.txt"
+check "Y6. a pin in this corpus's own primary checkout yields too" \
+  "[ \"\$(field \"[(y['agent_id'], y['to']) for y in d['yielded_agent_ids']]\")\" = \"[('$AGENT_Y1', '$REPO_NAME/pinner'), ('$AGENT_Y2', 'farRepo/far-feature')]\" ]"
+capture_pinner > "$TMP/outY6.txt"; rcY6=$?
+check "Y6b. the pinning feature's capture then succeeds, with no double-claim refusal (rc $rcY6)" \
+  "[ $rcY6 -eq 0 ] && ! grep -q 'already claimed' '$TMP/outY6.txt'"
+check "Y6c. claiming the delegate as pinned, in its record and in the ledger" \
+  "[ \"\$(pinner_field \"[(s['agent_id'], s['selected_by']) for s in d['subagents']]\")\" = \"[('$AGENT_Y1', 'pinned')]\" ] && [ \"$(claim "$AGENT_Y1")\" = \"('$REPO_NAME', 'pinner', 'pinned')\" ]"
+
+# Y7 — the ordering hole: this feature claims Y7 by parent FIRST, and only then does
+# `pinner` pin it. Its capture is refused (no record rewritten behind its owner's back),
+# but the refusal names the feature holding the parent claim and the recapture that will
+# now yield it — and that recapture does.
+write_subagent "$SESSION_P" "$AGENT_Y7" "$BRANCH" "2026-07-02T12:00:00.000Z" 8000 "Delegate pinned late"
+capture > /dev/null
+check "Y7 (setup). this feature claims Y7 by parent while nobody pins it" \
+  "[ \"$(claim "$AGENT_Y7")\" = \"('$REPO_NAME', '$SLUG', 'parent')\" ]"
+other_manifest "$PINNER_DIR/README.md" pinner pinner-branch "[\"$AGENT_Y1\", \"$AGENT_Y7\"]"
+capture_pinner > "$TMP/outY7.txt"; rcY7=$?
+check "Y7. the pin over a parent claim is still refused (rc $rcY7)" \
+  "[ $rcY7 -ne 0 ] && grep -q '$AGENT_Y7  claimed by $REPO_NAME/$SLUG' '$TMP/outY7.txt'"
+check "Y7b. the refusal names the other feature's recapture, which will now yield the delegate" \
+  "grep -q 'feature-capture.sh --self $SLUG --recapture' '$TMP/outY7.txt' && grep -q 'feature-capture.sh --self $SLUG' '$TMP/outY7.txt' && grep -qi 'yield' '$TMP/outY7.txt'"
+capture > "$TMP/outY7c.txt"
+check "Y7c. and it does: the parent feature's recapture yields Y7 to pinner" \
+  "[ \"\$(field \"[y['to'] for y in d['yielded_agent_ids'] if y['agent_id']=='$AGENT_Y7']\")\" = \"['$REPO_NAME/pinner']\" ]"
+capture_pinner > "$TMP/outY7d.txt"; rcY7d=$?
+check "Y7d. after which the pinning feature's capture goes through (rc $rcY7d)" \
+  "[ $rcY7d -eq 0 ] && [ \"$(claim "$AGENT_Y7")\" = \"('$REPO_NAME', 'pinner', 'pinned')\" ]"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "subagent-capture: all ok"; else echo "subagent-capture: $fails FAIL"; exit 1; fi

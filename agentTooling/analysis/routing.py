@@ -68,23 +68,28 @@ Usage: python3 agentTooling/analysis/routing.py [--self] --session ID --slug SLU
        python3 agentTooling/analysis/routing.py [--self] --migrate
        python3 agentTooling/analysis/routing.py [--self] --unpinned-builder SLUG
 
-**A router that builds its feature must be pinned.** `--unpinned-builder` prints the
-session id of SLUG's router when its transcript shows it at work in SLUG's worktree and no
-manifest pins it, and `feature-close.sh` refuses on that before the PR, naming
-`manifest.py pin-session` (self/features/router-built-pin).
+**A router that builds its feature must be pinned.** `--unpinned-builder` prints
+`<session id>\\t<evidence>` for SLUG's router when its transcript shows it at work in
+SLUG's worktree and no manifest pins it, and `feature-close.sh` refuses on that before the
+PR, naming `manifest.py pin-session` and the evidence (self/features/router-built-pin).
+Building is work in the worktree other than the router's own writes to the feature's
+`review/` and manifest `README.md` there (self/features/router-brief-writes); the
+evidence is the first transcript line that made it a builder, `cwd <path>` or
+`<Tool> <path>`.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import posixpath
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from pricing import compute_cost
-from roots import add_self_flag, features_root
+from roots import add_self_flag, checkout_of, features_root
 from transcript import add_usage, iter_billable_messages, to_utc
 
 # Where a record lives: inside the feature directory it links, one copy per feature, so
@@ -190,6 +195,18 @@ WRITING_TOOL_PATH_KEYS = {
     "NotebookEdit": "notebook_path",
 }
 PATH_SEPARATOR = "/"
+# ...except the router's own writes (self/features/router-brief-writes). LIFECYCLE steps 3
+# and 5 give the router writes inside the worktree — the review brief, a re-review brief
+# after an escalated round, the manifest's prose — so a write at or under the feature's
+# `review/` there, or to its manifest `README.md` (MANIFEST_NAME, below), is not building.
+# Nothing else is: `auto/`, `verify/`, NOTES.md and CHECKPOINT.md are build work.
+REVIEW_DIR_NAME = "review"
+# What `--unpinned-builder` prints for a builder, one line: the session id, a tab, and the
+# first transcript line that made it one — `cwd <path>` or `<Tool> <path>`.
+# feature-close.sh splits it on the tab and names both in its refusal.
+BUILDER_FIELD_SEPARATOR = "\t"
+CWD_EVIDENCE = "cwd {path}"
+TOOL_EVIDENCE = "{tool} {path}"
 
 WARN_PREFIX = "WARN:"
 USAGE_RC = 2
@@ -603,13 +620,47 @@ def is_at_or_under(path, directory):
     return path == directory or path.startswith(directory + PATH_SEPARATOR)
 
 
-def worked_in(lines, directory):
-    """Whether the transcript shows its session at work in `directory`: a line whose
-    `cwd` is at or under it, or an Edit/Write/NotebookEdit aimed at a path under it."""
+def feature_dir_in_worktree(features_dir, worktree, slug):
+    """`<worktree>/<features root relative to its checkout>/<slug>` — the feature's
+    directory as the worktree holds it, or None when `features_dir` sits in no checkout.
+
+    Derived from where `features_dir` sits in its own checkout (`roots.checkout_of`), not
+    from a corpus layout: `plans/features` in a consuming repo, `self/features` in this
+    repo under --self, `agentTooling/self/features` in a vendored copy under --self. The
+    copy that runs may be the primary's or the worktree's own; both hold the corpus at the
+    same place relative to their checkout, which is what makes the answer the same."""
+    checkout = checkout_of(features_dir)
+    if checkout is None:
+        return None
+    relative = Path(features_dir).relative_to(checkout).as_posix()
+    return PATH_SEPARATOR.join(part for part in (worktree, relative, slug) if part != ".")
+
+
+def is_router_write(path, feature_dir):
+    """Whether a write to `path` is the router's own (LIFECYCLE steps 3 and 5) rather than
+    building: at or under `<feature_dir>/review/`, or exactly `<feature_dir>/README.md`.
+    By whole path component, so `review-old/` and `README.md.bak` are building, and on the
+    normalized path, so `review/../../src/x.py` is building too. With no feature directory
+    to compare against nothing is the router's, and every write counts."""
+    if feature_dir is None:
+        return False
+    path = posixpath.normpath(path)
+    review = feature_dir + PATH_SEPARATOR + REVIEW_DIR_NAME
+    manifest = feature_dir + PATH_SEPARATOR + MANIFEST_NAME
+    return is_at_or_under(path, review) or path == manifest
+
+
+def worked_in(lines, directory, feature_dir=None):
+    """The evidence that the transcript's session was at work in `directory`, or None.
+
+    Work is a line whose `cwd` is at or under `directory` — evidence `cwd <path>` — or an
+    Edit/Write/NotebookEdit aimed at a path under it that is not the router's own write to
+    `feature_dir` (`is_router_write`) — evidence `<Tool> <path>`. The first such line in
+    file order is the one returned: the line that made the session a builder."""
     for line in lines:
         cwd = line.get(CWD_KEY)
         if isinstance(cwd, str) and is_at_or_under(cwd, directory):
-            return True
+            return CWD_EVIDENCE.format(path=cwd)
         if line.get("type") != ASSISTANT_TYPE:
             continue
         content = (line.get("message") or {}).get("content")
@@ -618,23 +669,30 @@ def worked_in(lines, directory):
         for block in content:
             if not isinstance(block, dict) or block.get("type") != TOOL_USE_TYPE:
                 continue
-            key = WRITING_TOOL_PATH_KEYS.get(block.get("name"))
+            tool = block.get("name")
+            key = WRITING_TOOL_PATH_KEYS.get(tool)
             path = (block.get("input") or {}).get(key) if key else None
-            if isinstance(path, str) and is_at_or_under(path, directory):
-                return True
-    return False
+            if not isinstance(path, str) or not is_at_or_under(path, directory):
+                continue
+            if is_router_write(path, feature_dir):
+                continue
+            return TOOL_EVIDENCE.format(tool=tool, path=path)
+    return None
 
 
 def unpinned_builder(features_dir, slug):
-    """The session id of `slug`'s router when that router BUILT the feature unpinned,
-    else None — what `feature-close.sh` refuses on (self/features/router-built-pin).
+    """`(session id, evidence)` for `slug`'s router when that router BUILT the feature
+    unpinned, else None — what `feature-close.sh` refuses on
+    (self/features/router-built-pin).
 
     Three conditions, all read from what is already on disk: the feature's own routing
     record names a session (`routers_of`); no manifest in the corpus pins it in `sessions`
     (`pinned_sessions`, the predicate `split_pinned` uses, so a pin that stops the Routing
     table counting the router also satisfies this); and its transcript shows it at work in
-    `<launched_in>/.worktrees/<slug>` (`worked_in`). A transcript that cannot be found
-    judges nothing and names nobody."""
+    `<launched_in>/.worktrees/<slug>` (`worked_in`) other than its own writes to the
+    feature's `review/` and manifest there (`feature_dir_in_worktree`,
+    self/features/router-brief-writes). The evidence is the first transcript line that
+    made it a builder. A transcript that cannot be found judges nothing and names nobody."""
     pins = pinned_sessions(features_dir)
     for record in routers_of(features_dir, slug):
         session_id = record.get("session_id")
@@ -644,8 +702,13 @@ def unpinned_builder(features_dir, slug):
         transcript = find_transcript(session_id)
         if transcript is None:
             continue
-        if worked_in(load_lines(transcript), feature_worktree_path(primary, slug)):
-            return session_id
+        worktree = feature_worktree_path(primary, slug)
+        evidence = worked_in(
+            load_lines(transcript), worktree,
+            feature_dir_in_worktree(features_dir, worktree, slug),
+        )
+        if evidence is not None:
+            return session_id, evidence
     return None
 
 
@@ -786,9 +849,10 @@ def main():
                              "directory of each feature it names and delete it, printing "
                              "each move — what sync-plans.sh runs after a pull")
     parser.add_argument("--unpinned-builder", metavar="SLUG", dest="unpinned_builder",
-                        help="print SLUG's router's session id when that router worked "
-                             "in SLUG's worktree and no manifest pins it, and nothing "
-                             "otherwise — what feature-close.sh refuses on")
+                        help="print SLUG's router's session id, a tab and the evidence "
+                             "when that router worked in SLUG's worktree beyond its own "
+                             "review-brief and manifest writes and no manifest pins it, "
+                             "and nothing otherwise — what feature-close.sh refuses on")
     args = parser.parse_args()
 
     if args.unpinned_builder is not None:
@@ -797,7 +861,7 @@ def main():
                          "or --migrate")
         builder = unpinned_builder(features_root(args.self_mode), args.unpinned_builder)
         if builder:
-            print(builder)
+            print(BUILDER_FIELD_SEPARATOR.join(builder))
         return 0
     if args.migrate:
         if args.session or args.slug or args.refresh_for:

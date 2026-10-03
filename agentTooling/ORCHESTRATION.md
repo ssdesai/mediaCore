@@ -46,9 +46,13 @@ Two, and the number of features decides which.
   as it spawns it. Never peer coordinators opened with `--open`, one per feature: twenty
   standing sessions each idling on a large context is the token leak below, twenty times
   over. The coordinator is the router that started them, so its own spend is routing
-  overhead and it is never pinned; it runs each feature's review and close by the
-  worktree copy's absolute path rather than `cd`-ing in, since a router whose transcript
-  shows it working in a worktree is refused at that feature's close as its builder.
+  overhead and it is never pinned. It writes each feature's review briefs and manifest
+  prose itself, by the worktree path, without being refused — a write under the
+  feature's `review/` or to its manifest `README.md` is not building (`LIFECYCLE.md` →
+  steps 3, 5 and 6). It still runs each feature's review and close by the worktree
+  copy's absolute path rather than `cd`-ing in, since a router whose transcript shows it
+  building in a worktree — a `cwd` there, or any other write — is refused at that
+  feature's close as its builder, and the refusal names the line that tripped it.
   A propagation round is this shape too: one `pull-agenttooling-pr<N>` hand feature per
   consuming repo, a delegate per pull, each pinned in its own repo (`LIFECYCLE.md` →
   "Propagate").

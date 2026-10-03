@@ -1850,6 +1850,8 @@ check "RBa. the close refuses a feature its unpinned router built (got $rcrb)" \
   '[[ $rcrb -ne 0 ]] && grep -q "$RB_ROUTER" <<<"$outrb"'
 check "RBb. ... naming the remedy, pin-session with that id" \
   'grep -q "pin-session $RB_ROUTER" <<<"$outrb"'
+check "RBb2. ... and the evidence: the transcript line that made it a builder, its cwd in the worktree" \
+  'grep -qF "cwd $RBWT" <<<"$outrb"'
 check "RBc. ... before any PR call, and with nothing written or committed" \
   '[[ ! -s "$GH_LOG" && "$(git -C "$RBWT" rev-parse HEAD)" == "$rb_head_before" && "$(git -C "$RBWT" status --porcelain --untracked-files=all)" == "$rb_status_before" ]]'
 outpin="$(HOME="$FAKE_HOME" python3 -B "$RBWT/analysis/manifest.py" --self "$RB_SLUG" pin-session "$RB_ROUTER" 2>&1)"; rcpin=$?
