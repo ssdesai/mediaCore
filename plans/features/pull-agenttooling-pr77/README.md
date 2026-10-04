@@ -24,7 +24,7 @@ previous pull (2a2a4a6, #75) also carries #76 ("router-brief-writes"). The vendo
   "plans": ["01-review-opus"],
   "branches": ["pull-agenttooling-pr77"],
   "base": "main",
-  "session_window": {"from": "2026-10-03T23:58:00Z", "to": null},
+  "session_window": {"from": "2026-10-03T23:58:00Z", "to": "2026-10-04T00:02:07Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],

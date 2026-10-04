@@ -1,0 +1,78 @@
+{
+  "slug": "pull-agenttooling-pr77",
+  "captured_at": "2026-10-04T00:02:23.187944+00:00",
+  "manifest_branches": [
+    "pull-agenttooling-pr77"
+  ],
+  "manifest_subagents": [
+    "afc4d522177bc3613"
+  ],
+  "sessions": [],
+  "subagents": [
+    {
+      "agent_id": "afc4d522177bc3613",
+      "parent_session_id": "52666925-7fa0-4150-8067-b48555779c48",
+      "date": "2026-10-03",
+      "started_at": "2026-10-03T23:59:20.229000+00:00",
+      "ended_at": "2026-10-04T00:00:20.191000+00:00",
+      "duration_s": 59,
+      "selected_by": "pinned",
+      "cross_repo": true
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "0d54cccd-db52-4ab8-bdbc-e0acdb86306a",
+    "167bd438-0c83-413b-b065-f00077285ada",
+    "27f92b6b-6bfd-466f-98da-35f300e22c7e",
+    "2b2b10af-ab69-4dc8-98f1-f2b15d9ff519",
+    "9aa6101d-0608-40c5-baa9-dfb65f2d71b5",
+    "b99d233d-e4a1-440a-a885-fc3b4a5fd8a2",
+    "beb918c4-7c40-470c-a75e-60ab43f11d71"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "52666925-7fa0-4150-8067-b48555779c48",
+      "agent_id": "afc4d522177bc3613",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-03",
+      "duration_s": 59,
+      "tokens": {
+        "input": 18,
+        "output": 127,
+        "cache_read": 393849,
+        "cache_creation_5m": 61494,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 0.23381079999999999,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.2,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 0.0,
+    "sidechain": 0.23381079999999999,
+    "subagents": 0.23381079999999999,
+    "total": 0.23381079999999999,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 0,
+    "subagents": 59,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-02",
+  "warnings": []
+}
