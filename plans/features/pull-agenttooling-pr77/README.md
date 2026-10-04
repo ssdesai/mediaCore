@@ -1,6 +1,7 @@
 # Pull agentTooling PR 77
 
-Propagate agentTooling PR #77 ("unpin-and-yield") into mediaCore. The vendored
+Propagate agentTooling PR #77 ("unpin-and-yield") into mediaCore; the range from the
+previous pull (2a2a4a6, #75) also carries #76 ("router-brief-writes"). The vendored
 `agentTooling/` prefix is synced to upstream split sha `509440eeb9770c5f000428eadfca0ce207f8f421`
 (509440e), and `plans/` is re-synced from it (`plans/features/TEMPLATE.md`).
 
