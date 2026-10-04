@@ -151,6 +151,7 @@ shell_scripts=(
   self/tests/session-claims.sh
   self/tests/manifest-window.sh
   self/tests/manifest-pin-subagent.sh
+  self/tests/manifest-unpin.sh
   self/tests/direct-timing.sh
   self/tests/stale-failed-sidecars.sh
   self/tests/stream-capture.sh
@@ -220,6 +221,7 @@ record "session share self-test" bash self/tests/session-share.sh
 record "session claims self-test" bash self/tests/session-claims.sh
 record "manifest window self-test" bash self/tests/manifest-window.sh
 record "manifest pin-subagent self-test" bash self/tests/manifest-pin-subagent.sh
+record "manifest unpin self-test" bash self/tests/manifest-unpin.sh
 record "direct timing self-test" bash self/tests/direct-timing.sh
 record "stale failed sidecars self-test" bash self/tests/stale-failed-sidecars.sh
 record "stream capture self-test" bash self/tests/stream-capture.sh

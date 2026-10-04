@@ -1,54 +1,49 @@
-# <Feature title>
+# Router brief writes are not building
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+The close's unpinned-builder check (`analysis/routing.py`, `worked_in`) counted every
+write under a feature's worktree as building it, but LIFECYCLE steps 3 and 5 give the
+router writes of its own there: the review brief, the manifest's prose, and a re-review
+brief after an escalated round. A wave coordinator following ORCHESTRATION was refused as
+its features' builder every time, and pinning itself to get past the refusal claimed its
+delegates for every feature in the wave. This feature redefines building as work in the
+worktree other than writes to the feature's `review/` and its manifest `README.md`,
+makes the refusal name the transcript line that tripped it, and brings the docs into line.
+Built direct, by one implementer.
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Reviews the carve-out, the evidence in the refusal, the R12 cases and the docs against the definition |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- **`manifest.py exclude-subagent`.** Excluding another feature's delegates was only
+  needed because the wave router had been pinned to get past the refusal; an unpinned
+  router's delegates are claimed only by their own `pin-subagent`. The user's decision,
+  2026-10-02.
+- **`feature-start.sh --review-brief <file>`.** It covers the round-1 brief only; the
+  re-review brief after an escalation is still written mid-feature, so the check had to
+  change anyway.
+- **The whole feature directory as the carve-out.** `auto/`, `verify/`, `NOTES.md` and
+  `CHECKPOINT.md` are build work; a router authoring plans there built the feature.
+- **The capture's split of a session several features claim.** It finalises on the
+  second capture pass by design; with the router unpinned, no wave session is shared.
 
 ## Machine-readable
 
 ```json
 {
-  "slug": "<feature-slug>",
-  "method": "plans",
-  "plans": ["NN-description-MODEL", "NN-verify-MODEL", "NN-review-opus"],
-  "branches": ["<branch-name>"],
-  "base": "<base-branch>",
-  "session_window": {"from": "<YYYY-MM-DDTHH:MM:SSZ>", "to": "<YYYY-MM-DDTHH:MM:SSZ>"},
-  "exclude_sessions": ["<session-id>"],
-  "exclude_subagents": ["<agent-id>"],
-  "sessions": ["<session-id>"],
-  "subagents": ["<agent-id>"]
+  "slug": "router-brief-writes",
+  "method": "direct",
+  "plans": ["01-review-opus"],
+  "branches": ["router-brief-writes"],
+  "base": "main",
+  "session_window": {"from": "2026-10-02T22:52:41Z", "to": "2026-10-02T23:06:51Z"},
+  "exclude_sessions": [],
+  "exclude_subagents": [],
+  "sessions": ["07a53e37-69f2-4e17-a640-54b7fa0356c3"],
+  "subagents": ["a15c42f16d02ad614"]
 }
 ```
 
@@ -107,8 +102,6 @@ go wrong quietly:
   and window would also select is priced once, and every entry in `planning.json`
   records how it was selected (`selected_by`: `"pinned"` or `"branch"`) and the `cwd` it
   was launched in. A pin that is also in `exclude_sessions` warns, and the pin wins.
-  Pin with `python3 agentTooling/analysis/manifest.py <slug> pin-session <id>`, and take
-  one out with `… unpin-session <id>` — never by editing the fence.
   A session claimed by more than one feature is **split** between them by the windows
   they claim it with, so the bounds on a pinned session decide dollars.
   Find an id with `python3 agentTooling/analysis/capture_planning.py --list-sessions
@@ -121,8 +114,7 @@ go wrong quietly:
   spawned from `main` is invisible to `branches` and `session_window` alike; pinning its
   id claims it outright. Pin with `python3 agentTooling/analysis/manifest.py <slug>
   pin-subagent <agent-id>` — the one writer of this list; a repeat is a no-op and a
-  malformed id is refused — never by editing the fence; `unpin-subagent <agent-id>` is how
-  a pin comes out. Find the id with
+  malformed id is refused — never by editing the fence. Find the id with
   `python3 agentTooling/analysis/capture_planning.py --list-subagents --since <date>`,
   which prints each one's cost and opening prompt. A subagent whose parent *is* on the
   branch needs no pin — it is claimed with its parent when its own start is in the window.
@@ -135,13 +127,11 @@ go wrong quietly:
   question — every delegate on this machine no feature has claimed, with the
   feature its brief names; a pin already claimed by another feature refuses the
   capture rather than counting twice.
-- **`exclude_subagents`** — optional, and legacy: leave it empty. Delegates of a session
-  this manifest *does* select that belong to another feature. A delegate another feature
-  pins now **yields** on its own — the capture leaves it to that feature and records it in
-  `planning.json`'s `yielded_agent_ids` — so nothing new needs listing here. The list is
-  still read, so a record captured before the yield rule recaptures as it did; take an
-  entry out with `python3 agentTooling/analysis/manifest.py <slug> unexclude-subagent
-  <agent-id>`, never by editing the fence.
+- **`exclude_subagents`** — optional. Delegates of a session this manifest *does* select
+  that belong to another feature — a coordinator's manifest (on `main`, windowed around
+  the run) lists the architect it spawned, which the arm's own manifest pins. Without it
+  the parent route claims the architect here too and the ledger refuses the other
+  capture as a double claim.
 - **`session_window.to`** — `null` means "still in flight", and open is the right value
   until the feature's first capture. `agentTooling/feature-capture.sh` sets it on the
   branch, from evidence: one second past the last instant of the sessions this feature's

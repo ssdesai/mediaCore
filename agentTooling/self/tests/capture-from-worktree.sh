@@ -32,7 +32,11 @@ set -uo pipefail
 #   F6. `--last-branch-instant S` from the worktree's copy is W's delegate's last instant
 #       plus one second;
 #   F7. `--list-sessions` from the worktree's copy lists sessions filed under R's own
-#       project directory as well as the worktree's.
+#       project directory as well as the worktree's;
+#   F9. a pin on W's delegate in the OTHER corpus (`plans/features`) of another worktree
+#       yields nothing (self/features/unpin-and-yield);
+#   F8. a pin on it in THIS corpus (`self/features`) of another worktree, found through
+#       `roots`' primary resolution from the worktree's copy, yields it to that feature.
 #
 # RED until roots.session_root follows a worktree's .git file. No model, no network.
 
@@ -134,6 +138,27 @@ check "F6. --last-branch-instant from the worktree's copy is the delegate's last
 listed="$(wt_py "$WT/analysis/capture_planning.py" --self --list-sessions)"
 check "F7. --list-sessions from the worktree's copy lists the primary's sessions and the worktree's" \
   'grep -q "$S_M" <<<"$listed" && grep -q "$S_W" <<<"$listed"'
+
+# F8/F9 — the yield rule's manifest scan, run from the worktree's copy
+# (self/features/unpin-and-yield, spec §2). W's delegate is parent-selected here. A pin on
+# it in the OTHER corpus (plans/features) of the other worktree is not a pin on this
+# corpus's delegate and yields nothing; a pin in this corpus (self/features) of the other
+# worktree is, and the delegate yields to that feature.
+pin_fence() {
+  mkdir -p "$(dirname "$1")"
+  printf '# %s\n\n```json\n{"slug": "%s", "branches": ["%s"], "session_window": {"from": "%s", "to": null}, "exclude_sessions": [], "exclude_subagents": [], "sessions": [], "subagents": ["%s"]}\n```\n' \
+    "$2" "$2" "$2" "$FROM" "$A_W" > "$1"
+}
+pin_fence "$OTHER_WT/plans/features/xcorpus/README.md" xcorpus
+out9="$(wt_py "$WT/analysis/capture_planning.py" --self "$SLUG" --recapture)"; rc9=$?
+check "F9. a pin in the other corpus (plans/features) of a sibling worktree yields nothing (rc $rc9)" \
+  '[[ $rc9 -eq 0 && "$(pj "$PJ" "(d[\"yielded_agent_ids\"], [a[\"agent_id\"] for a in d[\"subagents\"]])")" == "([], ['"'"'$A_W'"'"'])" ]]'
+pin_fence "$OTHER_WT/self/features/other-feat/README.md" other-feat
+out8="$(wt_py "$WT/analysis/capture_planning.py" --self "$SLUG" --recapture)"; rc8=$?
+check "F8. a pin in this corpus of a sibling worktree, read from the worktree's copy, yields the delegate (rc $rc8)" \
+  '[[ $rc8 -eq 0 && "$(pj "$PJ" "[(y[\"agent_id\"], y[\"to\"]) for y in d[\"yielded_agent_ids\"]]")" == "[('"'"'$A_W'"'"', '"'"'agentTooling/other-feat'"'"')]" ]]'
+check "F8b. ... and it leaves subagents[]" \
+  '[[ "$(pj "$PJ" "[a[\"agent_id\"] for a in d[\"subagents\"]]")" == "[]" ]]'
 
 echo
 if (( fails > 0 )); then echo "capture-from-worktree: $fails assertion(s) FAILED"; exit 1; fi

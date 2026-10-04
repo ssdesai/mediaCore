@@ -173,6 +173,9 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `AGENT_TOOLING_DIR`, `SELF_CORPUS_IDENTITY`, `add_self_flag(parser)`,
   `artifact_root(self_mode)`,
   `features_root(self_mode)`, `all_features_roots()`, `session_root(self_mode)`,
+  `checkout_of(path)` (the nearest ancestor of `path`, inclusive, holding `.git` — a
+  linked worktree counts as its own checkout — or `None`; what `session_root` starts from
+  and `routing.feature_dir_in_worktree` measures the corpus against),
   `worktree_primary(checkout)` (the primary a linked worktree belongs to, or `None`; what
   `session_root` follows, see "Where to run them"). Every
   script resolves its roots through this module rather than computing `parents[N]`
@@ -310,20 +313,36 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   The design has a different session, launched in the worktree, build the feature. A router
   that does the work itself built it, and unpinned its whole build is routing overhead
   while the feature reports only its review. `unpinned_builder(features_dir, slug)` returns
-  the router's session id when three things hold, and `None` otherwise:
+  `(session_id, evidence)` for the router when three things hold, and `None` otherwise:
   - SLUG's own record names a session (`routers_of`);
   - no manifest in the corpus pins it in `sessions` (`pinned_sessions`, the predicate
     `split_pinned` reads, so the pin that stops the Routing table counting a router also
     satisfies this);
-  - its transcript shows it at work in `feature_worktree_path(launched_in, slug)`
-    (`worked_in`): a line whose `cwd` is at or under that directory, or an `Edit`,
-    `Write` or `NotebookEdit` aimed at a path under it (`WRITING_TOOL_PATH_KEYS`).
+  - its transcript shows it building in `feature_worktree_path(launched_in, slug)`
+    (`worked_in(lines, worktree, feature_dir)`, which returns the evidence or `None`): a
+    line whose `cwd` is at or under that directory (evidence `cwd <path>`), or an `Edit`,
+    `Write` or `NotebookEdit` aimed at a path under it (`WRITING_TOOL_PATH_KEYS`,
+    evidence `<Tool> <path>`) **other than the router's own writes**
+    (`../self/features/router-brief-writes/`, `is_router_write`): a path at or under
+    `<feature dir>/review/` (`REVIEW_DIR_NAME`) or exactly `<feature dir>/README.md`
+    (`MANIFEST_NAME`) — LIFECYCLE steps 3 and 5. Nothing else in the feature directory
+    is carved out. The first such line in file order is the evidence.
 
+  `<feature dir>` is the feature's directory as the worktree holds it,
+  `feature_dir_in_worktree(features_dir, worktree, slug)`: the worktree joined with where
+  `features_dir` sits in its own checkout (`roots.checkout_of`, the nearest ancestor
+  holding `.git`) and the slug — `plans/features`, `self/features`, or
+  `agentTooling/self/features` when vendored — derived, not hard-coded, and the same
+  whether the primary's copy or the worktree's runs. Depends on transcripts recording
+  absolute paths under `launched_in`. A `features_dir` in no checkout carves out nothing.
   Containment is by whole path component (`is_at_or_under`), so `.worktrees/<slug>-two`
-  is not `<slug>`'s. Reads are not work, and a transcript that cannot be found names
-  nobody. `routing.py [--self] --unpinned-builder SLUG` prints that id or nothing, and
-  exits 0 either way. `feature-close.sh` refuses on a printed id before the PR, and on a
-  non-zero exit (fail closed). The refusal names `manifest.py pin-session` as the remedy.
+  is not `<slug>`'s, nor `review-old/` the review directory. Reads are not work, and a
+  transcript that cannot be found names nobody. `routing.py [--self] --unpinned-builder
+  SLUG` prints nothing, or one line `<session_id>\t<evidence>`
+  (`BUILDER_FIELD_SEPARATOR`), and exits 0 either way. Its one consumer is
+  `feature-close.sh`, which splits that line on the tab and refuses on it before the PR,
+  and on a non-zero exit (fail closed). The refusal names the evidence and
+  `manifest.py pin-session` as the remedy.
   **The feature worktree layout lives here too**: `WORKTREES_DIR_NAME` (`.worktrees`,
   which `feature-start.sh` holds in a constant of its own, and the two move together) and
   `feature_worktree_path(primary, slug)`. `capture_planning.py` imports both for its claim
@@ -334,10 +353,12 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `is_router_lines`, `build_record`, `serialize`, `write_record(features_dir, slug,
   record)`, `read_record`, `record_rank`, `load_records`, `started_slugs`, `routers_of`,
   `parse_manifest`, `pinned_sessions`, `split_pinned`, `feature_worktree_path`,
-  `is_at_or_under`, `worked_in`, `unpinned_builder`,
+  `is_at_or_under`, `feature_dir_in_worktree`, `is_router_write`, `worked_in`,
+  `unpinned_builder`,
   `migrate`. Asserted by `self/tests/routing-record.sh` (R11 for the pinned skip, R12 for `unpinned_builder`), and end to end — two features one
   router starts from one `main`, merged in turn, and a router that built its feature
-  refused at the close until it is pinned (RB) — by `self/tests/feature-lifecycle.sh`.
+  refused at the close, with its evidence, until it is pinned (RB) — by
+  `self/tests/feature-lifecycle.sh`.
 - `pricing.py` — cost calculator over the rate history; holds no rates itself. Loads `rates_history.json` **from its own directory at import** (`HISTORY_FILENAME`, `HISTORY_PATH`, `load_history(path)`) — a missing or malformed file is an import error, so every sandbox that copies `pricing.py` copies `rates_history.json` beside it — and imports `litellm_prices` at import, so every such sandbox copies `litellm_prices.py` too. Exposes `utc_today()` (today's UTC date — the wall-clock source for everything here, since `date.today()` is the machine's *local* date and would disagree with every transcript-derived date for part of each day), `RATES_VERIFIED` (the history's `checked` date, under its old name), `STALENESS_THRESHOLD_DAYS`, `RATE_FIELDS` (the five rate keys), `normalize_model_id(model_id)` (re-exported from `litellm_prices`, where it lives so that module needs nothing from this one), `get_rates(model_id, as_of) -> RatesApplied | None` (the model's last entry whose `from` is on or before `as_of`; for a model with **no history entry at all**, the live fallback below; `None` when neither has it), `compute_cost(model_id, tokens, as_of) -> (cost_usd | None, rates_applied | None)` (never `(0.0, None)`: an unpriced model is `(None, None)`), `is_rates_stale(today=None, checked=None) -> bool`, `is_live(rates_applied) -> bool` and `live_price_warning(models) -> str` (the one sentence every caller that surfaces price provenance uses for a live price — `capture_planning.py`'s and `report.py`'s `warnings[]`, `recover_attempts.py`'s summary). **The live fallback** (`self/features/live-model-rates/`): a miss — a model the history has no entry for, i.e. one released after the last refresh — is priced from LiteLLM's list through `litellm_prices.fetch` + `upstream_rates`, the very selection and conversion `refresh_rates.py` appends from, with `source: "litellm-live"` (`LIVE_SOURCE`) and `from: "0000-01-01"` (`litellm_prices.FIRST_ENTRY_FROM`, the first entry a later refresh writes, so a `--recapture` after the refresh reproduces the figure unless LiteLLM's price moved in between). The list is fetched **only on a miss, at most once per process** — success and failure both cached in `_live_upstream`, so a capture over many unknown-model sessions never retries — with `litellm_prices.FETCH_TIMEOUT_S`, and **never at import**; a model the history knows never fetches. A failed fetch prints one stderr line and leaves the miss `(None, None)` exactly as before, the callers' unknown-model warnings still firing; a model LiteLLM lacks (Mythos 5.1) is `(None, None)` too. **It never writes `rates_history.json`** — only `refresh_rates.py`, in a self feature, does. Depends on two env vars: **`RATES_CHECK_SOURCE`** (`LIVE_SOURCE_ENV`; a URL or local path to read the list from instead of `LITELLM_PRICES_URL` — the same seam `feature-capture.sh` hands `refresh_rates.py --check`, and how the tests stay offline) and **`RATES_LIVE_LOOKUP`** (`LIVE_LOOKUP_ENV`; `off` or `0` — `LIVE_LOOKUP_OFF_VALUES` — disables the lookup; `self/gate.sh` and every self-test that prices export it). **`RatesApplied { model, input, output, cache_read, cache_creation_5m, cache_creation_1h, tier, from, source }`** — the `rates_applied` written into `planning.json`'s `priced[]` and a `usage.json` attempt: `model` is the normalized id, the five rates are USD per million, `tier` is always `"standard"` (kept for readers of records written when Sonnet 5's price was an `"intro"` window), `from` is the applied entry's start date (`"0000-01-01"` for a live price) and `source` is `"manual"` or `"litellm"` (a history entry's) or `"litellm-live"` (the live fallback's — the history had no entry for the model when this was priced; refresh it). Records written before litellm-pricing carry no `from`/`source` and may say `tier: "intro"`. Any script that prices tokens imports `compute_cost` / `get_rates` / `is_rates_stale` from here rather than hardcoding rates — the history lives in exactly one place.
 - `litellm_prices.py` — LiteLLM's public price list: **the one fetch, selection and conversion**, imported by both `pricing.py` (the live fallback) and `refresh_rates.py` (the refresh), so a live price and the entry a later refresh appends cannot disagree. Imports nothing from this package — `refresh_rates.py` imports `pricing.py`, so `pricing.py` could not import `refresh_rates.py`, and this module importing `pricing` back would be circular; that is why `normalize_model_id` lives here. Importing it fetches nothing. Exposes `LITELLM_PRICES_URL`, `FETCH_TIMEOUT_S` (15), `URL_SCHEMES`, `ANTHROPIC_PROVIDER`, `CLAUDE_KEY_PREFIX`, `LITELLM_FIELDS` (history field ← LiteLLM per-token field), `TOKENS_PER_MILLION`, `RATE_DECIMALS` (6), `FIRST_ENTRY_FROM` (`"0000-01-01"`), `FetchError`, `normalize_model_id(model_id)` (strips a trailing `-YYYYMMDD`), `fetch(source) -> dict` (a URL or a local path; any read, parse or HTTP error, or a non-object, is `FetchError`), `per_million(cost_per_token)`, `upstream_entries(data) -> ({model: winning entry}, [skipped])` and `upstream_rates(data) -> ({model: {field: rate}}, [skipped])` — the selection and conversion `refresh_rates.py` below describes, moved here unchanged by live-model-rates. Rulings in `self/features/live-model-rates/NOTES.md`; asserted by `self/tests/rates-history.sh` (H*, L*).
 - `rates_history.json` — the dated rate history every figure here is priced from. `{ checked, source_url, models{<normalized model id>: [{from, input, output, cache_read, cache_creation_5m, cache_creation_1h, source}]} }`: rates are absolute USD per million tokens (no multipliers); each model's entries are sorted by `from` (`YYYY-MM-DD`), the first at `0000-01-01`, and an entry applies from its `from` until the next one's; `source` is `"manual"` (the seed, and anything added by hand) or `"litellm"` (appended by `refresh_rates.py`) — never `"litellm-live"`, which only a `RatesApplied` carries: `pricing.py`'s live fallback reads LiteLLM and never writes here; `checked` is the last date anyone checked it against its source; `source_url` is LiteLLM's raw price list. **Append-only**: an entry is never rewritten or removed, which is what makes re-pricing any session dated before a change give the dollars it gave before — and why `--recapture` reproduces the figures it replaces. Written one entry per line (`refresh_rates.serialize`) so a diff is one line per price. Seeded from the hand-maintained table `pricing.py` held until litellm-pricing, figure for figure (`self/tests/rates-history.sh` H1 holds it to a fixture of that table's output); Sonnet 5's old introductory window is two ordinary entries, 3/15 from `0000-01-01` and 2/10 from `2026-08-22` — a start date inferred from observed billing ratios in this repo's own corpus, not read off a price list (see "Repair tools" → "The rate history"). Ships to every consuming repo with the subtree: refresh it only in an agentTooling self feature.
@@ -772,10 +793,36 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `--all` ends by counting the unclaimed
   under this repo's directories. A pin
   whose brief names another feature is warned about — the pin is the human's word,
-  the brief the coordinator's, and one is wrong. `exclude_subagents` is the pin's
+  the brief the coordinator's, and one is wrong.
+  **A parent-selected delegate another feature pins yields**
+  (`../self/features/unpin-and-yield/`). The parent route used to claim every delegate a
+  selected session spawned in the window, even one another feature pins, and the ledger
+  then refused the pinning feature's capture as a double claim. Now the parent arm checks
+  first: if `other_feature_pins` names the id, it is skipped and recorded in
+  `yielded_agent_ids` as `{ agent_id, to }`, `to` the pinning feature's `<repo_name>/<slug>`,
+  with one output line per id. "Another feature pins it" is the union of the `subagents`
+  of every manifest in this corpus's copies reachable from this repo
+  (`corpus_copies`: the primary checkout and each `<primary>/.worktrees/*/`, at the same
+  corpus-relative path, found through `roots.checkout_of` + `roots.worktree_primary`, never
+  the other corpus; this slug's own skipped in every copy; an unparseable manifest
+  skipped) and of the ledger claims by a different `(repo, slug)` whose `selected_by` is
+  `"pinned"` — the cross-repo case; the first found names `to`, manifests before the
+  ledger. Only a pin outranks: a `"parent"` claim elsewhere is still the double-claim
+  refusal. This feature's own pin and `exclude_subagents` are judged before the yield and
+  are unchanged. A newly yielded delegate is not "lost" to `check_frozen_cost` — it is
+  already in `reachable_agent_ids` when the arm runs. The one order the rule cannot fix
+  alone — this capture pins an id the ledger already holds as `"parent"` for another
+  feature — is still refused, and `check_claims`' message (`pin_over_parent_advice`) names
+  that feature and its recapture, which will now yield it (`./feature-capture.sh [--self]
+  <slug> --recapture` from its primary if merged, `./feature-capture.sh [--self] <slug>` in
+  its worktree if not); across repos that recapture cannot see the pin, and the message says
+  so (`../self/BACKLOG.md`). `exclude_subagents` is the pin's
   inverse — a selected session's children that another feature pins, so a
   coordinator's manifest and its arm's manifest do not both claim the architect
-  (recorded in `excluded_agent_ids`). Dropping a cross-repo pin does not
+  (recorded in `excluded_agent_ids`). **It is legacy now**: the yield does that job on
+  its own, so the list is needed only for records captured before the rule, and it is
+  still read so a recapture of one of those selects what it selected before.
+  `manifest.py unexclude-subagent` takes an entry out; nothing writes one. Dropping a cross-repo pin does not
   trip `check_frozen_cost`: the transcript is proved still on disk before the guard
   looks, so "unpinned" is not read as "expired".
   `--list-subagents` is the discovery step: every reachable subagent with
@@ -1221,7 +1268,7 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `python3 agentTooling/analysis/report.py --all`.
 - `manifest.py` — reads and writes a feature manifest's machine-readable fence, and reads
   what its `planning.json` claimed: the JSON edits the lifecycle scripts need, kept out of
-  bash. Eight subcommands, `--self` first as everywhere. `init --method M --branch B --base
+  bash. Eleven subcommands, `--self` first as everywhere. `init --method M --branch B --base
   BASE --from TS [--session ID]… [--plan STEM]…` writes `<features root>/<slug>/README.md`
   from `templates/plans/features/TEMPLATE.md` with the template's fence replaced by a
   filled one, and refuses if the file exists — `feature-start.sh` runs it once, in the new
@@ -1269,9 +1316,10 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   message says to edit the fence by hand if a recorded `from` is genuinely wrong; and a
   fence whose `from` is **null or unparseable**, there being no bound to move. The same
   instant is a no-op (exit 0), as with `set-window-to`, and on a feature that already has
-  a `planning.json` the edit is applied and the output adds that the frozen figure does
-  not move until `capture_planning.py --recapture` rebuilds it — the fence is input to the
-  next capture, never to the one already frozen. `capture_planning.py`'s "unclaimed by any
+  a `planning.json` the edit is applied and the output adds the **frozen-record note**
+  (`print_frozen_note`, shared with the removers below): the fence is input to the next
+  capture, and the frozen figure does not move until one runs — on the branch
+  `feature-capture.sh`, after the merge `feature-capture.sh --recapture`. `capture_planning.py`'s "unclaimed by any
   feature" warning prints this command, filled in, as the head's second remedy.
   Two things about it are not visible from its imports. The session's transcript is found
   with `routing.find_transcript` + `load_lines` — a glob over every project directory,
@@ -1306,6 +1354,25 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   (`../LIFECYCLE.md` rule 1, `../ORCHESTRATION.md` → "Coordinator shapes"), and the command
   `feature-capture.sh`'s unclaimed-delegate warning prints. Asserted by
   `self/tests/manifest-pin-subagent.sh`, and end to end by `feature-lifecycle.sh` C2f–C2i.
+  Its id check is `agent_id_refusal`, the one every agent-id command calls.
+  **The three removers** (`../self/features/unpin-and-yield/`) are the writers' exact
+  inverses, same argument order: `unpin-session <id>` is `pin-session`'s, taking one id out
+  of `sessions[]`; `unpin-subagent <agent-id>` is `pin-subagent`'s, out of `subagents[]`;
+  `unexclude-subagent <agent-id>` takes one out of `exclude_subagents[]`, the list with no
+  writer (hand-written before the yield rule made it unnecessary). Each prints the new list
+  in its twin's shape (`sessions = [...]`, `subagents = [...]`, `exclude_subagents =
+  [...]`), exit 0; an id the list does not hold — or a fence without the key — is a no-op,
+  exit 0, nothing written, `<key> does not hold <id>`; an empty id is refused, exit 1, and
+  the two agent-id removers refuse exactly what `pin-subagent` refuses, by the same
+  `agent_id_refusal`. **Only that one list value moves** (`remove_from_fence`): it is
+  rewritten in place as a compact one-line list (`FENCE_LIST_VALUE_RE`) rather than
+  re-rendering the fence, so a hand-written fence keeps every other byte, and on one in
+  `render_fence`'s shape pin-then-unpin is byte-identical; the edit is parsed back and must
+  equal the old fence less the id, or nothing is written (exit 1). On a captured feature
+  they print the frozen-record note. The dirty manifest passes the stray check as a
+  `COST_FILES` entry, as `pin-session`'s does. How a pin written in error comes out without
+  a hand edit — the humanNetworkMap wave router's, for one. Asserted by
+  `self/tests/manifest-unpin.sh`.
   `claimed` prints the sessions and subagents `planning.json` holds, each with how it was
   selected and where it was launched, plus the total — what `feature-capture.sh` shows the
   human before the number is quoted. The fence it writes is
@@ -1328,7 +1395,9 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   (`set-window-to`: `--replace` on the branch, `--tighten` under `--recapture` after the
   merge; the bound comes from
   `capture_planning.py --last-branch-instant`, not from the wall clock), and by a
-  coordinator through `pin-session` / `pin-subagent` for `sessions` / `subagents`; read by
+  coordinator through `pin-session` / `pin-subagent` for `sessions` / `subagents` (taken
+  out again by `unpin-session` / `unpin-subagent`, and `exclude_subagents` entries by
+  `unexclude-subagent` — no command adds one); read by
   `capture_planning.py` (`branches`, `session_window`,
   `exclude_sessions`, `exclude_subagents`, `sessions`, `subagents`),
   by `report.py` (`method`, `plans`) and by `run-review.sh` (`base`, through
@@ -1408,7 +1477,8 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   subagents[{agent_id,
   parent_session_id,date,started_at,ended_at,duration_s,selected_by,cross_repo}],
   open_claimants[],
-  excluded_session_ids[], priced[{session_id,agent_id,model,is_sidechain,date,
+  excluded_session_ids[], excluded_agent_ids[], yielded_agent_ids[{agent_id,to}],
+  priced[{session_id,agent_id,model,is_sidechain,date,
   duration_s,tokens{input,output,cache_read,cache_creation_5m,cache_creation_1h},
   cost_usd,rates_applied{model,input,output,cache_read,cache_creation_5m,
   cache_creation_1h,tier,from,source},share?,full_cost_usd?,shared_with[]?}],
@@ -1427,6 +1497,11 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   instant), summed separately over sessions and subagents; an entry carried forward
   from a capture that predates the field has none and is named in
   `entries_without_duration`, so the sums are then lower bounds.
+  `excluded_agent_ids` are the delegates the manifest's legacy `exclude_subagents` kept off
+  the parent route; `yielded_agent_ids` (sorted by `agent_id`, present always and `[]` when
+  none — a record without the key predates the rule, and `report.py` reads neither) are the
+  parent-selected delegates left to the feature that pins them, `to` being that feature's
+  `<repo_name>/<slug>` (the capture's entry above, "yields").
   A session entry's `selected_by` is `"branch"` or `"pinned"` — which of the two routes
   claimed it (the manifest's `branches` plus `session_window`, or its `sessions` pin) —
   and `also_claimed_by` is `["<repo>/<slug>", …]` for the other features the claims

@@ -18,7 +18,10 @@ set -uo pipefail
 #
 #   1. REFUSE unless this is the tree a clean review judged (five refusals below, each
 #      naming what to do), and refuse a feature whose unpinned router built it (the
-#      sixth, naming `manifest.py pin-session`). Checked before anything is written, so a
+#      sixth, naming `manifest.py pin-session` and the transcript line that made it a
+#      builder). Building is work in the worktree — a `cwd` there, or a write — other
+#      than the router's own writes to the feature's review/ and manifest README.md
+#      (LIFECYCLE steps 3 and 5). Checked before anything is written, so a
 #      refusal leaves the worktree exactly as it was — in particular before a PR is
 #      opened, rather than after.
 #   2. PR. The body is the review's report as the executor wrote it, followed by the
@@ -59,8 +62,11 @@ CAPTURE_SCRIPT_NAME="feature-capture.sh"
 CLOSE_SCRIPT_NAME="feature-close.sh"
 REVIEW_RUNNER_NAME="run-review.sh"
 REPORT_PY_ROUNDS_FLAG="--rounds-md"
-# routing.py's entry point that names a router which built this feature unpinned.
+# routing.py's entry point that names a router which built this feature unpinned. It
+# prints nothing, or one line: the session id, a tab, and the evidence — the first
+# transcript line that made the session a builder (`cwd <path>` or `<Tool> <path>`).
 UNPINNED_BUILDER_FLAG="--unpinned-builder"
+BUILDER_FIELD_SEPARATOR=$'\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/plan-runner-roots.sh"
@@ -180,14 +186,18 @@ fi
 # session that ran feature-start.sh without --pin is recorded as the feature's router, and
 # its cost is routing overhead; if its transcript shows it at work in this worktree it
 # built the feature, and unpinned its whole build would be missing from the total this
-# close is about to freeze. The predicate is routing.py's; the remedy is a script, and
-# the manifest it edits is a cost record, so the re-run passes the check above. Fail
-# closed, like the stray check: a checker that could not run has judged nothing.
-if ! BUILDER="$(python3 -B "$SCRIPT_DIR/analysis/routing.py" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} "$UNPINNED_BUILDER_FLAG" "$FEATURE_SLUG")"; then
+# close is about to freeze. Its own writes there — the review briefs under the feature's
+# review/ and the manifest README.md (LIFECYCLE steps 3 and 5) — are not building
+# (self/features/router-brief-writes). The predicate is routing.py's; the remedy is a
+# script, and the manifest it edits is a cost record, so the re-run passes the check
+# above. Fail closed, like the stray check: a checker that could not run has judged nothing.
+if ! BUILDER_LINE="$(python3 -B "$SCRIPT_DIR/analysis/routing.py" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} "$UNPINNED_BUILDER_FLAG" "$FEATURE_SLUG")"; then
   refuse "the router check could not run — nothing was written and no PR was opened; see stderr above"
 fi
-if [[ -n "$BUILDER" ]]; then
-  refuse "session $BUILDER started '$FEATURE_SLUG' as its router and then worked in its worktree, so it built the feature — and unpinned, its cost is routing overhead rather than this feature's. Pin it: python3 $SCRIPT_DIR/analysis/manifest.py ${SELF_FLAG[@]+"${SELF_FLAG[@]} "}$FEATURE_SLUG pin-session $BUILDER, then run $RERUN_HINT again — nothing was written, and no PR was opened"
+if [[ -n "$BUILDER_LINE" ]]; then
+  BUILDER="${BUILDER_LINE%%"$BUILDER_FIELD_SEPARATOR"*}"
+  BUILDER_EVIDENCE="${BUILDER_LINE#*"$BUILDER_FIELD_SEPARATOR"}"
+  refuse "session $BUILDER started '$FEATURE_SLUG' as its router and then worked in its worktree ($BUILDER_EVIDENCE), so it built the feature — and unpinned, its cost is routing overhead rather than this feature's. Pin it: python3 $SCRIPT_DIR/analysis/manifest.py ${SELF_FLAG[@]+"${SELF_FLAG[@]} "}$FEATURE_SLUG pin-session $BUILDER, then run $RERUN_HINT again — nothing was written, and no PR was opened"
 fi
 
 echo "  round     $ROUND of '$FEATURE_SLUG' came back $VERDICT_CLEAN ($REVIEW_PLAN); closing the tree it judged"

@@ -519,7 +519,15 @@ check "R11i. load_records itself still returns the pinned record — the skip is
 # transcript shows it at work in `<launched_in>/.worktrees/<slug>` — a line whose `cwd`
 # is at or under it, or an Edit/Write/NotebookEdit aimed under it. Otherwise it prints
 # nothing and exits 0, which is every case the intended flow produces.
+#
+# **The router's own writes are not building** (self/features/router-brief-writes): a
+# write at or under the feature's `review/` in the worktree, or to its manifest
+# `README.md` there, is LIFECYCLE step 3/5 work and does not count. Nothing else is carved
+# out, by whole path component, and the `cwd` rule is untouched. What it prints for a
+# builder is one line, `<session-id><TAB><evidence>`, the evidence being the first
+# transcript line that made it one: `cwd <path>` or `<Tool> <path>`.
 T_RB="2026-09-11T09:00:00.000Z"
+TAB=$'\t'
 # tool_line <session> <cwd> <msg-id> <tool> <input-key> <input-path> — one assistant line
 # carrying one tool_use block, the shape a real Edit/Write/Read call is written as.
 tool_line() {
@@ -583,13 +591,113 @@ printf '# rb-pinner\n\nTest fixture only.\n\n```json\n{"slug": "rb-pinner", "met
 # A record whose router's transcript is gone: nothing can be judged, so nothing is refused.
 rb_feature rb-ghost "$GHOST"
 
+# ── The router's own writes (self/features/router-brief-writes) ──
+# rb_write <session> <slug> <tool> <path under the feature's worktree> — a router that
+# started <slug> from the primary and then made one write-tool call into its worktree.
+rb_write() {
+  local key="file_path"
+  [[ "$3" == "NotebookEdit" ]] && key="notebook_path"
+  rb_feature "$2" "$1"
+  { rb_start "$1" "$2"
+    tool_line "$1" "$AT" "m-$1-w" "$3" "$key" "$AT/.worktrees/$2/$4"
+  } > "$PRIMARY_PROJ/$1.jsonl"
+}
+RB_BRIEF="rb000000-0000-0000-0000-000000000011"
+RB_REREVIEW="rb000000-0000-0000-0000-000000000012"
+RB_MANIFEST="rb000000-0000-0000-0000-000000000013"
+RB_REVIEWOLD="rb000000-0000-0000-0000-000000000014"
+RB_BAK="rb000000-0000-0000-0000-000000000015"
+RB_TWIN="rb000000-0000-0000-0000-000000000016"
+RB_OTHER="rb000000-0000-0000-0000-000000000017"
+RB_AUTO="rb000000-0000-0000-0000-000000000018"
+RB_CDBRIEF="rb000000-0000-0000-0000-000000000019"
+# Step 3: the round-1 brief replaces the stub; step 5: a re-review brief is queued; step 3
+# again: the manifest's prose. None of them is building.
+rb_write "$RB_BRIEF" rb-brief Write "self/features/rb-brief/review/incomplete/01-review-opus.md"
+rb_write "$RB_REREVIEW" rb-rereview Edit "self/features/rb-rereview/review/incomplete/02-review-sonnet.md"
+rb_write "$RB_MANIFEST" rb-manifest Edit "self/features/rb-manifest/README.md"
+# The near misses — each one a path the carve-out must not reach.
+rb_write "$RB_REVIEWOLD" rb-reviewold Write "self/features/rb-reviewold/review-old/x.md"
+rb_write "$RB_BAK" rb-bak Write "self/features/rb-bak/README.md.bak"
+rb_write "$RB_TWIN" rb-twin Write "self/features/rb-twin-two/review/x.md"
+rb_write "$RB_OTHER" rb-other Write "self/features/alpha/review/x.md"
+rb_write "$RB_AUTO" rb-auto Write "self/features/rb-auto/auto/incomplete/x.md"
+RB_DOTDOT="rb000000-0000-0000-0000-000000000020"
+rb_write "$RB_DOTDOT" rb-dotdot Write "self/features/rb-dotdot/review/../../../../analysis/x.py"
+# A brief write, and THEN a cwd inside the worktree: the cwd rule is untouched.
+rb_feature rb-cdbrief "$RB_CDBRIEF"
+{ rb_start "$RB_CDBRIEF" rb-cdbrief
+  tool_line "$RB_CDBRIEF" "$AT" "m-rbcb2" "Write" "file_path" "$AT/.worktrees/rb-cdbrief/self/features/rb-cdbrief/review/incomplete/01-review-opus.md"
+  bash_tool_line "$RB_CDBRIEF" "$AT/.worktrees/rb-cdbrief" "main" "m-rbcb3" "$MODEL" "$T_RB" "ls" 10 20
+} > "$PRIMARY_PROJ/$RB_CDBRIEF.jsonl"
+
+# The feature directory in the worktree is DERIVED from where the features root sits in
+# its checkout, never hard-coded: a vendored agentTooling's `--self` corpus is
+# `agentTooling/self/features`, and a consuming repo's own is `plans/features`. One
+# consumer checkout holds both, with a copy of the analysis scripts under agentTooling/.
+CONS="$TMP/consumer"
+mkdir -p "$CONS/.git" "$CONS/agentTooling/analysis" "$CONS/agentTooling/self/features" "$CONS/plans/features"
+cp "$AT/analysis/"* "$CONS/agentTooling/analysis/" 2>/dev/null || true
+CONS_PROJ="$(project_dir "$CONS")"
+mkdir -p "$CONS_PROJ"
+# cons_write <features dir> <session> <slug> <tool> <path under the worktree> — the
+# rb_write shape, in the consumer checkout.
+cons_write() {
+  mkdir -p "$1/$3"
+  printf '# %s\n\nTest fixture only.\n\n```json\n{"slug": "%s", "method": "direct", "plans": [], "branches": ["%s"]}\n```\n' \
+    "$3" "$3" "$3" > "$1/$3/README.md"
+  printf '{\n  "captured_at": "2026-09-11T09:00:00Z",\n  "features_started": [{"slug": "%s", "at": null}],\n  "git_branch": "main",\n  "launched_in": "%s",\n  "session_id": "%s"\n}\n' \
+    "$3" "$CONS" "$2" > "$1/$3/$RECORD_NAME"
+  { bash_tool_line "$2" "$CONS" "main" "m-$2-start" "$MODEL" "$T_RB" "./agentTooling/feature-start.sh --self $3" 10 20
+    tool_line "$2" "$CONS" "m-$2-w" "$4" "file_path" "$CONS/.worktrees/$3/$5"
+  } > "$CONS_PROJ/$2.jsonl"
+}
+CV_SELF="cv000000-0000-0000-0000-000000000001"
+CV_WRONG="cv000000-0000-0000-0000-000000000002"
+CV_PLANS="cv000000-0000-0000-0000-000000000003"
+cons_write "$CONS/agentTooling/self/features" "$CV_SELF" cv-self Write "agentTooling/self/features/cv-self/review/incomplete/01-review-opus.md"
+# The standalone layout's path, in a checkout where agentTooling is vendored: not this
+# feature's directory, so it is a write in the worktree like any other.
+cons_write "$CONS/agentTooling/self/features" "$CV_WRONG" cv-wrong Write "self/features/cv-wrong/review/x.md"
+cons_write "$CONS/plans/features" "$CV_PLANS" cv-plans Edit "plans/features/cv-plans/README.md"
+cons_builder_of() { HOME="$FAKE_HOME" python3 -B "$CONS/agentTooling/analysis/routing.py" "$@" 2>&1; }
+
 out12="$(builder_of rb-cwd)"; rc12=$?
-check "R12a. a router whose cwd moved into the worktree is named (got '$out12', exit $rc12)" \
-  '[[ "$out12" == "$RB_CWD" && $rc12 -eq 0 ]]'
-check "R12b. ... and so is one that stayed in the primary but Edited a file in the worktree" \
-  '[[ "$(builder_of rb-edit)" == "$RB_EDIT" ]]'
+check "R12a. a router whose cwd moved into the worktree is named, with the cwd as evidence (got '$out12', exit $rc12)" \
+  '[[ "$out12" == "$RB_CWD${TAB}cwd $AT/.worktrees/rb-cwd" && $rc12 -eq 0 ]]'
+check "R12b. ... and so is one that stayed in the primary but Edited a file in the worktree, with the Edit as evidence" \
+  '[[ "$(builder_of rb-edit)" == "$RB_EDIT${TAB}Edit $AT/.worktrees/rb-edit/analysis/x.py" ]]'
 check "R12c. ... and one whose NotebookEdit landed there" \
-  '[[ "$(builder_of rb-notebook)" == "$RB_NOTEBOOK" ]]'
+  '[[ "$(builder_of rb-notebook)" == "$RB_NOTEBOOK${TAB}NotebookEdit $AT/.worktrees/rb-notebook/n.ipynb" ]]'
+out12i="$(builder_of rb-brief)"; rc12i=$?
+check "R12i. a router whose only write was the round-1 review brief is not a builder (got '$out12i', exit $rc12i)" \
+  '[[ -z "$out12i" && $rc12i -eq 0 ]]'
+check "R12j. ... nor one that Edited a re-review brief, review/incomplete/02-review-sonnet.md" \
+  '[[ -z "$(builder_of rb-rereview)" ]]'
+check "R12k. ... nor one that Edited the manifest README.md" \
+  '[[ -z "$(builder_of rb-manifest)" ]]'
+check "R12l. a write to review-old/ is building — the carve-out is review/ by whole component" \
+  '[[ "$(builder_of rb-reviewold)" == "$RB_REVIEWOLD${TAB}Write $AT/.worktrees/rb-reviewold/self/features/rb-reviewold/review-old/x.md" ]]'
+check "R12m. ... and so is README.md.bak — the manifest is exactly README.md" \
+  '[[ "$(builder_of rb-bak)" == "$RB_BAK${TAB}Write $AT/.worktrees/rb-bak/self/features/rb-bak/README.md.bak" ]]'
+check "R12n. ... and the review/ of a feature whose name only starts with this slug" \
+  '[[ "$(builder_of rb-twin)" == "$RB_TWIN${TAB}Write $AT/.worktrees/rb-twin/self/features/rb-twin-two/review/x.md" ]]'
+check "R12o. ... and another feature's review/ in this worktree" \
+  '[[ "$(builder_of rb-other)" == "$RB_OTHER${TAB}Write $AT/.worktrees/rb-other/self/features/alpha/review/x.md" ]]'
+check "R12p. ... and auto/ — the carve-out is not the whole feature directory" \
+  '[[ "$(builder_of rb-auto)" == "$RB_AUTO${TAB}Write $AT/.worktrees/rb-auto/self/features/rb-auto/auto/incomplete/x.md" ]]'
+check "R12p2. ... and a path that only passes through review/ — compared normalized, review/../.. is outside it" \
+  '[[ "$(builder_of rb-dotdot)" == "$RB_DOTDOT${TAB}Write $AT/.worktrees/rb-dotdot/self/features/rb-dotdot/review/../../../../analysis/x.py" ]]'
+check "R12q. a router that wrote a brief and then whose cwd entered the worktree is a builder, by the cwd" \
+  '[[ "$(builder_of rb-cdbrief)" == "$RB_CDBRIEF${TAB}cwd $AT/.worktrees/rb-cdbrief" ]]'
+out12r="$(cons_builder_of --self --unpinned-builder cv-self)"; rc12r=$?
+check "R12r. vendored --self: a brief write under agentTooling/self/features/<slug>/review/ is not building (got '$out12r', exit $rc12r)" \
+  '[[ -z "$out12r" && $rc12r -eq 0 ]]'
+check "R12s. ... and the standalone layout's self/features/<slug>/review/ there IS building — the directory is derived" \
+  '[[ "$(cons_builder_of --self --unpinned-builder cv-wrong)" == "$CV_WRONG${TAB}Write $CONS/.worktrees/cv-wrong/self/features/cv-wrong/review/x.md" ]]'
+out12t="$(cons_builder_of --unpinned-builder cv-plans)"; rc12t=$?
+check "R12t. a consuming repo: an Edit to plans/features/<slug>/README.md is not building (got '$out12t', exit $rc12t)" \
+  '[[ -z "$out12t" && $rc12t -eq 0 ]]'
 check "R12d. a router that only started the feature, read into the worktree and wrote in the primary is not" \
   '[[ -z "$(builder_of rb-reader)" ]]'
 check "R12e. a worktree whose name only starts with the slug is not this feature's" \

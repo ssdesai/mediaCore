@@ -286,9 +286,11 @@ The manifest ends with a machine-readable fence:
   yet. Claims are ledgered per machine, and one transcript claimed by two features
   refuses the second capture. Pinning onto a feature whose own sessions have expired
   needs `--carry-lost`, which keeps the frozen entries and adds the pin.
-- `exclude_subagents` — optional. The opposite of a pin: delegates of a selected
-  session that another feature owns, so a coordinator's manifest can carry the
-  coordinator's context cost without also claiming the architect the arm pins.
+- `exclude_subagents` — optional, and legacy. The opposite of a pin: delegates of a
+  selected session that another feature owns. A delegate another feature pins now yields
+  to it on its own (`planning.json`'s `yielded_agent_ids`), so new manifests leave this
+  empty; it is still read for records captured before that rule, and
+  `manifest.py [--self] <slug> unexclude-subagent <id>` takes an entry out.
 
 **The windows are a patch over a workflow problem, not the fix for it.** Both fields exist
 because one session, or one branch, held work for more than one feature. If you keep to one

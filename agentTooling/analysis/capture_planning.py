@@ -72,7 +72,8 @@ from pricing import (
     live_price_warning,
 )
 from roots import (
-    SELF_CORPUS_IDENTITY, add_self_flag, all_features_roots, features_root, session_root,
+    SELF_CORPUS_IDENTITY, add_self_flag, all_features_roots, checkout_of, features_root,
+    session_root, worktree_primary,
 )
 # One-way, and it has to stay that way: `routing` imports nothing from here (it locates a
 # transcript by globbing the project directories, as `recover_attempts.py` does), so the
@@ -83,7 +84,9 @@ from roots import (
 # imported, not copied, so this module and report.py cannot read a fence two ways. It is
 # bound here as a module global, which is what self/tests/session-claims.sh patches
 # (`capture_planning.parse_manifest = counting`) to count the claimant scan's parses.
-from routing import WORKTREES_DIR_NAME, feature_worktree_path, is_router_lines, parse_manifest
+from routing import (
+    MANIFEST_NAME, WORKTREES_DIR_NAME, feature_worktree_path, is_router_lines, parse_manifest,
+)
 from transcript import add_usage, iter_billable_messages, iter_billable_messages_at, to_utc
 
 # Claude Code's project-directory naming: every one of these characters in the launch cwd
@@ -488,6 +491,13 @@ LEDGER_SESSIONS_KEY = "sessions"
 # unbounded, which reproduces the old "counts the whole transcript" behaviour as an even
 # split rather than silently dropping the claimant.
 LEDGER_CLAIM_WINDOW_KEY = "window"
+# How a subagent was claimed — a claim's `selected_by`, in `subagents[]` and the ledger.
+# Only a PIN outranks a parent selection (the yield rule, `other_feature_pins`); two parent
+# selections of one delegate are the double-claim refusal's business, never a yield.
+SELECTED_BY_PINNED = "pinned"
+SELECTED_BY_PARENT = "parent"
+# What a refusal names for re-running another feature's capture (`check_claims`).
+FEATURE_CAPTURE_SCRIPT = "./feature-capture.sh"
 # The first line of a delegate's brief names the feature it is for (ORCHESTRATION.md):
 #   feature: <repo>/<slug>
 BRIEF_FEATURE_RE = re.compile(r"^\s*feature:\s*([\w.-]+)/([\w.-]+)\s*$", re.MULTILINE)
@@ -644,13 +654,47 @@ def check_brief_headers(agent_briefs, repo_name, slug):
 def check_claims(agent_ids, repo, slug, claims):
     """Every priced subagent already claimed by a *different* (repo, slug). A capture
     that would double-count is refused outright: two features cannot both own one
-    transcript's cost, and neither manifest can see the other repo to warn."""
+    transcript's cost, and neither manifest can see the other repo to warn.
+
+    Returns `(agent_id, other_repo_name, other_slug, other_repo, other_selected_by)` per
+    conflict — the last two so the refusal can tell the pin-over-parent case apart
+    (`pin_over_parent_advice`)."""
     conflicts = []
     for agent_id in sorted(agent_ids):
         claim = claims.get(agent_id)
         if claim and (claim.get("repo"), claim.get("slug")) != (repo, slug):
-            conflicts.append((agent_id, claim.get("repo_name", claim.get("repo")), claim.get("slug")))
+            conflicts.append((
+                agent_id, claim.get("repo_name", claim.get("repo")), claim.get("slug"),
+                claim.get("repo"), claim.get("selected_by"),
+            ))
     return conflicts
+
+
+def pin_over_parent_advice(other_repo, other_repo_name, other_slug, repo):
+    """The extra line a `check_claims` refusal prints when THIS capture pins a delegate the
+    ledger holds as `"parent"` for another feature — the ordering hole the yield rule
+    leaves: that feature captured before this pin existed. The refusal stands (its record
+    is not rewritten behind its owner's back), but the remedy is now mechanical: a pin
+    outranks a parent selection, so the other feature's recapture yields the delegate, and
+    then this capture goes through. `--self` is named when the other feature is in the
+    self corpus. Across repos the other capture sees this pin only through a `"pinned"`
+    ledger claim, which this refused capture has not written — said, not hidden
+    (self/BACKLOG.md)."""
+    self_flag = " --self" if other_repo == SELF_CORPUS_IDENTITY else ""
+    command = f"{FEATURE_CAPTURE_SCRIPT}{self_flag} {other_slug}"
+    advice = (
+        f"      this feature pins it, and a pin outranks a parent selection: "
+        f"{other_repo_name}/{other_slug}'s recapture will now yield the delegate — "
+        f"`{command} --recapture` from its primary checkout if it has merged, `{command}` "
+        "in its worktree if not — then run this capture again"
+    )
+    if other_repo != repo:
+        advice += (
+            f" (from another repo it sees this pin only through the claims ledger, which "
+            f"this refused capture has not written: see self/BACKLOG.md, "
+            f"\"cross-repo pin over a parent claim\")"
+        )
+    return advice
 
 
 def record_claims(claims, agent_ids, agent_costs, agent_selected_by, repo, repo_name, slug):
@@ -1169,6 +1213,78 @@ def check_subagent_overlap(features_dirs, slug, manifest):
                 "its cost is being counted twice"
             )
     return warnings
+
+
+def corpus_copies(features_dir):
+    """Every copy of THIS corpus reachable from this repo: the one at `features_dir`, the
+    primary checkout's, and each feature worktree's under `<primary>/.worktrees/*/` — the
+    same corpus-relative path in each (`self/features` under `--self`, `plans/features`
+    otherwise, `agentTooling/self/features` when vendored), so the other corpus is never
+    read. A wave's pins sit on unmerged branches in sibling worktrees, which the primary's
+    copy alone would miss.
+
+    The primary is `roots`' own resolution — `checkout_of` the corpus, then
+    `worktree_primary` when that checkout is a linked worktree — so a worktree's copy of
+    this script scans what the primary's copy would. A corpus in no checkout is its own
+    and only copy. Ordered primary first, then the worktrees by name, then `features_dir`
+    if it is none of those (a legacy sibling `<primary>-<slug>`); duplicates dropped."""
+    features_dir = Path(features_dir)
+    checkout = checkout_of(features_dir)
+    if checkout is None:
+        return [features_dir]
+    primary = worktree_primary(checkout) or checkout
+    rel = features_dir.relative_to(checkout)
+    candidates = [primary / rel]
+    worktrees_dir = primary / WORKTREES_DIR_NAME
+    if worktrees_dir.is_dir():
+        candidates += [wt / rel for wt in sorted(worktrees_dir.iterdir()) if wt.is_dir()]
+    candidates.append(features_dir)
+    copies, seen = [], set()
+    for candidate in candidates:
+        key = candidate.resolve()
+        if key in seen or not candidate.is_dir():
+            continue
+        seen.add(key)
+        copies.append(candidate)
+    return copies
+
+
+def other_feature_pins(features_dir, slug, repo, repo_name, claims):
+    """`{agent_id: "<repo_name>/<slug>"}` for every delegate ANOTHER feature pins — what a
+    parent-selected delegate yields to (spec: self/features/unpin-and-yield §2). The union
+    of two sources, so the rule does not depend on which feature captures first:
+
+      1. the `subagents` pins of every manifest in this corpus's copies (`corpus_copies`)
+         but this slug's own — a manifest that does not parse is skipped, as
+         `check_subagent_overlap` skips one;
+      2. the claims ledger: a claim by a different (repo, slug) whose `selected_by` is
+         `"pinned"` — the cross-repo case, where no manifest is reachable. A `"parent"`
+         claim is NOT a pin and yields nothing (two parent selections are refused by
+         `check_claims` instead).
+
+    The first source found names the feature — manifests before the ledger, copies in
+    `corpus_copies`' order. Read once per capture, before the walk."""
+    pins = {}
+    for copy in corpus_copies(features_dir):
+        for readme in sorted(copy.glob(f"*/{MANIFEST_NAME}")):
+            other_slug = readme.parent.name
+            if other_slug == slug:
+                continue
+            try:
+                other = parse_manifest(readme)
+            except (OSError, ValueError):
+                continue
+            for agent_id in other.get("subagents") or []:
+                pins.setdefault(agent_id, f"{repo_name}/{other_slug}")
+    for agent_id, claim in sorted(claims.items()):
+        if not isinstance(claim, dict) or claim.get("selected_by") != SELECTED_BY_PINNED:
+            continue
+        if (claim.get("repo"), claim.get("slug")) == (repo, slug):
+            continue
+        pins.setdefault(
+            agent_id, f"{claim.get('repo_name', claim.get('repo'))}/{claim.get('slug')}"
+        )
+    return pins
 
 
 def claimed_session_ids(features_dirs):
@@ -2612,6 +2728,12 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     ledger = load_ledger()
     claims = ledger[LEDGER_SUBAGENTS_KEY]
     session_claims = ledger[LEDGER_SESSIONS_KEY]
+    # Delegates another feature pins, and the feature that pins each: a parent-selected one
+    # in this set YIELDS rather than being claimed here (the parent arm below). Read once,
+    # from this corpus's copies and the ledger — see `other_feature_pins`.
+    other_pins = other_feature_pins(features_dir, slug, repo, repo_name, claims)
+    # agent_id -> "<repo_name>/<slug>" of the feature it yielded to; `yielded_agent_ids`.
+    yielded = {}
     share_ctx = {
         "repo": repo,
         "repo_name": repo_name,
@@ -2727,13 +2849,21 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                 if agent_start_ts is None:
                     continue
                 if agent_id in pinned_agent_ids:
-                    selected_by = "pinned"
+                    selected_by = SELECTED_BY_PINNED
                     agent_briefs[agent_id] = brief_feature_of(agent_lines)
                 elif agent_id in excluded_agent_ids:
                     excluded_agent_ids_encountered.add(agent_id)
                     continue
                 elif parent_selected and in_window(agent_start_ts, window):
-                    selected_by = "parent"
+                    # The yield rule: a delegate this feature would claim only through its
+                    # parent, and that another feature PINS, is that feature's. Its own pin
+                    # and `exclude_subagents` are judged first, above, and unchanged. It is
+                    # already in `reachable_agent_ids`, so a recapture that newly yields a
+                    # delegate the last capture priced is not "lost" to check_frozen_cost.
+                    if agent_id in other_pins:
+                        yielded[agent_id] = other_pins[agent_id]
+                        continue
+                    selected_by = SELECTED_BY_PARENT
                 else:
                     continue
                 agent_start[agent_id] = agent_start_ts
@@ -3142,6 +3272,11 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         "open_claimants": sorted(open_claimant_features),
         "excluded_session_ids": sorted(excluded_ids_encountered),
         "excluded_agent_ids": sorted(excluded_agent_ids_encountered),
+        # Parent-selected delegates left to the feature that pins them — present always,
+        # `[]` when none, so a reader can tell "nothing yielded" from "predates the rule".
+        "yielded_agent_ids": [
+            {"agent_id": agent_id, "to": to} for agent_id, to in sorted(yielded.items())
+        ],
         "priced": priced,
         "cost_usd": {
             "main": main_cost,
@@ -3239,8 +3374,13 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             "already claimed by another feature, and one transcript's cost cannot belong "
             "to two:"
         )
-        for agent_id, other_repo, other_slug in conflicts:
-            print(f"  {agent_id}  claimed by {other_repo}/{other_slug}")
+        for agent_id, other_repo_name, other_slug, other_repo, other_selected_by in conflicts:
+            print(f"  {agent_id}  claimed by {other_repo_name}/{other_slug}")
+            if (
+                agent_selected_by.get(agent_id) == SELECTED_BY_PINNED
+                and other_selected_by == SELECTED_BY_PARENT
+            ):
+                print(pin_over_parent_advice(other_repo, other_repo_name, other_slug, repo))
         print(
             "  Drop the pin from one manifest (or re-capture the other feature without "
             f"it) and run again. Ledger: {claims_ledger_path()}"
@@ -3284,6 +3424,11 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         f"{slug}: {len(sessions)} sessions matched, {len(subagents)} subagents, "
         f"{len(excluded_ids_encountered)} excluded, total {cost_str}"
     )
+    for agent_id, to in sorted(yielded.items()):
+        print(
+            f"{slug}: agent-{agent_id} yields to {to}, which pins it — its parent session "
+            "is selected here, and a pin outranks that"
+        )
     for warning in warnings:
         print(f"WARN: {warning}")
     return "captured"

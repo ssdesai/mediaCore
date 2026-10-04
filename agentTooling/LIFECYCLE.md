@@ -105,7 +105,7 @@ Two things before any delegate is spawned. **Replace the `@@TODO@@` stub** in
 `review/incomplete/NN-review-opus.md` with a real review brief, written from the spec
 and never from a builder's report — `AGENT_PLANS.md` → "Review plans" says what it must
 hold. **Fill the manifest's prose**: the goal, the plan table, what was deliberately
-excluded. `check-plans.sh [--self] <slug>` says whether the stub was replaced and the fence and plan files are well-formed, and `run-batch.sh` runs it before spending anything. Then launch the coordinator session — inside the worktree, or in the primary checkout
+excluded. `check-plans.sh [--self] <slug>` says whether the stub was replaced and the fence and plan files are well-formed, and `run-batch.sh` runs it before spending anything. The router may write both itself, from the primary checkout by the worktree's path: a write under the feature's `review/` or to its manifest `README.md` is **not building**, so the close's unpinned-builder check (step 6) does not count it. Then launch the coordinator session — inside the worktree, or in the primary checkout
 under the pin step 2 wrote for it (rule 1) — and write the delegate's
 brief per `ORCHESTRATION.md` → Rules, or `AGENT_DIRECT.md` → "The brief" for a direct
 implementer.
@@ -150,7 +150,8 @@ tree before it.
   is the rework brief. Route the rework like a build — direct, plans or by hand, at a
   cheaper model where the findings are precise — then queue the re-review as
   `review/incomplete/NN-review-<model>.md`, add its stem with `analysis/manifest.py
-  [--self] S set-plans …`, and run the pass again. That is round N+1, and **every stamp
+  [--self] S set-plans …`, and run the pass again. Queuing that brief is the router's
+  write, like step 3's, and not building. That is round N+1, and **every stamp
   carries its round**, which is what the report's Rounds table is built from.
 
 `run-batch.sh` ends a round the same way: clean, it calls the close, so the unattended
@@ -175,13 +176,18 @@ path that is not one of the harness's records — **the same reader the capture 
 (`stray_paths`, `plan-runner-roots.sh`), so a half-written file inside the feature
 directory is named here, before the PR, rather than by the capture after one is open.
 It also refuses a feature **its unpinned router built**: the session that ran the start
-without `--pin`, recorded in `routing.json`, whose transcript shows it working in this
-worktree (`analysis/routing.py --unpinned-builder`). That session built the feature, and
-unpinned, its build would be counted as routing overhead and left out of the total this
-close freezes. The refusal names the remedy, `analysis/manifest.py [--self] S
+without `--pin`, recorded in `routing.json`, whose transcript shows it building in this
+worktree (`analysis/routing.py --unpinned-builder`). **Building is work in the worktree
+other than the router's own writes**: a `cwd` at or under it, or an Edit, Write or
+NotebookEdit aimed under it — except one at or under the feature's `review/` or exactly
+its manifest `README.md` there, which are steps 3 and 5. That session built the feature,
+and unpinned, its build would be counted as routing overhead and left out of the total
+this close freezes. The refusal names the transcript line that made it a builder (`cwd
+<path>` or `<Tool> <path>`) and the remedy, `analysis/manifest.py [--self] S
 pin-session <id>`. The manifest is a cost record, so the re-run passes and the capture
 commits the pin. A router that builds should have been started with `--pin`; a router
-that only routes, with a coordinator launched in the worktree, is never refused.
+that only routes — writing the briefs and the manifest's prose, never `cd`-ing in, with
+a coordinator launched in the worktree — is never refused.
 
 The round it names in its banner, its refusals and its `pr_opened` stamp is the one the
 closing review stamped on its own `plan_end`; the count of completed reviews is only the
@@ -355,7 +361,7 @@ own capture (step 6) or is a repair somebody reaches for with a reason:
    inside it, or wherever a session began before the feature existed — is claimed only
    by pinning its id in the manifest's `sessions`, and its delegates only by pinning
    theirs in `subagents` — `manifest.py pin-session` and `pin-subagent`, never a hand
-   edit (rule 3). Never by widening `branches`. **A pin is now the exception**:
+   edit (rule 3); `unpin-session` and `unpin-subagent` take a pin out the same way. Never by widening `branches`. **A pin is now the exception**:
    `feature-start.sh` pins nothing unless asked (`--pin`), because the session that
    starts a feature is a router whose spend is its own category (step 2), and the
    coordinator belongs in the worktree where no pin is needed.

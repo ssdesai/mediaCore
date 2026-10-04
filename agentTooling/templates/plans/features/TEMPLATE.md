@@ -107,6 +107,8 @@ go wrong quietly:
   and window would also select is priced once, and every entry in `planning.json`
   records how it was selected (`selected_by`: `"pinned"` or `"branch"`) and the `cwd` it
   was launched in. A pin that is also in `exclude_sessions` warns, and the pin wins.
+  Pin with `python3 agentTooling/analysis/manifest.py <slug> pin-session <id>`, and take
+  one out with `… unpin-session <id>` — never by editing the fence.
   A session claimed by more than one feature is **split** between them by the windows
   they claim it with, so the bounds on a pinned session decide dollars.
   Find an id with `python3 agentTooling/analysis/capture_planning.py --list-sessions
@@ -119,7 +121,8 @@ go wrong quietly:
   spawned from `main` is invisible to `branches` and `session_window` alike; pinning its
   id claims it outright. Pin with `python3 agentTooling/analysis/manifest.py <slug>
   pin-subagent <agent-id>` — the one writer of this list; a repeat is a no-op and a
-  malformed id is refused — never by editing the fence. Find the id with
+  malformed id is refused — never by editing the fence; `unpin-subagent <agent-id>` is how
+  a pin comes out. Find the id with
   `python3 agentTooling/analysis/capture_planning.py --list-subagents --since <date>`,
   which prints each one's cost and opening prompt. A subagent whose parent *is* on the
   branch needs no pin — it is claimed with its parent when its own start is in the window.
@@ -132,11 +135,13 @@ go wrong quietly:
   question — every delegate on this machine no feature has claimed, with the
   feature its brief names; a pin already claimed by another feature refuses the
   capture rather than counting twice.
-- **`exclude_subagents`** — optional. Delegates of a session this manifest *does* select
-  that belong to another feature — a coordinator's manifest (on `main`, windowed around
-  the run) lists the architect it spawned, which the arm's own manifest pins. Without it
-  the parent route claims the architect here too and the ledger refuses the other
-  capture as a double claim.
+- **`exclude_subagents`** — optional, and legacy: leave it empty. Delegates of a session
+  this manifest *does* select that belong to another feature. A delegate another feature
+  pins now **yields** on its own — the capture leaves it to that feature and records it in
+  `planning.json`'s `yielded_agent_ids` — so nothing new needs listing here. The list is
+  still read, so a record captured before the yield rule recaptures as it did; take an
+  entry out with `python3 agentTooling/analysis/manifest.py <slug> unexclude-subagent
+  <agent-id>`, never by editing the fence.
 - **`session_window.to`** — `null` means "still in flight", and open is the right value
   until the feature's first capture. `agentTooling/feature-capture.sh` sets it on the
   branch, from evidence: one second past the last instant of the sessions this feature's
