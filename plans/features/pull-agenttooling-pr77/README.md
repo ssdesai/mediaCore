@@ -1,39 +1,18 @@
-# <Feature title>
+# Pull agentTooling PR 77
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+Propagate agentTooling PR #77 ("unpin-and-yield") into mediaCore. The vendored
+`agentTooling/` prefix is synced to upstream split sha `509440eeb9770c5f000428eadfca0ce207f8f421`
+(509440e), and `plans/` is re-synced from it (`plans/features/TEMPLATE.md`).
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Review that the `agentTooling/` diff against main is exactly the upstream range and the sync and gate are clean. |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- Any change outside the vendored `agentTooling/` prefix and the `plans/` sync output.
 
 ## Machine-readable
 
