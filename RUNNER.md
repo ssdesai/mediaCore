@@ -1,0 +1,592 @@
+# Runner execution model
+
+How `run-plans.sh`, `run-verify.sh`, `run-review.sh`, and `run-batch.sh` execute a
+batch. Read this when authoring plans, and when working out what a failed run actually
+did. Install and update instructions are in `README.md`; how to write a plan is in
+`AGENT_PLANS.md`.
+
+By default, the runners operate on the consuming repo's `plans/features/<slug>/`
+directories, one per feature (see "Choosing a feature" below). Passing `--self` as the
+first argument switches the whole run to agentTooling's own corpus instead — see
+"Self-hosted mode" below.
+
+- `plans/features/<slug>/auto/` — file-edit-only build plans, run by `run-plans.sh`
+  with **Bash disabled**
+- `plans/features/<slug>/verify/` — post-build verification plans, run by
+  `run-verify.sh` with **Bash enabled**
+- `plans/features/<slug>/review/` — post-verify diff review, run by `run-review.sh`
+  with **Bash enabled**
+- `plans/features/<slug>/interactive/` — bash-heavy steps a human runs by hand; no
+  runner touches these
+
+## The four modes
+
+### Build plans (`plans/features/<slug>/auto/`)
+
+File-edit-only, run in headless mode (`claude -p --permission-mode acceptEdits`).
+These must NOT include bash commands — automated verification belongs in
+`plans/features/<slug>/verify/`, and bash-heavy human-in-the-loop steps in
+`plans/features/<slug>/interactive/`.
+
+The runner disables the Bash tool (`--disallowedTools Bash`), so the "no shell
+commands" rule is enforced rather than merely requested — a plan that needs bash
+fails loudly instead of quietly shelling out under `acceptEdits`.
+
+### Verify plans (`plans/features/<slug>/verify/`)
+
+The last plans authored for a batch. Build plans cannot run what they wrote, so
+typecheck breaks and failing assertions survive until something exercises the code.
+The verify plan closes that gap: it runs the work and checks it.
+
+- **Bash is ENABLED.** `run-verify.sh` runs `claude -p --permission-mode acceptEdits
+  --allowedTools Bash`, so the executor can run typecheck, tests, and codegen checks,
+  and auto-accept the edits it makes to fix defects. The build runner stays bash-free;
+  only this privileged pass gets the wider scope.
+- **…but repo-wide VCS state is off limits.** The executor prompt forbids `git stash`,
+  `git checkout`, `git reset`, `git clean` and branch switches; `git worktree add` is the
+  sanctioned way to get a baseline to compare against. The queue this run is being driven
+  from is untracked working-tree state, so `git stash -u` sweeps the executing plan out
+  from under the runner — and the budget cap can stop the run between a stash and its pop,
+  stranding the batch's whole uncommitted output in a stash nobody knows to look for.
+- **Model: `sonnet` by default.** Verify is judgment work — reading unfamiliar output,
+  deciding whether a failure is a test bug or a real defect. But once the mechanical
+  checks are the gate's job and world-building is a test's job, what remains is triage
+  plus a few cross-layer invariants, which is `sonnet`-shaped. Spend `opus` only on a
+  genuinely adversarial surface. `run-verify.sh` reads the model from
+  `NN-verify-MODEL.md` exactly as `run-plans.sh` does.
+- **Written as a brief, not a diff.** The plan states the goal and the checks — not
+  step-by-step edits — and grants latitude to correct *local* defects in the build
+  output rather than re-plan them.
+- **It checks what the suite doesn't.** The executor reads the tests covering a
+  behaviour before checking that behaviour by hand, and never reconstructs a
+  collection/fixtures/running server to do so — that setup is a test to be written,
+  and reporting the missing assertion beats performing the check once. See
+  AGENT_PLANS.md → "Verify plans" for the measured cost of ignoring this.
+- **`--up-to NN` bounds the queue at a level sentinel.** Used to drain just the
+  level-verify plan queued at a level boundary before the next level's build plans run
+  against it. Plans numbered above `NN` — including the batch's final verify — are left
+  queued; since `resolve_feature` calls `list_plans` too, a feature whose only queued
+  verify plan is above the bound resolves as nothing queued, a clean no-op rather than
+  an error. With the slug given explicitly — which is how `run-batch.sh` always calls
+  it — `resolve_feature` returns before that check and the same no-op comes from the
+  drain loop finding nothing under the bound. Either way: exit 0, nothing run.
+
+### Review plans (`plans/features/<slug>/review/`)
+
+The last pass. Build wrote the code, the gate ran the deterministic checks, and verify
+ran the work and fixed what running revealed. Review reads the **diff** and judges the
+code itself — the defects that are still there while every check is green.
+
+- **It is not a second verify plan.** The two passes differ in how they generate
+  observations, and that is the whole reason both exist. Verify generates them by
+  *running* the work: it finds what only execution reveals. Review generates them by
+  *reading the diff*: an invariant no test asserts, a contract broken on one side of a
+  layer boundary, a field list that no longer matches the shape it documents. Neither
+  subsumes the other. Note that this does not contradict AGENT_PLANS.md → "The
+  mechanical gate", which rules out handing a high model a *transcript* to summarize;
+  reading a diff generates observations that did not previously exist, which is exactly
+  the property that section says verification value depends on.
+- **Bash is ENABLED**, and the same VCS restrictions apply as for verify. Read-only git
+  is not merely permitted here, it is the pass's primary tool: establishing what the
+  batch changed is `git diff`/`git log`/`git show`.
+- **Same fix policy as verify: local fixes, structural escalations.** A drifted README
+  line or a missing null guard is fixed in-pass; anything needing a new function, a
+  changed signature, or a design decision is reported for the next batch's build plan.
+  Expect review to escalate more often than verify — a defect found by reading skews
+  structural, and rewriting a design at peak context on this pass's model is the most
+  expensive way this workflow can correct anything.
+- **Model: `opus` by default**, unlike verify's `sonnet`. Judging whether a change
+  respects an invariant nobody wrote down is the adversarial-reasoning case verify's
+  own model note reserves for opus. `run-review.sh` reads the model from
+  `NN-review-MODEL.md` exactly as the other runners do.
+- **Budgeted separately.** `--max-budget-usd` defaults to `$7.00`
+  (`REVIEW_BUDGET_USD`), higher than verify's `$3.00` because the default model is more
+  expensive. It supersedes a starting estimate that no measured run fitted inside: the
+  first two measured opus runs cost `$4.53` and `$5.11` (the second capped after it had
+  written its report), so the figure is the median doubled and rounded down. Re-derive it
+  again after a few more.
+- **It writes a verdict, and the verdict ends a round.** The executor writes its findings
+  to `plans/review-report.md`, whose **first line** is `Verdict: clean` or
+  `Verdict: escalated` (`AGENT_PLANS.md` → "Review plans"). `run-review.sh` reads that
+  line — and only that line, with its case folded and its surrounding space and `\r`
+  trimmed before the `Verdict:` label is matched — after the plan completes, commits the pass's own output as
+  `<slug>: review round N` (only on a branch that is not the feature's base), and stamps
+  the round's `plan_end` with `verdict=<clean|escalated|unreadable>` and `head=<sha of
+  that commit>`, then `pass_end`. A first line the harness cannot read is `unreadable` and
+  is treated exactly like `escalated` — **fail closed** — with a line saying the report
+  carried no verdict.
+- **It opens no PR and runs no capture.** A runner is a runner. The step that opens the
+  PR, captures the cost and asks for the merge is `feature-close.sh`, which refuses
+  anything but the tree a clean review judged (`LIFECYCLE.md` → step 6) — so a rework
+  after an escalated review cannot happen behind a PR body and a frozen record that
+  describe the tree before it, which is what used to happen. The pass's last lines name
+  the next step: **clean** → the close's exact command; **escalated** → the rework brief
+  the runner has just written to `plans/features/<slug>/escalations/<review-stem>.md`, and
+  the three steps of the next round (brief the rework, queue `NN+1-review-<model>.md`,
+  `manifest.py set-plans`, run the pass again).
+- **Every stamp carries its round**, computed once per pass as the number of review plans
+  in `review/complete/` plus one and held in `TIMING_ROUND` (`plan-runner-roots.sh`), so
+  `analysis/report.py` can show what each round cost and what it decided.
+- **The verdict step is gated and advisory.** It runs only when the pass finished with
+  nothing left in `failed/`, `inprogress/` or `incomplete/` — a review that failed or was
+  interrupted has not finished judging the batch, and a verdict recorded on its behalf
+  would be half-written. The exception is a budget cap that fired *after* the report was
+  written: the verdict is complete, so it is recorded with a banner in the report saying
+  the pass was capped. A git failure while committing is reported and leaves the pass's
+  exit status alone: a review that succeeded is not made wrong by a commit that didn't.
+- **Optional per feature.** An empty `review/incomplete/` is a clean no-op that exits 0,
+  so features authored before this queue existed still run unchanged under
+  `run-batch.sh`.
+
+### Interactive plans (`plans/features/<slug>/interactive/`)
+
+Verification, migration, and other bash-heavy steps that need a human in the loop,
+run by hand. Distinct from verify plans, which are scripted and unattended, just
+privileged — same "after the build plans" timing, no human in the loop.
+
+## Layout and state
+
+Each feature is one directory, `plans/features/<slug>/`, holding everything about
+that feature: a manifest (`README.md`), the state subfolders below for each of
+`auto/`, `verify/`, `review/`, and `interactive/`, and the JSON artifacts the analysis
+tooling writes (cost records, fanout reports). Nothing about a feature spans two
+directories.
+
+Within each queue (`auto/`, `verify/`, `review/`), plans live in state subfolders. The
+runner promotes them between folders as it works. Each plan has a sidecar progress log
+(`<plan>.progress.md`) that travels with it.
+
+- `incomplete/` — queued plans. Run order is lexical (`[0-9]*.md`). No log yet.
+- `inprogress/` — the plan currently executing, plus its progress log. If the runner is
+  killed mid-plan, the plan and log stay here; the next run's phase 1 resumes them.
+- `complete/` — plans the runner finished cleanly, with their final logs.
+- `failed/` — plans where `claude -p` exited non-zero, with their logs. Inspect, fix,
+  and move back to `incomplete/` to retry. Also where a plan lands when it exceeds its
+  run budget (see below) — deliberately not `inprogress/`, since resuming would just buy
+  the same brief another budget's worth of turns.
+
+**A retried plan leaves its failed attempt's sidecars behind, and that is the design.**
+`finalize_plan` files a plan's four files as a set, so a failed run puts
+`<plan>.progress.md`, `<plan>.stream.jsonl` and `<plan>.usage.json` into `failed/`
+alongside the `.md`. Retrying moves only the `.md` back to `incomplete/`, and the retry
+writes a fresh log and a fresh `usage.json` beside the plan's new home — so after a
+successful retry a `.progress.md` + `.usage.json` pair sits in `failed/` with no plan
+file next to it. **Leave it there.** It is the record of the attempt that failed, and
+its `usage.json` carries the `session_id` that `analysis/recover_attempts.py` needs to
+price that attempt from its session transcript — the one thing a killed run still
+yields. Deleting the pair to tidy up throws that away, and with it any chance of
+recovering what the attempt cost.
+
+Nothing downstream is confused by it. `analysis/report.py`'s `build_usage_index` ranks
+the two sidecars claiming the stem — the one whose sibling `.md` exists wins, then
+`complete` > `inprogress` > `incomplete` > `failed` — reads the tables off the live one
+and rolls the other's dollars in as a prior attempt, so the money is counted once and
+the pair costs nothing but disk. See `analysis/README.md` → `report.py`.
+
+**Level sentinels.** `NN-gate.md` moves `incomplete/ → complete/` directly with no
+sidecars; the runner runs the gate with `NN` as its label instead of calling `claude`;
+cost tooling never sees it because it has no `.usage.json`.
+
+`auto/`, `verify/` and `review/` each get their own set; the runners create them on
+first use, and `finalize_plan` recreates the one it is about to move into. That second
+`mkdir` is not redundant: a state folder is an empty directory until a plan lands in it,
+git does not track empty directories, and the verify and review executors have bash — a
+`git stash -u` / `git stash pop` in the working tree removes them and restores only the
+files (the plan queue is untracked, so `-u` sweeps it). Without it every `mv` fails, the
+plan stays in `inprogress/`, and the next run resumes a plan that was meant to be filed.
+
+## Choosing a feature
+
+A run operates on exactly one feature. The slug may be given explicitly as the first
+argument to `run-plans.sh`, `run-verify.sh`, `run-review.sh`, or `run-batch.sh`.
+Otherwise it is inferred from whichever feature under `plans/features/` has plans queued
+(`incomplete/` or `inprogress/`) in the queue that runner drains.
+
+- **Zero features with queued work** is a no-op: the runner prints a message and exits 0.
+- **Exactly one** is resolved and used.
+- **Two or more is an error**, not a pick — guessing wrong doesn't just run the wrong
+  plans, it files completed logs, streams, and usage records under the wrong feature,
+  corrupting a cost report that nothing downstream can detect as wrong. Name the
+  feature explicitly to break the tie.
+
+`run-batch.sh` forwards an explicit slug to all three passes; when inferring, it
+captures whichever feature the build pass resolved and hands that same slug to the
+verify and review passes, so the three stages can never resolve to different features.
+
+Given an explicit slug it runs `check-plans.sh` on that feature first and stops, running nothing, when the lint fails. An inferred slug is not known until the build pass has resolved it, so the lint is skipped on that path.
+
+Each pass is gated on the one before it. A non-zero build code skips verify, because
+the code under test was never finished being written. A non-zero verify code skips
+review, for a different reason: verify is permitted to edit, so a verify pass that
+stopped early leaves a half-fixed tree, and reviewing a state nobody intends to keep
+produces findings nobody wants. The skip prints the `run-review.sh` command to run once
+verify is settled.
+
+**And the batch ends the round the review decided.** After a review pass that exits 0 it
+reads the latest round's verdict exactly as `feature-close.sh` does — the same
+`latest_review_plan` and `review_plan_end` in `plan-runner-roots.sh`, so an unattended
+batch and a coordinator at a terminal can never disagree about what a round decided.
+Clean, it runs `feature-close.sh`, so the unattended path still ends in a PR with the cost
+record on the branch. Escalated or unreadable, it prints the path of the rework brief the
+review runner wrote and exits 1 — a round that escalated is not a batch that succeeded.
+
+Exit code **64** (`LEVEL_PAUSE_RC`, `plan-runner-roots.sh`) from `run-plans.sh` means
+paused at a level boundary with a level-verify plan queued **and the level's gate not
+green**; `run-batch.sh` handles it by climbing the tier ladder (next section) and
+re-invoking the build pass; by hand, run `run-verify.sh --up-to NN`, re-run the gate, and
+continue only on green. When the level's gate verdict is
+`all checks passed` there is nothing for a fix session to fix, so the runner files every
+queued verify plan numbered ≤ NN to `verify/complete/` with a `.progress.md` saying
+`skipped: level NN gate reported 'all checks passed'` and continues without pausing (D3,
+revised after the first pilot measured an always-run level-verify at 23% of the final
+verify for no finding). The pause is advisory and fires once: the sentinel is already in
+`complete/` when the runner exits 64, so re-running `run-plans.sh` without the
+level-verify simply continues into the next level. Nothing enforces that the level-verify
+ran — `run-batch.sh` is what makes the sequence reliable.
+
+64 is reserved. `finalize_plan` remaps a `claude` that exits 64 to 1, and
+`run_level_gate` does the same for a gate script, so neither can impersonate a pause and
+make `run-batch.sh` skip past a failed plan. `self/tests/level-sentinel.sh` asserts all of
+this against a throwaway checkout and runs in `self/gate.sh`.
+
+## Red gates: the tier ladder
+
+A level's gate going red is normal — build plans cannot run what they wrote. What the
+batch does about it is a ladder, climbed by `run-batch.sh`'s `settle_level`, with no
+human on any rung until the last:
+
+| Tier | What runs | Model, cap | May change a contract | Leaves behind |
+|---|---|---|---|---|
+| 1 | the authored `NN-level-*` verify plan (`run-verify.sh --up-to NN`) | sonnet, `LEVEL_VERIFY_BUDGET_USD` ($6) | **no** — writes `escalations/NN.md` instead | its progress log |
+| re-gate | `gate.sh NN` | none | — | `gate-report.NN.txt` |
+| 2 | `NN-escalation-opus`, synthesized by `run-escalation-plan.sh` into `verify/incomplete/` | opus, `ESCALATION_BUDGET_USD` ($8) | **yes**, and must patch queued plans that mirror it | `## Decided at tier 2` in `escalations/NN.md` |
+| re-gate | `gate.sh NN` | none | — | — |
+| 3 | nothing — the batch exits 1 | — | — | `## Needs a human` in `escalations/NN.md` |
+
+Green at either re-gate resumes the build pass. A tier that stops for a **usage limit or
+interrupt** (its plan left in `inprogress/`) is not an outcome: the batch exits with that
+code and the next run resumes the same rung. A tier that stops for its **budget** is an
+outcome (the plan is in `failed/`): the ladder re-gates and climbs.
+
+**What the level gate measures.** The sentinel's `expected-red:` and `defer:` lines
+(`AGENT_PLANS.md` → "Plan file format") are exported to the repo's `gate.sh` as
+`GATE_EXPECTED_RED` and `GATE_DEFERRED` by `level_expectations` (`plan-runner-roots.sh`),
+from both `run_level_gate` and the batch's re-gate. Without them the first tiered pilot ran
+tier 1 *and* tier 2 on level 1 because plan 01's acceptance file was red — which it is
+supposed to be until level 2. A DEFERRED section is not SKIPPED: deferred is "a later
+level's", skipped is "could not run", and only the latter keeps a level from being green.
+
+**Resume.** `run-batch.sh <slug>` (explicit slug) first looks at the highest sentinel in
+`auto/complete/`; if a level plan ≤ NN is still queued or that gate's last verdict is not
+green, it settles the level before running the build pass. The
+first pilot's re-run after a capped level-verify built level 3 on a half-fixed level 2;
+this is the rule that stops it. The condition is about the **level**, not about the queue
+behind it: an empty `auto/incomplete/` used to skip the settle entirely, so a batch killed
+during its *last* level's level-verify resumed straight past the ladder — the ordinary
+verify pass ran that plan with no tier behind it, a red gate there escalated nothing, and
+the failure surfaced only at the final gate. A finished batch re-run with its gate reports
+intact is already settled and settles nothing; one re-run on a fresh clone (the reports are
+gitignored) re-runs that level's mechanical gate once, at no model cost.
+
+**Once per level.** `run-escalation-plan.sh` refuses to write a second
+`NN-escalation-*` for a level that has one in any state, so a red-forever level costs one
+tier-1 run and one tier-2 run, then a human. To re-arm tier 2 after editing the note, move
+the old escalation plan out of `verify/failed/` by hand.
+
+**Cost attribution.** The synthesized plan has no manifest entry; `analysis/report.py`
+recognises the `NN-escalation-<model>` stem and rolls it in with a warning instead of
+excluding it as an orphan.
+
+**Review after a cap.** `run-review.sh` records the round's verdict when the budget cap
+fired *after* the report was written (content fingerprint before/after), appending a
+banner saying so, and still exits non-zero. A cap before the report records nothing. The
+capped plan is filed to `failed/`, and `latest_review_plan` reads `failed/` as well as
+`complete/` for exactly this case — a complete report with a verdict is a verdict — while
+only `complete/` counts toward the round.
+
+`self/tests/tiered-gates.sh` asserts every row of this table against a throwaway checkout.
+
+**There is no archiving step any more.** The feature directory *is* the archive — a
+finished feature's `complete/` folders are its permanent record. (The flat
+`plans/{auto,verify}/` layout that predates this is gone from every consuming repo; the
+one-time migration script that moved it was retired with the last of them.)
+
+The feature directory also gains one `timing.jsonl`, appended to by every runner as it
+goes (`stamp_timing`, `plan-runner-roots.sh`): a UTC-stamped line at each batch, pass,
+plan and gate boundary and when the PR opens — plus, for a direct feature, the
+`checkpoint status=…` lines its implementer appends by hand with the top-level
+`stamp-timing.sh` (`AGENT_DIRECT.md` → "Checkpoint and resume"). Every line also carries
+its **`round`** (a string, like every other detail), and a review plan's `plan_end`
+carries that round's `verdict` and the `head` it judged; a line written before rounds
+existed carries no `round` and is read as round 1. A plan's own duration is in its
+`usage.json`; this is the record of everything between plans — the gates, how much
+parallelism a batch got, first plan to PR — which `analysis/report.py` turns into the
+report's wall-clock figures and its Rounds table. Small and committed, like the usage
+sidecars.
+
+Every finished plan — complete or failed — lands with four files, not two:
+
+- `<plan>.md` and `<plan>.progress.md`. On a failure the log's last line is
+  `failed (exit N): <reason>`, extracted from the run's final `result` event, so a plan
+  that died before its first Edit still says why instead of leaving an empty log.
+- `<plan>.stream.jsonl` — the raw stream-json event log: the full record of what the
+  model did, including the tool inputs and results the terminal summary drops. Kept on
+  both success and failure so any run can be analysed after the fact. Gitignore it —
+  useful locally, too large and too machine-specific to commit. **Written by `claude`
+  itself**, not by anything in the pipeline that displays it, so it is complete whatever
+  happens to the terminal — see "Capturing the stream" below for why that matters and
+  what it costs when it is not true.
+- `<plan>.usage.json` — a small, committed extract of the final `result` event: cost,
+  turns, duration, token counts, tool-call counts, and files edited. Exists because the
+  stream it comes from is gitignored and too large to commit — this is what per-plan
+  cost survives on. Written by `finalize_plan` before the stream is moved, so it lands
+  alongside the plan in whichever directory it settles in.
+
+  **Accumulates across attempts.** Each resume is a separate `claude -p` with its own
+  session id, and `run_plan` truncates the stream per attempt, so the sidecar is
+  merged rather than overwritten: `attempts[]` lists one record per invocation and
+  every total sums over it. A run killed outright never reaches `finalize_plan`, so
+  `run_plan` recovers that attempt from the leftover stream just before truncating it
+  (`harvest_orphan_attempt`) — otherwise its session would look interactive to
+  `analysis/capture_planning.py` and be re-billed as planning cost.
+
+Usage-limit stops leave the plan and log in `inprogress/` and exit. The next
+invocation's phase 1 picks them up.
+
+## Self-hosted mode
+
+agentTooling builds its own features with its own harness: a change to the runner or
+its doctrine is planned, executed and costed in the repo it belongs to, instead of in
+whichever repo happens to vendor it.
+
+Pass `--self` as the **first** argument, before any slug:
+
+```bash
+./agentTooling/run-batch.sh --self <slug>
+```
+
+`run-batch.sh` forwards it to both passes.
+
+| | normal | `--self` |
+|---|---|---|
+| `REPO_DIR` (executor cwd) | consuming repo root | `agentTooling/` |
+| feature tree | `plans/features/<slug>/` | `agentTooling/self/features/<slug>/` |
+| gate | `plans/gate.sh` → `plans/gate-report.txt`, plus `gate-report.<NN>.txt` per level sentinel | `self/gate.sh` → `self/gate-report.txt`, plus `gate-report.<NN>.txt` per level sentinel |
+| facts | `plans/PROJECT_FACTS.md` | `agentTooling/self/PROJECT_FACTS.md` |
+
+Everything else — the state folders, resume phases, budget, progress and usage
+sidecars — is identical, because both modes drive the same `plan-runner-lib.sh`.
+
+The executor's cwd being `agentTooling/` is why `agentTooling/CLAUDE.md` exists: a
+`--self` executor never sees the consuming repo's root `CLAUDE.md`.
+
+One asymmetry is worth naming: the analysis scripts take `--self` too, but their
+session root is *not* `REPO_DIR` — planning transcripts are recorded against the git
+toplevel, which is the consuming repo when agentTooling is a subtree. See
+`analysis/README.md` rather than restating it here.
+
+## The run budget
+
+`run-verify.sh` passes `--max-budget-usd` (default `$3.00`, override with
+`VERIFY_BUDGET_USD`) and `run-review.sh` passes its own (default `$7.00`, override with
+`REVIEW_BUDGET_USD`); `run-plans.sh` sets no cap. It is a circuit breaker, not a budget —
+it should fire rarely, and firing means the brief asked for more than that pass should
+do. Every other rule in `AGENT_PLANS.md` → "Verify plans" / "Review plans" is an
+instruction the executor can talk itself out of mid-run with a plausible reason; this is
+the one limit that does not depend on it judging its own scope correctly.
+
+The two caps differ because the two passes default to different models. Verify's `$3.00`
+was derived from measured sonnet runs; review's `$7.00` is the same derivation over the
+first two measured opus runs (`$4.53` and `$5.11`, the second capped after writing its
+report) — the median doubled, rounded down. Re-derive both the same way as more runs
+land, and keep `run-review.sh`'s `REVIEW_BUDGET_USD` and this figure in step.
+
+`claude -p` exits 1 for a budget stop, a usage limit, *and* a genuine failure, so the three
+are told apart by the captured stream: `subtype == "error_max_budget_usd"` on the final
+`result` event (budget) is matched on that exact field, while the usage-limit check
+matches message text, and the two are deliberately disjoint — a mis-scoped brief must
+never be mistaken for a rate limit and silently re-queued. The progress log records
+`stopped: reached the run budget (spent $N)`.
+The cap is enforced after each API call, so a run overshoots by at most one turn's spend.
+
+The usage-limit check has **two** signals, and no others. The first is that final
+`result` event. The second is for the session the platform *kills* at a limit: it is cut
+off mid-turn and never emits a result event at all, so the plan used to be filed to
+`failed/` as an ordinary failure and the graceful `rc == 2` path — leave the plan in
+`inprogress/` for the next run to resume — was dead for the case it exists for. So a
+stream with **no** `result` event whose **last** parsed event is an `error` event naming
+HTTP 429 or a limit in the same terms routes as a usage limit too. All three conditions
+are required: a limit reported mid-stream and recovered from is not a kill, a stream
+ending mid-turn on an ordinary event is still an ordinary failure, and a stream that
+reached a result event is judged by that event alone — assistant text mentioning a rate
+limit is still not a limit. `self/tests/usage-limit-kill.sh` pins each boundary.
+
+## How resume works
+
+Each runner runs in two phases:
+
+1. **Phase 1 — resume.** Anything already in `inprogress/` is re-run first. Claude is
+   told to read the `.progress.md` log as a hint about what is already done, but to
+   verify each target file's on-disk state before editing — the log is a hint, not a
+   source of truth.
+2. **Phase 2 — fresh plans.** Queued plans in `incomplete/` are moved into `inprogress/`
+   one at a time, each with a fresh empty log, and run.
+
+The log is written by the harness, not by Claude: the runner filters the event stream
+for mutating tool calls (`Edit`/`Write`/`MultiEdit`/`NotebookEdit`) and appends one
+`<tool>: <absolute path>` line each. This is what makes "pick up and finish a half-done
+plan" work without requiring the plan itself to track state, and it means entries
+survive a mid-turn kill.
+
+**An empty log on a failed plan is meaningful, not broken.** Only mutating calls are
+recorded, so a plan that failed while still reading — or a verify plan that only read
+files and ran bash — has nothing to show. Read the `failed (exit N)` line and the
+`.stream.jsonl` in that case.
+
+The log is fed through a FIFO whose PID the script waits on, rather than a `tee >(...)`
+process substitution: bash does not wait for process substitutions, and the failure
+path calls `exit` immediately, so pending writes could otherwise be lost exactly when
+they matter most.
+
+Direct features (`AGENT_DIRECT.md`) have no plans for a runner to promote and no
+harness-written log: the implementer keeps `plans/features/<slug>/CHECKPOINT.md`
+itself, and a resume is a fresh implementer briefed from it — `AGENT_DIRECT.md` →
+"Checkpoint and resume". The checkpoint is rewritten whole and keeps no history, so each
+milestone is also stamped into `timing.jsonl` (`stamp-timing.sh <slug> checkpoint
+status=<status>`); that append is what survives the rewrite and what
+`analysis/report.py` reads. The review pass that follows is an ordinary `review/` queue
+and resumes as above.
+
+## The executor's environment
+
+`plan-runner-lib.sh` exports two variables into the `claude -p` it launches, at that one
+site, and `agentTooling/hooks/allow-repo-commands.sh` is the only thing that reads either
+(`hooks/README.md` → "Headless runners and the scratch directory"):
+
+- **`AGENTTOOLING_HEADLESS=1`** — the permission policy denies a command it cannot read
+  with the rewrite as the reason (a heredoc into an interpreter, a `-c` string, a `$(…)`
+  inside a path, and the rest of the REWRITE class — `CONVENTIONS.md` § Shell commands
+  has the table) and, after two
+  such denials in one session, escalates to `permissionDecision: "ask"`. There is nobody
+  at a terminal in a batch to answer one, so with this set it prints **nothing** at that
+  point and the run's own non-interactive policy decides. The counter still advances.
+- **`AGENTTOOLING_SCRATCH=<dir>`** — a per-pass directory the policy approves scripts
+  from by name (`bash <dir>/x.sh`, `python3 [-B] <dir>/x.py`), which is where a denied
+  heredoc is meant to become a file. It lives inside the run's capture directory
+  (`CAPTURE_TMPDIR`, a `mktemp -d` under `$TMPDIR`), so the teardown that removes that
+  removes this — including on the interrupt paths — and there is no second temp
+  directory to leak. Every executor prompt carries one line naming it, appended to
+  whatever the runner's own `build_prompt` composed, because the directory does not
+  exist until `run_plan` has made the capture directory and the policy that reads it is
+  one policy rather than three. The same launch passes **`--add-dir <dir>`** for it:
+  `--permission-mode acceptEdits` auto-accepts a Write only under the executor's working
+  directory, so without that flag the script the deny asks for could not be written at
+  all.
+
+Both are asserted end to end in `self/tests/stream-capture.sh` phase 10, through a stub
+`claude` that records its own environment and prompt — the only way to see what the
+launch site really handed the executor.
+
+**What the executor's environment must not carry: the parent's session id.** A `claude -p`
+that inherits `CLAUDE_CODE_SESSION_ID` from the session that started the runner reports
+that id as its own and appends its lines to the **parent's** transcript (reproduced in a
+cloud container, `self/features/cost-capture-collisions/README.md`; design
+`self/DESIGN-2026-10-05-cloud-execution.md` §4). The runner then writes the parent's id into
+the plan's `usage.json`, and `analysis/capture_planning.py`, which excludes every id a
+`usage.json` names as runner cost, excluded the coordinator and its pinned delegates with
+it. So the same launch site runs `env -u CLAUDE_CODE_SESSION_ID -u
+CLAUDE_CODE_REMOTE_SESSION_ID` (`EXECUTOR_SCRUBBED_ENV_NAMES`) and passes **`--session-id
+<uuid>`** minted per launch by `mint_session_id` — `uuidgen`, else
+`/proc/sys/kernel/random/uuid`, else python3's `uuid`, lowercased and checked against the
+CLI's uuid shape. A resume is a fresh launch and so a fresh id, exactly as "How resume
+works" says; `write_usage_sidecar` still reads the id from the stream, which now carries
+this one, and the runner prints it as `session: <id>` beside `model:`. If no source yields
+a uuid the runner warns and launches without the flag — never with an empty one — and the
+scrub alone still keeps the parent's id out. Transcripts written before the scrub are
+handled on the capture side (`analysis/README.md` → `capture_planning.py`, the collision
+rule), which recognises a runner's conversation by the sentence every runner prompt
+carries, `HEADLESS_PROMPT_MARKER`. Asserted by `self/tests/stream-capture.sh` phase 11,
+through `run-review.sh` with both variables set in the parent: the child sees neither,
+receives a valid uuid that is not the parent's, and the `usage.json` records it; 11i–11m
+pin the marker in all four runner prompts.
+
+**When `SANDBOX_ENABLED` is on, the executor runs inside the OS sandbox. It is off
+today**, so the runners currently execute without the OS boundary, as they did before
+`runner-sandbox` (#72). Where `permissions.blockReadsOutsideWorkingDirectories` is on, a
+sandboxed verify pass cannot read the Playwright cache, and the repo's file cannot fix
+that (below; `self/features/sandbox-consumer-reads`). Nothing at the launch site turns
+the sandbox on: `claude -p` reads the repo's `.claude/settings.json`, and
+`hooks/wire-settings.py` writes a `sandbox` block there in both layouts
+(`hooks/README.md` → "The sandbox block", which also gives the procedure for switching it
+on). With the switch on, the block means: failing closed where the sandbox cannot start,
+no unsandboxed retry, reads of `~/.ssh`, `~/.aws` and `~/.config/gh` refused, the network
+limited to an allowlist, and Claude Code's built-in write denies (`.git/hooks`,
+`.git/config`, `.claude/settings*`, …) binding every Bash subprocess, which the
+permission rules cannot see into. Subagents inherit it. What it changes for a run: **a refused write says `Operation not permitted`, and a refused host a
+`host-not-allowed` error or a refused connection** — and a pass failing that way looks
+exactly like the code broke. Read the stream (`<plan>.stream.jsonl`) for those strings
+before touching the code; a domain a real run needs goes into `SANDBOX_ALLOWED_DOMAINS`,
+not into one repo's file by hand. A read refused under the home directory (the
+Playwright browser cache, where `permissions.blockReadsOutsideWorkingDirectories` is on)
+cannot be re-opened from the repo's file at all — repository `allowRead` entries don't
+count under that block — so it is a per-machine `sandbox.filesystem.allowRead` entry in
+`~/.claude/settings.json` (Claude Code 2.1.286; `hooks/README.md` → "The sandbox block").
+An unlisted domain is *prompted* for in an attended
+session and, with nobody to answer, refused here — `strictAllowlist` is left off for that
+reason. The scratch directory above is covered by the launch's `--add-dir`
+(`self/features/runner-sandbox/NOTES.md` records the run that confirmed it).
+
+## Capturing the stream
+
+**`claude` writes `<plan>.stream.jsonl` itself.** Its stdout — with stderr merged into it,
+as before — is redirected straight to that file, and it runs as a background job whose pid
+the runner waits on; that `wait` is what `run_plan` returns as the plan's exit code.
+Everything else in the run is a *reader* of the file: a follower (`follow_stream`) tails
+it and forwards what appears to two places, the progress-log FIFO and `display_stream`.
+
+The point of that shape is that **nothing downstream of the file can truncate it**. It
+used to be one pipeline —
+
+    claude … | tee "$stream_file" | tee "$log_fifo" | display_stream
+
+— with the record written by a `tee` in the *middle*, so its liveness depended on every
+stage after it. `display_stream` inherits the runner's stdout, so a caller that stopped
+reading (a coordinator backgrounding the runner with its output piped onward) killed
+`display_stream` with SIGPIPE, then each `tee` on its next write, while `claude` — whose
+own stdout was only the pipe into the first `tee` — ran to completion and exited 0.
+`PIPESTATUS[0]` was 0, so the plan was filed as a success with a 689-byte stream, a 0-byte
+progress log and `total_cost_usd: null`. Nine merged reviews were recorded at `$0.00` that
+way before anyone noticed. See `self/features/stream-capture-file-first/`.
+
+Three consequences worth knowing:
+
+- **The follower's drain is deterministic, not timed.** After `wait` returns, the runner
+  touches a marker file in a `mktemp -d`; the follower samples that marker *before* each
+  measurement of the file and only stops on a measurement that found nothing new. The
+  poll interval sets how fresh the terminal output is and nothing else. Nothing is ever
+  written into the stream file itself — `write_usage_sidecar` and
+  `stream_shows_usage_limit` parse it. The follower also stops when `claude`'s pid is
+  gone, so a marker that never arrives costs a poll interval rather than a hang; and the
+  `mktemp -d` is checked, so a temp directory that cannot be created fails the plan (exit
+  70, filed to `failed/` with the reason in its progress log) instead of starting a
+  capture nothing can finish.
+- **A closed consumer no longer stops the runner.** `run_all` traps SIGPIPE, points its
+  own stdout at `/dev/null` on the first broken write and flushes bash's output buffer;
+  from there the run finishes silently and files its plan normally. Terminal output is
+  lost from that point — the consumer is gone — but the stream, the progress log and the
+  usage sidecar are complete.
+- **`rc == 0` with no `result` event in the stream is warned about.** It is the one
+  combination that is never normal: every ending `claude -p` has emits a `result` event,
+  so a clean exit without one means the end of the stream was lost. "Has a `result`
+  event" has exactly one definition, shared with the `result_event` field
+  `write_usage_sidecar` records, and it skips unparseable lines — `claude`'s stderr is
+  merged into the stream, so one runtime warning in it must not read as a lost capture. `finalize_plan` names
+  the plan and the stream file on stderr and leaves the file on disk (gitignored). The
+  plan is still filed by its exit code — work that finished and opened its PR must not be
+  re-run on the strength of a missing event — but the evidence is there.
+
+## Idempotency
+
+Plans should describe the **desired end state** of each file ("the model should have
+these fields") rather than imperative diffs ("add line X"). Even with the log, the
+runner re-verifies each target, so plans written declaratively converge cleanly.

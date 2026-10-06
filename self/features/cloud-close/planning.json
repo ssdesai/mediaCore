@@ -1,0 +1,36 @@
+{
+  "slug": "cloud-close",
+  "captured_at": "2026-10-05T16:33:13.945282+00:00",
+  "manifest_branches": [
+    "claude/cloud-close"
+  ],
+  "manifest_subagents": [
+    "adf96bed0422ce746"
+  ],
+  "sessions": [],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "22992f53-236e-5045-ade9-8aa2075e7b48"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [],
+  "cost_usd": {
+    "main": 0.0,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 0.0,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 0,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-02",
+  "warnings": [
+    "pinned subagent 'adf96bed0422ce746' matches no transcript under any project directory \u2014 a mistyped id, or its parent session has aged out (run --list-subagents --everywhere to see what is still on disk)",
+    "no planning session matched, but 1 excluded session(s) on ['claude/cloud-close'] were met \u2014 the branch name is right and the zero is evidenced; their cost is in usage.json or belongs to the feature that excluded them"
+  ]
+}
