@@ -25,7 +25,8 @@ renderer over it.
 
 **Order is part of the contract.** Every constant a rule is rendered from is an ordered
 tuple rather than a frozenset, because `bash_deny_rules()`'s output is compared byte for
-byte with the committed `.claude/settings.json` (`wire-settings.py --self --check`, which
+byte with this checkout's tracked, generated `.claude/settings.json`
+(`wire-settings.py --self --check`, which
 `self/gate.sh` records) and a frozenset has no order to compare. Membership reads the
 same either way.
 
@@ -179,7 +180,7 @@ def bash_deny_rules():
     """`denied_git_commands()` as `permissions.deny` prefix rules, then each of
     GIT_BARE_DENIED as an exact rule. `wire-settings.py` writes exactly this tuple, in
     this order, and `--self --check` compares the result byte for byte with the
-    committed file.
+    tracked, generated policy file.
 
     A leading-flag stash (`git stash -u`) has no rule: a prefix that named it would name
     `git stash list` too. The hook denies it, like every shape no prefix can say."""

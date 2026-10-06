@@ -34,9 +34,10 @@ set -uo pipefail
 #       INSIDE the feature directory at self/features/S/routing.json, commits both as `S: start`, ran the hook and the
 #       gate inside the worktree, and prints the worktree path, the `feature: <repo>/S`
 #       line, feature-close.sh as what opens the PR, and a last step that says merging the
-#       PR is the end of it; and a primary with no .claude/settings.json (untracked and
-#       generated, so a fast-forward over its untracking deletes it) has it back after
-#       the start, byte for byte what hooks/wire-settings.py --self writes (S1v);
+#       PR is the end of it; and the start writes nothing under the primary's .claude/ —
+#       the policy .claude/settings.json is TRACKED, byte for byte what
+#       hooks/wire-settings.py --self writes, so there is nothing to regenerate and no
+#       settings line is printed (S1v);
 #   S2. it refuses a slug that fails the pattern, a slug whose branch exists, a slug
 #       whose worktree path is already taken, and being run from a worktree's copy —
 #       creating nothing in each case;
@@ -59,7 +60,9 @@ set -uo pipefail
 #       self/tests/open-session.sh runs the body and checks the path survives them;
 #   S6. a --self start from an agentTooling VENDORED one directory inside the primary
 #       (REL_REPO non-empty) commits agentTooling/self/features/<slug>/ with the routing
-#       record inside it in `S: start`, and writes no nested agentTooling/.claude/ (S6h);
+#       record inside it in `S: start`, writes no nested
+#       agentTooling/.claude/settings.local.json, and leaves the shipped, tracked
+#       agentTooling/.claude/settings.json as the generator wrote it (S6h, S6i);
 #   T1. run-review.sh files a brief whose line begins with @@TODO@@ to failed/ without
 #       calling claude, and opens no PR;
 #   C1. feature-capture.sh run from the worktree, after a commit of work, stamps `to` from
@@ -92,9 +95,10 @@ set -uo pipefail
 #       PR but not to the merge — the refusal is printed with the re-run command, the PR
 #       stays open, no merge is ever requested, the stamped `to` is rolled back, and the
 #       close exits non-zero;
-#   T4. where pr.sh takes its `skip` path and opens nothing (the forge CLI present but not
-#       authenticated), the close still captures: the review pass made no forge call at
-#       all, the runner committed its own pass, and the records are committed over it with
+#   T4. where pr.sh opens nothing because the forge refused (a stubbed REST failure,
+#       GH_API_RC), the close still captures: the review pass made no forge call at all,
+#       pr.sh exits non-zero rather than skipping, `pr_opened` carries that rc and no url,
+#       nothing probed `gh auth status`, and the records are committed over the pass with
 #       no "capture exited 1" and a clean worktree;
 #   T5. and on the base branch itself the runner commits nothing: it says so, the
 #       primary's work in progress is left uncommitted, and no forge or capture is touched;
@@ -105,7 +109,12 @@ set -uo pipefail
 #       `gh pr merge --auto`, asking for `--merge` and never `--squash` (both the prune
 #       and the post-merge capture decide "merged" by ancestry, which a squash never
 #       gives) and opens no PR of its own; unset, it exits 0 saying nothing was
-#       requested; self/pr.sh never calls it; and both copies read template-version 4;
+#       requested; self/pr.sh never calls it; and both copies read template-version 6, the
+#       merge request through forge.sh auto-merge, which keeps the merge request (>= 4);
+#   P3. that merge request names the PR pr-find found and asks forge.sh per profile:
+#       under cloud exactly one PUT …/pulls/<n>/ccr/auto_merge with merge_method=merge and
+#       no `gh pr` / `gh auth status`; under local `gh pr merge <url> --auto --merge
+#       --delete-branch`; a forge that cannot find the PR is a warning, exit 0, no merge;
 #   X1. the close refuses every tree no clean review judged: from the primary, on a
 #       feature with no completed review (naming run-review.sh), and after a commit whose
 #       subject is not the harness's own follows the judged head (naming its sha) — each
@@ -180,7 +189,31 @@ set -uo pipefail
 #       frozen planning.json — every other byte of it identical — regenerates that
 #       feature's report, and commits both with this feature's own cost records;
 #   A2. while a sibling's record dirtied BEFORE the run — not by that annotation — refuses
-#       the capture by name and leaves the tree exactly as it found it.
+#       the capture by name and leaves the tree exactly as it found it;
+#   RB. a router that built its feature is refused until it is pinned;
+#   F.  forge.sh against the fake `gh` (self/DESIGN-2026-10-05-cloud-execution.md §5):
+#       https, https-without-.git, ssh-URL and scp-style ssh origins all give the same
+#       repos/<o>/<r> (F1), a local-path origin is refused non-zero with no forge call
+#       (F1e); pr-find prints nothing on a miss and the url on a hit (F2); pr-open sends
+#       head, base, title and the body FILE's bytes, quotes and `$(…)` untouched (F3); a
+#       stubbed REST failure exits non-zero from both verbs, printing no url, and so does
+#       a POST answered with no html_url (F4); bad
+#       usage exits 2 (F5); and no forge call is ever `gh pr …` or `gh auth status` (F6);
+#   CB. a close on a manifest whose `branches[0]` is not the slug (`claude/<slug>`, the
+#       cloud shape, design §2), run on that branch under AGENTTOOLING_PROFILE=cloud: the
+#       PR is opened over REST with that
+#       head against the base, `pr_opened` carries the url, the capture commits
+#       `S: cost records` on that branch and pushes THAT branch (never one named after the
+#       slug), the body is the review report and the title the slug, no `gh pr` or
+#       `gh auth status` was called; a re-run finds the PR (pr-find) and opens no second
+#       one; and the same close on a checkout of the slug-named branch is refused, naming
+#       the manifest's branch, before any forge call;
+#   CC. the capture on such a manifest: on the branch it names `branches[0]` as its mode
+#       and pushes it; after the merge, with both local branches gone, it finds
+#       `origin/<branches[0]>` as the merged ref;
+#   X6. a consuming repo's seeded pr.sh still at template-version 4 (the frozen
+#       fixtures/pr-v4.sh) is driven by the close exactly as before: it opens with
+#       `gh pr create`, the url is stamped, and the merge request is still asked for.
 #
 # A missing script fails its assertions loudly rather than aborting the run (no `set -e`;
 # every cp below tolerates absence).
@@ -191,19 +224,28 @@ trap 'rm -rf "$TMP"' EXIT
 TMP="$(cd "$TMP" && pwd -P)"
 AT="$TMP/agentTooling"
 ORIGIN="$TMP/origin.git"
+# The forge identity of that origin: what forge.sh turns into repos/<o>/<r> (see the
+# remote setup below, and F1 for the other spellings of the same repository).
+FORGE_REPO_PATH="lifecycle-owner/agentTooling"
+FORGE_URL="https://github.com/$FORGE_REPO_PATH.git"
 mkdir -p "$AT/analysis" "$AT/self/features/old/review/complete" "$AT/templates/plans/features" "$TMP/bin"
 
 for f in feature-start.sh feature-capture.sh feature-close.sh plan-runner-roots.sh plan-runner-lib.sh \
-         run-plans.sh run-verify.sh run-review.sh run-batch.sh stamp-timing.sh; do
+         run-plans.sh run-verify.sh run-review.sh run-batch.sh stamp-timing.sh forge.sh env-profile.sh; do
   cp "$HERE/$f" "$AT/$f" 2>/dev/null || true
 done
+# The profile is forced, never inherited: a Claude Code cloud container sets
+# CLAUDE_CODE_REMOTE=true, and every start and merge request below pins the LOCAL layout
+# unless a phase says otherwise (P3, CB). self/tests/cloud-start.sh owns the cloud start.
+export AGENTTOOLING_PROFILE=local
 export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
 for f in pricing.py litellm_prices.py rates_history.json refresh_rates.py roots.py transcript.py capture_planning.py report.py manifest.py routing.py recover_attempts.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f" 2>/dev/null || true
 done
 cp "$HERE/templates/plans/features/TEMPLATE.md" "$AT/templates/plans/features/TEMPLATE.md"
 cp "$HERE/self/pr.sh" "$AT/self/pr.sh" 2>/dev/null || true
-# The settings generator the start runs over the primary's own checkout (S1v, S6h).
+# The settings generator and the hook beside the tracked policy, as the real checkout has
+# them; the start no longer runs the generator (S1v, S6h).
 mkdir -p "$AT/hooks"
 for f in policy.py wire-settings.py allow-repo-commands.sh; do
   cp "$HERE/hooks/$f" "$AT/hooks/$f" 2>/dev/null || true
@@ -263,29 +305,94 @@ fi
 printf '{"type":"result","subtype":"success","total_cost_usd":0,"num_turns":1,"session_id":"stub","usage":{}}\n'
 exit 0
 STUB
-# Stub gh: logs every argv line, and remembers per branch that a PR was created, so a
-# second run over the same branch finds it already open the way a forge would (X3).
-# GH_AUTH_RC is what T4 flips
-# to reach pr.sh's `skip` path — the forge CLI present but not logged in, which is the
-# shape every consuming repo without `gh auth login` has, and the one where pr.sh returns
-# 0 having committed nothing.
+# Stub gh: remembers per branch that a PR was created, so a second run over the same
+# branch finds it already open the way a forge would (X3), and keeps TWO logs:
+#
+#   GH_ARGV_LOG  every call's argv, verbatim — what the forge-adapter checks read (F, CB):
+#                which verbs were called at all, `gh pr` and `gh auth status` among them;
+#   GH_LOG       the forge EVENTS the older checks read: a `gh pr …` call is logged as
+#                its argv, exactly as before, and a REST call (`gh api`, forge.sh's only
+#                kind) as the `pr` verb it amounts to — `pr view <head>` for the GET of
+#                open pulls, `pr create --base <b> --head <h> --title <t>` for the POST.
+#                So "a PR was created against base B" reads the same whichever spelling
+#                of the forge made it.
+#
+# `gh api` answers the two REST calls of design §5 and nothing else: GET
+# repos/<o>/<r>/pulls (head=<o>:<branch>, state=open) prints the open PR's url or nothing;
+# POST repos/<o>/<r>/pulls prints the new one's url, writes the body it was sent — read
+# from the `-F body=@<file>` it names — to GH_BODY_OUT when that is set. GH_API_RC, set
+# non-zero, fails every REST call with that code and a message on stderr: the stubbed
+# REST failure T4 and F4 drive. GH_AUTH_RC still answers `auth status`, which only the
+# frozen v4 pr.sh (X6) asks.
 #
 # `pr merge` also records the ORIGIN branch's head at the instant it was asked to merge,
 # when GH_MERGE_HEAD_OUT names a file: that is what X2 asserts the cost commit is already
 # inside, which is the whole of the PR_AUTO_MERGE race the close closes by ordering.
 cat > "$TMP/bin/gh" <<'STUB'
 #!/usr/bin/env bash
+echo "$*" >> "${GH_ARGV_LOG:?}"
+# The branch a `pr view <branch>` or a GET asks about, and the head a `pr create` or a
+# POST names: one marker file per branch under $GH_PR_DIR is the whole of this stub's
+# memory, a branch's slashes flattened so `claude/x` is one file.
+pr_marker() { echo "${GH_PR_DIR:?}/$(printf '%s' "$1" | tr '/' '%')"; }
+STUB_PR_URL="https://example.invalid/pr/1"
+if [[ "${1:-}" == "api" ]]; then
+  shift
+  method="GET"; path=""; head=""; base=""; title=""; body=""; merge_method=""
+  while (( $# )); do
+    case "$1" in
+      -X|--method) method="$2"; shift 2 ;;
+      -f|--raw-field|-F|--field)
+        flag="$1"; key="${2%%=*}"; value="${2#*=}"
+        if [[ "$flag" == "-F" || "$flag" == "--field" ]] && [[ "$value" == @* ]]; then
+          value="$(cat "${value#@}")"
+        fi
+        case "$key" in
+          head) head="$value" ;;
+          base) base="$value" ;;
+          title) title="$value" ;;
+          body) body="$value" ;;
+          merge_method) merge_method="$value" ;;
+        esac
+        shift 2 ;;
+      -q|--jq|-H|--header|--hostname) shift 2 ;;
+      -*) shift ;;
+      *) path="$1"; shift ;;
+    esac
+  done
+  if [[ "${GH_API_RC:-0}" != "0" ]]; then
+    echo "gh: stubbed REST failure (HTTP 502) on $method $path" >&2
+    exit "$GH_API_RC"
+  fi
+  case "$method $path" in
+    "GET repos/"*"/pulls")
+      echo "pr view ${head#*:}" >> "${GH_LOG:?}"
+      if [[ -f "$(pr_marker "${head#*:}")" ]]; then cat "$(pr_marker "${head#*:}")"; fi
+      exit 0 ;;
+    "POST repos/"*"/pulls")
+      echo "pr create --base $base --head $head --title $title" >> "${GH_LOG:?}"
+      if [[ -n "${GH_BODY_OUT:-}" ]]; then printf '%s' "$body" > "$GH_BODY_OUT"; fi
+      # GH_API_NO_URL: a 2xx whose body carries no html_url (F4d).
+      if [[ -n "${GH_API_NO_URL:-}" ]]; then exit 0; fi
+      echo "$STUB_PR_URL" > "$(pr_marker "$head")"
+      echo "$STUB_PR_URL"; exit 0 ;;
+    # The cloud proxy's auto-merge route (forge.sh auto-merge under the cloud profile):
+    # logged as the event it amounts to, with the method it asked for (P3).
+    "PUT repos/"*"/ccr/auto_merge")
+      echo "ccr auto_merge $path merge_method=$merge_method" >> "${GH_LOG:?}"
+      exit 0 ;;
+  esac
+  echo "gh: the stub answers no $method $path" >&2
+  exit 1
+fi
 echo "$*" >> "${GH_LOG:?}"
-# The branch a `pr view <branch>` asks about, and the `--head <branch>` a `pr create`
-# names: one marker file per branch under $GH_PR_DIR is the whole of this stub's memory.
-pr_marker() { echo "${GH_PR_DIR:?}/$1"; }
 case "$1 $2" in
   "auth status") exit "${GH_AUTH_RC:-0}" ;;
   "pr view")
     if [[ -f "$(pr_marker "$3")" ]]; then cat "$(pr_marker "$3")"; exit 0; fi
     exit 1 ;;
   "pr create")
-    url="https://example.invalid/pr/1"
+    url="$STUB_PR_URL"
     head=""
     while (( $# )); do
       if [[ "$1" == "--head" ]]; then head="$2"; fi
@@ -294,8 +401,15 @@ case "$1 $2" in
     if [[ -n "$head" ]]; then echo "$url" > "$(pr_marker "$head")"; fi
     echo "$url"; exit 0 ;;
   "pr merge")
+    # forge.sh (pr.sh v6) names the PR by its url; a v4 pr.sh names the branch. A url is
+    # resolved to the branch checked out where the call was made — pr.sh's cwd, the
+    # feature's checkout — since every PR this stub opens shares one url.
+    merge_branch="$3"
+    case "$merge_branch" in
+      *://*) merge_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" ;;
+    esac
     if [[ -n "${GH_MERGE_HEAD_OUT:-}" ]]; then
-      git -C "${GH_ORIGIN:-.}" rev-parse "refs/heads/$3" > "$GH_MERGE_HEAD_OUT" 2>/dev/null
+      git -C "${GH_ORIGIN:-.}" rev-parse "refs/heads/$merge_branch" > "$GH_MERGE_HEAD_OUT" 2>/dev/null
     fi
     exit 0 ;;
 esac
@@ -304,7 +418,15 @@ STUB
 chmod +x "$AT/self/worktree-setup.sh" "$AT/self/open-session.sh" "$AT/self/gate.sh" "$TMP/bin/claude" "$TMP/bin/gh"
 export PATH="$TMP/bin:$PATH"
 export GH_LOG="$TMP/gh.log"; : > "$GH_LOG"
+export GH_ARGV_LOG="$TMP/gh-argv.log"; : > "$GH_ARGV_LOG"
 export GH_ORIGIN="$ORIGIN"
+# Where the stub writes the PR body a REST POST sent (CB, F3); unset, it writes nothing.
+GH_BODY_FILE="$TMP/gh-body"
+# The calls no forge-adapter path may make: GraphQL's `gh pr …` and the auth probe the
+# cloud proxy fails (design §5), as they appear at the start of an argv line.
+FORBIDDEN_FORGE_CALL_RE='^(pr |auth status)'
+# The REST POST that opens a PR, as GH_ARGV_LOG records it.
+REST_OPEN_CALL_RE='^api .*-X POST repos/[^ ]*/pulls'
 export GH_PR_DIR="$TMP/gh-prs"; mkdir -p "$GH_PR_DIR"
 export HOOK_CWD_OUT="$TMP/hook-cwd"
 export OPEN_ARG_OUT="$TMP/open-arg"
@@ -323,12 +445,17 @@ export RATES_CHECK_SOURCE="$HERE/self/tests/fixtures/pricing/litellm-sample.json
 VERDICT_LINE_CLEAN="Verdict: clean"
 VERDICT_LINE_ESCALATED="Verdict: escalated"
 
-printf 'self/gate-report*.txt\nself/review-report.md\n.claude/settings.json\n' > "$AT/.gitignore"
-# What the generator writes into an empty directory — the primary's file after S1.
+printf 'self/gate-report*.txt\nself/review-report.md\n.claude/settings.local.json\n' > "$AT/.gitignore"
+# What the generator writes into an empty directory — the TRACKED policy the checkout is
+# committed with, as the real one is (self/features/self-cloud-bootstrap) — and Claude
+# Code's own per-user file beside it, which nothing in a start may write.
 SETTINGS_REL=".claude/settings.json"
+LOCAL_SETTINGS_REL=".claude/settings.local.json"
 EXPECTED_SETTINGS_DIR="$TMP/expected-settings"
 mkdir -p "$EXPECTED_SETTINGS_DIR"
 python3 -B "$HERE/hooks/wire-settings.py" --self --repo "$EXPECTED_SETTINGS_DIR" --write >/dev/null 2>&1
+mkdir -p "$AT/.claude"
+cp "$EXPECTED_SETTINGS_DIR/$SETTINGS_REL" "$AT/$SETTINGS_REL" 2>/dev/null || true
 # Another feature's corpus, numbered under the rule that ran before this one: a plan
 # number is a feature's own, so what this holds must not move the stub number below (S1f).
 echo "an older feature's review plan, at a number nothing else may inherit" > "$AT/self/features/old/review/complete/07-review-opus.md"
@@ -340,7 +467,15 @@ git -C "$AT" config user.email test@example.invalid
 git -C "$AT" config user.name "lifecycle test"
 git -C "$AT" add -A && git -C "$AT" commit -q -m "init"
 git init -q --bare "$ORIGIN"
-git -C "$AT" remote add origin "$ORIGIN"
+# Pinned, like the primary's: a bare HEAD otherwise names init.defaultBranch, and the forge
+# clone below checks out nothing on a machine where that is unset (master).
+git -C "$ORIGIN" symbolic-ref HEAD refs/heads/main
+# The origin's URL is a GitHub one — the identity forge.sh parses `repos/<o>/<r>` from —
+# while git's own transport is sent to the bare repo beside it by `url.<bare>.insteadOf`,
+# so every push and fetch below stays on disk and `git remote get-url` (which expands
+# insteadOf) still answers the bare path the capture's repo identity has always read.
+git -C "$AT" remote add origin "$FORGE_URL"
+git -C "$AT" config "url.$ORIGIN.insteadOf" "$FORGE_URL"
 git -C "$AT" push -q -u origin main 2>/dev/null
 git -C "$AT" branch other && git -C "$AT" push -q origin other 2>/dev/null
 
@@ -520,8 +655,7 @@ echo "feature lifecycle"
 SLUG="lifecycle-one"
 WT="$(wt_path "$SLUG")"
 FD="$WT/self/features/$SLUG"
-S1_SETTINGS_BEFORE="absent"
-if [[ -e "$AT/$SETTINGS_REL" ]]; then S1_SETTINGS_BEFORE="present"; fi
+S1_CLAUDE_BEFORE="$(git -C "$AT" status --porcelain --ignored --untracked-files=all -- .claude)"
 out="$(start "$SLUG")"; rc=$?
 check "S1a. feature-start.sh exits 0 (got $rc)" '[[ $rc -eq 0 ]]'
 check "S1b. worktree R-S exists on branch S" '[[ -d "$WT" && "$(git -C "$WT" branch --show-current 2>/dev/null)" == "$SLUG" ]]'
@@ -556,12 +690,13 @@ check "S1t. ... naming this slug in features_started, and the router's own id" \
   '[[ "$(pj "$S1_RECORD" "[f[\"slug\"] for f in d[\"features_started\"]]")" == *"'"'"'$SLUG'"'"'"* && "$(pj "$S1_RECORD" "d[\"session_id\"]")" == "$PIN" ]]'
 check "S1u. ... and it is part of the S: start commit" \
   'git -C "$WT" show --name-only --format= HEAD | grep -qx "self/features/$SLUG/routing.json"'
-# The primary's own .claude/settings.json is untracked and generated: a fast-forward over
-# the commit that untracked it deletes it, and the start after that is what puts it back.
-check "S1v. the primary started with no $SETTINGS_REL, and the start wrote it" \
-  '[[ "$S1_SETTINGS_BEFORE" == "absent" && -f "$AT/$SETTINGS_REL" ]]'
-check "S1v2. ... byte for byte what the generator writes, and said so" \
-  'cmp -s "$AT/$SETTINGS_REL" "$EXPECTED_SETTINGS_DIR/$SETTINGS_REL" && grep -q "settings" <<<"$out" && grep -qF "$SETTINGS_REL" <<<"$out"'
+# The primary's own .claude/settings.json is TRACKED, so a start has nothing to generate
+# there: the regenerate-when-missing block is gone (self-cloud-bootstrap).
+check "S1v. the start wrote nothing under the primary's .claude/: no $LOCAL_SETTINGS_REL, nothing new" \
+  '[[ ! -e "$AT/$LOCAL_SETTINGS_REL" && -z "$S1_CLAUDE_BEFORE" && -z "$(git -C "$AT" status --porcelain --ignored --untracked-files=all -- .claude)" ]]'
+check "S1v2. ... and printed no settings line" '! grep -qE "^ +settings " <<<"$out"'
+check "S1v3. ... the tracked $SETTINGS_REL byte for byte the generator's, in the primary and the worktree" \
+  'cmp -s "$AT/$SETTINGS_REL" "$EXPECTED_SETTINGS_DIR/$SETTINGS_REL" && cmp -s "$WT/$SETTINGS_REL" "$EXPECTED_SETTINGS_DIR/$SETTINGS_REL"'
 
 # ── S2. refusals create nothing ───────────────────────────────────────────────
 before="$(branches)"
@@ -834,9 +969,13 @@ check "S6f. the start named the prefixed record in its output" \
   'grep -q "agentTooling/self/features/$VENDOR_SLUG/routing.json" <<<"$vendor_out"'
 check "S6g. the worktree is clean and the consumer's primary untouched" \
   '[[ -z "$(git -C "$VENDOR_WT" status --porcelain)" && -z "$(git -C "$VENDOR" status --porcelain)" ]]'
-# The consuming repo's hook is wired at ITS root; a vendored copy carries none of its own.
-check "S6h. the start wrote no nested agentTooling/$SETTINGS_REL into the consumer" \
-  '[[ ! -e "$VENDOR_AT/$SETTINGS_REL" && ! -e "$VENDOR_WT/agentTooling/$SETTINGS_REL" ]]'
+# The consuming repo's hook is wired at ITS root. The vendored copy ships the tracked
+# policy (loaded only by a session launched inside agentTooling/, where every path it
+# names exists); the start leaves it as shipped and generates nothing beside it.
+check "S6h. the start wrote no nested agentTooling/$LOCAL_SETTINGS_REL into the consumer" \
+  '[[ ! -e "$VENDOR_AT/$LOCAL_SETTINGS_REL" && ! -e "$VENDOR_WT/agentTooling/$LOCAL_SETTINGS_REL" ]]'
+check "S6i. ... and the shipped agentTooling/$SETTINGS_REL is as shipped: the generator's bytes" \
+  'cmp -s "$VENDOR_AT/$SETTINGS_REL" "$EXPECTED_SETTINGS_DIR/$SETTINGS_REL" && cmp -s "$VENDOR_WT/agentTooling/$SETTINGS_REL" "$EXPECTED_SETTINGS_DIR/$SETTINGS_REL"'
 
 # ── T1. a stub brief cannot run ───────────────────────────────────────────────
 rm -f "$CLAUDE_CALLED_OUT"
@@ -1031,9 +1170,11 @@ check "T3e. ... and the capture rolled its stamp back: to is still null" \
 
 # ── T4. where pr.sh opens nothing, the close still captures ───────────────────
 # The review pass touches no forge at all now, and the close's pr.sh is the one thing that
-# might not reach one: with the CLI present but not logged in — every repo without
-# `gh auth login`, and the same for a detached HEAD or no pr.sh seeded — pr.sh takes its
-# `skip` path, commits nothing and returns 0. The close carries on: the record is the
+# might not reach one. Until template-version 5 the shape was a CLI present but not logged
+# in, where pr.sh probed `gh auth status`, printed `skip` and returned 0 — and the close
+# stamped `pr_opened rc=0` with no url, a success on the record (design 2026-10-05 §5). The
+# probe is gone: the forge is asked, and a refusal (GH_API_RC, a stubbed REST failure) is a
+# non-zero exit the stamp carries. The close carries on all the same: the record is the
 # feature's, not the PR's, and the capture must still find a tree holding nothing but cost
 # records, which is why the runner commits its own pass and the close commits the stamps
 # that followed it.
@@ -1049,10 +1190,15 @@ check "T4a. the review pass exits 0 and made no forge call of its own (got $rc)"
   '[[ $rc -eq 0 && -e "$CLAUDE_CALLED_OUT" ]] && [[ ! -s "$GH_LOG" ]]'
 check "T4b. the runner committed the pass itself, as round 1" \
   '[[ "$(git -C "$GWT" log -1 --format=%s)" == "lifecycle-nogh: review round 1" ]] && git -C "$GWT" show --name-only --format= HEAD | grep -qx "fixed-by-review.txt"'
-outg="$(GH_AUTH_RC=1 close "$GWT" lifecycle-nogh)"; rcg=$?
-check "T4c. the close over an unauthenticated forge exits 0 (got $rcg)" '[[ $rcg -eq 0 ]]'
-check "T4d. pr.sh took its skip path and opened nothing" \
-  'grep -q "not authenticated" <<<"$outg" && ! grep -q "pr create" "$GH_LOG"'
+: > "$GH_ARGV_LOG"
+outg="$(GH_API_RC=1 close "$GWT" lifecycle-nogh)"; rcg=$?
+check "T4c. the close over a forge that refused exits 0 (got $rcg)" '[[ $rcg -eq 0 ]]'
+check "T4d. pr.sh failed non-zero, said so through the close, and opened nothing" \
+  'grep -q "pr.sh exited [1-9]" <<<"$outg" && ! grep -q "pr create" "$GH_LOG"'
+check "T4g. pr_opened carries that non-zero rc and no url (got rc '$(last_event_field "$GFD" pr_opened rc)' url '$(last_event_field "$GFD" pr_opened url)')" \
+  '[[ "$(last_event_field "$GFD" pr_opened rc)" =~ ^[1-9][0-9]*$ && -z "$(last_event_field "$GFD" pr_opened url)" ]]'
+check "T4h. ... and nothing on the way probed gh auth status or called gh pr" \
+  '[[ -s "$GH_ARGV_LOG" ]] && ! grep -qE "$FORBIDDEN_FORGE_CALL_RE" "$GH_ARGV_LOG"'
 check "T4e. ... and the capture still committed the records over the pass" \
   '[[ "$(git -C "$GWT" log -1 --format=%s)" == "lifecycle-nogh: cost records" && -f "$GFD/planning.json" ]]'
 check "T4f. ... leaving the worktree clean, with no capture refusal printed" \
@@ -1080,6 +1226,18 @@ check "P1c. ... committing nothing and opening nothing" '[[ "$(git -C "$AT" rev-
 rm -f "$AT/dirty-main.txt"
 check "P1d. templates/plans/pr.sh and self/pr.sh carry the same logic" 'diff -q <(sed -n "/REPO-SPECIFIC/,\$p" "$HERE/templates/plans/pr.sh") <(sed -n "/REPO-SPECIFIC/,\$p" "$HERE/self/pr.sh") >/dev/null'
 check "P1e. neither copy creates a branch" '! grep -q "checkout -b" "$HERE/templates/plans/pr.sh" && ! grep -q "checkout -b" "$HERE/self/pr.sh"'
+# No forge adapter where FORGE_SCRIPT points: pr.sh fails before it commits or pushes.
+head_before="$(git -C "$BWT" rev-parse HEAD)"
+: > "$GH_ARGV_LOG"
+(
+  cd "$BWT"
+  echo w > dirty-noforge.txt
+  FORGE_SCRIPT="$TMP/no-such-forge.sh" FEATURE_BASE=other ./self/pr.sh lifecycle-based >/dev/null 2>&1
+); rc=$?
+check "P1f. with no forge adapter pr.sh exits non-zero (got $rc)" '[[ $rc -ne 0 ]]'
+check "P1g. ... having committed nothing and asked the forge nothing" \
+  '[[ "$(git -C "$BWT" rev-parse HEAD)" == "$head_before" && ! -s "$GH_ARGV_LOG" ]] && git -C "$BWT" status --porcelain | grep -q "dirty-noforge.txt"'
+rm -f "$BWT/dirty-noforge.txt"
 
 # ── P2. PR_AUTO_MERGE lives behind --merge-request, and only there ────────────
 # The merge is asked for by the CLOSE, after the capture has pushed — never by the step
@@ -1122,8 +1280,39 @@ check "P2c. --merge-request with PR_AUTO_MERGE unset exits 0, saying nothing was
   FEATURE_BASE=other PR_AUTO_MERGE=1 ./self/pr.sh --merge-request lifecycle-based >/dev/null 2>&1
 )
 check "P2d. self/pr.sh never calls it, even with PR_AUTO_MERGE=1" '! grep -qE "$AUTO_MERGE_CALL_RE" "$GH_LOG"'
-check "P2e. both copies carry template-version 4 — the version the close's merge request needs" \
-  '[[ "$(sed -n "s/^# template-version:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$HERE/templates/plans/pr.sh" | head -1)" == "4" ]] && [[ "$(sed -n "s/^# template-version:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$HERE/self/pr.sh" | head -1)" == "4" ]]'
+check "P2e. both copies carry template-version 6 — the merge request through forge.sh auto-merge, at or past the 4 the close's merge request needs" \
+  '[[ "$(sed -n "s/^# template-version:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$HERE/templates/plans/pr.sh" | head -1)" == "6" ]] && [[ "$(sed -n "s/^# template-version:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$HERE/self/pr.sh" | head -1)" == "6" ]]'
+
+# ── P3. the merge request goes through forge.sh, which asks per profile ──────
+# (self/DESIGN-2026-10-05-cloud-execution.md §5.) Local: P2b2 above is `gh pr merge
+# <url> --auto --merge`, the url found by pr-find. Cloud: the proxy's REST route, PUT
+# …/pulls/<n>/ccr/auto_merge with merge_method=merge, and no GraphQL `gh pr` or `gh auth
+# status` anywhere on the way.
+: > "$GH_LOG"; : > "$GH_ARGV_LOG"
+(
+  cd "$BWT"
+  FEATURE_BASE=other PR_AUTO_MERGE=1 AGENTTOOLING_PROFILE=cloud "$PR_TEMPLATE" --merge-request lifecycle-based >/dev/null 2>&1
+); rc=$?
+check "P3a. under cloud, --merge-request with PR_AUTO_MERGE=1 exits 0 (got $rc)" '[[ $rc -eq 0 ]]'
+check "P3b. ... asking exactly once, PUT repos/$FORGE_REPO_PATH/pulls/1/ccr/auto_merge with merge_method=merge" \
+  '[[ "$(grep -c "^ccr auto_merge" "$GH_LOG")" == 1 ]] && grep -qxF "ccr auto_merge repos/$FORGE_REPO_PATH/pulls/1/ccr/auto_merge merge_method=merge" "$GH_LOG"'
+check "P3c. ... and calling no gh pr, no gh auth status, no squash" \
+  '[[ -s "$GH_ARGV_LOG" ]] && ! grep -qE "$FORBIDDEN_FORGE_CALL_RE" "$GH_ARGV_LOG" && ! grep -q "squash" "$GH_ARGV_LOG"'
+P3_LOCAL_URL_CALL_RE='^pr merge https://example\.invalid/pr/1 --auto --merge --delete-branch$'
+: > "$GH_LOG"
+(
+  cd "$BWT"
+  FEATURE_BASE=other PR_AUTO_MERGE=1 "$PR_TEMPLATE" --merge-request lifecycle-based >/dev/null 2>&1
+)
+check "P3d. under local the same request names the PR pr-find found: gh pr merge <url> --auto --merge --delete-branch" \
+  'grep -qE "$P3_LOCAL_URL_CALL_RE" "$GH_LOG"'
+: > "$GH_LOG"
+outp3="$(
+  cd "$BWT"
+  FEATURE_BASE=other PR_AUTO_MERGE=1 GH_API_RC=1 "$PR_TEMPLATE" --merge-request nothing-open 2>&1
+)"; rc=$?
+check "P3e. a forge that cannot find the PR leaves the merge to a human: exit 0, a warning, no merge call (got $rc)" \
+  '[[ $rc -eq 0 ]] && grep -q "warn" <<<"$outp3" && ! grep -qE "$AUTO_MERGE_CALL_RE" "$GH_LOG"'
 rm -f "$BWT/dirty.txt"
 git -C "$BWT" add -A
 git -C "$BWT" commit -q -m "lifecycle-based: the pr.sh runs' leftovers" 2>/dev/null
@@ -1866,6 +2055,232 @@ check "RBf. pinned, the same close exits 0 — the refusal was the missing pin a
   '[[ $rcrb2 -eq 0 ]]'
 check "RBg. ... and the pin rides the cost-records commit" \
   '[[ "$(git -C "$RBWT" log -1 --format=%s)" == "$RB_SLUG: cost records" ]] && git -C "$RBWT" show "HEAD:self/features/$RB_SLUG/README.md" | grep -q "$RB_ROUTER"'
+
+# ── CB. the close on a manifest whose branch is not the slug ─────────────────
+# self/DESIGN-2026-10-05-cloud-execution.md §2: every script reads the feature's branch
+# from the manifest's `branches[0]`, never from the slug. In a cloud container that is the
+# session's assigned `claude/…` branch — the only one it may push — checked out in the
+# feature's checkout. Locally `branches[0]` IS the slug, which is why every close above
+# runs unchanged. The fixture is that shape built by hand, as this feature's own manifest
+# was (the cloud start is execution-profiles'): the feature's checkout on `claude/<slug>`,
+# the fence naming it, and the session transcript carrying it as its gitBranch.
+#
+# set_fence_list <manifest> <key> <json-list> — replace one list in the fence.
+set_fence_list() {
+  python3 - "$1" "$2" "$3" <<'PY'
+import json, re, sys
+path, key, value = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
+text = open(path).read()
+match = list(re.finditer(r"```json\n(.*?)\n```", text, re.S))[-1]
+fence, n = re.subn(r'("%s"\s*:\s*)\[[^]]*\]' % key,
+                   lambda m: m.group(1) + json.dumps(value), match.group(1), count=1)
+assert n == 1, "no %r list in the fence of %s" % (key, path)
+open(path, "w").write(text[: match.start(1)] + fence + text[match.end(1):])
+PY
+}
+CB_SLUG="lifecycle-cloud"
+CB_BRANCH="claude/$CB_SLUG"
+start_unrouted "$CB_SLUG" --no-gate >/dev/null
+CBWT="$(wt_path "$CB_SLUG")"
+CBFD="$CBWT/self/features/$CB_SLUG"
+CBSTEM="$(fence "$CBFD/README.md" "d[\"plans\"][0]")"
+git -C "$CBWT" checkout -q -b "$CB_BRANCH"
+set_fence_list "$CBFD/README.md" branches "[\"$CB_BRANCH\"]"
+printf '# review\n\nA real brief for %s. Hold the diff to the manifest.\n' "$CB_SLUG" \
+  > "$CBFD/review/incomplete/$CBSTEM.md"
+echo "the cloud build" > "$CBWT/cloud-work.txt"
+git -C "$CBWT" add -A
+git -C "$CBWT" commit -q -m "$CB_SLUG: the build"
+fixture_session "$CBWT" "$CB_BRANCH" "cbcbcbcb-0000-0000-0000-000000000040"
+check "CB0. the fixture's premise: the checkout is on $CB_BRANCH and the fence's branches[0] names it" \
+  '[[ "$(git -C "$CBWT" branch --show-current)" == "$CB_BRANCH" && "$(fence "$CBFD/README.md" "d[\"branches\"][0]")" == "$CB_BRANCH" ]]'
+review "$CBWT" "$CB_SLUG" >/dev/null
+: > "$GH_LOG"; : > "$GH_ARGV_LOG"; rm -f "$GH_BODY_FILE"
+# Under the CLOUD profile (design §5's first assertion): the close's forge path is the
+# same REST path in both places, so every check below holds there too.
+outcb="$(GH_BODY_OUT="$GH_BODY_FILE" AGENTTOOLING_PROFILE=cloud close "$CBWT" "$CB_SLUG")"; rccb=$?
+check "CBa. the close on the manifest's branch, not the slug's, exits 0 (got $rccb)" '[[ $rccb -eq 0 ]]'
+check "CBb. it opened the PR over REST, POST repos/$FORGE_REPO_PATH/pulls, head $CB_BRANCH, base main" \
+  'grep -E "$REST_OPEN_CALL_RE" "$GH_ARGV_LOG" | grep -F "repos/$FORGE_REPO_PATH/pulls" | grep -F "head=$CB_BRANCH" | grep -qF "base=main"'
+check "CBc. ... titled with the slug" 'grep -E "$REST_OPEN_CALL_RE" "$GH_ARGV_LOG" | grep -qF "title=$CB_SLUG"'
+check "CBd. ... with the review's report as the body, read from the file the close wrote" \
+  'grep -q "^$VERDICT_LINE_CLEAN" "$GH_BODY_FILE" 2>/dev/null && grep -q "the stub review.s body" "$GH_BODY_FILE"'
+check "CBe. pr_opened carries rc 0 and the PR url (got rc '$(last_event_field "$CBFD" pr_opened rc)' url '$(last_event_field "$CBFD" pr_opened url)')" \
+  '[[ "$(last_event_field "$CBFD" pr_opened rc)" == "0" && "$(last_event_field "$CBFD" pr_opened url)" == *example.invalid* ]]'
+check "CBf. the capture committed '$CB_SLUG: cost records' on $CB_BRANCH and pushed THAT branch" \
+  '[[ "$(git -C "$CBWT" branch --show-current)" == "$CB_BRANCH" && "$(git -C "$CBWT" log -1 --format=%s)" == "$CB_SLUG: cost records" && "$(git -C "$ORIGIN" rev-parse "refs/heads/$CB_BRANCH" 2>/dev/null)" == "$(git -C "$CBWT" rev-parse HEAD)" ]]'
+check "CBg. ... and nothing under the slug's name reached the origin" \
+  '! git -C "$ORIGIN" show-ref --verify --quiet "refs/heads/$CB_SLUG"'
+check "CBh. no call on the way was gh pr or gh auth status" \
+  '[[ -s "$GH_ARGV_LOG" ]] && ! grep -qE "$FORBIDDEN_FORGE_CALL_RE" "$GH_ARGV_LOG"'
+: > "$GH_ARGV_LOG"
+outcb2="$(close "$CBWT" "$CB_SLUG")"; rccb2=$?
+check "CBi. a second close finds the PR with pr-find and opens no second one (got $rccb2)" \
+  '[[ $rccb2 -eq 0 ]] && grep -qi "already open" <<<"$outcb2" && grep -q "^api .*repos/$FORGE_REPO_PATH/pulls" "$GH_ARGV_LOG" && ! grep -qE "$REST_OPEN_CALL_RE" "$GH_ARGV_LOG"'
+# The same checkout on the branch named after the slug: under the old rule the right one,
+# under the manifest's the wrong one — and a cloud session could not push it anyway.
+git -C "$CBWT" checkout -q -B "$CB_SLUG"
+: > "$GH_ARGV_LOG"
+outcb3="$(close "$CBWT" "$CB_SLUG")"; rccb3=$?
+check "CBj. on the slug-named branch the close refuses, naming the manifest's branch (got $rccb3)" \
+  '[[ $rccb3 -ne 0 ]] && grep -q "refused" <<<"$outcb3" && grep -qF "$CB_BRANCH" <<<"$outcb3"'
+check "CBk. ... before any forge call" '[[ ! -s "$GH_ARGV_LOG" ]]'
+git -C "$CBWT" checkout -q "$CB_BRANCH"
+
+# ── CC. the capture on such a manifest ────────────────────────────────────────
+# On the branch: the mode is recognised by `branches[0]`, and that branch is what is
+# pushed. (After the merge — the post-merge half — is the last block of this file, since
+# it merges into main.)
+fixture_session "$CBWT" "$CB_BRANCH" "cbcbcbcb-0000-0000-0000-000000000042"
+outcc="$(capture "$CBWT" "$CB_SLUG")"; rccc=$?
+check "CCa. a capture on $CB_BRANCH exits 0 in on-branch mode, naming that branch (got $rccc)" \
+  '[[ $rccc -eq 0 ]] && grep -qF "mode      on branch $CB_BRANCH" <<<"$outcc"'
+check "CCb. ... and pushes $CB_BRANCH, the remote's copy at the checkout's HEAD" \
+  'grep -qF "push      $CB_BRANCH -> origin" <<<"$outcc" && [[ "$(git -C "$ORIGIN" rev-parse "refs/heads/$CB_BRANCH" 2>/dev/null)" == "$(git -C "$CBWT" rev-parse HEAD)" ]]'
+
+# ── CD. a fence with no branches reads as the slug ────────────────────────────
+# Every manifest written before this feature names its slug in `branches`, and a fence
+# whose list is empty is read the same way rather than as "no branch" — the ruling in
+# self/features/cloud-close/NOTES.md. Only the mode line matters here: with no branch
+# declared the capture has nothing to claim by branch, and what it does about that is
+# capture_planning.py's business, not this one's.
+CD_SLUG="lifecycle-nobranches"
+start_unrouted "$CD_SLUG" --no-gate >/dev/null
+CDWT="$(wt_path "$CD_SLUG")"
+set_fence_list "$CDWT/self/features/$CD_SLUG/README.md" branches "[]"
+git -C "$CDWT" commit -q -am "$CD_SLUG: a fence with no branches"
+outcd="$(capture "$CDWT" "$CD_SLUG" --no-push)"
+check "CDa. a fence with an empty branches list is read as the slug: on-branch mode on $CD_SLUG" \
+  'grep -qF "mode      on branch $CD_SLUG" <<<"$outcd"'
+
+# ── F. forge.sh against the fake gh ───────────────────────────────────────────
+# The adapter on its own (design §5): the only code that talks to the forge, over `gh api`
+# REST and nothing else. Each fixture is a bare-minimum git checkout with forge.sh at its
+# root — forge.sh reads the origin of the checkout it lives in, as every script here
+# derives its paths from its own location.
+FORGE_TMP="$TMP/forge"
+mkdir -p "$FORGE_TMP"
+F_OWNER_REPO="forge-owner/forge-repo"
+# forge_checkout <dir> [origin-url] — a git checkout with forge.sh at its root.
+forge_checkout() {
+  git init -q "$1"
+  cp "$HERE/forge.sh" "$1/forge.sh" 2>/dev/null
+  cp "$HERE/env-profile.sh" "$1/env-profile.sh" 2>/dev/null
+  chmod +x "$1/forge.sh" 2>/dev/null
+  if [[ -n "${2:-}" ]]; then git -C "$1" remote add origin "$2"; fi
+}
+# forge_path_of <dir> — the repos/<o>/<r> its pr-find asked the forge about.
+forge_path_of() {
+  : > "$GH_ARGV_LOG"
+  "$1/forge.sh" pr-find some-branch >/dev/null 2>&1
+  grep -oE "repos/[^ ]+/pulls" "$GH_ARGV_LOG" | head -1
+}
+F_SPELLINGS=(
+  "https://github.com/$F_OWNER_REPO.git"
+  "https://github.com/$F_OWNER_REPO"
+  "ssh://git@github.com/$F_OWNER_REPO.git"
+  "git@github.com:$F_OWNER_REPO.git"
+  "git@github.com:$F_OWNER_REPO"
+)
+f_index=0
+for spelling in "${F_SPELLINGS[@]}"; do
+  f_index=$((f_index + 1))
+  forge_checkout "$FORGE_TMP/origin-$f_index" "$spelling"
+  f_got="$(forge_path_of "$FORGE_TMP/origin-$f_index")"
+  check "F1. origin $spelling gives repos/$F_OWNER_REPO/pulls (got '$f_got')" \
+    '[[ "$f_got" == "repos/$F_OWNER_REPO/pulls" ]]'
+done
+forge_checkout "$FORGE_TMP/local-origin" "$ORIGIN"
+: > "$GH_ARGV_LOG"
+"$FORGE_TMP/local-origin/forge.sh" pr-find some-branch >/dev/null 2>&1; rcf=$?
+check "F1e. a local-path origin names no forge repository: refused non-zero, with no forge call (got $rcf)" \
+  '[[ $rcf -ne 0 && ! -s "$GH_ARGV_LOG" ]]'
+forge_checkout "$FORGE_TMP/no-origin"
+"$FORGE_TMP/no-origin/forge.sh" pr-find some-branch >/dev/null 2>&1; rcf=$?
+check "F1f. ... and so is a checkout with no origin at all (got $rcf)" '[[ $rcf -ne 0 && ! -s "$GH_ARGV_LOG" ]]'
+
+F_DIR="$FORGE_TMP/origin-1"
+: > "$GH_ARGV_LOG"
+outf="$("$F_DIR/forge.sh" pr-find forge/nothing-open)"; rcf=$?
+check "F2a. pr-find with no open PR exits 0 and prints nothing (got $rcf, '$outf')" '[[ $rcf -eq 0 && -z "$outf" ]]'
+check "F2b. ... asking for open pulls whose head is <owner>:<branch>" \
+  'grep "^api " "$GH_ARGV_LOG" | grep -F "repos/$F_OWNER_REPO/pulls" | grep -F "head=forge-owner:forge/nothing-open" | grep -qF "state=open"'
+# A body that would do damage if anything on the way expanded it rather than reading it.
+F_BODY="$FORGE_TMP/body.md"
+F_INJECTED="$FORGE_TMP/injected"
+printf '%s\n' "$VERDICT_LINE_CLEAN" "" "a \"quoted\" line, a \$(touch $F_INJECTED), a \`touch $F_INJECTED\` and a \$HOME" > "$F_BODY"
+F_TITLE="a title with spaces & a \$(dollar)"
+rm -f "$GH_BODY_FILE"
+outf="$(GH_BODY_OUT="$GH_BODY_FILE" "$F_DIR/forge.sh" pr-open forge/feature main "$F_TITLE" "$F_BODY")"; rcf=$?
+check "F3a. pr-open exits 0 and prints exactly the new PR's url (got $rcf, '$outf')" \
+  '[[ $rcf -eq 0 && "$outf" == "https://example.invalid/pr/1" ]]'
+check "F3b. ... having POSTed head, base and title to repos/$F_OWNER_REPO/pulls" \
+  'grep -E "$REST_OPEN_CALL_RE" "$GH_ARGV_LOG" | grep -F "repos/$F_OWNER_REPO/pulls" | grep -F "head=forge/feature" | grep -F "base=main" | grep -qF "title=$F_TITLE"'
+check "F3c. ... and the body file's bytes, nothing expanded" \
+  '[[ "$(cat "$GH_BODY_FILE" 2>/dev/null)" == "$(cat "$F_BODY")" && ! -e "$F_INJECTED" ]]'
+outf="$("$F_DIR/forge.sh" pr-find forge/feature)"; rcf=$?
+check "F2c. pr-find on a branch with an open PR prints its url (got $rcf, '$outf')" \
+  '[[ $rcf -eq 0 && "$outf" == "https://example.invalid/pr/1" ]]'
+outf="$(GH_API_RC=1 "$F_DIR/forge.sh" pr-find forge/feature)"; rcf=$?
+check "F4a. a REST failure fails pr-find non-zero, printing no url (got $rcf, '$outf')" '[[ $rcf -ne 0 && -z "$outf" ]]'
+outf="$(GH_API_RC=1 "$F_DIR/forge.sh" pr-open forge/other main title "$F_BODY")"; rcf=$?
+check "F4b. ... and pr-open likewise (got $rcf, '$outf')" '[[ $rcf -ne 0 && -z "$outf" ]]'
+outf="$("$F_DIR/forge.sh" pr-open forge/no-body main title "$FORGE_TMP/no-such-body.md" 2>/dev/null)"; rcf=$?
+check "F4c. a body file that does not exist fails pr-open before any POST (got $rcf)" \
+  '[[ $rcf -ne 0 && -z "$outf" ]] && ! grep -qF "head=forge/no-body" "$GH_ARGV_LOG"'
+outf="$(GH_API_NO_URL=1 "$F_DIR/forge.sh" pr-open forge/no-url main title "$F_BODY" 2>/dev/null)"; rcf=$?
+check "F4d. a POST answered with no html_url fails pr-open non-zero, printing nothing (got $rcf, '$outf')" \
+  '[[ $rcf -ne 0 && -z "$outf" ]]'
+"$F_DIR/forge.sh" >/dev/null 2>&1; rcu1=$?
+"$F_DIR/forge.sh" pr-merge x >/dev/null 2>&1; rcu2=$?
+"$F_DIR/forge.sh" pr-open forge/other main >/dev/null 2>&1; rcu3=$?
+"$F_DIR/forge.sh" pr-find >/dev/null 2>&1; rcu4=$?
+check "F5. no verb, an unknown verb, and a verb short of its arguments are usage errors, exit 2 (got $rcu1 $rcu2 $rcu3 $rcu4)" \
+  '[[ $rcu1 -eq 2 && $rcu2 -eq 2 && $rcu3 -eq 2 && $rcu4 -eq 2 ]]'
+check "F6. no call forge.sh made was gh pr, gh auth status or GraphQL" \
+  '[[ -s "$GH_ARGV_LOG" ]] && ! grep -qE "$FORBIDDEN_FORGE_CALL_RE" "$GH_ARGV_LOG" && ! grep -q "graphql" "$GH_ARGV_LOG"'
+
+# ── X6. a seeded pr.sh at template-version 4 is driven exactly as before ──────
+# A consuming repo that has not hand-merged the forge adapter (README.md → "Adopting the
+# forge adapter") keeps its v4 pr.sh, whose open path is `gh pr`: the close hands it the
+# same arguments, stamps the url it prints, and still asks it for the merge, since 4 is
+# the version with --merge-request. fixtures/pr-v4.sh is the template as it stood at 4.
+X6_SLUG="lifecycle-v4"
+start_unrouted "$X6_SLUG" --no-gate >/dev/null
+X6WT="$(wt_path "$X6_SLUG")"
+X6FD="$X6WT/self/features/$X6_SLUG"
+cp "$HERE/self/tests/fixtures/pr-v4.sh" "$X6WT/self/pr.sh" 2>/dev/null
+chmod +x "$X6WT/self/pr.sh"
+check "X6a. the fixture pr.sh reads template-version 4" \
+  '[[ "$(sed -n "s/^# template-version:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$X6WT/self/pr.sh" | head -1)" == "4" ]]'
+review_ready "$X6_SLUG" "x6x6x6x6-0000-0000-0000-000000000043"
+review "$X6WT" "$X6_SLUG" >/dev/null
+: > "$GH_LOG"; : > "$GH_ARGV_LOG"
+outx6="$(PR_AUTO_MERGE=1 close "$X6WT" "$X6_SLUG")"; rcx6=$?
+check "X6b. the close over a v4 pr.sh exits 0 (got $rcx6)" '[[ $rcx6 -eq 0 ]]'
+check "X6c. ... which opened the PR its own way, gh pr create against main" \
+  'grep -q "^pr create --base main --head $X6_SLUG" "$GH_ARGV_LOG"'
+check "X6d. ... the url it printed stamped on pr_opened with rc 0" \
+  '[[ "$(last_event_field "$X6FD" pr_opened rc)" == "0" && "$(last_event_field "$X6FD" pr_opened url)" == *example.invalid* ]]'
+check "X6e. ... and the merge requested once, v4 having the entry point (got $(grep -cE "$AUTO_MERGE_CALL_RE" "$GH_LOG"))" \
+  '[[ "$(grep -cE "$AUTO_MERGE_CALL_RE" "$GH_LOG")" == "1" ]]'
+check "X6f. ... with the cost records committed on the branch" \
+  '[[ "$(git -C "$X6WT" log -1 --format=%s)" == "$X6_SLUG: cost records" && -f "$X6FD/planning.json" ]]'
+
+# ── CC (after the merge). the merged ref is origin/<branches[0]> ──────────────
+# The cloud feature merges, its checkout and BOTH local branches go — the assigned one
+# and the slug-named one CBj made — so the only ref left is the remote-tracking
+# `origin/claude/<slug>` the capture's push recorded. The repair capture from the primary
+# reads `branches[0]` off the manifest main now carries and finds that ref.
+git -C "$AT" merge -q --no-ff -m "Merge $CB_BRANCH" "$CB_BRANCH"
+git -C "$AT" push -q origin main 2>/dev/null
+git -C "$AT" worktree remove --force "$CBWT"
+git -C "$AT" branch -q -D "$CB_BRANCH" "$CB_SLUG"
+check "CC0. the premise: no local branch left, origin/$CB_BRANCH still known" \
+  '! git -C "$AT" show-ref --verify --quiet "refs/heads/$CB_BRANCH" && ! git -C "$AT" show-ref --verify --quiet "refs/heads/$CB_SLUG" && git -C "$AT" show-ref --verify --quiet "refs/remotes/origin/$CB_BRANCH"'
+outcc2="$(capture "$AT" "$CB_SLUG" --recapture)"; rccc2=$?
+check "CCc. the post-merge capture finds origin/$CB_BRANCH as the merged ref (got $rccc2)" \
+  '[[ $rccc2 -eq 0 ]] && grep -qF "merged    origin/$CB_BRANCH is an ancestor of main" <<<"$outcc2"'
 
 echo
 if (( fails > 0 )); then echo "feature-lifecycle: $fails assertion(s) FAILED"; exit 1; fi

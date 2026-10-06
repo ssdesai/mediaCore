@@ -1,8 +1,9 @@
 # AGENT_DIRECT.md
 
 Instructions for the **direct one-shot**: one opus implementer that builds a feature
-straight from its spec, tests first, gates it green, commits, and terminates — no plan
-corpus, no batch. The counterpart to `AGENT_PLANS.md`; a coordinator points a brief at
+straight from its spec, tests first, runs the checks it touched, commits and checkpoints,
+and stops — no plan corpus, no batch. The whole gate, like every run longer than a few
+minutes, is the coordinator's (see "Long runs belong to the coordinator"). The counterpart to `AGENT_PLANS.md`; a coordinator points a brief at
 this file the way it points an architect at that one. Nothing here changes either the
 plan workflow or the runners.
 
@@ -47,27 +48,35 @@ paste the spec.
 
 1. **`feature: <repo>/<slug>`** on the first line, before anything else
    (`ORCHESTRATION.md`) — what cost capture reads.
-2. **Where.** The worktree `feature-start.sh` made for this feature —
+2. **Where.** The checkout `feature-start.sh` made for this feature, off the base its
+   manifest records (`LIFECYCLE.md`). Locally that is the worktree
    `<repo>/.worktrees/<slug>`, inside the primary checkout (a feature started before that
-   layout has the sibling `<repo>-<slug>`), on branch `<slug>`, off the base its manifest records (`LIFECYCLE.md`). Name it by
-   absolute path, and every command in absolute paths under it; the primary checkout is
-   not it.
+   layout has the sibling `<repo>-<slug>`), on branch `<slug>`, and the primary checkout
+   is not it. In a Claude Code cloud container the container **is** the worktree
+   (`self/DESIGN-2026-10-05-cloud-execution.md` §2): the checkout is the primary itself,
+   on the session's assigned branch — the manifest's `branches[0]` — and the implementer
+   never switches branches. Name it by absolute path, and every command in absolute
+   paths under it.
 3. **Read, in this order.** The spec sections (or the triage decisions) this feature
    implements — pinned names, used exactly; `CLAUDE.md` (which imports
    `CONVENTIONS.md`: the README rules and named constants are binding); the repo's
    `plans/PROJECT_FACTS.md`; the READMEs of the folders it will touch, before touching
    them. READMEs are the index — follow them rather than grepping.
 4. **The facts.** What `AGENT_PLANS.md` → "Pin the facts executors would otherwise
-   hunt for" pins for a plan, pinned here for the implementer: the gate command and
-   how long it takes, test file conventions and where fixtures live, the shapes it
-   must keep, anything decided already. Decisions the spec settles are not reopened.
+   hunt for" pins for a plan, pinned here for the implementer: how to run one test file,
+   the gate command and how long it takes (so the implementer knows not to run it when it
+   is long — step 5), test file conventions and where fixtures live, the shapes it must
+   keep, anything decided already. Decisions the spec settles are not reopened.
 5. **The procedure** (next section), by reference to this file plus whatever this
    feature adds to it.
-6. **The finish.** Commit on the branch; do not push or open the PR — the review runs
-   next, and `feature-close.sh` after a clean one opens the PR (see "The review is not
-   optional, and it is a round").
-7. **The report.** Terse: the gate's verdict line and counts, files added/changed,
-   each design call and where it is recorded, anything in scope left undone and why.
+6. **The finish.** "Commit and checkpoint, then stop." Commit on the branch; do not push
+   or open the PR — the coordinator's gate runs next, then the review, and
+   `feature-close.sh` after a clean one opens the PR (see "The review is not optional, and
+   it is a round"). The brief ends here, so a container restart during anything after it
+   costs no implementer.
+7. **The report.** Terse: the test files it ran and their results (and the gate's verdict
+   line, when the brief let it run a short gate), files added/changed, each design call
+   and where it is recorded, anything in scope left undone and why.
 
 ## The procedure
 
@@ -98,14 +107,42 @@ paste the spec.
    work, because a `NOTES.md` line is filed under one feature and nobody reads it once
    that feature has closed. Never stop to ask; nobody is
    listening, and a run that stalls on a question is a failed run.
-5. **Gate to green.** Run the repo's `plans/gate.sh` and read its report; fix; re-run
-   only the checks that failed, then the whole gate once more at the end. A SKIPPED
-   check is not green. Do not paper over a red check by weakening its test. The
-   verdict line goes in the checkpoint.
-6. **Commit.** On the feature's branch, everything, including `NOTES.md`,
+5. **Run what it touched, green.** Run every test file and check the build touched or
+   added, one by one, plus the syntax checks for every file it changed, and fix until
+   they pass; a SKIPPED check is not green, and a red check is never papered over by
+   weakening its test. **The whole gate is the coordinator's**, run after the implementer
+   stops ("Long runs belong to the coordinator"); only a gate the brief names as short —
+   a few minutes — is the implementer's to run, and then its verdict line goes in the
+   checkpoint. Otherwise the checkpoint's `gate:` line says it was not run, and which
+   files were.
+6. **Commit and checkpoint.** On the feature's branch, everything, including `NOTES.md`,
    `CHECKPOINT.md` at status `committed`, and the feature manifest. Never mutate
    repo-wide VCS state — no stash, checkout, reset, clean, branch switch or rebase.
-7. **Report and terminate.**
+7. **Report and stop.** If the coordinator's gate then comes back red, the fix is a
+   resume — a fresh implementer briefed with the red checks — never this context kept
+   waiting on the run.
+
+## Long runs belong to the coordinator
+
+A 15-minute background gate and the implementer waiting on it both died with the
+container (`self/DESIGN-2026-10-05-cloud-execution.md` §8); the checkpoint resumed the
+work, at the price of a second implementer. So:
+
+- **The coordinator, never the implementer, owns any run longer than a few minutes** —
+  the whole gate, a batch, a long test suite. It runs it as its own background shell,
+  and the notification of its exit wakes it (`ORCHESTRATION.md` → Rules: nobody polls).
+- **An implementer's brief ends at "commit and checkpoint, then stop."** Everything on
+  disk survives a restart; a context waiting on a run does not, so an implementer that
+  never waits is one a restart never costs.
+- **In a cloud session the coordinator arms one `send_later` check-in before such a
+  run**, a little past its expected end, so a container restart — which kills the run and
+  the notification it would have sent — still wakes the coordinator. The harness cannot
+  call that tool (it is the session's, not a script's), so this is doctrine, not code.
+- **The gate resumes.** A gate killed part-way and re-run on the same tree under
+  `GATE_RESUME=1` — which the runners and `feature-start.sh` set, and which a coordinator
+  re-running one by hand sets too — skips every check whose pass it already recorded
+  (`templates/plans/gate.sh`, template-version 3). A restart costs the unfinished checks,
+  not the whole gate.
 
 ## Checkpoint and resume
 
@@ -193,7 +230,8 @@ from the implementer's report or by the implementer. Author it as a review plan
 diff against, the contracts to hold it to, the `Verdict:` line it must open with, "no
 findings" a legitimate verdict) in
 `plans/features/<slug>/review/incomplete/NN-review-opus.md`, and run
-`./agentTooling/run-review.sh <slug>` once the implementer has committed.
+`./agentTooling/run-review.sh <slug>` once the implementer has committed and the
+coordinator's own gate run is green.
 
 A direct build is **round 1**, and the review's verdict is what ends it. The runner
 commits its own output (`<slug>: review round N`), stamps that round's verdict and the sha

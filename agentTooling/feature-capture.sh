@@ -12,8 +12,10 @@ set -uo pipefail
 #
 # Which run this is follows from where it runs, never from a flag:
 #
-#   ON THE BRANCH — the checkout this copy lives in has <slug> checked out, which is the
-#   feature's worktree R/.worktrees/<slug> (or a legacy sibling R-<slug>). In order:
+#   ON THE BRANCH — the checkout this copy lives in has the feature's branch checked out:
+#   the manifest's `branches[0]` (manifest_branch, plan-runner-roots.sh), which is <slug>
+#   in the feature's worktree R/.worktrees/<slug> (or a legacy sibling R-<slug>) and the
+#   assigned `claude/…` branch in a cloud container. In order:
 #
 #     1. refuses when anything but this feature's cost records is dirty in the checkout
 #        (`stray_paths`, plan-runner-roots.sh): the commit below must be this run's records
@@ -60,12 +62,14 @@ set -uo pipefail
 #        exactly the slugs step 5 returned, and nothing else — then commits the cost
 #        records on the branch as `<slug>: cost records` (COST_FILES, the routing record
 #        among them, the per-plan usage sidecars and any record step 5 annotated) and
-#        pushes the branch with -u. Never main. The worktree is left in place: the next
+#        pushes that branch — `branches[0]`, never one named after the slug unless that is
+#        what the manifest says — with -u. Never main. The worktree is left in place: the next
 #        feature-start.sh's prune removes it once the branch has merged.
 #
 #   AFTER THE MERGE — anywhere else, typically the primary checkout on main. The feature
 #   has merged under the old flow and was never closed, or it is being repaired
-#   (--recapture). It refuses a branch that is not merged into what is checked out, and
+#   (--recapture). It looks for `branches[0]` as read from the manifest main carries —
+#   locally, then as origin/<branch> — and refuses one not merged into what is checked out, and
 #   with no branch left at all (a forge with delete-on-merge) proceeds only on the
 #   feature's manifest being tracked here and its `<slug>: start` commit being in this
 #   history — both, never either. Steps 2–8 as above, except that the stamp fills a null
@@ -148,6 +152,12 @@ MANIFEST="$FEATURE_DIR/README.md"
 MANIFEST_REL="$FEATURE_REL/README.md"
 PLANNING_JSON="$FEATURE_DIR/planning.json"
 CURRENT_BRANCH="$(git -C "$CHECKOUT" branch --show-current)"
+# The feature's branch: the manifest's `branches[0]`, the slug for a local feature and the
+# assigned `claude/…` branch in a cloud container (manifest_branch, plan-runner-roots.sh).
+# Read from the manifest IN THIS CHECKOUT — on the branch, the feature's own; after the
+# merge, the copy main carries. A manifest not here (an unmerged feature, from the
+# primary) falls back to the slug, which is the old rule and refuses the same way.
+FEATURE_BRANCH="$(manifest_branch "$MANIFEST" "$SLUG")"
 MANIFEST_PY=(python3 -B "$SCRIPT_DIR/analysis/manifest.py" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} "$SLUG")
 CAPTURE_PY=(python3 -B "$SCRIPT_DIR/analysis/capture_planning.py" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"})
 RERUN_HINT="$SCRIPT_DIR/$CAPTURE_SCRIPT_NAME ${SELF_FLAG[@]+"${SELF_FLAG[@]} "}$SLUG"
@@ -156,12 +166,12 @@ dirty_paths() { git -C "$CHECKOUT" status --porcelain --untracked-files=all; }
 
 # ── Which run this is ─────────────────────────────────────────────────────────
 ON_BRANCH=0
-if [[ "$CURRENT_BRANCH" == "$SLUG" ]]; then
+if [[ "$CURRENT_BRANCH" == "$FEATURE_BRANCH" ]]; then
   if (( RECAPTURE )); then
-    refuse "--recapture is the post-merge repair path; on '$SLUG' itself a plain run already replaces the record — run $RERUN_HINT"
+    refuse "--recapture is the post-merge repair path; on '$FEATURE_BRANCH' itself a plain run already replaces the record — run $RERUN_HINT"
   fi
   ON_BRANCH=1
-  echo "  mode      on branch $SLUG in $CHECKOUT — the record is committed on the branch and rides the PR"
+  echo "  mode      on branch $FEATURE_BRANCH in $CHECKOUT — the record is committed on the branch and rides the PR"
 else
   # worktree_of <branch> — the checkout holding it, from git's own record, for the hint.
   worktree_of() {
@@ -169,22 +179,22 @@ else
       | awk -v ref="branch refs/heads/$1" '/^worktree /{wt=substr($0,10)} $0==ref{print wt; exit}'
   }
   MERGE_REF=""
-  if git -C "$CHECKOUT" show-ref --verify --quiet "refs/heads/$SLUG"; then
-    MERGE_REF="$SLUG"
-  elif git -C "$CHECKOUT" show-ref --verify --quiet "refs/remotes/$ORIGIN_REMOTE/$SLUG"; then
-    MERGE_REF="$ORIGIN_REMOTE/$SLUG"
+  if git -C "$CHECKOUT" show-ref --verify --quiet "refs/heads/$FEATURE_BRANCH"; then
+    MERGE_REF="$FEATURE_BRANCH"
+  elif git -C "$CHECKOUT" show-ref --verify --quiet "refs/remotes/$ORIGIN_REMOTE/$FEATURE_BRANCH"; then
+    MERGE_REF="$ORIGIN_REMOTE/$FEATURE_BRANCH"
   fi
   if [[ -n "$MERGE_REF" ]]; then
     if ! git -C "$CHECKOUT" merge-base --is-ancestor "$MERGE_REF" HEAD; then
-      wt="$(worktree_of "$SLUG")"
-      refuse "'$SLUG' is not merged into ${CURRENT_BRANCH:-HEAD} — before the merge the record belongs on the branch: run ${wt:-<its worktree>}/${SCRIPT_DIR#"$CHECKOUT"/}/$CAPTURE_SCRIPT_NAME ${SELF_FLAG[@]+"${SELF_FLAG[@]} "}$SLUG"
+      wt="$(worktree_of "$FEATURE_BRANCH")"
+      refuse "'$FEATURE_BRANCH' is not merged into ${CURRENT_BRANCH:-HEAD} — before the merge the record belongs on the branch: run ${wt:-<its worktree>}/${SCRIPT_DIR#"$CHECKOUT"/}/$CAPTURE_SCRIPT_NAME ${SELF_FLAG[@]+"${SELF_FLAG[@]} "}$SLUG"
     fi
     echo "  merged    $MERGE_REF is an ancestor of ${CURRENT_BRANCH:-HEAD}"
   elif git -C "$CHECKOUT" cat-file -e "HEAD:$MANIFEST_REL" 2>/dev/null \
       && [[ -n "$(git -C "$CHECKOUT" rev-list --max-count=1 --fixed-strings --grep="$SLUG$START_COMMIT_SUFFIX" HEAD 2>/dev/null)" ]]; then
     echo "  merged    no branch left; $MANIFEST_REL and '$SLUG$START_COMMIT_SUFFIX' are in ${CURRENT_BRANCH:-HEAD}"
   else
-    refuse "no branch '$SLUG' locally or on $ORIGIN_REMOTE, and no merged manifest with its start commit — nothing to capture"
+    refuse "no branch '$FEATURE_BRANCH' locally or on $ORIGIN_REMOTE, and no merged manifest with its start commit — nothing to capture"
   fi
   echo "  mode      after the merge, in $CHECKOUT — writes locally, commits nothing, pushes nothing"
 fi
@@ -439,13 +449,13 @@ else
 fi
 
 if (( ! PUSH )); then
-  echo "  push      skipped (--no-push) — $SLUG is ahead of $ORIGIN_REMOTE"
+  echo "  push      skipped (--no-push) — $FEATURE_BRANCH is ahead of $ORIGIN_REMOTE"
 elif ! git -C "$CHECKOUT" remote get-url "$ORIGIN_REMOTE" >/dev/null 2>&1; then
   echo "  push      skipped — this repository has no $ORIGIN_REMOTE"
-elif git -C "$CHECKOUT" push -q -u "$ORIGIN_REMOTE" "$SLUG"; then
-  echo "  push      $SLUG -> $ORIGIN_REMOTE"
+elif git -C "$CHECKOUT" push -q -u "$ORIGIN_REMOTE" "$FEATURE_BRANCH"; then
+  echo "  push      $FEATURE_BRANCH -> $ORIGIN_REMOTE"
 else
-  refuse "could not push $SLUG; the cost commit is on the branch locally — push it by hand"
+  refuse "could not push $FEATURE_BRANCH; the cost commit is on the branch locally — push it by hand"
 fi
 
 echo ""

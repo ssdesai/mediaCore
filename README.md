@@ -17,7 +17,7 @@ every decision taken along the way. Start there.
 | `INTEGRATION.md` | Cross-repo design and decisions log. The brief every implementing agent works from. |
 | `CLAUDE.md` | Imports the shared conventions from `agentTooling/`, plus this repo's Rule 1/2 examples and commands. |
 | `agentTooling/` | Vendored via `git subtree` — shared Claude Code conventions and the delegated-plan harness. Not edited here. |
-| `plans/` | This repo's plan corpus (`features/<slug>/`), `PROJECT_FACTS.md`, the mechanical gate and PR hook. |
+| `plans/` | This repo's plan corpus (`features/<slug>/`), `PROJECT_FACTS.md`, the mechanical gate and PR hook, and the cloud adapters (`environment.sh` — sets nothing here; `cloud-setup.sh` — creates `.venv` at a cloud session's start). |
 | `src/mediacore/` | The package — see its README. |
 | `tests/` | pytest suite mirroring `src/`. |
 | `fixtures/its-saxy/` | The contract fixture: a complete release bundle with real metadata and placeholder media. |

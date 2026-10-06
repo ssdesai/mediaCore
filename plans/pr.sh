@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -uo pipefail
-# template-version: 4
+# template-version: 6
 
 # This is what `sync-plans.sh --check` compares a seeded copy against to report drift.
 # Bump it whenever the body below the marker changes in a way seeded copies must
@@ -16,6 +16,13 @@ set -uo pipefail
 # harness must not pin every consuming repo to one vendor. The runner's contract with
 # this script is small enough to satisfy from any of them.
 #
+# For GitHub this copy does the git part itself — commit, push — and hands the forge part
+# to agentTooling/forge.sh (`pr-find`, then `pr-open`; on the merge request `pr-find`,
+# then `auto-merge`). forge.sh opens over `gh api` REST, the one path that works both on a
+# laptop and in a Claude Code cloud container, whose proxy refuses GraphQL (`gh pr …`)
+# and fails `gh auth status`, and asks for the merge the way each of the two allows. A
+# repo on another forge replaces those calls with its own CLI and never calls forge.sh.
+#
 # Contract feature-close.sh relies on — do not change this part when customizing. Two
 # entry points, because the two things a forge is asked for happen at different moments
 # of the close and the order between them is load-bearing:
@@ -24,7 +31,10 @@ set -uo pipefail
 #     argv[1]            feature slug
 #     argv[2]            path to the PR body (may not exist; treat as optional)
 #     cwd                repo root
-#     exit 0             PR opened, already open, or deliberately skipped
+#     FORGE_SCRIPT       env: the forge adapter's path, exported by feature-close.sh
+#     exit 0             PR opened, already open, or deliberately skipped — and skipped
+#                        ONLY where there is no forge CLI at all: a forge that is there
+#                        and refused is a failure, never a skip
 #     exit non-zero      something went wrong and the human should look
 #     stdout             human-readable; print the PR URL if you have one
 #
@@ -56,8 +66,8 @@ SLUG="${1:?feature slug required}"
 REPORT="${2:-}"
 
 # Opt-in auto-merge, asked for only through --merge-request and therefore only after the
-# cost record has been committed and pushed: PR_AUTO_MERGE=1 in the environment runs
-# `gh pr merge --auto` on the open PR, and anything else leaves the merge to a human.
+# cost record has been committed and pushed: PR_AUTO_MERGE=1 in the environment asks
+# forge.sh to auto-merge the open PR, and anything else leaves the merge to a human.
 # Off by default. With it on, the tail from verdict to costed merge is unattended.
 AUTO_MERGE="${PR_AUTO_MERGE:-0}"
 
@@ -68,36 +78,59 @@ AUTO_MERGE="${PR_AUTO_MERGE:-0}"
 FORGE_CLI="gh"
 # The base of last resort, when neither the manifest nor the environment names one.
 FALLBACK_BASE="main"
-# The AUTO_MERGE value that turns auto-merge on, and how the forge is asked to merge.
-# A merge commit, never a squash: feature-start.sh's prune and feature-capture.sh's
-# post-merge path both decide "merged" by the branch being an ancestor of main, which a
-# squash merge never makes it.
+# Where the forge adapter is when FORGE_SCRIPT (which feature-close.sh exports) is unset —
+# this script run by hand. Relative to the cwd, which the contract says is the repo root:
+# a consuming repo's vendored copy first, then agentTooling's own root (`--self`). Each
+# carries a slash, so it runs from the cwd and is never looked up on PATH.
+FORGE_SCRIPT_FALLBACKS=(./agentTooling/forge.sh ./forge.sh)
+# The body when the review wrote no report.
+FALLBACK_BODY_TEMPLATE="pr-body.XXXXXX"
+# The AUTO_MERGE value that turns auto-merge on. HOW the forge is asked — a merge commit,
+# never a squash, by `gh pr merge` on a laptop and the proxy's REST route in a cloud
+# container — is forge.sh's `auto-merge`, which picks by profile.
 AUTO_MERGE_ON="1"
-AUTO_MERGE_ARGS=(--auto --merge --delete-branch)
 
 # auto_merge — ask the forge to merge the open PR once its requirements pass. Called only
-# from the --merge-request entry point, which feature-close.sh calls last. Advisory: a
+# from the --merge-request entry point, which feature-close.sh calls last. The PR is the
+# one forge.sh pr-find finds open for this branch. Advisory: no adapter, no open PR, or a
 # refusal is reported and the PR stays open for a human, which is where it would be with
 # auto-merge off.
 auto_merge() {
+  local forge pr_url
   if [[ "$AUTO_MERGE" != "$AUTO_MERGE_ON" ]]; then
     echo "  merge   auto-merge is off (PR_AUTO_MERGE=${PR_AUTO_MERGE:-unset}) — no merge requested; merge the PR when it reads right"
     return 0
   fi
-  if "$FORGE_CLI" pr merge "$current_branch" "${AUTO_MERGE_ARGS[@]}" >/dev/null 2>&1; then
-    echo "  merge   auto-merge requested for $current_branch"
+  forge="$(forge_script)"
+  if [[ -z "$forge" || ! -x "$forge" ]]; then
+    echo "  warn    no forge adapter (FORGE_SCRIPT is ${FORGE_SCRIPT:-unset}) — no merge requested; merge the PR by hand"
+    return 0
+  fi
+  if ! pr_url="$("$forge" pr-find "$current_branch")" || [[ -z "$pr_url" ]]; then
+    echo "  warn    $forge pr-find found no open PR for $current_branch — no merge requested; merge the PR by hand"
+    return 0
+  fi
+  if "$forge" auto-merge "$pr_url" >/dev/null; then
+    echo "  merge   auto-merge requested for $pr_url"
   else
-    echo "  warn    $FORGE_CLI pr merge --auto was refused — merge the PR by hand"
+    echo "  warn    $forge auto-merge $pr_url was refused — merge the PR by hand"
   fi
 }
 
+# forge_script — the forge adapter to call: FORGE_SCRIPT, else the first of
+# FORGE_SCRIPT_FALLBACKS that is here, else nothing.
+forge_script() {
+  local candidate
+  if [[ -n "${FORGE_SCRIPT:-}" ]]; then echo "$FORGE_SCRIPT"; return 0; fi
+  for candidate in "${FORGE_SCRIPT_FALLBACKS[@]}"; do
+    if [[ -x "$candidate" ]]; then echo "$candidate"; return 0; fi
+  done
+}
+
+# No forge CLI at all is the one deliberate skip: a repo with no forge. There is no
+# `auth status` probe — a forge that is there and refuses says so below, as a failure.
 if ! command -v "$FORGE_CLI" >/dev/null 2>&1; then
   echo "  skip  $FORGE_CLI not installed — no PR opened"
-  exit 0
-fi
-
-if ! "$FORGE_CLI" auth status >/dev/null 2>&1; then
-  echo "  skip  $FORGE_CLI is not authenticated — no PR opened"
   exit 0
 fi
 
@@ -132,6 +165,15 @@ if [[ "$current_branch" == "$BASE_BRANCH" ]]; then
   exit 1
 fi
 
+# Found before anything is committed or pushed, so a missing adapter changes nothing.
+FORGE="$(forge_script)"
+if [[ -z "$FORGE" || ! -x "$FORGE" ]]; then
+  echo "  fail  no forge adapter: FORGE_SCRIPT is ${FORGE_SCRIPT:-unset} and none of"
+  echo "        ${FORGE_SCRIPT_FALLBACKS[*]} is executable from $(pwd) — run this through"
+  echo "        feature-close.sh, which exports it; nothing was committed or pushed."
+  exit 1
+fi
+
 # The batch's output IS the working tree, so everything goes in — including this
 # feature's plan corpus, which is part of the record. `.gitignore` already excludes the
 # raw event streams.
@@ -149,7 +191,12 @@ if ! git push -q -u origin "$current_branch" 2>&1; then
 fi
 echo "  push    $current_branch -> origin"
 
-existing="$("$FORGE_CLI" pr view "$current_branch" --json url --jq .url 2>/dev/null || true)"
+# A forge that cannot be asked is a failure, not "nothing open": carrying on would open a
+# second PR, or report one opened that never was.
+if ! existing="$("$FORGE" pr-find "$current_branch")"; then
+  echo "  fail  $FORGE pr-find $current_branch failed — no PR opened"
+  exit 1
+fi
 if [[ -n "$existing" ]]; then
   echo "  pr      already open: $existing"
   exit 0
@@ -157,18 +204,16 @@ fi
 
 # The review pass's own findings are the PR body — that is the thing a human is being
 # asked to approve, and re-summarizing it here would be a second, drifting account of
-# the same review.
-body_args=()
-if [[ -n "$REPORT" && -f "$REPORT" ]]; then
-  body_args=(--body-file "$REPORT")
-else
-  body_args=(--body "Built, verified and reviewed by the agentTooling batch for \`$SLUG\`. No review report was written.")
+# the same review. The adapter reads the body from a file, so the fallback is one too.
+body_file="$REPORT"
+if [[ -z "$REPORT" || ! -f "$REPORT" ]]; then
+  body_file="$(mktemp "${TMPDIR:-/tmp}/$FALLBACK_BODY_TEMPLATE")" || exit 1
+  trap 'rm -f "$body_file"' EXIT
+  echo "Built, verified and reviewed by the agentTooling batch for \`$SLUG\`. No review report was written." > "$body_file"
 fi
 
-url="$("$FORGE_CLI" pr create --base "$BASE_BRANCH" --head "$current_branch" \
-  --title "$SLUG" "${body_args[@]}" 2>&1)" || {
-  echo "  fail  $FORGE_CLI pr create failed:"
-  echo "$url"
+if ! url="$("$FORGE" pr-open "$current_branch" "$BASE_BRANCH" "$SLUG" "$body_file")"; then
+  echo "  fail  $FORGE pr-open $current_branch into $BASE_BRANCH failed — no PR opened"
   exit 1
-}
+fi
 echo "  pr      $url"

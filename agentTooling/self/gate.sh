@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -uo pipefail
-# template-version: 2
+# template-version: 3
 
 # Mechanical pre-verify gate, run by ../run-batch.sh between the build and
 # verify passes. Runs this repo's deterministic checks — install, lint, tests,
@@ -32,10 +32,51 @@ set -uo pipefail
 #     (so a missing image fails in seconds, not after a multi-minute build), poll for
 #     readiness, and leave it running for the verify pass. Use record_skip, never a
 #     bare echo, for anything that genuinely cannot run.
+#   - Sources self/environment.sh when present — the template's plans/environment.sh
+#     hook (self/DESIGN-2026-10-05-cloud-execution.md §7). agentTooling ships none: its
+#     checks need no service, so nothing differs by profile today.
+#   - RESUMABLE at check granularity (design §8), exactly as the template: each check's
+#     result goes to self/gate-state/<tree-sha>/<label> as it finishes, and under
+#     GATE_RESUME=1 — which the runners and feature-start.sh set — a check whose PASS is
+#     recorded for the same tree with the same command line is not run again, its
+#     recorded section going into the report as it was. A failure always re-runs. The
+#     tree sha is `git write-tree` with untracked files included, through a temporary
+#     index, this gate's outputs and the features corpus (self/features/, which the runners
+#     write between gate runs) left out; no sha (no git, a failed write-tree) runs
+#     everything. The root .gitignore ignores self/gate-state/. This is the ~13-minute
+#     gate a container restart killed (design §8's defect), so it is the one that most
+#     needs it. ONE EXCEPTION, which the template has no use for: a check run with
+#     `record_fresh` — the settings check — runs on every gate, resumed or not, and is
+#     never recorded. It was made fresh when .claude/settings.json was ignored and the
+#     tree sha could not see it (self/features/session-start-precision); the file is
+#     tracked now (self/features/self-cloud-bootstrap), so the sha does see a drifted
+#     working copy, but the check stays fresh: it is cheap, and the working copy a
+#     session loads is exactly what it checks, so its verdict never rests on a recorded
+#     pass (self-settings.sh G).
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPORT="$REPO_DIR/self/gate-report.txt"
 OUTPUT_TAIL_LINES=40
+# The profile facts (design §7), sourced when this checkout has them
+ENVIRONMENT_FILE="$REPO_DIR/self/environment.sh"
+
+# Resume (design §8): the same constants as templates/plans/gate.sh, under self/.
+GATE_RESUME="${GATE_RESUME:-}"
+GATE_RESUME_ON="1"
+GATE_STATE_ROOT="$REPO_DIR/self/gate-state"
+# The features corpus is the runners' record store, not a gate input (NOTES ruling 42)
+GATE_FEATURES_DIR="self/features"
+GATE_TREE_EXCLUDES=("self/gate-report*.txt" "self/gate-state" "$GATE_FEATURES_DIR")
+GATE_STATE_RC_KEY="rc="
+GATE_STATE_CMD_KEY="cmd="
+GATE_STATE_HEADER_LINES=2
+GATE_STATE_PASS_RC=0
+GATE_STATE_LABEL_KEEP='A-Za-z0-9_-'
+GATE_STATE_LABEL_FILL='_'
+GATE_TREE_SHA_SHOWN=12
+GATE_STATE_DIR=""
+# _record's mode for a check never reused or recorded (record_fresh; header, ONE EXCEPTION)
+RECORD_FRESH="fresh"
 
 # Optional level label, passed by the runner when this gate runs at a level sentinel
 # (NN-gate.md) instead of at the end of the batch. The report is always written to
@@ -44,6 +85,10 @@ OUTPUT_TAIL_LINES=40
 LEVEL_LABEL="${1:-}"
 
 cd "$REPO_DIR" || exit 1
+
+if [[ -f "$ENVIRONMENT_FILE" ]]; then
+  . "$ENVIRONMENT_FILE"
+fi
 
 # ── Toolchain: python3 is the only hard requirement ──────────────────────────
 # bash is running this script by definition. Without python3 every analysis/ check
@@ -69,22 +114,85 @@ any_failed=0
 check_count=0
 skip_count=0
 
-# Run one check, append its command, exit code, and output tail to the report.
-# _record <informational?> <label> <cmd...>
+# ── Resume (design §8) — templates/plans/gate.sh's functions, unchanged ──────
+gate_tree_sha() {
+  local real_index tmp_dir sha=""
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then return 1; fi
+  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/gate-index.XXXXXX")" || return 1
+  real_index="$(git rev-parse --git-path index 2>/dev/null)"
+  if [[ -n "$real_index" && -f "$real_index" ]]; then
+    cp "$real_index" "$tmp_dir/index" 2>/dev/null
+  fi
+  # Add everything, then take this gate's outputs back out: an exclude pathspec on the add
+  # itself fails it whenever those outputs are ignored, which they normally are.
+  if GIT_INDEX_FILE="$tmp_dir/index" git add -A -- ':/' >/dev/null 2>&1 \
+    && GIT_INDEX_FILE="$tmp_dir/index" git rm -r -q --cached --ignore-unmatch -- "${GATE_TREE_EXCLUDES[@]}" >/dev/null 2>&1; then
+    sha="$(GIT_INDEX_FILE="$tmp_dir/index" git write-tree 2>/dev/null)"
+  fi
+  rm -rf "$tmp_dir"
+  if [[ -z "$sha" ]]; then return 1; fi
+  echo "$sha"
+}
+
+gate_state_init() {
+  local sha d
+  sha="$(gate_tree_sha)" || return 0
+  if ! mkdir -p "$GATE_STATE_ROOT/$sha" 2>/dev/null; then return 0; fi
+  GATE_STATE_DIR="$GATE_STATE_ROOT/$sha"
+  for d in "$GATE_STATE_ROOT"/*; do
+    if [[ -d "$d" && "$d" != "$GATE_STATE_DIR" ]]; then rm -rf "$d"; fi
+  done
+  if [[ "$GATE_RESUME" == "$GATE_RESUME_ON" ]]; then
+    echo "=== gate: GATE_RESUME — passes recorded for tree ${sha:0:$GATE_TREE_SHA_SHOWN} are reused ==="
+  fi
+}
+
+gate_state_file() {
+  local safe
+  if [[ -z "$GATE_STATE_DIR" ]]; then return 0; fi
+  safe="$(printf '%s' "$1" | tr -c "$GATE_STATE_LABEL_KEEP" "$GATE_STATE_LABEL_FILL")"
+  if [[ -n "$safe" ]]; then echo "$GATE_STATE_DIR/$safe"; fi
+}
+
+gate_state_reusable() {
+  if [[ "$GATE_RESUME" != "$GATE_RESUME_ON" || -z "$1" || ! -f "$1" ]]; then return 1; fi
+  if [[ "$(sed -n 1p "$1")" != "$GATE_STATE_RC_KEY$GATE_STATE_PASS_RC" ]]; then return 1; fi
+  [[ "$(sed -n 2p "$1")" == "$GATE_STATE_CMD_KEY$2" ]]
+}
+
+_section() {
+  echo "## $1"
+  echo "\$ $2"
+  echo "exit: $3"
+  echo "$4" | tail -n "$OUTPUT_TAIL_LINES"
+  echo ""
+}
+
+# Run one check, append its command, exit code, and output tail to the report, and record
+# it for a resumed run (a fresh one is neither reused nor recorded, and fails like blocking).
+# _record <blocking|info|fresh> <label> <cmd...>
 _record() {
   local informational="$1"; shift
   local label="$1"; shift
-  local out rc
+  local out rc state=""
+  # A fresh check must describe the working copy as it is now (header, ONE EXCEPTION), so
+  # it is never reused or recorded
+  if [[ "$informational" != "$RECORD_FRESH" ]]; then state="$(gate_state_file "$label")"; fi
+  if gate_state_reusable "$state" "$*"; then
+    check_count=$((check_count + 1))
+    tail -n +"$((GATE_STATE_HEADER_LINES + 1))" "$state" >> "$REPORT"
+    echo "  ok    $label (resumed: passed on this tree already)"
+    return 0
+  fi
   out="$("$@" 2>&1)"
   rc=$?
   check_count=$((check_count + 1))
-  {
-    echo "## $label"
-    echo "\$ $*"
-    echo "exit: $rc"
-    echo "$out" | tail -n "$OUTPUT_TAIL_LINES"
-    echo ""
-  } >> "$REPORT"
+  _section "$label" "$*" "$rc" "$out" >> "$REPORT"
+  if [[ -n "$state" ]]; then
+    if { echo "$GATE_STATE_RC_KEY$rc"; echo "$GATE_STATE_CMD_KEY$*"; _section "$label" "$*" "$rc" "$out"; } > "$state.tmp" 2>/dev/null; then
+      mv "$state.tmp" "$state" 2>/dev/null
+    fi
+  fi
   if (( rc != 0 )); then
     if [[ "$informational" == "info" ]]; then
       echo "  note  $label (exit $rc, informational)"
@@ -99,6 +207,12 @@ _record() {
 }
 
 record() { _record blocking "$@"; }
+
+# Blocking, but run on every gate, resumed or not, and never recorded: for a cheap check
+# whose verdict must always describe the working copy as it is now (this checkout's
+# generated .claude/settings.json — tracked, but the file every session loads), never a
+# pass recorded before that file was deleted or drifted.
+record_fresh() { _record "$RECORD_FRESH" "$@"; }
 
 # Recorded for the verify executor to compare against a baseline, but never
 # counted toward the verdict — a check with a known standing backlog (e.g. a lint
@@ -117,6 +231,9 @@ record_skip() {            # record_skip <label> <reason>
   echo "  SKIP  $label — $why"
 }
 
+# The tree every check below is recorded against: taken once, before the first check
+gate_state_init
+
 # ── The checks ───────────────────────────────────────────────────────────────
 echo "=== gate: shell syntax ==="
 # Every tracked script, including this one and the consuming-repo template. `bash -n`
@@ -134,9 +251,12 @@ shell_scripts=(
   feature-start.sh
   feature-capture.sh
   feature-close.sh
+  forge.sh
+  env-profile.sh
   check-plans.sh
   update.sh
   self/gate.sh
+  self/profile-confinement.sh
   self/pr.sh
   self/worktree-setup.sh
   self/open-session.sh
@@ -181,11 +301,16 @@ shell_scripts=(
   self/tests/plan-numbering.sh
   self/tests/start-takeover.sh
   self/tests/rates-history.sh
+  self/tests/env-profile.sh
+  self/tests/cloud-start.sh
+  self/tests/gate-resume.sh
   run-escalation-plan.sh
   templates/plans/gate.sh
   templates/plans/pr.sh
   templates/plans/worktree-setup.sh
   templates/plans/open-session.sh
+  templates/plans/environment.sh
+  templates/plans/cloud-setup.sh
 )
 for script in "${shell_scripts[@]}"; do
   record "bash -n $script" bash -n "$script"
@@ -265,8 +390,9 @@ record "hook quote oracle self-test" bash self/tests/hook-quote-oracle.sh
 # fall-through and the scratch entry point, none of which a single decision can show.
 record "hook escalation self-test" bash self/tests/hook-escalation.sh
 record "hook wiring self-test" bash self/tests/hook-wiring.sh
-# This checkout's own settings file is untracked and generated: the setup hook writes it,
-# the check below fails without it, and a vendored copy carries none.
+# This checkout's own policy file is tracked and generated: the check below fails on a
+# missing or drifted copy, its guarded hook command is a no-op where the hook script is
+# absent, and a vendored copy is held to the same bytes with the fix named upstream.
 record "self settings self-test" bash self/tests/self-settings.sh
 # The table both of them read (hooks/policy.py): the prefix rules it renders must cover
 # every mutating entry, and the hook's own reader must deny each one. This is what keeps
@@ -284,6 +410,24 @@ record "start takeover self-test" bash self/tests/start-takeover.sh
 # exactly as the hand table it replaced did, and a LiteLLM refresh may only ever append
 # (self/features/litellm-pricing/README.md).
 record "rates history self-test" bash self/tests/rates-history.sh
+# The lifecycle never asks where it is running (self/DESIGN-2026-10-05-cloud-execution.md
+# §1): the detector's three cases, the layout adapter, the confinement check on planted
+# files, and forge.sh's two profile-dependent verbs; then the cloud start itself — the
+# container as the worktree, its refusals and resume, the coordinator with no routing
+# record whose window opens at its own first instant (self/features/execution-profiles/).
+record "env profile self-test" bash self/tests/env-profile.sh
+record "cloud start self-test" bash self/tests/cloud-start.sh
+# A gate killed with its container re-runs only what had not finished on the same tree,
+# and everything on a changed one (design §8) — the template gate and this one, each
+# copied into a sandbox with stub checks, killed mid-run and resumed.
+record "gate resume self-test" bash self/tests/gate-resume.sh
+
+echo "=== gate: profile confinement ==="
+# Only env-profile.sh, the adapters and their tests may spell the two profile variables
+# (the script names them); every lifecycle script asks env-profile.sh's functions instead.
+# Blocking: a script that reads the variable itself is the per-environment branch the
+# design exists to keep out of the lifecycle. Prose (*.md) is exempt.
+record "profile variables confined to the detector and its adapters" bash self/profile-confinement.sh
 
 echo "=== gate: python syntax ==="
 # Compiles each file independently — it does NOT exercise the bare cross-imports
@@ -295,15 +439,17 @@ record "py_compile analysis" python3 -m py_compile analysis/*.py
 record "py_compile hooks" python3 -m py_compile hooks/policy.py hooks/wire-settings.py hooks/allow-repo-commands.sh
 
 echo "=== gate: permission policy ==="
-# This checkout's .claude/settings.json is not hand-authored: hooks/wire-settings.py
-# --self writes it, exactly as sync-plans.sh writes a consuming repo's (hooks/README.md).
-# Blocking, because a file that has drifted from the helper is a policy nobody is
-# enforcing — the deny rules a session actually loads are whatever the file says — and
-# because the file is untracked, a missing one fails too: it means sessions here run with
-# no hook at all. The failure names the exact regenerate command. In a vendored
-# agentTooling the check instead passes on the absence and fails on a nested copy.
+# This checkout's .claude/settings.json is tracked but not hand-authored:
+# hooks/wire-settings.py --self generates it, exactly as sync-plans.sh writes a consuming
+# repo's (hooks/README.md, self/features/self-cloud-bootstrap). Blocking, because a file
+# that has drifted from the helper is a policy nobody is enforcing — the deny rules a
+# session actually loads are whatever the file says — and a missing one fails too: it
+# means a fresh clone is born with no hook at all. Compared byte for byte; the failure
+# names the exact regenerate command. In a vendored agentTooling the same comparison runs
+# over the subtree's copy, and a failure there says the fix is upstream. record_fresh:
+# never reused under GATE_RESUME=1 and never recorded (header, ONE EXCEPTION).
 # -B: leave no hooks/__pycache__ behind in the tree the gate is checking.
-record "permission policy wired into .claude/settings.json" \
+record_fresh "permission policy wired into .claude/settings.json" \
   python3 -B hooks/wire-settings.py --self --repo "$REPO_DIR" --check
 
 echo "=== gate: rate history ==="

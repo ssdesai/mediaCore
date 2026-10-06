@@ -61,6 +61,16 @@ UNCAPTURED_FEATURE_MESSAGE = (
     "feature already merged"
 )
 
+# The manifest fence's `profile` (`manifest.py init --profile`), and the line report.md
+# shows it on, under Generated. report.json carries it under the same key.
+PROFILE_KEY = "profile"
+PROFILE_LINE = "Profile: {profile} — where the feature was started (env-profile.sh)."
+# The fence's `gate` (`manifest.py init --gate`): whether the start's base gate ran green
+# or was skipped (--no-gate, or no gate script). Shown under the Profile line, and in
+# report.json under the same key, only when the manifest records one.
+GATE_KEY = "gate"
+GATE_LINE = "Gate: {gate} — the base gate at the start (green, or skipped: --no-gate or no gate script)."
+
 # Turn-count flags. The first two are model-fit — the plan ran on the wrong model.
 # The third is scope: the model was right, the plan was too big.
 HAIKU_HIGH_TURN_THRESHOLD = 8   # a haiku plan taking this many turns suggests it
@@ -2463,6 +2473,12 @@ def render_rounds_section(lines, data):
 def render_report_md(data):
     lines = [f"# {data['slug']} — cost and waste report", ""]
     lines.append(f"Generated {data['generated_at']}.")
+    if data.get(PROFILE_KEY) or data.get(GATE_KEY):
+        lines.append("")
+    if data.get(PROFILE_KEY):
+        lines.append(PROFILE_LINE.format(profile=data[PROFILE_KEY]))
+    if data.get(GATE_KEY):
+        lines.append(GATE_LINE.format(gate=data[GATE_KEY]))
     lines.append("")
 
     cost = data["cost"]
@@ -2920,6 +2936,18 @@ def run_single_feature(repo_dir, features_dir, slug):
     # figure has a round is byte-identical to one written before this key existed.
     if rounds_unpartitioned:
         data["rounds_unpartitioned"] = rounds_unpartitioned
+    # Where the start ran (the fence's `profile`, self/DESIGN-2026-10-05-cloud-execution.md
+    # §1), so a cost record says whether it was made on a laptop or in a cloud container.
+    # Only when the manifest records one: a feature started before the key reports
+    # byte-identically, and absence is "not recorded", never "local".
+    profile = manifest.get(PROFILE_KEY) if isinstance(manifest, dict) else None
+    if isinstance(profile, str) and profile:
+        data[PROFILE_KEY] = profile
+    # Whether the start's base gate ran green (the fence's `gate`, design §7), under the
+    # same rule: only when recorded, so an older feature's report is byte-identical.
+    gate = manifest.get(GATE_KEY) if isinstance(manifest, dict) else None
+    if isinstance(gate, str) and gate:
+        data[GATE_KEY] = gate
 
     # Written only when the body other than `generated_at` has moved, so reading a
     # report never dirties the tree it sits in. Both files are still PRINTED below

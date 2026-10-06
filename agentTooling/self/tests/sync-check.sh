@@ -14,19 +14,29 @@ set -uo pipefail
 # Fixture A — a consuming repo at $TMP/consumer, git initted with one commit, holding
 # copies of sync-plans.sh, update.sh, templates/ and hooks/ under agentTooling/. Asserts
 # the --check contract: a fresh seed reports the five generated stubs, the three
-# repo-owned scripts in-sync (template-version 2, 4, 1 in that order) and the hook
-# wiring it just wrote in-sync, with only
+# repo-owned scripts in-sync (template-version 3, 6, 2 in that order — gate.sh 3 and
+# worktree-setup.sh 2 source plans/environment.sh, and the gate resumes, since
+# execution-profiles), environment.sh and cloud-setup.sh in-sync at 1 (the first not
+# executable, since it is sourced), one SessionStart entry for cloud-setup.sh that a second
+# sync does not double, and the hook wiring it just wrote in-sync, with only
 # PROJECT_FACTS.md unfilled, rc 1, "needs attention: 1 item(s)"; the seeded BACKLOG.md
 # is in-sync rather than a second unfilled item, since an empty backlog is a correct
 # steady state, and the generated plans/README.md names it; filling
 # PROJECT_FACTS.md brings it to rc 0 "is in sync"; a stub edited out from under the
 # template reports STALE and --check writes nothing, while the plain sync repairs it;
 # deleting a script's template-version line reports DRIFT (both under --check and the
-# plain sync, which still keeps the file); a body-only edit below a script's
+# plain sync, which still keeps the file), and so does a pr.sh still at 4 (4 < 6 —
+# fixtures/pr-v4.sh) or at 5 (5 < 6, the merge request through forge.sh auto-merge —
+# fixtures/pr-v5.sh); a body-only edit below a script's
 # REPO-SPECIFIC marker is not drift; a deleted repo-owned script reports missing and
 # the plain sync recreates it; BACKLOG.md with a repo's own entry in it survives a sync
-# byte-identical and is re-seeded when deleted; and an unknown flag is a usage error,
-# exit 2. It also
+# byte-identical and is re-seeded when deleted; a deleted environment.sh and
+# cloud-setup.sh are each reported `missing` (design §7's MISSING, the BACKLOG.md line)
+# and re-seeded; cloud-setup.sh is a silent no-op under the local profile or with no
+# env-profile.sh beside it and runs its skeleton under cloud; environment.sh refuses to
+# run as a program and sources cleanly under the gate's `set -u` in both profiles; the
+# seeded gate.sh and worktree-setup.sh source plans/environment.sh when present and run
+# without it; and an unknown flag is a usage error, exit 2. It also
 # reads (never writes) the real checkout, asserting gate.sh/pr.sh/worktree-setup.sh
 # carry the same template-version in templates/plans/ and in self/, and that the upstream
 # URL is ONE string across the three places that mirror it by hand — analysis/roots.py's
@@ -106,8 +116,11 @@ cp "$AT/sync-plans.sh" "$CONSUMER/agentTooling/sync-plans.sh" 2>/dev/null || tru
 cp "$AT/update.sh" "$CONSUMER/agentTooling/update.sh" 2>/dev/null || true
 cp -r "$AT/templates" "$CONSUMER/agentTooling/templates" 2>/dev/null || true
 cp -r "$AT/hooks" "$CONSUMER/agentTooling/hooks" 2>/dev/null || true
+# The detector the seeded cloud-setup.sh and environment.sh ask (section 6l onwards)
+cp "$AT/env-profile.sh" "$CONSUMER/agentTooling/env-profile.sh" 2>/dev/null || true
 chmod +x "$CONSUMER/agentTooling/sync-plans.sh" "$CONSUMER/agentTooling/update.sh" 2>/dev/null || true
 S="$CONSUMER/agentTooling/sync-plans.sh"
+unset GATE_RESUME
 
 git -C "$CONSUMER" init -q
 git -C "$CONSUMER" symbolic-ref HEAD refs/heads/main
@@ -123,11 +136,25 @@ check "1a. --check rc 1 on a fresh seed (got $rc)" '[[ $rc -eq 1 ]]'
 for rel in README.md interactive/README.md features/README.md features/TEMPLATE.md .gitignore; do
   check "1b. in-sync stub $rel" "grep -qF \"  in-sync    plans/$rel\" <<<\"\$out\""
 done
-check "1c. gate.sh in-sync (template-version 2)" 'grep -qF "  in-sync    plans/gate.sh (template-version 2)" <<<"$out"'
-check "1d. pr.sh in-sync (template-version 4)" 'grep -qF "  in-sync    plans/pr.sh (template-version 4)" <<<"$out"'
-check "1e. worktree-setup.sh in-sync (template-version 1)" 'grep -qF "  in-sync    plans/worktree-setup.sh (template-version 1)" <<<"$out"'
+check "1c. gate.sh in-sync (template-version 3)" 'grep -qF "  in-sync    plans/gate.sh (template-version 3)" <<<"$out"'
+check "1d. pr.sh in-sync (template-version 6)" 'grep -qF "  in-sync    plans/pr.sh (template-version 6)" <<<"$out"'
+check "1e. worktree-setup.sh in-sync (template-version 2)" 'grep -qF "  in-sync    plans/worktree-setup.sh (template-version 2)" <<<"$out"'
 check "1f. gate.sh, pr.sh, worktree-setup.sh lines appear in that order" \
-  '[[ "$out" == *"plans/gate.sh (template-version 2)"*"plans/pr.sh (template-version 4)"*"plans/worktree-setup.sh (template-version 1)"* ]]'
+  '[[ "$out" == *"plans/gate.sh (template-version 3)"*"plans/pr.sh (template-version 6)"*"plans/worktree-setup.sh (template-version 2)"* ]]'
+# The two seeded adapters of design §7: environment.sh (profile facts, SOURCED by the gate,
+# worktree-setup.sh and the repo's own scripts — so not executable) and cloud-setup.sh (the
+# once-per-container step a SessionStart hook runs — executable), both repo-owned and
+# versioned like the scripts above.
+check "1l. environment.sh in-sync (template-version 1)" 'grep -qF "  in-sync    plans/environment.sh (template-version 1)" <<<"$out"'
+check "1m. cloud-setup.sh in-sync (template-version 1)" 'grep -qF "  in-sync    plans/cloud-setup.sh (template-version 1)" <<<"$out"'
+check "1n. environment.sh is seeded not executable, cloud-setup.sh executable" \
+  '[[ -f "$CONSUMER/plans/environment.sh" && ! -x "$CONSUMER/plans/environment.sh" && -x "$CONSUMER/plans/cloud-setup.sh" ]]'
+session_entries() { python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); print(sum(1 for e in (s.get("hooks") or {}).get("SessionStart") or [] for h in e.get("hooks") or [] if "cloud-setup.sh" in h.get("command", "")))' "$1" 2>/dev/null; }
+check "1o. the seed wired one SessionStart entry running plans/cloud-setup.sh" \
+  '[[ "$(session_entries "$CONSUMER/.claude/settings.json")" == 1 ]]'
+"$S" >/dev/null 2>&1
+check "1p. ... and a second sync leaves it at one" \
+  '[[ "$(session_entries "$CONSUMER/.claude/settings.json")" == 1 ]]'
 check "1g. unfilled PROJECT_FACTS.md" 'grep -qF "  unfilled   plans/PROJECT_FACTS.md" <<<"$out"'
 check "1h. last line: needs attention 1 item(s)" '[[ "$(tail -1 <<<"$out")" == "needs attention: 1 item(s) above." ]]'
 # BACKLOG.md, seeded beside PROJECT_FACTS.md. An EMPTY backlog is the correct steady
@@ -164,13 +191,29 @@ check "3e. --check rc 0 again (got $rc3)" '[[ $rc3 -eq 0 ]]'
 awk '!/^# template-version:/' "$CONSUMER/plans/pr.sh" > "$TMP/pr.sh.stripped" && mv "$TMP/pr.sh.stripped" "$CONSUMER/plans/pr.sh"
 out="$("$S" --check 2>&1)"; rc=$?
 check "4a. --check rc 1 after stripping pr.sh's version line (got $rc)" '[[ $rc -eq 1 ]]'
-line="$(grep -F 'plans/pr.sh (template-version 0 < 4' <<<"$out")"
-check "4b. DRIFT line for pr.sh" '[[ "$line" == "  DRIFT      plans/pr.sh (template-version 0 < 4;"* ]]'
+line="$(grep -F 'plans/pr.sh (template-version 0 < 6' <<<"$out")"
+check "4b. DRIFT line for pr.sh" '[[ "$line" == "  DRIFT      plans/pr.sh (template-version 0 < 6;"* ]]'
 out2="$("$S" 2>&1)"; rc2=$?
 check "4c. plain sync also rc 1" '[[ $rc2 -eq 1 ]]'
-line2="$(grep -F 'plans/pr.sh (template-version 0 < 4' <<<"$out2")"
-check "4d. plain sync also prints the DRIFT line" '[[ "$line2" == "  DRIFT      plans/pr.sh (template-version 0 < 4;"* ]]'
+line2="$(grep -F 'plans/pr.sh (template-version 0 < 6' <<<"$out2")"
+check "4d. plain sync also prints the DRIFT line" '[[ "$line2" == "  DRIFT      plans/pr.sh (template-version 0 < 6;"* ]]'
 check "4e. plain sync still prints kept pr.sh" 'grep -qF "  kept       plans/pr.sh" <<<"$out2"'
+# A copy seeded at 4 and never hand-merged — every consuming repo the day the forge
+# adapter lands (README.md → "Adopting the forge adapter"): the v4 -> v5 bump is drift
+# like any other, reported by the same compare and pointing at the same hand-merge
+# sections. fixtures/pr-v4.sh is the template as it stood at 4.
+cp "$AT/self/tests/fixtures/pr-v4.sh" "$CONSUMER/plans/pr.sh"
+out="$("$S" --check 2>&1)"; rc=$?
+check "4f. --check rc 1 on a pr.sh still at template-version 4 (got $rc)" '[[ $rc -eq 1 ]]'
+check "4g. ... with a DRIFT line naming 4 < 6 and the hand-merge" \
+  'grep -qF "  DRIFT      plans/pr.sh (template-version 4 < 6; hand-merge, see agentTooling/README.md -> Updating)" <<<"$out"'
+# A copy at 5 — the forge adapter's open path, its merge request still `gh pr merge`,
+# GraphQL the cloud proxy refuses — is drift the same way: v6 sends the merge request
+# through forge.sh auto-merge. fixtures/pr-v5.sh is the template as it stood at 5.
+cp "$AT/self/tests/fixtures/pr-v5.sh" "$CONSUMER/plans/pr.sh"
+out="$("$S" --check 2>&1)"; rc=$?
+check "4h. --check rc 1 on a pr.sh still at template-version 5, naming 5 < 6 (got $rc)" \
+  '[[ $rc -eq 1 ]] && grep -qF "  DRIFT      plans/pr.sh (template-version 5 < 6; hand-merge, see agentTooling/README.md -> Updating)" <<<"$out"'
 cp "$CONSUMER/agentTooling/templates/plans/pr.sh" "$CONSUMER/plans/pr.sh"
 chmod +x "$CONSUMER/plans/pr.sh"
 
@@ -211,6 +254,60 @@ out2="$("$S" 2>&1)"
 check "6j. plain sync re-seeds it" 'grep -qF "  created    plans/BACKLOG.md" <<<"$out2"'
 out3="$("$S" --check 2>&1)"; rc3=$?
 check "6k. --check rc 0 after re-seed (got $rc3)" '[[ $rc3 -eq 0 ]]'
+
+# ── 6l. environment.sh and cloud-setup.sh: missing is reported, like BACKLOG.md ──
+rm -f "$CONSUMER/plans/environment.sh" "$CONSUMER/plans/cloud-setup.sh"
+out="$("$S" --check 2>&1)"; rc=$?
+check "6l. --check rc 1 with environment.sh and cloud-setup.sh deleted (got $rc)" '[[ $rc -eq 1 ]]'
+check "6m. missing line for environment.sh" 'grep -qF "  missing    plans/environment.sh (never seeded; run sync-plans.sh)" <<<"$out"'
+check "6n. missing line for cloud-setup.sh" 'grep -qF "  missing    plans/cloud-setup.sh (never seeded; run sync-plans.sh)" <<<"$out"'
+check "6o. ... two items, nothing else" '[[ "$(tail -1 <<<"$out")" == "needs attention: 2 item(s) above." ]]'
+out2="$("$S" 2>&1)"
+check "6p. plain sync re-seeds both" \
+  'grep -qF "  created    plans/environment.sh" <<<"$out2" && grep -qF "  created    plans/cloud-setup.sh" <<<"$out2"'
+out3="$("$S" --check 2>&1)"; rc3=$?
+check "6q. --check rc 0 after re-seed (got $rc3)" '[[ $rc3 -eq 0 ]]'
+
+# ── 6r. the seeded files do what design §7 says ──────────────────────────────────
+# cloud-setup.sh is a no-op outside the cloud profile (it asks env-profile.sh, never the
+# variables), and runs its body under it; with no detector beside it, it does nothing.
+CS="$CONSUMER/plans/cloud-setup.sh"
+out="$(cd "$CONSUMER" && env -u CLAUDE_CODE_REMOTE AGENTTOOLING_PROFILE=local "$CS" 2>&1)"; rc=$?
+check "6r. cloud-setup.sh under the local profile: rc 0, prints nothing (got $rc: $out)" '[[ $rc -eq 0 && -z "$out" ]]'
+out="$(cd "$CONSUMER" && env -u CLAUDE_CODE_REMOTE AGENTTOOLING_PROFILE=cloud "$CS" 2>&1)"; rc=$?
+check "6s. cloud-setup.sh under the cloud profile: rc 0, its skeleton says it is unconfigured (got $rc)" \
+  '[[ $rc -eq 0 ]] && grep -qF "cloud-setup.sh" <<<"$out"'
+mv "$CONSUMER/agentTooling/env-profile.sh" "$TMP/env-profile.sh.aside"
+out="$(cd "$CONSUMER" && env -u CLAUDE_CODE_REMOTE AGENTTOOLING_PROFILE=cloud "$CS" 2>&1)"; rc=$?
+mv "$TMP/env-profile.sh.aside" "$CONSUMER/agentTooling/env-profile.sh"
+check "6t. ... and with no detector beside it, rc 0 and nothing done (got $rc: $out)" '[[ $rc -eq 0 && -z "$out" ]]'
+# environment.sh is sourced, never executed, and the seeded skeleton sources cleanly under
+# the gate's `set -u` in both profiles.
+out="$(cd "$CONSUMER" && bash "$CONSUMER/plans/environment.sh" 2>&1)"; rc=$?
+check "6u. environment.sh run as a program refuses, saying to source it (got $rc)" \
+  '[[ $rc -ne 0 ]] && grep -qi "source" <<<"$out"'
+# (Run through bash: section 5's awk rewrite of plans/gate.sh dropped its mode bits.)
+for prof in local cloud; do
+  rm -f "$CONSUMER/plans/gate-report.txt"
+  out="$(cd "$CONSUMER" && env -u CLAUDE_CODE_REMOTE AGENTTOOLING_PROFILE="$prof" bash "$CONSUMER/plans/gate.sh" 2>&1)"; rc=$?
+  check "6v. the seeded gate sources the skeleton environment.sh under set -u ($prof): rc 0 (got $rc)" \
+    '[[ $rc -eq 0 ]] && grep -q "^# VERDICT" "$CONSUMER/plans/gate-report.txt"'
+done
+# The gate and worktree-setup.sh source plans/environment.sh when it is present: a
+# repo-owned environment.sh that leaves a mark when sourced shows both read it.
+ENV_MARK="$TMP/environment-sourced"
+cp "$CONSUMER/plans/environment.sh" "$TMP/environment.sh.seeded" 2>/dev/null
+printf ': > "%s.$(basename "$0")"\n' "$ENV_MARK" > "$CONSUMER/plans/environment.sh"
+(cd "$CONSUMER" && bash "$CONSUMER/plans/gate.sh" >/dev/null 2>&1)
+(cd "$CONSUMER" && bash "$CONSUMER/plans/worktree-setup.sh" >/dev/null 2>&1)
+check "6w. plans/gate.sh sources plans/environment.sh" '[[ -e "$ENV_MARK.gate.sh" ]]'
+check "6x. plans/worktree-setup.sh sources plans/environment.sh" '[[ -e "$ENV_MARK.worktree-setup.sh" ]]'
+rm -f "$CONSUMER/plans/environment.sh"
+out="$(cd "$CONSUMER" && bash "$CONSUMER/plans/worktree-setup.sh" 2>&1)"; rc=$?
+(cd "$CONSUMER" && bash "$CONSUMER/plans/gate.sh" >/dev/null 2>&1); rc_gate=$?
+check "6y. ... and both run without one (worktree-setup rc $rc, gate rc $rc_gate)" \
+  '[[ $rc -eq 0 && $rc_gate -eq 0 ]]'
+cp "$TMP/environment.sh.seeded" "$CONSUMER/plans/environment.sh" 2>/dev/null
 
 # ── 7. usage ──────────────────────────────────────────────────────────────────
 "$S" --bogus >/dev/null 2>&1; rc=$?

@@ -40,7 +40,9 @@ set -uo pipefail
 # not; that each REWRITABLE shape is denied with a reason naming the member and the
 # rewrite — a `$NAME` the shell expands, a `~`, a brace group the expansion refuses, a
 # `..` component in a path token, a lone relative or bare `cd`, a line break outside a
-# quote or a heredoc, and a sequence mixing approved members with one the hook can only ask about —
+# quote or a heredoc, a sequence mixing approved members with one the hook can only ask about,
+# and a `sleep` anywhere on the line ("nobody polls": run it in the background and wait for
+# the notification — self/DESIGN-2026-10-05-cloud-execution.md §9) —
 # while the ASK class prints nothing (`git diff main...HEAD`, `X=1 make`, `cat README.md >
 # f`, a pipeline, an all-ASK sequence); that a file authored through the shell (echo/printf
 # redirected to a path, cat/tee fed literally with output to a path, `sed -i`) is denied
@@ -91,7 +93,15 @@ for f in ["src/a.py", "tests/test_a.py", "dir/inner.txt", "README.md", "pyprojec
     open(os.path.join(ROOT, f), "w").close()
 os.symlink("/usr/bin/python3", os.path.join(ROOT, ".venv/bin/python"))
 os.symlink("/usr/bin/python3", os.path.join(WT, ".venv/bin/python"))
-os.symlink(HOME, os.path.join(ROOT, "link-home"))
+# link-home stands in for a link to the home directory, but points at one built here: a
+# relative path through it that names nothing is approved by design (hooks/README.md), so
+# the denials below hold only where the target really holds `.zshrc` and a visible file —
+# which the real home need not (a container's /root has only dotfiles).
+LINKED_HOME = os.path.join(TMP, "linked-home")
+os.makedirs(LINKED_HOME)
+for f in [".zshrc", "notes.txt"]:
+    open(os.path.join(LINKED_HOME, f), "w").close()
+os.symlink(LINKED_HOME, os.path.join(ROOT, "link-home"))
 os.symlink("/etc/hosts", os.path.join(ROOT, "dir", "esc"))
 
 # The harness's own entry points, in both spellings: a consuming repo's (plans/gate.sh,
@@ -747,6 +757,13 @@ MIXED_REWRITE = [
     "git status && git log --oneline -5 && rm -rf src",
 ]
 MIXED_REWRITE_WORDS = ("approved", "run alone")
+# A timer instead of a notification (self/DESIGN-2026-10-05-cloud-execution.md §9). Every
+# one of these fell through to a silent prompt; the rewrite only tightens: nobody polls
+# (ORCHESTRATION.md), so a long command runs in the background and its exit wakes the
+# session. Spelled bare, by path, behind another member and in front of one.
+SLEEP_REWRITE = ["sleep 30", "sleep 5m", "/bin/sleep 1", "ls && sleep 60",
+                 "sleep 600 && ls", "sleep 1; git status"]
+SLEEP_REWRITE_WORDS = ("nobody polls", "background", "notification")
 
 # ── The ASK class: read, and not vouched for (design §1, §5) ─────────────────
 # The analysis read these and cannot say they are safe — an unknown program, a write, a
@@ -921,7 +938,8 @@ for label, cases, words in (
         ("a line break outside a quote or a heredoc", LINE_BREAK_REWRITE,
          LINE_BREAK_REWRITE_WORDS),
         ("a sequence mixing approved members with one to ask about",
-         MIXED_REWRITE, MIXED_REWRITE_WORDS)):
+         MIXED_REWRITE, MIXED_REWRITE_WORDS),
+        ("a sleep", SLEEP_REWRITE, SLEEP_REWRITE_WORDS)):
     group("denies %s with the rewrite" % label, [(c, "DENY") for c in cases], run)
     group("the reason for %s names the rewrite" % label, [(c, "ok") for c in cases],
           lambda c, w=words: deny_reason_ok(c, w))
@@ -931,7 +949,7 @@ group("the reason names the member as written",
       [((c, m), "ok") for c, m in [
           ("grep x $FILE", "grep x $FILE"), ("ls ~/x", "ls ~/x"),
           ("cat {a,{b,c}}", "cat {a,{b,c}}"), ("cat ../x", "cat ../x"),
-          ("cd src", "cd src"),
+          ("cd src", "cd src"), ("ls && sleep 60", "sleep 60"),
           ("grep x f && git commit -m m", "git commit -m m"),
           ("grep x f && git commit -m m", "grep x f")]],
       lambda cm: deny_reason_ok(cm[0], (cm[1],)))

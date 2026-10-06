@@ -19,8 +19,10 @@ set -uo pipefail
 # produces a `do script` string that, unescaped the way AppleScript unescapes a string
 # literal and run by a shell with `claude` stubbed to print its `$PWD`, prints that path
 # INTACT. That is the whole contract: two escaping layers, and the path reaches `claude`
-# as it was handed in. Both copies must also be at `template-version: 3`, the version
-# that has them (`self/tests/template-versions.sh` asserts the recorded hash).
+# as it was handed in. Both copies must also be at `template-version: 4`, the version
+# that has them and the cloud branch (`self/tests/template-versions.sh` asserts the
+# recorded hash). O1–O5 run under AGENTTOOLING_PROFILE=local; O6 runs each copy under
+# `cloud`, where it opens nothing and says the session is already in the checkout.
 #
 # `feature-lifecycle.sh` S5 keeps the other half — that `--open` runs the hook at all,
 # with the worktree path as its only argument, and that neither copy spells a chained
@@ -37,7 +39,7 @@ TMP="$(cd "$TMP" && pwd -P)"
 # The two copies under test, and the version both must carry after §3.
 SELF_COPY="$HERE/self/open-session.sh"
 TEMPLATE_COPY="$HERE/templates/plans/open-session.sh"
-EXPECTED_TEMPLATE_VERSION="3"
+EXPECTED_TEMPLATE_VERSION="4"
 VERSION_LINE_RE='^# template-version:[[:space:]]*\([0-9][0-9]*\).*'
 
 # One directory name carrying every character the old quoting broke on: a space, a single
@@ -110,7 +112,7 @@ template_version() {
 # run_opener <script> — run one copy with the nasty worktree path and the stubs on PATH.
 run_opener() {
   rm -f "$OSASCRIPT_OUT"
-  ( PATH="$STUB_BIN:$PATH" bash "$1" "$WT" >/dev/null 2>&1 )
+  ( PATH="$STUB_BIN:$PATH" AGENTTOOLING_PROFILE="${OPENER_PROFILE:-local}" bash "$1" "$WT" >/dev/null 2>&1 )
 }
 
 # launched_in — the directory the recorded `do script` string actually starts a session
@@ -146,6 +148,18 @@ run_opener "$TEMPLATE_COPY"
 template_command="$(python3 "$TMP/unescape.py" "$OSASCRIPT_OUT" 2>/dev/null)"
 check "O5. both copies compose the same command for Terminal" \
   '[[ -n "$self_command" && "$self_command" == "$template_command" ]]'
+
+# The cloud half of the adapter (self/DESIGN-2026-10-05-cloud-execution.md §1, §3): the
+# session that ran the start is already in the feature's checkout — the container is the
+# worktree — so there is nothing to open. AGENTTOOLING_PROFILE is what feature-start.sh's
+# sourcing of env-profile.sh exported to it.
+for copy in "$SELF_COPY" "$TEMPLATE_COPY"; do
+  label="$(basename "$(dirname "$copy")")/$(basename "$copy")"
+  rm -f "$OSASCRIPT_OUT"
+  cloud_out="$(PATH="$STUB_BIN:$PATH" AGENTTOOLING_PROFILE=cloud bash "$copy" "$WT" 2>&1)"; rc=$?
+  check "O6. under cloud, $label exits 0, opens nothing, and says the session is already in $WT (got $rc)" \
+    '[[ $rc -eq 0 && ! -e "$OSASCRIPT_OUT" ]] && grep -qi "already in" <<<"$cloud_out" && grep -qF "$WT" <<<"$cloud_out"'
+done
 
 echo
 if (( fails > 0 )); then echo "open-session: $fails assertion(s) FAILED"; exit 1; fi

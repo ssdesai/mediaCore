@@ -49,9 +49,11 @@ copy_tooling() {
   local dest="$1"
   mkdir -p "$dest/analysis" "$dest/templates/plans/features"
   local f
-  for f in feature-start.sh plan-runner-roots.sh; do
+  for f in feature-start.sh plan-runner-roots.sh env-profile.sh; do
     cp "$HERE/$f" "$dest/$f" 2>/dev/null || true
   done
+  # The local layout, forced: a container's CLAUDE_CODE_REMOTE=true must not decide it.
+  export AGENTTOOLING_PROFILE=local
   export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
   for f in roots.py manifest.py pricing.py litellm_prices.py rates_history.json transcript.py routing.py; do
     cp "$HERE/analysis/$f" "$dest/analysis/$f" 2>/dev/null || true
@@ -71,6 +73,7 @@ init_repo() {
   git -C "$checkout" config user.name "plan numbering test"
   git -C "$checkout" add -A && git -C "$checkout" commit -q -m "init" >/dev/null 2>&1
   git init -q --bare "$origin"
+  git -C "$origin" symbolic-ref HEAD refs/heads/main
   git -C "$checkout" remote add origin "$origin"
   git -C "$checkout" push -q -u origin main 2>/dev/null
 }

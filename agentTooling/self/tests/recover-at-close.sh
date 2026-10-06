@@ -277,9 +277,11 @@ check "B5. without --for the whole-tree walk is unchanged — the corpus-wide re
 LA="$TMP/close/agentTooling"
 LORIGIN="$TMP/close/origin.git"
 mkdir -p "$LA/analysis" "$LA/self/features" "$LA/templates/plans/features"
-for f in feature-start.sh feature-capture.sh plan-runner-roots.sh plan-runner-lib.sh stamp-timing.sh; do
+for f in feature-start.sh feature-capture.sh plan-runner-roots.sh plan-runner-lib.sh stamp-timing.sh env-profile.sh; do
   cp "$HERE/$f" "$LA/$f" 2>/dev/null || true
 done
+# The local layout, forced: a container's CLAUDE_CODE_REMOTE=true must not decide it.
+export AGENTTOOLING_PROFILE=local
 for f in pricing.py litellm_prices.py rates_history.json refresh_rates.py roots.py transcript.py capture_planning.py report.py manifest.py recover_attempts.py routing.py; do
   cp "$HERE/analysis/$f" "$LA/analysis/$f" 2>/dev/null || true
 done
@@ -296,6 +298,7 @@ git -C "$LA" config user.email test@example.invalid
 git -C "$LA" config user.name "recover-at-close test"
 git -C "$LA" add -A && git -C "$LA" commit -q -m "init"
 git init -q --bare "$LORIGIN"
+git -C "$LORIGIN" symbolic-ref HEAD refs/heads/main
 git -C "$LA" remote add origin "$LORIGIN"
 git -C "$LA" push -q -u origin main 2>/dev/null
 

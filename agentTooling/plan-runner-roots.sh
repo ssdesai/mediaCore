@@ -42,6 +42,14 @@
 # claude nor a gate script returns in practice; 1-3 and 127/130 are already spoken for.
 LEVEL_PAUSE_RC=64
 
+# The value of GATE_RESUME that every gate this harness runs is handed — run_level_gate,
+# run-batch.sh's final gate and regate, and feature-start.sh's base gate
+# (self/DESIGN-2026-10-05-cloud-execution.md §8). A gate that knows it (the template from
+# version 3, self/gate.sh) then skips a check whose pass it already recorded for the same
+# tree, so a gate killed with its container re-runs only what had not finished; a seeded
+# gate older than that ignores the variable and runs everything, as before.
+GATE_RESUME_ON="1"
+
 # ── The verdict ───────────────────────────────────────────────────────────────
 # The review report's FIRST LINE, and the three values it can mean
 # (self/DESIGN-2026-09-17-close-and-review-rounds.md §3). They live here, beside the one
@@ -374,6 +382,21 @@ manifest_field() {
   [[ -f "$readme" ]] || return 0
   awk '/^```json[[:space:]]*$/{buf=""; f=1; next} /^```[[:space:]]*$/{if(f){last=buf}; f=0; next} f{buf=buf $0 "\n"} END{printf "%s", last}' "$readme" \
     | jq -r --arg k "$key" '.[$k] // empty | if type == "string" then . else tojson end' 2>/dev/null
+}
+
+# manifest_branch <readme> <slug> — the feature's branch: the fence's `branches[0]`
+# (self/DESIGN-2026-10-05-cloud-execution.md §2 — every script reads it from here, none
+# derives it from the slug). Locally that IS the slug, which is what feature-start.sh
+# writes; in a cloud container it is the session's assigned `claude/…` branch. A fence
+# with no `branches`, an empty list, a non-list, or no readable manifest at all prints
+# the slug: what every manifest written before this reader holds, so the fallback can
+# only ever reproduce the old rule, never invent a branch.
+#   branch="$(manifest_branch "$FEATURES_DIR/$FEATURE_SLUG/README.md" "$FEATURE_SLUG")"
+manifest_branch() {
+  local readme="$1" slug="$2" branch
+  branch="$(manifest_field "$readme" branches \
+    | jq -r 'if type == "array" then (.[0] // empty) else empty end | select(type == "string")' 2>/dev/null)"
+  echo "${branch:-$slug}"
 }
 
 # Append one wall-clock event to the feature's timing.jsonl. A plan's own duration is in

@@ -69,9 +69,12 @@ KILLED_BY_SIGKILL_RC=137
 AT="$TMP/agentTooling"
 ORIGIN="$TMP/origin.git"
 mkdir -p "$AT/analysis" "$AT/self/features" "$AT/templates/plans/features"
-for f in feature-start.sh plan-runner-roots.sh; do
+for f in feature-start.sh plan-runner-roots.sh env-profile.sh; do
   cp "$HERE/$f" "$AT/$f" 2>/dev/null || true
 done
+# The takeover is the LOCAL layout's: forced, so a container's CLAUDE_CODE_REMOTE=true
+# cannot send these starts down the cloud path (self/tests/cloud-start.sh owns that).
+export AGENTTOOLING_PROFILE=local
 export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
 for f in roots.py manifest.py pricing.py litellm_prices.py rates_history.json transcript.py routing.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f" 2>/dev/null || true
@@ -108,6 +111,7 @@ git -C "$AT" config user.name "start takeover test"
 git -C "$AT" add -A
 git -C "$AT" commit -q -m "init" >/dev/null 2>&1
 git init -q --bare "$ORIGIN"
+git -C "$ORIGIN" symbolic-ref HEAD refs/heads/main
 git -C "$AT" remote add origin "$ORIGIN"
 git -C "$AT" push -q -u origin main 2>/dev/null
 

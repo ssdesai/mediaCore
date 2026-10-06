@@ -138,7 +138,7 @@ python3 agentTooling/analysis/recover_attempts.py --for <slug>    # one feature,
 
 **`capture_planning.py --all`, for a corpus with features nobody captured.** It walks the corpus and captures the features that have no `planning.json` yet, **skipping the ones that already do**, and skipping any feature whose `session_window.to` is still `null` — in flight, its capture is `feature-capture.sh`'s on its branch, and a record frozen here would be a premature figure that capture then has to replace. Under the current lifecycle every feature is captured on its own branch, so a clean corpus has nothing for this to do; it is how a repo whose features merged under the old flow, or a consuming repo just brought up to date, is brought level in one pass. A frozen record is not rebuilt unless you ask for it, so the run cannot rewrite a figure it can no longer reproduce, and it costs almost nothing (a skipped feature is never scanned). Follow it with `report.py --all`, which writes the report of every feature that has a `planning.json` and no `report.json` and then prints the trend table.
 
-**A frozen record still gets its shared-session annotation refreshed, and only that.** The one thing `--all` writes to a feature it does not re-derive is `sessions[].also_claimed_by`, read from the claims ledger — no transcript is opened and no dollar, duration or `captured_at` changes (`annotate_frozen_record`). The run reports such a feature as `annotated` rather than `skipped`, and `report.py` turns the field into `cost.shared_sessions[]` and the footnote under the Cost table, so re-render every feature the run named. **`capture_planning.py --annotate-frozen [--except <slug>]` is that refresh on its own, over the corpus, printing the slug of each record it changed** — what `feature-capture.sh` runs after its own capture, and why this is no longer something a repair run is needed for: a feature frozen before another claimed the session they share is annotated at that other feature's capture, and its report re-rendered and committed with the cost records. Without it the only route would be `--recapture`, which rebuilds its money from transcripts that are expiring — exactly what the freeze exists to prevent. **An annotated session with no `share_basis` predates the share rule**, and `--all` prints a `WARN` saying so on **every** run, whether or not that run changed anything: that entry's figure still counts the session in full rather than by concurrent share, the annotation only adds who else claims it, and `--recapture` is named as the repair — while the transcript still exists to rebuild it from. The annotation converges on the first pass and the stale figure does not, so a warning tied to "this run wrote something" would ask for the repair once and then go quiet for as long as the transcript had left; `annotate_frozen_record` returns `(annotated_ids, changed)` for exactly that reason, and `annotated` versus `skipped` in the run's own summary still means "did this run write".
+**A frozen record still gets its shared-session annotation refreshed, and only that.** The one thing `--all` writes to a feature it does not re-derive is `sessions[].also_claimed_by`, read from the claims ledger — no transcript is opened and no dollar, duration or `captured_at` changes (`annotate_frozen_record`). The run reports such a feature as `annotated` rather than `skipped`, and `report.py` turns the field into `cost.shared_sessions[]` and the footnote under the Cost table, so re-render every feature the run named. **`capture_planning.py --annotate-frozen [--except <slug>]` is that refresh on its own, over the corpus, printing the slug of each record it changed** (it registers the corpus's frozen records in the ledger first, and never removes a mention of a claimant the ledger has not seen — see the `capture_planning.py` entry, "The ledger knows what it has seen") — what `feature-capture.sh` runs after its own capture, and why this is no longer something a repair run is needed for: a feature frozen before another claimed the session they share is annotated at that other feature's capture, and its report re-rendered and committed with the cost records. Without it the only route would be `--recapture`, which rebuilds its money from transcripts that are expiring — exactly what the freeze exists to prevent. **An annotated session with no `share_basis` predates the share rule**, and `--all` prints a `WARN` saying so on **every** run, whether or not that run changed anything: that entry's figure still counts the session in full rather than by concurrent share, the annotation only adds who else claims it, and `--recapture` is named as the repair — while the transcript still exists to rebuild it from. The annotation converges on the first pass and the stale figure does not, so a warning tied to "this run wrote something" would ask for the repair once and then go quiet for as long as the transcript had left; `annotate_frozen_record` returns `(annotated_ids, changed)` for exactly that reason, and `annotated` versus `skipped` in the run's own summary still means "did this run write".
 
 **Cross-repo, the annotation converges on the second pass over each repo, and cannot converge sooner.** Within one `--all` run all of a corpus's frozen records are registered in the ledger before any of them is annotated, so N features of the same repo sharing one coordinator all end up naming the other N−1 regardless of the order the corpus is walked in. Across repos there is no such ordering to fix: the ledger is the only seam, each repo writes its own corpus, and a record can only name the claimants whose repos have already registered. So once every repo has captured — which each feature's own capture does — the ledger is complete, and each record is final after the next capture in its repo looks. A repo that captures once and never again keeps a partial list, which is a stale annotation rather than a wrong figure.
 
@@ -497,25 +497,48 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   command, because `--recapture` calls it with the branch long deleted.
   **A session may belong to more than one feature, and the ledger says so.** Top-level
   session claims are recorded in the same file under its `sessions` section, `{
-  <session-id>: [ { repo, repo_name, slug, selected_by, cost_usd, claimed_at }, … ] }` —
+  <session-id>: [ { repo, repo_name, slug, selected_by, cost_usd, claimed_at, window:
+  {from, to} }, … ] }` (a third section, `seen`, is below) —
   a **list**, because the two arities differ: a subagent transcript belongs to exactly one
   feature and a second claim is refused, while a coordinator session legitimately spans
   features. Such a session is therefore **not refused**. Instead its `planning.json`
   entry gains `also_claimed_by: ["<repo>/<slug>", …]`, `report.py` carries that into
   `cost.shared_sessions[]`, and `report.md` prints one line under the Cost table naming
-  the session, its dollars and the other features counting it. A session with one
-  claimant is priced whole, exactly as before — **and the warning that says so now says
-  how much**: `may span the window boundary` fires for any selected session whose last
+  the session, its dollars and the other features counting it.
+  **A session with one claimant is priced whole only when it was selected by branch.**
+  The sole-claimant cut (`../self/features/cost-capture-collisions/`, "The sole-claimant
+  cut: decided"): a **pinned** session goes through the same split two claimants do,
+  with the claim set `[this feature]` when nobody else claims it — its responses in
+  `[from, to)` are this feature's, the opening stretch before `from` is this feature's for
+  as far back as the window is long (`head_bound`), and everything else is the disclosed
+  unclaimed remainder (`unclaimed_usd`, `unclaimed_duration_s`, the existing warning with
+  its remedies, `set-window-from` among them). A pin claims a session regardless of
+  branch, window or `cwd`, and the sessions it is written for — a coordinator launched on
+  `main`, a design session moved to the branch half-way — did other work too; billed
+  whole, `cloud-self-gate` carried a 9.7-hour design session for a 14-minute feature. A
+  branch-selected sole claimant is still billed whole: its window is stamped from that
+  same session's evidence, so a cut would remove nothing at the first capture. The cut is
+  taken only when it removes something (`pin_is_cut` — one claim's coverage is
+  contiguous, so the session's first and last instants decide), so a pin wholly inside its
+  window, and one whose `to` is still `null` (no tail to cut, an unbounded head), keeps the
+  unshared record byte for byte; a cut one carries `share_basis` naming its own claim
+  alone, `session_cost_usd`, the apportioned `duration_s`, and no divided `priced[]` row,
+  and `report.py`'s `compute_shared_sessions` lists no shared session for it (its
+  `share_basis` names only `self`). Its stdout line reads `pinned and claimed by this
+  feature alone, so it is cut to the window` rather than `shared by N claimant(s)`.
+  **And the warning about what lies outside the window says how much**: `may span the
+  window boundary` fires for any selected session whose last
   instant is at or after its window's `to`, and carries the dollars and the seconds that
   fall outside it (`boundary_warning` / `outside_window_cost`, dated by each response's
   FIRST line and priced exactly as the unclaimed remainder is, `at least` when a model in
   that stretch has no rate). It also says whether they were counted: `counted in full` on
-  the unshared path, where the session is priced over its whole transcript, and
-  `not counted here` on the share path, where the split has already given each of those
-  responses to whichever claimants' windows still cover it — a later-bounded claimant
-  owns the part of that stretch it covers, and only what is past *every* claimant's `to`
-  is the unclaimed remainder, which with chained windows is the smaller stretch of the
-  two. When there is nothing out there to measure the sentence goes back to the
+  the unshared path — a branch-selected sole claimant, priced over its whole transcript —
+  and `not counted here` on the share path, where the split has already given each of
+  those responses to whichever claimants' windows still cover it — a later-bounded
+  claimant owns the part of that stretch it covers, and only what is past *every*
+  claimant's `to` is the unclaimed remainder, which with chained windows is the smaller
+  stretch of the two — and on a cut pin, where it says the stretch went to the unclaimed
+  remainder and speaks of no other claimant. When there is nothing out there to measure the sentence goes back to the
   qualitative one it replaced, ``no billable response of it falls at or after `to` `` —
   because the warning fires on the last LINE past `to` while the quantity counts billable
   RESPONSES at or after it, and a transcript ending in a `user` line or a `<synthetic>`
@@ -523,8 +546,9 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   (`NO_OUTSIDE_COST_USD` and `MIN_REPORTED_OUTSIDE_SECONDS`, and both are required: an
   unbilled ten-minute tail is a real overrun, and a sub-second one that cost money is real
   money). Prose only — no figure in `planning.json` moves, which is what
-  keeps the single-claimant path a disclosed over-count rather than a silent under-count.
-  A session with more is split by
+  keeps the branch-selected single-claimant path a disclosed over-count rather than a
+  silent under-count.
+  A session with more claimants — or a cut pin — is split by
   concurrent claim: each response goes to every claimant whose window covers it,
   divided equally among them; the opening stretch before any window opens goes to the
   earliest claimant alone, but only as far back as that claimant's own window is long
@@ -654,7 +678,30 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   its delegates excluded, because a subagent belongs to exactly one feature by the
   refusal above. A ledger file carrying **neither** section key is the original flat
   `{<agent-id>: …}` map and is read as the subagents section entire, so an old ledger
-  loads unchanged and the two-section shape is written by the next capture.
+  loads unchanged and the sectioned shape is written by the next capture.
+  **The ledger knows what it has seen** (design 2026-10-05 §6,
+  `../self/features/cost-capture-collisions/`). A third section, `seen`, records whose
+  claims this ledger has ever held: `{ <normalized repo identity>: { repo, repo_name,
+  registered_at, features: { <slug>: <instant> } } }` — `repo` the identity as written,
+  `repo_name` its display name, `registered_at` the instant this corpus's frozen records
+  were first registered by a whole-corpus walk (`null` until then), and `features` each
+  slug with the instant its claims were first written (by its own capture) or registered
+  (by `register_frozen_claims`). First-seen instants, never refreshed, so a second run
+  over an unchanged corpus writes nothing. It exists because the ledger is local to one
+  machine: a fresh container's EMPTY ledger, read by `--annotate-frozen` as "no longer a
+  claimant", deleted `also_claimed_by` from 11 frozen sibling records at `cloud-close`'s
+  close. Now an `also_claimed_by` mention is removed only for a claimant the ledger has
+  seen (`claimant_seen`, matching the mention's `<repo_name>/<slug>` against each seen
+  repo's display names, case-insensitively, and its features); a mention of an unseen
+  claimant is **kept**, and named once on **stderr** as `not re-checked` — never stdout,
+  which `feature-capture.sh` reads as slugs. A ledger with no `seen` section (every one
+  written before this) loads as nothing seen, which removes nothing: safe by default.
+  **Repo identity is normalised for comparison only** (`normalize_repo_identity` behind
+  `claim_key`: scheme, `user@`, port, an scp-style `host:` and a trailing `/` or `.git`
+  dropped, lowercased, so `https://github.com/o/r` and `git@github.com:o/R.git` are one
+  repo) at every `(repo, slug)` comparison the ledger takes part in; nothing stored is
+  migrated, and no display name in `also_claimed_by` or `share_basis` is derived from it,
+  so no frozen record moves without a recapture.
   **A record frozen before the other feature existed is annotated in place, not
   re-captured.** `capture_planning.py --all` with no `--recapture` — the repair run — puts
   every frozen record in the run into the ledger first
@@ -668,10 +715,14 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   because each repo writes the shared ledger from its own corpus (see "Repair tools"
   above). Nothing else about the record moves — no transcript is read, and the figures are
   the ones the capture froze.
-  **`--annotate-frozen [--except <slug>]` is the second half of that on its own**, for
-  the ordinary case: it reads the ledger, refreshes every already-captured record in this
-  corpus (`annotate_corpus`), prints the slug of each one it changed, and registers
-  nothing — the claims it reads are the ones each feature's own capture wrote. That is
+  **`--annotate-frozen [--except <slug>]` is that path on its own**, for the ordinary
+  case: it **registers this corpus's frozen records first** (`register_frozen_claims`
+  over every feature, in-flight ones skipped, marking each seen and the corpus
+  registered), then refreshes every already-captured record in this corpus
+  (`annotate_corpus`) and prints the slug of each one it changed. Registering first is
+  what makes a fresh ledger safe: the siblings' claims are read from their own records
+  instead of their absence being read as "no longer a claimant". Over this corpus from an
+  empty `HOME` it prints no slug and changes no file. That is
   what `../feature-capture.sh` runs after capturing, which is why a shared session's
   co-claimants now appear without anyone running a corpus-wide pass.
   **The same pass is where a provisional bound is answered for**, and that half writes
@@ -839,7 +890,20 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `cost_usd.sidechain`, reported apart because it is the figure the delegation-tier
   comparison needs. A subagent of a runner session is never priced here (its parent is
   excluded, and the sidecar's `total_cost_usd` already includes it) — a pin on one is
-  reported unmatched. `check_unmatched_subagents` and `check_subagent_overlap` are the
+  reported unmatched. **A pin the walk did not reach is looked for in every project
+  directory, this repo's included** (`find_pinned_anywhere`, design 2026-10-05 §4 rule 3),
+  passing over only a delegate whose parent is a runner-only session. Each hit's parent
+  is judged from **its own transcript** (`fallback_parent_collision`), never from what the
+  main walk recorded, so the order of the two fallbacks cannot matter: a parent named by a
+  usage.json whose transcript collides — a pinned coordinator filed under another project
+  directory, reached only by the pinned-session fallback, or one in this repo's
+  directories under an unclaimable cwd — has the delegate attributed by `spawning_tree`
+  as in the main walk (the runner tree's: not priced, the pin warned ignored; untold:
+  priced and warned). A runner id whose transcript is not on disk is runner-only. A pinned delegate
+  whose parent sits in this repo's directories but was never walked — launched from
+  another feature's worktree, say — used to be lost outright, because the search skipped
+  exactly those directories. `cross_repo` stays true only for a hit under another repo's
+  directory. `check_unmatched_subagents` and `check_subagent_overlap` are the
   pin's versions of the branch checks: a pinned id no transcript carries, and an id two
   manifests both pin. `check_frozen_cost` covers subagents the same way it covers
   sessions, reporting a lost one as `agent-<id>`.
@@ -879,9 +943,42 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   counts at the end. One expired feature must not cost you the run.
   Excludes a runner session by finding its id in some `usage.json` — reading
   `attempts[]`, not only the top-level `session_id`, since that field names only a
-  resumed plan's last invocation. Anything the sidecars do not account for is priced
+  resumed plan's last invocation (`runner_session_sidecars`, which also keeps which
+  sidecars name each id). Anything the sidecars do not account for is priced
   here, so a runner session the runner failed to record does not go missing, it
   reappears as planning cost.
+  **An id a `usage.json` names is runner-only when its transcript holds nothing but a
+  runner's conversation** (design 2026-10-05 §4). A `claude -p` that inherited its
+  parent's `CLAUDE_CODE_SESSION_ID` reported the parent's id and appended its lines to the
+  parent's transcript as a second conversation tree, so the coordinator was excluded
+  whole: `cloud-close` recorded $1.92 of roughly $9.30. `plan-runner-lib.sh` no longer lets
+  the id through (`../RUNNER.md` → "The executor's environment"); for transcripts already
+  written, `tree_flags` follows `uuid` → `parentUuid` (a `compact_boundary` line's
+  `logicalParentUuid` continuing its tree) and calls a tree **headless** when its opening
+  prompt — the first `user` line with prompt text, never a tool result — carries
+  `HEADLESS_PROMPT_MARKER`, the sentence every runner prompt carries (asserted by
+  `../self/tests/stream-capture.sh` 11i–11m; `entrypoint` is inherited and cannot tell).
+  A transcript holding a headless tree AND interactive lines is a **collision**
+  (`runner_collision`): one WARN names the session and every sidecar that names it, the
+  interactive lines are selected, priced and timed as any session's would be (the
+  session's span is theirs), and the headless tree's lines — whose cost the sidecar
+  holds — are dropped. A line whose tree cannot be told (no `uuid`, a dangling chain, a
+  tree with no prompt) is never evidence and never dropped, so a runner transcript with no
+  recognisable headless tree is runner-only and excluded exactly as before. A collided
+  session's delegates go to the tree that spawned them (`spawning_tree`: the
+  `agent-<id>.meta.json` `toolUseId` beside the delegate, matched to the parent line
+  holding that tool call, else a parent line whose `toolUseResult.agentId` is the
+  delegate's): one the runner's tree spawned is the sidecar's and never priced here, a pin
+  on it warned about and ignored; one whose tree cannot be told is priced as the
+  coordinator's, with a WARN naming it — a disclosed possible over-count, not a silent
+  loss. The same holds for a delegate the pinned-delegate fallback reaches: its parent is
+  judged from the parent's own transcript (`fallback_parent_collision`, the
+  `<project dir>/<parent id>.jsonl` beside the delegate's directory), not from the main
+  walk's sets. Depends on Claude Code's transcript fields `uuid`, `parentUuid`, `subtype`,
+  `logicalParentUuid`, `message.content[].{type,id,tool_use_id,text}`, `toolUseResult` and
+  the `meta.json` beside each delegate — none visible from an import line. Rulings in
+  `../self/features/cost-capture-collisions/NOTES.md`; asserted by
+  `../self/tests/subagent-capture.sh` phase C.
   `check_unmatched_branches` warns for each declared branch that no transcript in this
   repo carries. A name that matches nothing — a typo, or an owner prefix the branch
   never had — leaves every session on it uncounted and the feature reporting `$0.00`,
@@ -1268,11 +1365,23 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `python3 agentTooling/analysis/report.py --all`.
 - `manifest.py` — reads and writes a feature manifest's machine-readable fence, and reads
   what its `planning.json` claimed: the JSON edits the lifecycle scripts need, kept out of
-  bash. Eleven subcommands, `--self` first as everywhere. `init --method M --branch B --base
-  BASE --from TS [--session ID]… [--plan STEM]…` writes `<features root>/<slug>/README.md`
+  bash. Twelve subcommands, `--self` first as everywhere. `init --method M --branch B --base
+  BASE --from TS [--profile local|cloud] [--gate green|skipped] [--session ID]… [--plan STEM]…` writes `<features root>/<slug>/README.md`
   from `templates/plans/features/TEMPLATE.md` with the template's fence replaced by a
-  filled one, and refuses if the file exists — `feature-start.sh` runs it once, in the new
-  worktree. `get <key>` prints one scalar or JSON array from the **last** fenced JSON block,
+  filled one (`profile` then `gate` after `base` in `FENCE_KEY_ORDER`, each only when
+  given; an unknown value of either — `KNOWN_PROFILES`, `KNOWN_GATE_RECORDS` — is
+  refused), and refuses if the file exists — `feature-start.sh` runs it once, in
+  the new checkout. `session-start <id>` prints that session's first transcript instant
+  as a fence bound, UTC, **truncated (never rounded) to the millisecond**
+  (`2026-10-05T22:05:29.123Z`, `.000` when the transcript has no fraction;
+  `fence_instant`, `FENCE_INSTANT_TIMESPEC`), or nothing and exit 1 when no transcript
+  carries the id (found as `set-window-from` finds one, through `routing.find_transcript`);
+  it reads no manifest, so the start calls it before `init`, for the `from` of a
+  coordinator (self/features/execution-profiles, the start-instant ruling). Never later
+  than the session's first line, and for a millisecond transcript exactly it — so
+  `set-window-from "$(… session-start <id>)" --session <id>` passes its earlier-than-the-
+  session refusal, which is NOT loosened; until issue #82 it printed the floor to the
+  second, which that refusal turned away (self/features/session-start-precision). `get <key>` prints one scalar or JSON array from the **last** fenced JSON block,
   the one `capture_planning.py` reads — the same fence `plan-runner-roots.sh`'s
   `manifest_field` reads on the shell side with awk and `jq`, which is how
   `run-review.sh` gets `base` for `FEATURE_BASE` without a Python call. `set-window-to [TS] [--tighten|--replace]` replaces a `null` `to` bound with TS (default: now,
@@ -1389,7 +1498,7 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
 
 - The **feature manifest's fence** — the last fenced JSON block in
   `plans/features/<slug>/README.md`:
-  `{ slug, method, plans[], branches[], base, session_window{from,to},
+  `{ slug, method, plans[], branches[], base, profile?, gate?, session_window{from,to},
   exclude_sessions[], exclude_subagents[], sessions[], subagents[] }`. Written by
   `manifest.py` on behalf of `feature-start.sh` (`init`) and `feature-capture.sh`
   (`set-window-to`: `--replace` on the branch, `--tighten` under `--recapture` after the
@@ -1400,8 +1509,21 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   `unexclude-subagent` — no command adds one); read by
   `capture_planning.py` (`branches`, `session_window`,
   `exclude_sessions`, `exclude_subagents`, `sessions`, `subagents`),
-  by `report.py` (`method`, `plans`) and by `run-review.sh` (`base`, through
-  `plan-runner-roots.sh`'s `manifest_field`). `method` is `"plans"` (or absent),
+  by `report.py` (`method`, `plans`, `profile`, `gate`) and by `run-review.sh` (`base`, through
+  `plan-runner-roots.sh`'s `manifest_field`). `profile` is `"local"` or `"cloud"` — where
+  `feature-start.sh` ran, as `env-profile.sh` decided (`init --profile`) — and is absent
+  from every manifest started before it, which every reader takes as "not recorded",
+  never as `local`; `check-plans.sh` has no check about it and accepts it. `gate` is
+  `"green"` when the start's base gate ran and was green, `"skipped"` under `--no-gate`
+  or with no gate script to run (`init --gate`; self/DESIGN-2026-10-05-cloud-execution.md
+  §7), under the same rules: absent means "not recorded", and `check-plans.sh` accepts it
+  with no check of its own (self/features/execution-profiles/NOTES.md ruling 10). `branches[0]`
+  is the slug locally and the session's assigned branch in a cloud container, and
+  `session_window.from` is the start's clock — or, when the session that ran the start was
+  launched on the feature's branch (its coordinator), that session's first transcript
+  instant truncated to the millisecond (`session-start`) — every reader of a bound parses
+  it as an instant, so a fractional `from` orders correctly against a whole-second `to`.
+  `method` is `"plans"` (or absent),
   `"direct"`, or `"hand"` — the last two say the transcripts in `planning.json` are the
   build rather than the planning. `base` is the branch the feature branched from, which
   becomes `FEATURE_BASE` and the PR's base. `sessions` are session ids claimed outright,
@@ -1570,8 +1692,11 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   loc_changed | "not computed: streams unavailable"}], re_hunting[{target,tool,plans[]}] | "not computed: streams
   unavailable", plan_drift[{plan,edited_not_listed[],listed_not_edited[]}],
   edit_overlap[{file,earlier_plan,later_plan,overlap_chars}] | "not computed: streams
-  unavailable", warnings[] }` — a feature's cost roll-up and waste tripwires, written
-  by `report.py`. Every figure comes from a `usage.json` or `planning.json` already on
+  unavailable", warnings[], profile?, gate? }` — a feature's cost roll-up and waste tripwires, written
+  by `report.py`. `profile` is the manifest fence's `profile` (`local` or `cloud`, where
+  the start ran) and `gate` its `gate` (`green` or `skipped`), each present only when the
+  fence has it, so a feature started before the key reports byte-identically; `report.md`
+  shows them as `Profile: …` and `Gate: …` lines under Generated. Every figure comes from a `usage.json` or `planning.json` already on
   disk — summed or divided, never repriced. The three stream-derived values
   (`loc_changed`, `re_hunting`, `edit_overlap`) are the exception. They come from
   `.stream.jsonl` while it exists and are carried from this same file once it does not,

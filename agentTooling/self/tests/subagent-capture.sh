@@ -61,6 +61,18 @@ set -uo pipefail
 #      lands in `excluded_agent_ids`; Y6 the pinning feature's capture then succeeds;
 #      Y7 the pin-over-parent refusal names the other feature and its recapture, and that
 #      recapture yields.
+#   C. a runner child that collided with its parent's session id (self/features/
+#      cost-capture-collisions, design §4): the coordinator a usage.json names is still
+#      captured at its interactive lines alone, warned about with the sidecar named, its
+#      pinned implementer captured; the runner tree's own delegate is not priced, one whose
+#      spawning tree cannot be told is priced as the coordinator's with a warning; a runner
+#      session with a file of its own is excluded as before and its pinned delegate never
+#      priced; and a pinned delegate whose parent the main walk never reached is found in
+#      this repo's own directories. RED on main, which excluded the whole session.
+#      C12-C14 (round 2): a pinned collided coordinator filed under a second project
+#      directory — reached only by the pinned-session fallback — has its pinned
+#      implementer priced under it, while a pinned delegate its runner tree spawned is not
+#      priced and its pin is warned ignored. RED on round 1's code.
 #
 # All RED until the subagent walk landed in analysis/capture_planning.py; 19c-19e were RED
 # until the ledger was written from `subagents[]` rather than from the priced rows.
@@ -691,6 +703,186 @@ check "Y7c. and it does: the parent feature's recapture yields Y7 to pinner" \
 capture_pinner > "$TMP/outY7d.txt"; rcY7d=$?
 check "Y7d. after which the pinning feature's capture goes through (rc $rcY7d)" \
   "[ $rcY7d -eq 0 ] && [ \"$(claim "$AGENT_Y7")\" = \"('$REPO_NAME', 'pinner', 'pinned')\" ]"
+
+# ── C. a runner child that collided with its parent's session id (design §4) ──────────
+# self/features/cost-capture-collisions. Reproduced in a cloud container: a `claude -p`
+# launched with the parent's environment reports the parent's CLAUDE_CODE_SESSION_ID and
+# APPENDS its lines to the parent's own transcript as a second conversation tree — rooted
+# at a `user` line with `parentUuid: null` whose prompt is the runner's — so the parent's
+# id lands in the plan's usage.json. The capture then excluded the coordinator outright as
+# a runner session, and its pinned implementer with it: cloud-close recorded $1.92 of
+# roughly $9.30. The rule now: an id a usage.json names is runner-only when nothing in its
+# transcript lies outside a headless tree; one that also holds interactive lines is a
+# COLLISION — warned about, its interactive lines priced as any session's, its headless
+# tree (whose cost the sidecar holds) dropped, and a delegate spawned FROM that tree left
+# to the sidecar too. RED on main: the whole session is excluded, nothing here is priced.
+#
+# The coordinator's file below, in order: its own root and a response that spawns the
+# implementer (5000 output tokens); the runner's root — the review runner's real opening,
+# marker sentence and all — and a response that spawns a delegate of its own (7000); a
+# compaction boundary that continues the COORDINATOR's tree through `logicalParentUuid`
+# though its own `parentUuid` is null; and one more coordinator response (3000). So the
+# coordinator's own cost is 8000 output tokens and the runner's 7000.
+SESSION_C="cccccccc-0000-0000-0000-00000000000c"   # coordinator, collided with a runner child
+SESSION_R2="dddddddd-0000-0000-0000-00000000000d"  # a runner session with a file of its own
+SESSION_W="eeeeeeee-0000-0000-0000-00000000000e"   # parent in another feature's worktree
+AGENT_CI="c1c1c1c1c1c1c1c1c"   # the coordinator's implementer, pinned
+AGENT_CR="c2c2c2c2c2c2c2c2c"   # spawned by the runner's tree — runner cost
+AGENT_CU="c3c3c3c3c3c3c3c3c"   # no meta.json: which tree spawned it cannot be told
+AGENT_CW="c4c4c4c4c4c4c4c4c"   # pinned, under a parent the main walk never reaches
+AGENT_R2="c5c5c5c5c5c5c5c5c"   # pinned, under a genuine runner session
+RUNNER_OPENING="You are running a REVIEW plan: a post-verify pass that reads the DIFF a batch produced and judges the code itself. A progress log is maintained automatically by the harness so this work can be resumed if interrupted."
+# tree_user SESSION UUID TIMESTAMP PROMPT_SOURCE TEXT — a conversation's root `user` line.
+tree_user() {
+  printf '{"type":"user","sessionId":"%s","cwd":"%s","gitBranch":"%s","uuid":"%s","parentUuid":null,"timestamp":"%s","promptSource":"%s","message":{"role":"user","content":"%s"}}\n' \
+    "$1" "$AT" "$BRANCH" "$2" "$3" "$4" "$5"
+}
+# tree_assistant SESSION UUID PARENT TIMESTAMP MESSAGE_ID OUTPUT TOOL_USE_ID — one billed
+# response, carrying an Agent tool_use block with TOOL_USE_ID (the id a delegate's
+# meta.json names as the call that spawned it).
+tree_assistant() {
+  printf '{"type":"assistant","sessionId":"%s","cwd":"%s","gitBranch":"%s","uuid":"%s","parentUuid":"%s","timestamp":"%s","isSidechain":false,"message":{"id":"%s","model":"%s","content":[{"type":"tool_use","id":"%s","name":"Agent","input":{}}],"usage":{"input_tokens":0,"output_tokens":%s,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}\n' \
+    "$1" "$AT" "$BRANCH" "$2" "$3" "$4" "$5" "$MODEL" "$7" "$6"
+}
+# tree_compact SESSION UUID LOGICAL_PARENT TIMESTAMP — a compaction boundary: parentUuid
+# null, the tree continued through logicalParentUuid.
+tree_compact() {
+  printf '{"type":"system","subtype":"compact_boundary","sessionId":"%s","cwd":"%s","gitBranch":"%s","uuid":"%s","parentUuid":null,"logicalParentUuid":"%s","timestamp":"%s","content":"Conversation compacted"}\n' \
+    "$1" "$AT" "$BRANCH" "$2" "$3" "$4"
+}
+# delegate SESSION AGENT TIMESTAMP OUTPUT [TOOL_USE_ID] — a delegate transcript, with the
+# meta.json Claude Code writes beside it naming the tool call that spawned it.
+delegate() {
+  write_subagent "$1" "$2" "$BRANCH" "$3" "$4" "Delegate $2"
+  if [ -n "${5:-}" ]; then
+    printf '{"agentType":"general-purpose","toolUseId":"%s"}\n' "$5" > "$PROJECTS/$1/subagents/agent-$2.meta.json"
+  fi
+}
+# Output tokens priced the way the capture prices them, for the exact expected figures.
+price_output() {
+  python3 -c "import sys; sys.path.insert(0, sys.argv[1]); from pricing import compute_cost; print(compute_cost(sys.argv[2], {'input': 0, 'output': int(sys.argv[3]), 'cache_read': 0, 'cache_creation_5m': 0, 'cache_creation_1h': 0}, as_of=sys.argv[4])[0])" \
+    "$AT/analysis" "$MODEL" "$1" "$2"
+}
+
+rm -rf "$PROJECTS"/* "$PLANNING" "$LEDGER" "$AT/self/features/other-feature"
+{
+  tree_user      "$SESSION_C" "i-root" "2026-07-02T09:00:00.000Z" system "Coordinate the feature"
+  tree_assistant "$SESSION_C" "i-1" "i-root" "2026-07-02T09:01:00.000Z" "msg-c-i1" 5000 "toolu_coord"
+  tree_user      "$SESSION_C" "h-root" "2026-07-02T10:00:00.000Z" sdk "$RUNNER_OPENING"
+  tree_assistant "$SESSION_C" "h-1" "h-root" "2026-07-02T10:01:00.000Z" "msg-c-h1" 7000 "toolu_runner"
+  tree_compact   "$SESSION_C" "i-compact" "i-1" "2026-07-02T11:00:00.000Z"
+  tree_assistant "$SESSION_C" "i-2" "i-compact" "2026-07-02T11:05:00.000Z" "msg-c-i2" 3000 "toolu_coord2"
+} > "$PROJECTS/$SESSION_C.jsonl"
+delegate "$SESSION_C" "$AGENT_CI" "2026-07-02T09:30:00.000Z" 8000 "toolu_coord"
+delegate "$SESSION_C" "$AGENT_CR" "2026-07-02T10:30:00.000Z" 6000 "toolu_runner"
+delegate "$SESSION_C" "$AGENT_CU" "2026-07-02T11:30:00.000Z" 4000
+{
+  tree_user      "$SESSION_R2" "r-root" "2026-07-02T12:00:00.000Z" sdk "$RUNNER_OPENING"
+  tree_assistant "$SESSION_R2" "r-1" "r-root" "2026-07-02T12:01:00.000Z" "msg-r2-1" 9000 "toolu_r2"
+} > "$PROJECTS/$SESSION_R2.jsonl"
+delegate "$SESSION_R2" "$AGENT_R2" "2026-07-02T12:30:00.000Z" 5000 "toolu_r2"
+WT_PROJECTS="$FAKE_HOME/.claude/projects/$(echo "$AT/.worktrees/other" | tr '/.' '--')"
+mkdir -p "$WT_PROJECTS/$SESSION_W/subagents"
+session_line "$SESSION_W" "$AT/.worktrees/other" "other" "msg-$SESSION_W" "$MODEL" "2026-07-02T13:00:00.000Z" 0 2000 0 0 0 \
+  > "$WT_PROJECTS/$SESSION_W.jsonl"
+{
+  subagent_prompt_line "$SESSION_W" "$AGENT_CW" "$AT/.worktrees/other" "other" "2026-07-02T13:30:00.000Z" "Implementer spawned from another worktree"
+  subagent_line "$SESSION_W" "$AGENT_CW" "$AT/.worktrees/other" "other" "msg-$AGENT_CW" "$MODEL" "2026-07-02T13:30:00.000Z" 0 2500 0 0 0
+} > "$WT_PROJECTS/$SESSION_W/subagents/agent-$AGENT_CW.jsonl"
+SIDECAR_DIR="$AT/self/features/other-feature/review/complete"
+mkdir -p "$SIDECAR_DIR"
+printf '{"plan":"01-review-opus","session_id":"%s","total_cost_usd":2.0,"attempts":[{"session_id":"%s","total_cost_usd":2.0}]}\n' \
+  "$SESSION_C" "$SESSION_C" > "$SIDECAR_DIR/01-review-opus.usage.json"
+printf '{"plan":"02-review-opus","session_id":"%s","total_cost_usd":3.0,"attempts":[{"session_id":"%s","total_cost_usd":3.0}]}\n' \
+  "$SESSION_R2" "$SESSION_R2" > "$SIDECAR_DIR/02-review-opus.usage.json"
+write_manifest "[\"$AGENT_CI\", \"$AGENT_CW\", \"$AGENT_R2\"]"
+capture > "$TMP/outC.txt"; rcC=$?
+
+coord_cost="$(price_output 8000 2026-07-02)"
+check "C1. the capture succeeds (rc $rcC)" "[ $rcC -eq 0 ]"
+check "C2. the collided coordinator is captured, selected by branch, not excluded" \
+  "[ \"\$(field \"[(s['session_id'], s['selected_by']) for s in d['sessions']]\")\" = \"[('$SESSION_C', 'branch')]\" ] && [ \"\$(field \"'$SESSION_C' in d['excluded_session_ids']\")\" = False ]"
+check "C3. priced at its interactive lines alone — 8000 output tokens, not the runner's 7000 beside them" \
+  "near \"\$(field \"sum(p['cost_usd'] for p in d['priced'] if p['session_id']=='$SESSION_C' and not p['agent_id'])\")\" '$coord_cost'"
+check "C3b. its span is the coordinator's own, the runner tree's lines dropped from it (09:00 to 11:05)" \
+  "[ \"\$(field \"[s['duration_s'] for s in d['sessions'] if s['session_id']=='$SESSION_C']\")\" = '[7500]' ]"
+check "C4. the warning names the collision, the session and the sidecar that names it" \
+  "grep 'WARN:' '$TMP/outC.txt' | grep '$SESSION_C' | grep -q 'other-feature/review/complete/01-review-opus.usage.json'"
+check "C5. the coordinator's pinned implementer is captured, as pinned, under its parent" \
+  "[ \"\$(field \"[(s['selected_by'], s['parent_session_id']) for s in d['subagents'] if s['agent_id']=='$AGENT_CI']\")\" = \"[('pinned', '$SESSION_C')]\" ]"
+check "C6. a delegate the runner's tree spawned is the sidecar's, never priced here" \
+  "[ \"\$(field \"'$AGENT_CR' in [s['agent_id'] for s in d['subagents']] or '$AGENT_CR' in [p['agent_id'] for p in d['priced']]\")\" = False ]"
+check "C7. a delegate whose spawning tree cannot be told is the coordinator's, priced by its parent, and warned about by id" \
+  "[ \"\$(field \"[s['selected_by'] for s in d['subagents'] if s['agent_id']=='$AGENT_CU']\")\" = \"['parent']\" ] && grep 'WARN:' '$TMP/outC.txt' | grep -q '$AGENT_CU'"
+check "C8. a runner session with a file of its own is still excluded exactly as before" \
+  "[ \"\$(field \"'$SESSION_R2' in d['excluded_session_ids'] and '$SESSION_R2' not in [s['session_id'] for s in d['sessions']]\")\" = True ]"
+check "C8b. ... and no collision is claimed for it" "! grep 'WARN:' '$TMP/outC.txt' | grep -q '$SESSION_R2.*interactive'"
+check "C9. a pinned delegate of that runner session is still never priced — its sidecar holds it" \
+  "[ \"\$(field \"'$AGENT_R2' in [s['agent_id'] for s in d['subagents']]\")\" = False ]"
+check "C10. a pinned delegate whose parent the main walk never reached is found in this repo's own directories" \
+  "[ \"\$(field \"[(s['selected_by'], s['parent_session_id']) for s in d['subagents'] if s['agent_id']=='$AGENT_CW']\")\" = \"[('pinned', '$SESSION_W')]\" ]"
+check "C11. the priced delegates are exactly the implementer, the untold one and the found one" \
+  "[ \"\$(field \"sorted(set(p['agent_id'] for p in d['priced'] if p['agent_id']))\")\" = \"['$AGENT_CI', '$AGENT_CU', '$AGENT_CW']\" ]"
+check "C11b. and the total is the coordinator's own 8000 tokens plus those three — nothing of the runner's" \
+  "near '$(total_of)' \"\$(field \"$coord_cost + sum(p['cost_usd'] for p in d['priced'] if p['agent_id'])\")\""
+
+# ── C, round 2: a collided coordinator found only through the pinned-session fallback ──
+# Round 1's review (escalations/01-review-opus.md): a pinned coordinator whose collided
+# transcript is filed under ANOTHER project directory is reached only by the pinned-
+# session fallback, which ran after the pinned-delegate fallback — so its delegates were
+# skipped as a runner-only session's, and a delegate the fallback did reach was never
+# asked which tree spawned it. The same fixture, plus a second project directory holding
+# coordinator E: its interactive tree spawns the implementer EI (4000 output tokens of its
+# own), the runner's tree spawns ER; both delegates and E itself are pinned, and a
+# usage.json names E. RED on round 1's code: EI is unmatched, ER's pin is not called
+# ignored.
+SESSION_E="ffffffff-0000-0000-0000-00000000000f"   # pinned coordinator, collided, filed elsewhere
+AGENT_EI="e1e1e1e1e1e1e1e1e"   # E's implementer, spawned by its interactive tree — pinned
+AGENT_ER="e2e2e2e2e2e2e2e2e"   # spawned by E's runner tree — pinned, still runner cost
+COLL_PROJECTS="$FAKE_HOME/.claude/projects/-elsewhere-coordinator"
+mkdir -p "$COLL_PROJECTS/$SESSION_E/subagents"
+{
+  tree_user      "$SESSION_E" "e-root" "2026-07-03T09:00:00.000Z" system "Coordinate from another checkout"
+  tree_assistant "$SESSION_E" "e-1" "e-root" "2026-07-03T09:01:00.000Z" "msg-e-i1" 4000 "toolu_e_coord"
+  tree_user      "$SESSION_E" "eh-root" "2026-07-03T10:00:00.000Z" sdk "$RUNNER_OPENING"
+  tree_assistant "$SESSION_E" "eh-1" "eh-root" "2026-07-03T10:01:00.000Z" "msg-e-h1" 6000 "toolu_e_runner"
+} > "$COLL_PROJECTS/$SESSION_E.jsonl"
+for pair in "$AGENT_EI:toolu_e_coord:2026-07-03T09:30:00.000Z" "$AGENT_ER:toolu_e_runner:2026-07-03T10:30:00.000Z"; do
+  e_agent="${pair%%:*}"; e_rest="${pair#*:}"; e_tool="${e_rest%%:*}"; e_ts="${e_rest#*:}"
+  {
+    subagent_prompt_line "$SESSION_E" "$e_agent" "$AT" "$BRANCH" "$e_ts" "Delegate $e_agent"
+    subagent_line "$SESSION_E" "$e_agent" "$AT" "$BRANCH" "msg-$e_agent" "$MODEL" "$e_ts" 100 3000 0 0 0
+  } > "$COLL_PROJECTS/$SESSION_E/subagents/agent-$e_agent.jsonl"
+  printf '{"agentType":"general-purpose","toolUseId":"%s"}\n' "$e_tool" > "$COLL_PROJECTS/$SESSION_E/subagents/agent-$e_agent.meta.json"
+done
+printf '{"plan":"03-review-opus","session_id":"%s","total_cost_usd":1.5,"attempts":[{"session_id":"%s","total_cost_usd":1.5}]}\n' \
+  "$SESSION_E" "$SESSION_E" > "$SIDECAR_DIR/03-review-opus.usage.json"
+cat > "$FEATURE_DIR/README.md" <<MANIFEST
+# $SLUG
+
+\`\`\`json
+{
+  "slug": "$SLUG",
+  "branches": ["$BRANCH"],
+  "session_window": {"from": "$WINDOW_FROM", "to": "$WINDOW_TO"},
+  "exclude_sessions": [],
+  "sessions": ["$SESSION_E"],
+  "subagents": ["$AGENT_CI", "$AGENT_CW", "$AGENT_R2", "$AGENT_EI", "$AGENT_ER"]
+}
+\`\`\`
+MANIFEST
+capture > "$TMP/outC12.txt"; rcC12=$?
+
+check "C12. the capture succeeds (rc $rcC12)" "[ $rcC12 -eq 0 ]"
+check "C12b. the coordinator filed under a second project directory is captured as pinned, and its collision warned about" \
+  "[ \"\$(field \"[s['selected_by'] for s in d['sessions'] if s['session_id']=='$SESSION_E']\")\" = \"['pinned']\" ] && grep 'WARN:' '$TMP/outC12.txt' | grep '$SESSION_E' | grep -q '03-review-opus.usage.json'"
+check "C13. its pinned implementer is priced, as pinned, under it" \
+  "[ \"\$(field \"[(s['selected_by'], s['parent_session_id']) for s in d['subagents'] if s['agent_id']=='$AGENT_EI']\")\" = \"[('pinned', '$SESSION_E')]\" ] && [ \"\$(field \"'$AGENT_EI' in [p['agent_id'] for p in d['priced']]\")\" = True ]"
+check "C13b. and is not reported as an unmatched pin" "! grep 'WARN:' '$TMP/outC12.txt' | grep '$AGENT_EI' | grep -q 'matches no transcript'"
+check "C14. a pinned delegate whose meta.json toolUseId points into the runner tree is not priced" \
+  "[ \"\$(field \"'$AGENT_ER' in [s['agent_id'] for s in d['subagents']] or '$AGENT_ER' in [p['agent_id'] for p in d['priced']]\")\" = False ]"
+check "C14b. and the capture warns that its pin is ignored" \
+  "grep 'WARN:' '$TMP/outC12.txt' | grep '$AGENT_ER' | grep -q 'the pin is ignored'"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "subagent-capture: all ok"; else echo "subagent-capture: $fails FAIL"; exit 1; fi
