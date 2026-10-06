@@ -35,7 +35,9 @@ if [[ -f "$ENVIRONMENT_PROFILE_SCRIPT" ]]; then
 fi
 
 # ── REPO-SPECIFIC: this repo's facts, one block per profile ──────────────────
-# Nothing is set yet. An example of each profile, for a repo with Postgres and a
+# mediaCore sets nothing: no database, no browser, no dev server — the gate and tests read
+# nothing from the environment, so a laptop and a container need the same (none). Add a
+# block here only if that changes. The template's example, for a repo with Postgres and a
 # Playwright suite; keep the same KEYS in both, only the values differ:
 #
 #   if declare -F profile_is_cloud >/dev/null && profile_is_cloud; then

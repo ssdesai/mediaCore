@@ -37,20 +37,17 @@ if ! profile_is_cloud; then exit 0; fi
 cd "$REPO_DIR" || exit 1
 
 # ── REPO-SPECIFIC: what a fresh container needs ──────────────────────────────
-# Nothing is configured yet. For a repo whose gate needs Postgres, e.g.:
-#
-#   # Start the server the image ships, once.
-#   if ! pg_isready -q 2>/dev/null; then
-#     service postgresql start >/dev/null && echo "  cloud-setup  postgres started"
-#   fi
-#   # A passwordless role and a database for it, only when missing.
-#   if ! su postgres -c "psql -tAc \"select 1 from pg_roles where rolname='app'\"" | grep -q 1; then
-#     su postgres -c "createuser --superuser app" && su postgres -c "createdb -O app app"
-#     echo "  cloud-setup  role and database 'app' created"
-#   fi
-#   # A value only known now, for plans/environment.sh to read (keep the file ignored):
-#   echo "export APP_DB_PORT=5432" > "$REPO_DIR/.cloud-env"
-#
-# Browser paths and other fixed facts belong in plans/environment.sh, not here.
-echo "  cloud-setup  plans/cloud-setup.sh has nothing configured — start this repo's services here (agentTooling/templates/plans/cloud-setup.sh)"
+# No server, no database: one pure-Python package. A fresh container lacks only the
+# repo's .venv, which the CLAUDE.md commands (`.venv/bin/python -m pytest`, ruff) run
+# from. plans/gate.sh would bootstrap it too; doing it here means a session can run the
+# tests before any gate has. Same install as plans/worktree-setup.sh. Idempotent: only
+# when the venv is missing.
+VENV_PYTHON="$REPO_DIR/.venv/bin/python"
+if [[ -x "$VENV_PYTHON" ]]; then
+  echo "  cloud-setup  .venv present — nothing to do"
+else
+  python3 -m venv "$REPO_DIR/.venv" || exit 1
+  "$VENV_PYTHON" -m pip install -q -e ".[dev]" --disable-pip-version-check || exit 1
+  echo "  cloud-setup  .venv created with the editable [dev] install"
+fi
 # ──────────────────────────────────────────────────────────────────────────────
