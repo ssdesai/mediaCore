@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# template-version: 3
+# template-version: 4
 
 # This is what `sync-plans.sh --check` compares a seeded copy against to report drift.
 # Bump it whenever the body below changes in a way seeded copies must merge by hand.
@@ -48,6 +48,18 @@ set -euo pipefail
 # profile, an editor, `claude` under a different launcher.
 
 WORKTREE="${1:?usage: open-session.sh <worktree path>}"
+
+# The cloud half of this adapter (agentTooling/self/DESIGN-2026-10-05-cloud-execution.md
+# §1, §3). In a Claude Code cloud container the container IS the feature's checkout and
+# the session that ran feature-start.sh is already in it, so there is nothing to open.
+# AGENTTOOLING_PROFILE is exported by the start's own agentTooling/env-profile.sh, the
+# one place the profile is decided; keep this branch in any replacement body.
+CLOUD_PROFILE="cloud"
+if [[ "${AGENTTOOLING_PROFILE:-}" == "$CLOUD_PROFILE" ]]; then
+  echo "  open  this session is already in the feature's checkout, $WORKTREE — in a cloud container the container is the worktree; nothing to open"
+  exit 0
+fi
+
 TERMINAL_APP="Terminal"
 SESSION_COMMAND="claude"
 

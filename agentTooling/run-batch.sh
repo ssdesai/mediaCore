@@ -188,7 +188,7 @@ regate() {
   echo "########## BATCH: level $2 — re-running the gate (${GATE_SCRIPT#$REPO_DIR/} $2) ##########"
   level_expectations "$FEATURES_DIR/$1/auto/complete/$2-gate.md"
   stamp_timing gate_start level="$2" regate=true
-  "$GATE_SCRIPT" "$2"
+  GATE_RESUME="$GATE_RESUME_ON" "$GATE_SCRIPT" "$2"
   local rc=$?
   unset GATE_EXPECTED_RED GATE_DEFERRED
   local green=false
@@ -327,7 +327,7 @@ if [[ -x "$GATE_SCRIPT" ]]; then
   echo ""
   echo "########## BATCH: mechanical gate (${GATE_SCRIPT#$REPO_DIR/}) ##########"
   stamp_timing gate_start level=final
-  "$GATE_SCRIPT"
+  GATE_RESUME="$GATE_RESUME_ON" "$GATE_SCRIPT"
   gate_rc=$?
   final_green=false
   gate_green final && final_green=true

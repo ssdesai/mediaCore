@@ -1,0 +1,236 @@
+{
+  "slug": "self-cloud-bootstrap",
+  "captured_at": "2026-10-06T05:33:27.477255+00:00",
+  "manifest_branches": [
+    "claude/self-cloud-bootstrap"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "2800f947-25d6-58da-8260-9ff41ac3ea2a",
+      "git_branch": "claude/self-cloud-bootstrap",
+      "selected_by": "branch",
+      "cwd": "/home/user/agenttooling",
+      "date": "2026-10-05",
+      "started_at": "2026-10-05T22:05:50.156000+00:00",
+      "ended_at": "2026-10-06T05:33:23.564000+00:00",
+      "duration_s": 26853
+    }
+  ],
+  "subagents": [
+    {
+      "agent_id": "a57637f1f3294197e",
+      "parent_session_id": "2800f947-25d6-58da-8260-9ff41ac3ea2a",
+      "date": "2026-10-06",
+      "started_at": "2026-10-06T00:00:20.600000+00:00",
+      "ended_at": "2026-10-06T05:01:50.122000+00:00",
+      "duration_s": 18089,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a875995a3370363da",
+      "parent_session_id": "2800f947-25d6-58da-8260-9ff41ac3ea2a",
+      "date": "2026-10-05",
+      "started_at": "2026-10-05T22:06:33.825000+00:00",
+      "ended_at": "2026-10-05T22:08:21.793000+00:00",
+      "duration_s": 107,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a8ede93a40c4656f3",
+      "parent_session_id": "2800f947-25d6-58da-8260-9ff41ac3ea2a",
+      "date": "2026-10-06",
+      "started_at": "2026-10-06T05:21:27.619000+00:00",
+      "ended_at": "2026-10-06T05:26:34.901000+00:00",
+      "duration_s": 307,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "acc609287a8371b44",
+      "parent_session_id": "2800f947-25d6-58da-8260-9ff41ac3ea2a",
+      "date": "2026-10-05",
+      "started_at": "2026-10-05T22:12:48.135000+00:00",
+      "ended_at": "2026-10-05T23:53:24.809000+00:00",
+      "duration_s": 6036,
+      "selected_by": "parent",
+      "cross_repo": false
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "1211768b-356d-49d6-8c61-f8b13d734947",
+    "e03f4576-69e1-4e98-908b-5e815677dec3"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "2800f947-25d6-58da-8260-9ff41ac3ea2a",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-10-05",
+      "duration_s": 26853,
+      "tokens": {
+        "input": 306,
+        "output": 70380,
+        "cache_read": 34104337,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 765040
+      },
+      "cost_usd": 14.3500114,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "2800f947-25d6-58da-8260-9ff41ac3ea2a",
+      "agent_id": "a57637f1f3294197e",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-06",
+      "duration_s": 18089,
+      "tokens": {
+        "input": 192,
+        "output": 1400,
+        "cache_read": 20310747,
+        "cache_creation_5m": 967394,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 8.927887400000001,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "2800f947-25d6-58da-8260-9ff41ac3ea2a",
+      "agent_id": "a875995a3370363da",
+      "model": "claude-haiku-4-5-20251001",
+      "is_sidechain": true,
+      "date": "2026-10-05",
+      "duration_s": 107,
+      "tokens": {
+        "input": 76,
+        "output": 25,
+        "cache_read": 429135,
+        "cache_creation_5m": 87951,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 0.15305325,
+      "rates_applied": {
+        "model": "claude-haiku-4-5",
+        "input": 1,
+        "output": 5,
+        "cache_read": 0.1,
+        "cache_creation_5m": 1.25,
+        "cache_creation_1h": 2,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "2800f947-25d6-58da-8260-9ff41ac3ea2a",
+      "agent_id": "a8ede93a40c4656f3",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-06",
+      "duration_s": 307,
+      "tokens": {
+        "input": 78,
+        "output": 784,
+        "cache_read": 3801186,
+        "cache_creation_5m": 130817,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 1.4303142000000002,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "2800f947-25d6-58da-8260-9ff41ac3ea2a",
+      "agent_id": "acc609287a8371b44",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-05",
+      "duration_s": 6036,
+      "tokens": {
+        "input": 202,
+        "output": 2225,
+        "cache_read": 18990818,
+        "cache_creation_5m": 1151513,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 9.6010366,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 14.3500114,
+    "sidechain": 20.11229145,
+    "subagents": 20.11229145,
+    "total": 34.46230285,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 26853,
+    "subagents": 24539,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-02",
+  "warnings": [
+    "session(s) carrying branch(es) ['claude/self-cloud-bootstrap'] were launched from '/tmp/claude-0/-home-user-agenttooling/2800f947-25d6-58da-8260-9ff41ac3ea2a/scratchpad/probe/ae1', which this feature cannot claim from: that is the primary checkout '/home/user/agenttooling' outside '/home/user/agenttooling/.worktrees' (other features' worktrees), this feature's worktree '/home/user/agenttooling/.worktrees/self-cloud-bootstrap', and its legacy sibling '/home/user/agenttooling-self-cloud-bootstrap' \u2014 launch the coordinator inside the feature worktree, or pin each session id in the manifest's `sessions`",
+    "session(s) carrying branch(es) ['claude/self-cloud-bootstrap'] were launched from '/tmp/claude-0/-home-user-agenttooling/2800f947-25d6-58da-8260-9ff41ac3ea2a/scratchpad/probe/ae2', which this feature cannot claim from: that is the primary checkout '/home/user/agenttooling' outside '/home/user/agenttooling/.worktrees' (other features' worktrees), this feature's worktree '/home/user/agenttooling/.worktrees/self-cloud-bootstrap', and its legacy sibling '/home/user/agenttooling-self-cloud-bootstrap' \u2014 launch the coordinator inside the feature worktree, or pin each session id in the manifest's `sessions`",
+    "session(s) carrying branch(es) ['claude/self-cloud-bootstrap'] were launched from '/tmp/claude-0/-home-user-agenttooling/2800f947-25d6-58da-8260-9ff41ac3ea2a/scratchpad/probe/ae3', which this feature cannot claim from: that is the primary checkout '/home/user/agenttooling' outside '/home/user/agenttooling/.worktrees' (other features' worktrees), this feature's worktree '/home/user/agenttooling/.worktrees/self-cloud-bootstrap', and its legacy sibling '/home/user/agenttooling-self-cloud-bootstrap' \u2014 launch the coordinator inside the feature worktree, or pin each session id in the manifest's `sessions`",
+    "session(s) carrying branch(es) ['claude/self-cloud-bootstrap'] were launched from '/tmp/claude-0/-home-user-agenttooling/2800f947-25d6-58da-8260-9ff41ac3ea2a/scratchpad/probe/fresh2', which this feature cannot claim from: that is the primary checkout '/home/user/agenttooling' outside '/home/user/agenttooling/.worktrees' (other features' worktrees), this feature's worktree '/home/user/agenttooling/.worktrees/self-cloud-bootstrap', and its legacy sibling '/home/user/agenttooling-self-cloud-bootstrap' \u2014 launch the coordinator inside the feature worktree, or pin each session id in the manifest's `sessions`",
+    "session(s) carrying branch(es) ['claude/self-cloud-bootstrap'] were launched from '/tmp/claude-0/-home-user-agenttooling/2800f947-25d6-58da-8260-9ff41ac3ea2a/scratchpad/probe/p1r1', which this feature cannot claim from: that is the primary checkout '/home/user/agenttooling' outside '/home/user/agenttooling/.worktrees' (other features' worktrees), this feature's worktree '/home/user/agenttooling/.worktrees/self-cloud-bootstrap', and its legacy sibling '/home/user/agenttooling-self-cloud-bootstrap' \u2014 launch the coordinator inside the feature worktree, or pin each session id in the manifest's `sessions`",
+    "session(s) carrying branch(es) ['claude/self-cloud-bootstrap'] were launched from '/tmp/claude-0/-home-user-agenttooling/2800f947-25d6-58da-8260-9ff41ac3ea2a/scratchpad/probe/p1r2', which this feature cannot claim from: that is the primary checkout '/home/user/agenttooling' outside '/home/user/agenttooling/.worktrees' (other features' worktrees), this feature's worktree '/home/user/agenttooling/.worktrees/self-cloud-bootstrap', and its legacy sibling '/home/user/agenttooling-self-cloud-bootstrap' \u2014 launch the coordinator inside the feature worktree, or pin each session id in the manifest's `sessions`",
+    "session(s) carrying branch(es) ['claude/self-cloud-bootstrap'] were launched from '/tmp/claude-0/-home-user-agenttooling/2800f947-25d6-58da-8260-9ff41ac3ea2a/scratchpad/probe/p1r3', which this feature cannot claim from: that is the primary checkout '/home/user/agenttooling' outside '/home/user/agenttooling/.worktrees' (other features' worktrees), this feature's worktree '/home/user/agenttooling/.worktrees/self-cloud-bootstrap', and its legacy sibling '/home/user/agenttooling-self-cloud-bootstrap' \u2014 launch the coordinator inside the feature worktree, or pin each session id in the manifest's `sessions`",
+    "session(s) carrying branch(es) ['claude/self-cloud-bootstrap'] were launched from '/tmp/claude-0/-home-user-agenttooling/2800f947-25d6-58da-8260-9ff41ac3ea2a/scratchpad/probe/p1r4', which this feature cannot claim from: that is the primary checkout '/home/user/agenttooling' outside '/home/user/agenttooling/.worktrees' (other features' worktrees), this feature's worktree '/home/user/agenttooling/.worktrees/self-cloud-bootstrap', and its legacy sibling '/home/user/agenttooling-self-cloud-bootstrap' \u2014 launch the coordinator inside the feature worktree, or pin each session id in the manifest's `sessions`",
+    "session(s) carrying branch(es) ['claude/self-cloud-bootstrap'] were launched from '/tmp/claude-0/-home-user-agenttooling/2800f947-25d6-58da-8260-9ff41ac3ea2a/scratchpad/probe/p1r5', which this feature cannot claim from: that is the primary checkout '/home/user/agenttooling' outside '/home/user/agenttooling/.worktrees' (other features' worktrees), this feature's worktree '/home/user/agenttooling/.worktrees/self-cloud-bootstrap', and its legacy sibling '/home/user/agenttooling-self-cloud-bootstrap' \u2014 launch the coordinator inside the feature worktree, or pin each session id in the manifest's `sessions`",
+    "session(s) carrying branch(es) ['claude/self-cloud-bootstrap'] were launched from '/tmp/claude-0/-home-user-agenttooling/2800f947-25d6-58da-8260-9ff41ac3ea2a/scratchpad/probe/race1', which this feature cannot claim from: that is the primary checkout '/home/user/agenttooling' outside '/home/user/agenttooling/.worktrees' (other features' worktrees), this feature's worktree '/home/user/agenttooling/.worktrees/self-cloud-bootstrap', and its legacy sibling '/home/user/agenttooling-self-cloud-bootstrap' \u2014 launch the coordinator inside the feature worktree, or pin each session id in the manifest's `sessions`",
+    "session(s) carrying branch(es) ['claude/self-cloud-bootstrap'] were launched from '/tmp/claude-0/-home-user-agenttooling/2800f947-25d6-58da-8260-9ff41ac3ea2a/scratchpad/probe/race2', which this feature cannot claim from: that is the primary checkout '/home/user/agenttooling' outside '/home/user/agenttooling/.worktrees' (other features' worktrees), this feature's worktree '/home/user/agenttooling/.worktrees/self-cloud-bootstrap', and its legacy sibling '/home/user/agenttooling-self-cloud-bootstrap' \u2014 launch the coordinator inside the feature worktree, or pin each session id in the manifest's `sessions`",
+    "session(s) carrying branch(es) ['claude/self-cloud-bootstrap'] were launched from '/tmp/claude-0/-home-user-agenttooling/2800f947-25d6-58da-8260-9ff41ac3ea2a/scratchpad/probe/race3', which this feature cannot claim from: that is the primary checkout '/home/user/agenttooling' outside '/home/user/agenttooling/.worktrees' (other features' worktrees), this feature's worktree '/home/user/agenttooling/.worktrees/self-cloud-bootstrap', and its legacy sibling '/home/user/agenttooling-self-cloud-bootstrap' \u2014 launch the coordinator inside the feature worktree, or pin each session id in the manifest's `sessions`",
+    "session(s) carrying branch(es) ['claude/self-cloud-bootstrap'] were launched from '/tmp/claude-0/-home-user-agenttooling/2800f947-25d6-58da-8260-9ff41ac3ea2a/scratchpad/probe/race4', which this feature cannot claim from: that is the primary checkout '/home/user/agenttooling' outside '/home/user/agenttooling/.worktrees' (other features' worktrees), this feature's worktree '/home/user/agenttooling/.worktrees/self-cloud-bootstrap', and its legacy sibling '/home/user/agenttooling-self-cloud-bootstrap' \u2014 launch the coordinator inside the feature worktree, or pin each session id in the manifest's `sessions`",
+    "session(s) carrying branch(es) ['claude/self-cloud-bootstrap'] were launched from '/tmp/claude-0/-home-user-agenttooling/2800f947-25d6-58da-8260-9ff41ac3ea2a/scratchpad/probe/race5', which this feature cannot claim from: that is the primary checkout '/home/user/agenttooling' outside '/home/user/agenttooling/.worktrees' (other features' worktrees), this feature's worktree '/home/user/agenttooling/.worktrees/self-cloud-bootstrap', and its legacy sibling '/home/user/agenttooling-self-cloud-bootstrap' \u2014 launch the coordinator inside the feature worktree, or pin each session id in the manifest's `sessions`",
+    "session(s) carrying branch(es) ['claude/self-cloud-bootstrap'] were launched from '/tmp/claude-0/-home-user-agenttooling/2800f947-25d6-58da-8260-9ff41ac3ea2a/scratchpad/probe/standalone', which this feature cannot claim from: that is the primary checkout '/home/user/agenttooling' outside '/home/user/agenttooling/.worktrees' (other features' worktrees), this feature's worktree '/home/user/agenttooling/.worktrees/self-cloud-bootstrap', and its legacy sibling '/home/user/agenttooling-self-cloud-bootstrap' \u2014 launch the coordinator inside the feature worktree, or pin each session id in the manifest's `sessions`"
+  ]
+}

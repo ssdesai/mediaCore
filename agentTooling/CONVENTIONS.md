@@ -66,12 +66,14 @@ it, and do not work around it with `pushd` or a subshell, which are denied too.
 | a one-line `for`, `while`, `until`, `if` or `case` | | write the script and run it by name |
 | a line that does not tokenize | `cat 'x` | close the quote |
 | a sequence mixing approved reads with one command the human must judge | `grep x f && git commit -m m` | run the reads on their own — they are approved — and the other alone |
+| a `sleep`, anywhere on the line | `sleep 60`, `ls && sleep 5` | nobody polls: run the long command in the background and wait for the notification it sends when it exits (`ORCHESTRATION.md`) |
 | a file authored through the shell: `echo`/`printf` redirected to a path, `cat`/`tee` fed a heredoc, a herestring or an `echo` with output to a path, `sed -i` | `cat >> f <<'EOF'`, `echo x > f`, `sed -i 's/a/b/' f` | the Write tool for a new file or a whole rewrite, the Edit tool for a change — an append is an Edit on the file's last lines |
 
 The rewrite is always one of four: **write the script to the scratchpad with the Write
 tool and run it by name** (`bash <path>`, `python3 <path>`); use the Read, Grep, Write or
 Edit tool instead of a one-liner; inline the literal you already have; or split the line
-into one call each.
+into one call each. The one exception is `sleep`, whose rewrite is not a different
+spelling but a different shape: the background run and its exit notification.
 
 This is one rule seen from several sides: **every path a literal, every program named,
 nothing decided at run time.** A command whose paths only exist once it runs is a command

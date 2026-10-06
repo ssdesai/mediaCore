@@ -3,7 +3,9 @@
 planning.json claimed — the JSON edits the lifecycle scripts need, kept out of bash.
 
     python3 agentTooling/analysis/manifest.py [--self] <slug> init --method M --branch B \\
-        --base BASE --from TS [--session ID]... [--plan STEM]...
+        --base BASE --from TS [--profile local|cloud] [--gate green|skipped] [--session ID]...
+        [--plan STEM]...
+    python3 agentTooling/analysis/manifest.py [--self] <slug> session-start ID
     python3 agentTooling/analysis/manifest.py [--self] <slug> get <key>
     python3 agentTooling/analysis/manifest.py [--self] <slug> set-plans <stem>...
     python3 agentTooling/analysis/manifest.py [--self] <slug> set-window-to [TS] [--tighten|--replace]
@@ -17,7 +19,12 @@ planning.json claimed — the JSON edits the lifecycle scripts need, kept out of
 
 `init` writes `<features>/<slug>/README.md` from `templates/plans/features/TEMPLATE.md`
 with the template's fence replaced by a filled one, and refuses if the file exists —
-`feature-start.sh` runs it, once, in the new worktree. `get` prints one scalar (or a
+`feature-start.sh` runs it, once, in the new worktree; `--profile` records where (local or
+cloud), `--gate` whether its base gate ran green (`green`) or not at all (`skipped`), and a
+fence without either — every manifest started before the key — reads as "not recorded". `session-start` prints one session's first transcript instant truncated to the
+millisecond (`2026-10-05T22:05:29.123Z`), or nothing and exit 1 — the `from` the start
+stamps for a coordinator, read-only and run before `init`, and an instant
+`set-window-from … --session <same id>` accepts exactly. `get` prints one scalar (or a
 JSON array) from the LAST ```json fence, the one `capture_planning.py` reads. `set-window-to`
 replaces a `null` `to` bound with TS (default: now, UTC, `Z`) and touches nothing else in
 the file; a bound already set is left alone and reported, since a second stamp would move
@@ -95,10 +102,29 @@ TEMPLATE_PATH = AGENT_TOOLING_DIR / "templates" / "plans" / "features" / "TEMPLA
 FENCE_RE = re.compile(r"```json\n(.*?)\n```", re.DOTALL)
 # The order the fence is written in, so every manifest reads the same way top to bottom.
 FENCE_KEY_ORDER = (
-    "slug", "method", "plans", "branches", "base", "session_window",
+    "slug", "method", "plans", "branches", "base", "profile", "gate", "session_window",
     "exclude_sessions", "exclude_subagents", "sessions", "subagents",
 )
 KNOWN_METHODS = ("plans", "direct", "hand")
+# Where a feature was started (self/DESIGN-2026-10-05-cloud-execution.md §1): the values
+# env-profile.sh decides between, written by `init --profile` and absent from every
+# manifest started before the key existed — which every reader treats as "not recorded".
+PROFILE_KEY = "profile"
+KNOWN_PROFILES = ("local", "cloud")
+# Whether the start's base gate ran green (design §7): `green`, or `skipped` under
+# `feature-start.sh --no-gate` or with no gate script — a feature started on an unverified
+# base says so. Written by `init --gate` beside `profile`; absent from every manifest
+# started before the key, which readers treat as "not recorded".
+GATE_KEY = "gate"
+KNOWN_GATE_RECORDS = ("green", "skipped")
+# How `session-start` prints an instant: UTC, `Z`, TRUNCATED (never rounded) to the
+# millisecond — the precision transcripts carry, so the printed bound is never later than
+# the session's first line and `set-window-from` accepts it exactly (issue #82; it was
+# floored to the whole second, which is earlier than nearly every session and refused).
+# `isoformat(timespec=…)` truncates excess precision and always writes the three digits,
+# `.000` included: `2026-10-05T22:05:29.123Z`.
+FENCE_INSTANT_TIMESPEC = "milliseconds"
+FENCE_INSTANT_UTC_SUFFIX = "Z"
 # The fence key `pin-session` appends to: the sessions claimed outright, regardless of
 # branch, window or cwd.
 SESSIONS_KEY = "sessions"
@@ -179,6 +205,12 @@ def cmd_init(args):
     if args.method not in KNOWN_METHODS:
         print(f"refusing: --method must be one of {', '.join(KNOWN_METHODS)}", file=sys.stderr)
         return 1
+    if args.profile is not None and args.profile not in KNOWN_PROFILES:
+        print(f"refusing: --profile must be one of {', '.join(KNOWN_PROFILES)}", file=sys.stderr)
+        return 1
+    if args.gate is not None and args.gate not in KNOWN_GATE_RECORDS:
+        print(f"refusing: --gate must be one of {', '.join(KNOWN_GATE_RECORDS)}", file=sys.stderr)
+        return 1
     if not TEMPLATE_PATH.exists():
         print(f"refusing: no template at {TEMPLATE_PATH}", file=sys.stderr)
         return 1
@@ -196,6 +228,10 @@ def cmd_init(args):
         "sessions": list(args.session or []),
         "subagents": [],
     }
+    if args.profile is not None:
+        fence[PROFILE_KEY] = args.profile
+    if args.gate is not None:
+        fence[GATE_KEY] = args.gate
     new_text = text[: match.start(1)] + render_fence(fence) + text[match.end(1):]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(new_text)
@@ -331,6 +367,41 @@ def session_first_instant(session_id):
         if moment is not None
     ]
     return min(moments) if moments else None
+
+
+def fence_instant(moment):
+    """An aware instant as a fence bound: UTC, truncated to the millisecond, `Z`."""
+    naive_utc = moment.astimezone(timezone.utc).replace(tzinfo=None)
+    return naive_utc.isoformat(timespec=FENCE_INSTANT_TIMESPEC) + FENCE_INSTANT_UTC_SUFFIX
+
+
+def cmd_session_start(args):
+    """Print one session's first transcript instant, truncated to the millisecond, as a
+    fence bound (`fence_instant`) — or nothing, exit 1, when no transcript carries that
+    id or none of its lines is timestamped.
+
+    What `feature-start.sh` stamps `session_window.from` with when the session running it
+    is the feature's COORDINATOR — launched on the feature's branch, as every cloud
+    session is (self/features/execution-profiles, the start-instant ruling). The branch
+    route selects a session by its START, and a coordinator began before the start ran; a
+    `from` at the start's own clock would leave it unselected, which `set-window-from` then
+    had to repair by hand. Truncated, never rounded: `from` must not pass the session's
+    start. And no coarser than the transcript: the same output is what `set-window-from
+    … --session <id>` is handed, and that refuses an instant earlier than the session's
+    first line, so a bound floored to the second was refused for nearly every session
+    (issue #82; self/features/session-start-precision, superseding execution-profiles
+    ruling 18's floor). Reads no manifest — the slug is only argparse's shape — so it runs
+    before `init` writes one."""
+    first = session_first_instant(args.session_id)
+    if first is None:
+        print(
+            f"no transcript for session {args.session_id!r} under ~/.claude/projects/, or "
+            "none of its lines is timestamped",
+            file=sys.stderr,
+        )
+        return 1
+    print(fence_instant(first))
+    return 0
 
 
 def captured_at_of(args):
@@ -674,7 +745,28 @@ def main():
     p_init.add_argument("--from", dest="window_from", required=True, metavar="TS")
     p_init.add_argument("--session", action="append", metavar="ID")
     p_init.add_argument("--plan", action="append", metavar="STEM")
+    p_init.add_argument(
+        "--profile",
+        metavar="PROFILE",
+        help="where the start ran: local or cloud (env-profile.sh); omitted, the fence "
+        "carries no profile key",
+    )
+    p_init.add_argument(
+        "--gate",
+        metavar="GATE",
+        help="the start's base gate: green, or skipped (--no-gate, or no gate script); "
+        "omitted, the fence carries no gate key",
+    )
     p_init.set_defaults(func=cmd_init)
+
+    p_start = sub.add_parser(
+        "session-start",
+        help="print a session's first transcript instant, UTC, truncated to the millisecond "
+        "— the `from` feature-start.sh stamps for a coordinator, and one "
+        "`set-window-from … --session ID` accepts exactly",
+    )
+    p_start.add_argument("session_id", metavar="ID")
+    p_start.set_defaults(func=cmd_session_start)
 
     p_get = sub.add_parser("get", help="print one field of the fence (dotted path)")
     p_get.add_argument("key")

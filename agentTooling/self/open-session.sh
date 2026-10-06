@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# template-version: 3
+# template-version: 4
 
 # agentTooling's own session-opening hook, run inside — for — a new feature worktree by
 # ../feature-start.sh --self --open, with the worktree's absolute path as its only
@@ -40,6 +40,18 @@ set -euo pipefail
 # survives them; self/tests/feature-lifecycle.sh S5 reads it as text.
 
 WORKTREE="${1:?usage: open-session.sh <worktree path>}"
+
+# The cloud half of this adapter (../self/DESIGN-2026-10-05-cloud-execution.md §1, §3).
+# In a Claude Code cloud container the container IS the feature's checkout and the
+# session that ran feature-start.sh is already in it, so there is nothing to open.
+# AGENTTOOLING_PROFILE is exported by the start's own ../env-profile.sh, the one place
+# the profile is decided.
+CLOUD_PROFILE="cloud"
+if [[ "${AGENTTOOLING_PROFILE:-}" == "$CLOUD_PROFILE" ]]; then
+  echo "  open  this session is already in the feature's checkout, $WORKTREE — in a cloud container the container is the worktree; nothing to open"
+  exit 0
+fi
+
 TERMINAL_APP="Terminal"
 SESSION_COMMAND="claude"
 

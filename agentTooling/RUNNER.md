@@ -487,6 +487,29 @@ Both are asserted end to end in `self/tests/stream-capture.sh` phase 10, through
 `claude` that records its own environment and prompt — the only way to see what the
 launch site really handed the executor.
 
+**What the executor's environment must not carry: the parent's session id.** A `claude -p`
+that inherits `CLAUDE_CODE_SESSION_ID` from the session that started the runner reports
+that id as its own and appends its lines to the **parent's** transcript (reproduced in a
+cloud container, `self/features/cost-capture-collisions/README.md`; design
+`self/DESIGN-2026-10-05-cloud-execution.md` §4). The runner then writes the parent's id into
+the plan's `usage.json`, and `analysis/capture_planning.py`, which excludes every id a
+`usage.json` names as runner cost, excluded the coordinator and its pinned delegates with
+it. So the same launch site runs `env -u CLAUDE_CODE_SESSION_ID -u
+CLAUDE_CODE_REMOTE_SESSION_ID` (`EXECUTOR_SCRUBBED_ENV_NAMES`) and passes **`--session-id
+<uuid>`** minted per launch by `mint_session_id` — `uuidgen`, else
+`/proc/sys/kernel/random/uuid`, else python3's `uuid`, lowercased and checked against the
+CLI's uuid shape. A resume is a fresh launch and so a fresh id, exactly as "How resume
+works" says; `write_usage_sidecar` still reads the id from the stream, which now carries
+this one, and the runner prints it as `session: <id>` beside `model:`. If no source yields
+a uuid the runner warns and launches without the flag — never with an empty one — and the
+scrub alone still keeps the parent's id out. Transcripts written before the scrub are
+handled on the capture side (`analysis/README.md` → `capture_planning.py`, the collision
+rule), which recognises a runner's conversation by the sentence every runner prompt
+carries, `HEADLESS_PROMPT_MARKER`. Asserted by `self/tests/stream-capture.sh` phase 11,
+through `run-review.sh` with both variables set in the parent: the child sees neither,
+receives a valid uuid that is not the parent's, and the `usage.json` records it; 11i–11m
+pin the marker in all four runner prompts.
+
 **When `SANDBOX_ENABLED` is on, the executor runs inside the OS sandbox. It is off
 today**, so the runners currently execute without the OS boundary, as they did before
 `runner-sandbox` (#72). Where `permissions.blockReadsOutsideWorkingDirectories` is on, a

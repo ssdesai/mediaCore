@@ -509,6 +509,14 @@ LINE_BREAK_REWRITE_REASON = (
     "this command carries a line break (or a `\\` continuation) outside a heredoc body, "
     "so it is several commands in one call and nothing here can say which of them the "
     "approval would be for. Send one call per line.")
+# A timer in place of a notification (self/DESIGN-2026-10-05-cloud-execution.md §9). It
+# used to fall through to a silent prompt; this only ever turns that prompt into a deny,
+# never into an approval. ORCHESTRATION.md's rule: nobody polls, ever.
+SLEEP_PROGRAM = "sleep"
+SLEEP_REWRITE_REASON = (
+    "%s waits on a timer, and nobody polls (ORCHESTRATION.md): run the long command in "
+    "the background and wait for the notification it sends when it exits, rather than "
+    "sleeping to check on it.")
 MIXED_SEQUENCE_REWRITE_REASON = (
     "this line mixes commands this hook approves with commands only you can judge, so "
     "the human ends up approving the whole line to get the one that matters. One write "
@@ -1463,6 +1471,12 @@ def relative_chdir(words):
     return not path_body(head[1]).startswith(os.sep)
 
 
+def sleeps(words):
+    """True when the member's program is `sleep`, bare or by path."""
+    head = program_words(words)
+    return bool(head) and command_name(head[0]) == SLEEP_PROGRAM
+
+
 def carries_line_break(command):
     """True when the command is several lines and none of them is a heredoc's body, and
     the break is not just an argument's own text.
@@ -1554,7 +1568,8 @@ def rewrite_reason_lines(command, cwd, root):
                                 (starts_with_tilde, TILDE_REWRITE_REASON),
                                 (brace_expansion_refused, BRACE_REWRITE_REASON),
                                 (parent_path_component, PARENT_PATH_REWRITE_REASON),
-                                (relative_chdir, RELATIVE_CHDIR_REWRITE_REASON)):
+                                (relative_chdir, RELATIVE_CHDIR_REWRITE_REASON),
+                                (sleeps, SLEEP_REWRITE_REASON)):
             if not fires(words):
                 continue
             line = template % quoted

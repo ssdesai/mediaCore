@@ -84,6 +84,25 @@ EXECUTOR_SCRATCH_DIR_NAME="scratch"
 # feature costs two turns and changes nothing.
 EXECUTOR_ADD_DIR_FLAG="--add-dir"
 
+# ── What the executor's environment must NOT carry ───────────────────────────
+# A `claude -p` that inherits its parent session's CLAUDE_CODE_SESSION_ID reports that id
+# as its own and appends its lines to the PARENT's transcript (reproduced in a cloud
+# container: self/features/cost-capture-collisions/README.md, design
+# self/DESIGN-2026-10-05-cloud-execution.md §4). The runner then writes the parent's id
+# into the plan's usage.json, and the capture excludes the coordinator as runner cost —
+# with every delegate it pinned. So every launch unsets both names (`env -u`, the way the
+# two names above are set) and passes a session id of the RUNNER's choosing, minted per
+# launch: a resumed plan is a fresh `claude -p` with a fresh id (RUNNER.md, "How resume
+# works"), and write_usage_sidecar reads the id back out of the stream as before — which is
+# now this one. Space-separated: bash 3.2 has no associative arrays and these are names.
+EXECUTOR_SCRUBBED_ENV_NAMES="CLAUDE_CODE_SESSION_ID CLAUDE_CODE_REMOTE_SESSION_ID"
+EXECUTOR_SESSION_ID_FLAG="--session-id"
+# What the CLI accepts after that flag ("must be a valid UUID"), lowercase — `uuidgen` on
+# macOS prints uppercase, and a transcript is filed under `<id>.jsonl`.
+EXECUTOR_SESSION_ID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+# Linux's kernel uuid source, the second of the three mint_session_id tries.
+LINUX_UUID_SOURCE="/proc/sys/kernel/random/uuid"
+
 # ── One definition of the events in a captured stream ────────────────────────
 # `claude`'s stderr is merged into the stream (`2>&1` in run_plan), so a runtime warning
 # or a crash trace can leave a non-JSON line in it, and a killed run can leave a truncated
@@ -300,7 +319,7 @@ run_level_gate() {
   done
   level_expectations "$sentinel"
   stamp_timing gate_start level="$label"
-  "$GATE_SCRIPT" "$label"
+  GATE_RESUME="$GATE_RESUME_ON" "$GATE_SCRIPT" "$label"
   rc=$?
   unset GATE_EXPECTED_RED GATE_DEFERRED
   local green=false
@@ -682,6 +701,27 @@ executor_scratch_note() {          # executor_scratch_note <scratch dir>
     "$1" "$1" "$1"
 }
 
+# A fresh session id for one `claude -p` launch, on stdout, lowercase; non-zero and nothing
+# printed when no source produced a valid one. Three sources, the first that answers:
+# `uuidgen` (always on macOS, on Linux with util-linux), the kernel's own uuid file on
+# Linux, and python3's `uuid` module (python3 is already what every analysis script runs
+# on). Each answer is checked against EXECUTOR_SESSION_ID_RE rather than trusted, so a
+# source that prints nothing or something else falls through to the next — the caller
+# then launches without the flag rather than with an empty or malformed one, and the
+# scrubbed environment alone still keeps the parent's id away from the child.
+mint_session_id() {
+  local candidate
+  candidate="$(uuidgen 2>/dev/null | tr 'A-Z' 'a-z')"
+  if [[ ! "$candidate" =~ $EXECUTOR_SESSION_ID_RE && -r "$LINUX_UUID_SOURCE" ]]; then
+    candidate="$(tr 'A-Z' 'a-z' < "$LINUX_UUID_SOURCE" 2>/dev/null)"
+  fi
+  if [[ ! "$candidate" =~ $EXECUTOR_SESSION_ID_RE ]]; then
+    candidate="$(python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null | tr 'A-Z' 'a-z')"
+  fi
+  [[ "$candidate" =~ $EXECUTOR_SESSION_ID_RE ]] || return 1
+  printf '%s\n' "$candidate"
+}
+
 # Run one plan. Caller must have already placed plan_path in $INPROGRESS_DIR
 # and ensured the sidecar log exists. Returns:
 #   0 = success
@@ -780,9 +820,24 @@ run_plan() {
   local scratch_dir="$CAPTURE_TMPDIR/$EXECUTOR_SCRATCH_DIR_NAME"
   mkdir -p "$scratch_dir"
 
-  env "$EXECUTOR_HEADLESS_ENV=$EXECUTOR_HEADLESS_VALUE" \
+  # The parent's session id never reaches the child (see EXECUTOR_SCRUBBED_ENV_NAMES): both
+  # names unset, and an id of this runner's choosing passed instead — unless none could be
+  # minted, which is said and survived, never answered with an empty `--session-id`.
+  local scrub_args=() env_name
+  for env_name in $EXECUTOR_SCRUBBED_ENV_NAMES; do scrub_args+=(-u "$env_name"); done
+  local session_id_args=() executor_session_id
+  if executor_session_id="$(mint_session_id)"; then
+    session_id_args=("$EXECUTOR_SESSION_ID_FLAG" "$executor_session_id")
+    echo "    session: $executor_session_id"
+  else
+    echo "WARN: could not mint a session id (uuidgen, $LINUX_UUID_SOURCE and python3 all failed) — launching $plan_name without $EXECUTOR_SESSION_ID_FLAG; the child picks its own id, and the parent's is still unset" >&2
+  fi
+
+  env "${scrub_args[@]}" \
+      "$EXECUTOR_HEADLESS_ENV=$EXECUTOR_HEADLESS_VALUE" \
       "$EXECUTOR_SCRATCH_ENV=$scratch_dir" \
     claude -p --model "$model" --permission-mode acceptEdits \
+    ${session_id_args[@]+"${session_id_args[@]}"} \
     "$EXECUTOR_ADD_DIR_FLAG" "$scratch_dir" \
     "${CLAUDE_TOOL_ARGS[@]}" \
     ${CLAUDE_BUDGET_ARGS[@]+"${CLAUDE_BUDGET_ARGS[@]}"} \

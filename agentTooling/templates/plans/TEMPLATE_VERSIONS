@@ -5,7 +5,9 @@
 # so a comment or doc edit never forces a bump, while any change to the code does.
 # Editing a template's body: bump its `# template-version:` line, then re-record the
 # hash here with the command above. See ../README.md.
-gate.sh 2 883d9c0a6c2cbadc4501e4e7452a4e22e8638a16eb44da7adfd01967db7f707a
-pr.sh 4 f51b4914c31dcf40d06a1bc67a12d72ed416c3022f988275f9a9fe1cab20041c
-worktree-setup.sh 1 cba109b693adb65afee5d86aaee9f8eda7340644e63364193d7c1c2542ae83c3
-open-session.sh 3 629a712cfa73cd541027f9ae3bd2fcfc94569332357264d8d35de2e7166e875a
+gate.sh 3 afcb81a255f254dc43eec4907edd5444641ee5a7c24d9213e5084e8970f2f5ca
+pr.sh 6 7027b5d453660f1c9a25a6be70bb1c5be2432466bbc2909e98f568b5b12b31bc
+worktree-setup.sh 2 a0e19aa47de8ea3f93832e489f573e93250ec49cff541d75bd65cadd511044e8
+open-session.sh 4 d77fd47383a368ccf101218f61ce6dc0e8047f41647f8cf3f4c98491437e5dec
+environment.sh 1 a8fcac36b00d6e93ac6649b91daf903da76921c8e9db07abe50ad07030e21313
+cloud-setup.sh 1 310ba1cbdd707538e0d2152316805ed4f3da1f8e9ce09155b40b37f2ec53a597

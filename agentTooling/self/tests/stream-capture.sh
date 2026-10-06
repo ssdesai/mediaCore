@@ -32,6 +32,13 @@ set -uo pipefail
 #      the stream file survives;
 #   5. the usage-limit routing is unchanged: a `result` event stream_shows_usage_limit
 #      recognises leaves the plan in inprogress/ and stops the run.
+#  (6-10 are described at their phases.)
+#  11. the executor never inherits its parent's session id (cost-capture-collisions,
+#      design §4): run-review.sh, launched with CLAUDE_CODE_SESSION_ID and
+#      CLAUDE_CODE_REMOTE_SESSION_ID set, hands its child neither and a minted uuid as
+#      --session-id instead, which the review's usage.json then records; each launch
+#      mints its own; and every runner's prompt carries capture_planning.py's
+#      HEADLESS_PROMPT_MARKER, the sentence a collided runner tree is recognised by.
 #
 # Depends on plan-runner-lib.sh's run_plan capturing the stream where nothing downstream
 # can truncate it, on finalize_plan warning on rc==0 with no result event, and on the
@@ -89,6 +96,16 @@ ORPHAN_POLL_TRIES=40
 cat > "$TMP/bin/claude" <<STUB
 #!/usr/bin/env bash
 trap '' PIPE
+# The session id this run reports, chosen the way the real CLI chooses it (design §4,
+# reproduced in self/features/cost-capture-collisions/README.md): an explicit
+# --session-id wins, and otherwise a CLAUDE_CODE_SESSION_ID inherited from a parent
+# session is reported as this run's own — which is the defect phase 11 exists for.
+stub_session_arg=""
+stub_prev=""
+for stub_arg in "\$@"; do
+  if [[ "\$stub_prev" == "--session-id" ]]; then stub_session_arg="\$stub_arg"; fi
+  stub_prev="\$stub_arg"
+done
 # Phase 10's window onto the executor's environment and prompt: what run_plan hands
 # `claude -p` is otherwise invisible from outside the runner.
 if [[ -n "\${CLAUDE_STUB_ENV_LOG:-}" ]]; then
@@ -102,6 +119,10 @@ if [[ -n "\${CLAUDE_STUB_ENV_LOG:-}" ]]; then
     printf 'HEADLESS=%s\n' "\${AGENTTOOLING_HEADLESS:-<unset>}"
     printf 'SCRATCH=%s\n' "\${AGENTTOOLING_SCRATCH:-<unset>}"
     printf 'SCRATCH_EXISTS=%s\n' "\$stub_scratch_state"
+    # Phase 11: set-ness, not value — an inherited empty string is still inherited.
+    printf 'CODE_SESSION=%s\n' "\${CLAUDE_CODE_SESSION_ID-<unset>}"
+    printf 'CODE_REMOTE_SESSION=%s\n' "\${CLAUDE_CODE_REMOTE_SESSION_ID-<unset>}"
+    printf 'SESSION_ARG=%s\n' "\${stub_session_arg:-<none>}"
   } > "\$CLAUDE_STUB_ENV_LOG"
   # The prompt is many lines, so it gets a file of its own rather than a key=value line
   printf '%s\n' "\$stub_prompt" > "\$CLAUDE_STUB_ENV_LOG.prompt"
@@ -109,7 +130,7 @@ if [[ -n "\${CLAUDE_STUB_ENV_LOG:-}" ]]; then
   # directory is, but only the flags say whether the executor may write to it.
   printf '%s\n' "\$@" > "\$CLAUDE_STUB_ENV_LOG.argv"
 fi
-sid="\${CLAUDE_STUB_SESSION_ID:-stub-session}"
+sid="\${CLAUDE_STUB_SESSION_ID:-\${stub_session_arg:-\${CLAUDE_CODE_SESSION_ID:-stub-session}}}"
 printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "\$sid"
 i=0
 while (( i < $STUB_STEPS )); do
@@ -465,6 +486,66 @@ check "10f. the scratch directory is removed when the pass ends" \
   '[[ "$SCRATCH_SEEN" == "$CAPTURE_TMP"/* && ! -d "$SCRATCH_SEEN" ]]'
 check "10g. and nothing is left under \$TMPDIR at all (got $(capture_dirs_left))" \
   '[[ "$(capture_dirs_left)" == "0" ]]'
+PLANS_SESSION_ARG="$(env_value SESSION_ARG)"
+
+# ── 11: the executor never inherits its parent's session id (design §4) ──────────────
+# Reproduced in a cloud container (self/features/cost-capture-collisions/README.md): a
+# `claude -p` launched with the parent's environment reports the parent's
+# CLAUDE_CODE_SESSION_ID as its own and appends its lines to the parent's transcript, so
+# the parent's id lands in the plan's usage.json and the capture then excludes the
+# coordinator as a runner session. The stub above reports its session id the way the CLI
+# does — an explicit --session-id, else an inherited CLAUDE_CODE_SESSION_ID — so on a
+# runner that does not scrub, every check below fails. Driven through run-review.sh, the
+# design's choice: it is the runner that was running when cloud-close's capture lost its
+# coordinator, and it goes through the same launch site as the other two.
+UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+PARENT_SESSION="11111111-2222-4333-8444-555555555555"
+PARENT_REMOTE="cse_parent_remote_session"
+REVIEW_PLAN=01-review-haiku
+reset_feature
+rm -f "$F/auto/incomplete/$PLAN.md"
+echo "review the work for cap" > "$F/review/incomplete/$REVIEW_PLAN.md"
+rm -rf "${CAPTURE_TMP:?}"/*
+ENV_LOG="$TMP/stub-env-11.txt"
+rm -f "$ENV_LOG"
+( TMPDIR="$CAPTURE_TMP" CLAUDE_STUB_ENV_LOG="$ENV_LOG" \
+    CLAUDE_CODE_SESSION_ID="$PARENT_SESSION" CLAUDE_CODE_REMOTE_SESSION_ID="$PARENT_REMOTE" \
+    "$AT/run-review.sh" --self "$SLUG" > "$TMP/out-11.txt" 2>"$TMP/err-11.txt" ); rc=$?
+REVIEW_SESSION_ARG="$(env_value SESSION_ARG)"
+RC_USAGE="$F/review/complete/$REVIEW_PLAN.usage.json"
+check "11a. the review executor did not inherit CLAUDE_CODE_SESSION_ID (got \"$(env_value CODE_SESSION)\")" \
+  '[[ "$(env_value CODE_SESSION)" == "<unset>" ]]'
+check "11b. nor CLAUDE_CODE_REMOTE_SESSION_ID (got \"$(env_value CODE_REMOTE_SESSION)\")" \
+  '[[ "$(env_value CODE_REMOTE_SESSION)" == "<unset>" ]]'
+check "11c. it was handed --session-id with a valid uuid (got \"$REVIEW_SESSION_ARG\")" \
+  '[[ "$REVIEW_SESSION_ARG" =~ $UUID_RE ]]'
+check "11d. ... that is not the parent's id" \
+  '[[ "$REVIEW_SESSION_ARG" =~ $UUID_RE && "$REVIEW_SESSION_ARG" != "$PARENT_SESSION" ]]'
+check "11e. the review's usage.json records that uuid as the session (got \"$(jq -r ".session_id" "$RC_USAGE" 2>/dev/null)\")" \
+  '[[ -n "$REVIEW_SESSION_ARG" && "$(jq -r ".session_id" "$RC_USAGE" 2>/dev/null)" == "$REVIEW_SESSION_ARG" ]]'
+check "11f. ... and as its attempt's session, which is what the capture's exclusion reads" \
+  '[[ -n "$REVIEW_SESSION_ARG" && "$(jq -r ".attempts[0].session_id" "$RC_USAGE" 2>/dev/null)" == "$REVIEW_SESSION_ARG" ]]'
+check "11g. the build runner's launch carries a minted uuid too (phase 10, got \"$PLANS_SESSION_ARG\")" \
+  '[[ "$PLANS_SESSION_ARG" =~ $UUID_RE ]]'
+check "11h. ... minted per launch: the two runs were handed different ids" \
+  '[[ -n "$PLANS_SESSION_ARG" && "$PLANS_SESSION_ARG" != "$REVIEW_SESSION_ARG" ]]'
+
+# 11i–11l: the marker the capture recognises a runner's conversation by. A runner child
+# that collided with its parent's id before this fix left its lines in the parent's
+# transcript, and `capture_planning.py` tells them apart from the coordinator's by the
+# opening prompt of their conversation tree carrying `HEADLESS_PROMPT_MARKER`. The prompt
+# and the constant live in different files in different languages, so this is what
+# stops them drifting apart: every runner's prompt carries the constant, verbatim.
+HEADLESS_MARKER="$(cd "$HERE/analysis" && RATES_LIVE_LOOKUP=off python3 -B -c 'import capture_planning; print(capture_planning.HEADLESS_PROMPT_MARKER)' 2>/dev/null)"
+check "11i. capture_planning.py declares the headless marker (got \"$HEADLESS_MARKER\")" '[[ -n "$HEADLESS_MARKER" ]]'
+check "11j. the review prompt a runner really sent carries it" \
+  '[[ -n "$HEADLESS_MARKER" ]] && grep -qF "$HEADLESS_MARKER" "$ENV_LOG.prompt"'
+check "11k. run-plans.sh's prompt carries it" \
+  '[[ -n "$HEADLESS_MARKER" ]] && [[ "$(grep -cF "$HEADLESS_MARKER" "$HERE/run-plans.sh")" -ge 1 ]]'
+check "11l. run-verify.sh's verify AND escalation prompts both carry it" \
+  '[[ -n "$HEADLESS_MARKER" ]] && [[ "$(grep -cF "$HEADLESS_MARKER" "$HERE/run-verify.sh")" -ge 2 ]]'
+check "11m. run-review.sh's prompt carries it" \
+  '[[ -n "$HEADLESS_MARKER" ]] && [[ "$(grep -cF "$HEADLESS_MARKER" "$HERE/run-review.sh")" -ge 1 ]]'
 
 if (( fails > 0 )); then echo "stream-capture: $fails assertion(s) FAILED"; exit 1; fi
 echo "stream-capture: all assertions passed"

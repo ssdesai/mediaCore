@@ -44,6 +44,8 @@ Delete this section when the batch has a single level.
   "plans": ["NN-description-MODEL", "NN-verify-MODEL", "NN-review-opus"],
   "branches": ["<branch-name>"],
   "base": "<base-branch>",
+  "profile": "local",
+  "gate": "green",
   "session_window": {"from": "<YYYY-MM-DDTHH:MM:SSZ>", "to": "<YYYY-MM-DDTHH:MM:SSZ>"},
   "exclude_sessions": ["<session-id>"],
   "exclude_subagents": ["<agent-id>"],
@@ -53,7 +55,7 @@ Delete this section when the batch has a single level.
 ```
 
 **`agentTooling/feature-start.sh` writes this fence** — the slug, the method, the
-branch, the base and `from`, with the id lists empty — and
+branch, the base, the profile, the gate and `from`, with the id lists empty — and
 `feature-capture.sh` stamps `to` on the branch, provisionally until the merge freezes it
 (`agentTooling/LIFECYCLE.md`). Do not hand-copy it. Only `slug`, `plans` and `branches`
 are required: `method` reads as `"plans"` when absent, `base` as `main`,
@@ -73,6 +75,18 @@ go wrong quietly:
   stacked on one that has not merged shows only its own diff. `run-review.sh` reads it
   too, to know whether it is on a branch it may commit its pass to. Cost capture ignores
   it.
+- **`profile`** — `"local"` or `"cloud"`: where the start ran, as
+  `agentTooling/env-profile.sh` decided it (`"cloud"` in a Claude Code cloud container,
+  where the feature's checkout is the container itself and `branches` names the session's
+  assigned branch). A record of where the cost was made, shown by `analysis/report.py`;
+  nothing branches on it. Absent from a manifest started before it, which reads as "not
+  recorded".
+- **`gate`** — `"green"` or `"skipped"`: whether the start's base gate ran and was green,
+  or no gate ran at all (`feature-start.sh --no-gate`, or the repo has no gate script), so
+  a feature started on an unverified base says so in its record
+  (`agentTooling/self/DESIGN-2026-10-05-cloud-execution.md` §7). Written by the start
+  through `analysis/manifest.py init --gate`, shown by `analysis/report.py`; nothing
+  branches on it. Absent from a manifest started before it, which reads as "not recorded".
 
 - **`branches`** — copy each name from `git branch --show-current`, verbatim. It is
   matched literally against the `gitBranch` in every session transcript, so an added
@@ -99,7 +113,9 @@ go wrong quietly:
   belongs to none of them, and its spend is routing overhead reported from
   `plans/features/<slug>/routing.json` rather than billed to any feature
   (`agentTooling/LIFECYCLE.md` → step 2). The coordinator belongs inside the worktree,
-  where rule 1 claims it by branch with no pin at all. What is left for this field is the
+  where rule 1 claims it by branch with no pin at all — and a session that starts the
+  feature already ON its branch, as every Claude Code cloud session does, is that
+  coordinator: no routing record, no pin, and `from` set to its own first instant. What is left for this field is the
   case it was written for — a session that genuinely worked on this feature from
   somewhere else, typically one that began on `main` before the branch existed; widening
   `branches` to `main`

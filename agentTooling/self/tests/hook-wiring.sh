@@ -6,7 +6,7 @@ set -uo pipefail
 # consuming repo's .claude/settings.json (hooks/README.md). Run by self/gate.sh, or by
 # hand: bash self/tests/hook-wiring.sh
 #
-# Builds twenty-six throwaway repos under mktemp -d, one per starting state of the settings
+# Builds thirty throwaway repos under mktemp -d, one per starting state of the settings
 # file — absent, unrelated content only, hook only, deny rules only, a partial deny list
 # with a repo's own rule in it, the hook and the Edit rules but no Bash rules, everything
 # but the ask rule, everything but the sandbox block, complete, complete plus a RETIRED
@@ -22,6 +22,13 @@ set -uo pipefail
 # second write reports kept with the file byte-identical while --check reports in-sync.
 # A file carrying the hook and the Edit rules and no Bash rules reports UNWIRED naming
 # the count of missing Bash rules, and the write appends exactly those, in order.
+#
+# The SessionStart entry (self/DESIGN-2026-10-05-cloud-execution.md §7): every written
+# consumer file carries exactly one SessionStart hook running plans/cloud-setup.sh — added
+# once, never duplicated (the second write is byte-identical), a repo's customized
+# spelling of it kept as the entry, a repo's own unrelated SessionStart hook kept first;
+# a file complete but for it reports UNWIRED naming only it; a SessionStart that is not a
+# list is INVALID; and --self writes none (no plans/cloud-setup.sh exists there).
 # Malformed files are reported INVALID by both modes and left untouched.
 #
 # The sandbox block (self/features/runner-sandbox): every written file has
@@ -37,12 +44,15 @@ set -uo pipefail
 # table the hook reads too, so a rule added to the table reaches this test with nobody
 # editing it (self/tests/policy-table.sh asserts the rendering itself).
 #
-# Three more repos cover --self, where the file is wholly GENERATED rather than merged:
-# it carries this checkout's hook path and the ask rule Edit(**/hooks/**) +
-# Edit(/hooks/**) in place of the vendored spelling, --check compares it BYTE FOR BYTE
-# with a fresh write, so a hand-added allow rule or a repointed hook command fails it
-# where the merge check would have passed, and --write restores those bytes. The
-# checkout's own generated (untracked) .claude/settings.json is checked with it, the same call
+# Three more repos cover --self, where the one file, .claude/settings.json, is wholly
+# GENERATED rather than merged, and tracked (self/features/self-cloud-bootstrap): it
+# carries this checkout's hook path — guarded, a no-op where
+# ${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh does not exist — and the ask rule
+# Edit(**/hooks/**) + Edit(/hooks/**) in place of the vendored spelling, and no
+# SessionStart entry; --self writes no settings.local.json. --check compares it BYTE FOR
+# BYTE with a fresh write, so a hand-added allow rule, a repointed hook command or a
+# missing file fails it where the merge check would have passed, and --write restores
+# those bytes. The checkout's own tracked file is checked with it, the same call
 # self/gate.sh records. No allow rule is ever added. No model, no network.
 
 AT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -65,7 +75,23 @@ import policy
 HOOK_ENTRY = {"matcher": "Bash", "hooks": [{"type": "command",
               "command": "/custom/path/allow-repo-commands.sh"}]}
 HOOK_COMMAND = "${CLAUDE_PROJECT_DIR}/agentTooling/hooks/allow-repo-commands.sh"
-SELF_HOOK_COMMAND = "${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh"
+# agentTooling's own command is guarded: the file is tracked and ships with the subtree,
+# so where the script is absent (a consuming repo's root) it must be a silent exit 0.
+SELF_HOOK_PATH = "${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh"
+SELF_HOOK_COMMAND = 'test ! -f "%s" || "%s"' % (SELF_HOOK_PATH, SELF_HOOK_PATH)
+# The SessionStart entry (self/DESIGN-2026-10-05-cloud-execution.md §7): the repo's seeded
+# plans/cloud-setup.sh, once per container. The guard is the script's own — it asks
+# env-profile.sh and is a no-op outside the cloud profile — so the entry names nothing but
+# the script, and every session start runs it. Recognised by the script's name, so a
+# repo's customized entry (a matcher, another spelling) is kept and never doubled.
+SESSION_MARKER = "cloud-setup.sh"
+SESSION_COMMAND = "${CLAUDE_PROJECT_DIR}/plans/cloud-setup.sh"
+SESSION_ENTRY = {"hooks": [{"type": "command", "command": SESSION_COMMAND}]}
+SESSION_CUSTOM = {"matcher": "startup", "hooks": [{"type": "command",
+                  "command": "bash /custom/plans/cloud-setup.sh"}]}
+OTHER_SESSION = {"hooks": [{"type": "command", "command": "/x/warm-cache.sh"}]}
+# Both hook entries, as a complete file carries them
+WIRED_HOOKS = {"PreToolUse": [HOOK_ENTRY], "SessionStart": [SESSION_ENTRY]}
 # The Edit deny rules, then the Bash rules rendered from the table. The policy's own
 # rule is no longer among them: hooks/ is an ASK rule now, so an attended session is
 # prompted and a headless executor, which cannot answer, is refused.
@@ -81,6 +107,9 @@ RETIRED = list(policy.retired_bash_deny_rules())
 ASK = ["Edit(**/agentTooling/hooks/**)"]
 SELF_ASK = ["Edit(**/hooks/**)", "Edit(/hooks/**)"]
 OK_WRITE = ("created", "wired", "kept")
+SETTINGS_FILE = "settings.json"
+# Claude Code's own per-user file; --self never generates it (self-cloud-bootstrap)
+LOCAL_FILE = "settings.local.json"
 
 # The OS sandbox block (self/features/runner-sandbox). The generator OWNS three scalars
 # and the secrets-only denyRead; allowedDomains starts from at least these and grows with
@@ -144,43 +173,59 @@ CASES = {
     "partial-deny": ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
                       "permissions": {"deny": ALL_DENY[:3] + ["Edit(/secrets/**)"]}},
                      "UNWIRED", "wired"),
-    "edit-only":    ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
+    "edit-only":    ({"hooks": dict(WIRED_HOOKS),
                       "permissions": {"deny": list(EDIT_DENY), "ask": list(ASK)}},
                      "UNWIRED", "wired"),
-    "no-ask":       ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
+    "no-ask":       ({"hooks": dict(WIRED_HOOKS),
                       "permissions": {"deny": list(ALL_DENY)}}, "UNWIRED", "wired"),
-    "no-sandbox":   ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
+    "no-sandbox":   ({"hooks": dict(WIRED_HOOKS),
                       "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)}},
                      "UNWIRED", "wired"),
-    "complete":     ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
+    "complete":     ({"hooks": dict(WIRED_HOOKS),
                       "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
                       "sandbox": sandbox_with()},
                      "in-sync", "kept"),
-    "retired":      ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
+    "retired":      ({"hooks": dict(WIRED_HOOKS),
                       "permissions": {"deny": ["Edit(/secrets/**)"] + RETIRED
                                       + list(ALL_DENY), "ask": list(ASK)},
                       "sandbox": sandbox_with()},
                      "UNWIRED", "wired"),
-    "sandbox-own":  ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
+    "sandbox-own":  ({"hooks": dict(WIRED_HOOKS),
                       "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
                       "sandbox": CONSUMER_SANDBOX},
                      "UNWIRED", "wired"),
-    "sandbox-off":  ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
+    "sandbox-off":  ({"hooks": dict(WIRED_HOOKS),
                       "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
                       "sandbox": DISABLED_SANDBOX},
                      "UNWIRED", "wired"),
     # The complete block with ONLY `enabled` flipped away from the switch — a repo that
     # turned the sandbox on by hand while the generator has it off (or the reverse, once
     # the switch is flipped). The generator owns `enabled`, so it is set back.
-    "enabled-flip": ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
+    "enabled-flip": ({"hooks": dict(WIRED_HOOKS),
                       "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
                       "sandbox": sandbox_with(enabled=not SANDBOX_ENABLED_EXPECTED)},
                      "UNWIRED", "wired"),
+    # The SessionStart entry (design §7): complete but for it, a repo's own customized
+    # spelling of it (kept, never doubled), and a repo's own unrelated SessionStart hook
+    # (kept where it stood, ours appended after it).
+    "no-session":   ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
+                      "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
+                      "sandbox": sandbox_with()},
+                     "UNWIRED", "wired"),
+    "session-custom": ({"hooks": {"PreToolUse": [HOOK_ENTRY], "SessionStart": [SESSION_CUSTOM]},
+                        "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
+                        "sandbox": sandbox_with()},
+                       "in-sync", "kept"),
+    "session-other": ({"hooks": {"PreToolUse": [HOOK_ENTRY], "SessionStart": [OTHER_SESSION]},
+                       "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
+                       "sandbox": sandbox_with()},
+                      "UNWIRED", "wired"),
     "other-hook":   ({"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
                         {"type": "command", "command": "/x/other.sh"}]}]}}, "UNWIRED", "wired"),
     "broken":       ("{not json", "INVALID", "INVALID"),
     "hooks-list":   ({"hooks": []}, "INVALID", "INVALID"),
     "event-dict":   ({"hooks": {"PreToolUse": {}}}, "INVALID", "INVALID"),
+    "session-dict": ({"hooks": {"SessionStart": {}}}, "INVALID", "INVALID"),
     "perms-list":   ({"permissions": []}, "INVALID", "INVALID"),
     "deny-dict":    ({"permissions": {"deny": {}}}, "INVALID", "INVALID"),
     "ask-dict":     ({"permissions": {"ask": {}}}, "INVALID", "INVALID"),
@@ -211,18 +256,18 @@ def run(repo, mode, self_mode=False):
     return status, message, p.returncode
 
 
-def read(repo):
-    with open(os.path.join(repo, ".claude", "settings.json")) as f:
+def read(repo, name=SETTINGS_FILE):
+    with open(os.path.join(repo, ".claude", name)) as f:
         return json.load(f)
 
 
-def raw(repo):
-    with open(os.path.join(repo, ".claude", "settings.json"), "rb") as f:
+def raw(repo, name=SETTINGS_FILE):
+    with open(os.path.join(repo, ".claude", name), "rb") as f:
         return f.read()
 
 
-def write_raw(repo, settings):
-    with open(os.path.join(repo, ".claude", "settings.json"), "w") as f:
+def write_raw(repo, settings, name=SETTINGS_FILE):
+    with open(os.path.join(repo, ".claude", name), "w") as f:
         json.dump(settings, f, indent=2)
         f.write("\n")
 
@@ -262,6 +307,11 @@ for name, (content, want_check, want_write) in CASES.items():
         check("no-sandbox: --check names the missing sandbox block and nothing else",
               "sandbox" in message and "rule(s)" not in message and "hook" not in message,
               message)
+    if name == "no-session":
+        check("no-session: --check names the missing SessionStart entry and nothing else",
+              SESSION_MARKER in message and "SessionStart" in message
+              and "rule(s)" not in message and "sandbox" not in message
+              and "allow-repo-commands" not in message, message)
     if name == "retired":
         check("retired: --check names the retired rule to remove and nothing else",
               ("%d retired Bash deny rule(s)" % len(RETIRED)) in message
@@ -345,6 +395,21 @@ for name, (content, want_check, want_write) in CASES.items():
               if "allow-repo-commands.sh" in h["command"]]
     check("%s: exactly one hook entry names the script" % name, len(marked) == 1,
           "%d entries" % len(marked))
+    session = after["hooks"].get("SessionStart") or []
+    session_marked = [h for e in session for h in e["hooks"]
+                      if SESSION_MARKER in h["command"]]
+    check("%s: exactly one SessionStart entry runs plans/cloud-setup.sh" % name,
+          len(session_marked) == 1, "%d entries" % len(session_marked))
+    if name in ("fresh", "no-session"):
+        check("%s: the SessionStart entry the write added is the generator's, unguarded "
+              "in the settings (the script guards itself)" % name,
+              session == [SESSION_ENTRY], "got %r" % session)
+    if name == "session-custom":
+        check("session-custom: the repo's own spelling is kept and not doubled",
+              session == [SESSION_CUSTOM], "got %r" % session)
+    if name == "session-other":
+        check("session-other: the repo's own SessionStart hook stays first, ours after it",
+              session == [OTHER_SESSION, SESSION_ENTRY], "got %r" % session)
     if isinstance(content, dict):
         kept_keys = all(after.get(k) == v for k, v in content.items()
                         if k not in ("hooks", "permissions", "sandbox"))
@@ -352,8 +417,9 @@ for name, (content, want_check, want_write) in CASES.items():
                         if r not in RETIRED)
         kept_allow = all(r in after["permissions"].get("allow", [])
                          for r in (content.get("permissions") or {}).get("allow") or [])
-        kept_hooks = all(e in after["hooks"]["PreToolUse"]
-                         for e in (content.get("hooks") or {}).get("PreToolUse") or [])
+        kept_hooks = all(e in after["hooks"].get(event, [])
+                         for event in ("PreToolUse", "SessionStart")
+                         for e in (content.get("hooks") or {}).get(event) or [])
         check("%s: nothing the repo had was removed or changed" % name,
               kept_keys and kept_deny and kept_allow and kept_hooks)
         if content.get("hooks", {}).get("PreToolUse") == [HOOK_ENTRY]:
@@ -374,13 +440,16 @@ run(vendored, "--write")
 status, _, rc = run(selfrepo, "--write", self_mode=True)
 check("--self --write creates the file", status == "created" and rc == 0, "got %s" % status)
 v, s = read(vendored), read(selfrepo)
+check("--self writes settings.json and nothing else — no settings.local.json",
+      sorted(os.listdir(os.path.join(selfrepo, ".claude"))) == [SETTINGS_FILE],
+      "got %s" % sorted(os.listdir(os.path.join(selfrepo, ".claude"))))
 
 
 def hook_commands(settings):
     return [h["command"] for e in settings["hooks"]["PreToolUse"] for h in e["hooks"]]
 
 
-check("--self writes the self hook command", hook_commands(s) == [SELF_HOOK_COMMAND],
+check("--self writes the self hook command, guarded", hook_commands(s) == [SELF_HOOK_COMMAND],
       "got %s" % hook_commands(s))
 check("an ordinary run still writes the vendored hook command",
       hook_commands(v) == [HOOK_COMMAND], "got %s" % hook_commands(v))
@@ -393,9 +462,19 @@ check("neither mode denies hooks/ any more — the prompt is the point",
 check("the deny rules are the same in both modes",
       v["permissions"]["deny"] == s["permissions"]["deny"] == ALL_DENY,
       "got %s" % s["permissions"]["deny"])
-swapped = json.loads(json.dumps(v).replace(HOOK_COMMAND, SELF_HOOK_COMMAND))
+check("an ordinary run writes the SessionStart entry for plans/cloud-setup.sh",
+      v["hooks"].get("SessionStart") == [SESSION_ENTRY], "got %r" % v["hooks"].get("SessionStart"))
+# A --self checkout has no plans/cloud-setup.sh (its corpus is self/, never seeded), and
+# the round-1 SessionStart bootstrap is gone (self-cloud-bootstrap NOTES.md: a policy
+# written during startup raced the first tool call) — so it carries no SessionStart entry.
+check("--self writes no SessionStart entry — there is no plans/cloud-setup.sh to run",
+      "SessionStart" not in s["hooks"], "got %r" % s["hooks"].get("SessionStart"))
+swapped = json.loads(json.dumps(v))
+swapped["hooks"]["PreToolUse"][0]["hooks"][0]["command"] = SELF_HOOK_COMMAND
 swapped["permissions"]["ask"] = SELF_ASK
-check("--self differs in the hook path and the ask rules and nothing else", swapped == s)
+swapped["hooks"].pop("SessionStart", None)
+check("--self differs in the hook command, the ask rules and the SessionStart entry and "
+      "nothing else", swapped == s)
 check("--self on its own file reports in-sync",
       run(selfrepo, "--check", self_mode=True)[0] == "in-sync")
 check("--self on a vendored file reports UNWIRED — the two are not interchangeable",
@@ -414,15 +493,16 @@ write_raw(selfrepo, drifted)
 status, message, rc = run(selfrepo, "--check", self_mode=True)
 check("a hand-added allow rule fails --self --check",
       status == "UNWIRED" and rc == 1, "got %s rc=%s" % (status, rc))
-check("and the message says where the file first differs",
-      "line" in message and "allow" in message, message)
+check("and the message names the file and says where it first differs",
+      ".claude/settings.json" in message and "line" in message and "allow" in message,
+      message)
 status, _, _ = run(selfrepo, "--write", self_mode=True)
 check("--self --write restores the generated bytes exactly",
       status == "wired" and raw(selfrepo) == generated, "got %s" % status)
 repointed = json.loads(generated.decode())
-repointed["hooks"]["PreToolUse"][0]["hooks"][0]["command"] = HOOK_COMMAND
+repointed["hooks"]["PreToolUse"][0]["hooks"][0]["command"] = SELF_HOOK_PATH
 write_raw(selfrepo, repointed)
-check("a repointed hook command fails --self --check too — the marker is not enough",
+check("an unguarded hook command fails --self --check too — the marker is not enough",
       run(selfrepo, "--check", self_mode=True)[0] == "UNWIRED")
 run(selfrepo, "--write", self_mode=True)
 reordered = json.loads(generated.decode())
@@ -431,6 +511,16 @@ write_raw(selfrepo, reordered)
 check("so does a reordered deny list, which the merge check reads as complete",
       run(selfrepo, "--check", self_mode=True)[0] == "UNWIRED")
 run(selfrepo, "--write", self_mode=True)
+os.remove(os.path.join(selfrepo, ".claude", SETTINGS_FILE))
+status, message, rc = run(selfrepo, "--check", self_mode=True)
+check("a missing file fails --self --check as missing, naming the regenerate command",
+      status == "missing" and rc == 1 and "--self --repo %s --write" % selfrepo in message,
+      "got %s: %s" % (status, message))
+status, _, _ = run(selfrepo, "--write", self_mode=True)
+check("--self --write puts it back as created, and still writes no settings.local.json",
+      status == "created" and raw(selfrepo) == generated
+      and not os.path.exists(os.path.join(selfrepo, ".claude", LOCAL_FILE)),
+      "got %s" % status)
 # The sandbox block is generated too, so here a hand-added domain is drift rather than a
 # consumer's addition to keep — the opposite of the merge's rule, and on purpose.
 check("--self writes the same sandbox block an ordinary run does, enabled per the switch",
@@ -455,9 +545,9 @@ run(selfrepo, "--write", self_mode=True)
 check("and a write over an unchanged file reports kept",
       run(selfrepo, "--write", self_mode=True)[0] == "kept")
 
-# This checkout's own generated file, through the same call self/gate.sh records
+# This checkout's own tracked file, through the same call self/gate.sh records
 status, message, rc = run(AT, "--check", self_mode=True)
-check("this checkout's generated .claude/settings.json passes --self --check",
+check("this checkout's tracked .claude/settings.json passes --self --check",
       status == "in-sync" and rc == 0, "got %s: %s" % (status, message))
 
 sys.exit(1 if fails else 0)

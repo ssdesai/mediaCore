@@ -29,7 +29,11 @@ to the machinery is made once and pulled everywhere.
   verify passes and writes `gate-report.txt` for the verify and review plans to read, so no
   model spends turns running them. Fill in the freshly-seeded copy's REPO-SPECIFIC sections before relying
   on it — until then it records "GATE NOT CONFIGURED" rather than a false green. Advisory only:
-  it exits non-zero solely when the environment is unusable.
+  it exits non-zero solely when the environment is unusable. From `template-version: 3` it
+  sources `environment.sh` first and is **resumable**: each check's result is recorded
+  under `gate-state/<tree-sha>/` as it finishes, and under `GATE_RESUME=1` (the runners and
+  `feature-start.sh` set it) a check that already passed on the same tree is not run again.
+  The tree sha leaves out the gate's own outputs and `features/` (the runners' records).
   See `../agentTooling/AGENT_PLANS.md` → "The mechanical gate".
 - `pr.sh` — *seeded once, then repo-owned* — same treatment as `gate.sh`, and at
   `template-version: 4`, which is the version that has **two entry points**. Run by
@@ -64,7 +68,19 @@ to the machinery is made once and pulled everywhere.
   before the gate: a venv (one per worktree — never shared, since an editable install
   points at whichever tree ran it last), `npm install`, a dev port no other worktree
   uses. It ships as a no-op skeleton whose comments list those; a non-zero exit stops the
-  start with the worktree left in place.
+  start with the worktree left in place. It sources `environment.sh` first.
+- `environment.sh` — *seeded once, then repo-owned; sourced, never run* — the facts that
+  differ between a laptop and a Claude Code cloud container: the DB connection, the
+  browser path (`PLAYWRIGHT_BROWSERS_PATH`, `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`), anything
+  else a test or a dev server reads from the environment. Facts, never exceptions. The gate,
+  `worktree-setup.sh` and this repo's own scripts source it; it asks
+  `../agentTooling/env-profile.sh` which profile it is in.
+- `cloud-setup.sh` — *seeded once, then repo-owned* — the once-per-container step: start
+  the services the gate needs (Postgres, a role) and write what `environment.sh` reads.
+  `sync-plans.sh` wires it as a `SessionStart` hook in `../.claude/settings.json`; outside
+  a cloud container it exits at once, doing nothing. Keep every step idempotent — it runs
+  at every session start. `../agentTooling/templates/README.md` says when the cloud
+  environment's own setup script is the better place.
 - `open-session.sh` — *seeded once, then repo-owned* — how this repo opens a coordinator
   session inside a new feature worktree. `../agentTooling/feature-start.sh --open` runs it
   with the worktree's absolute path as its only argument; a session launched there is
@@ -104,9 +120,10 @@ to the machinery is made once and pulled everywhere.
   escalated round the runner copies it to `features/<slug>/escalations/<review-stem>.md`,
   where it becomes the rework brief. Gitignored and regenerated every batch, like
   `gate-report.txt`.
-- `.gitignore` — *generated, overwritten every sync* — the four patterns whose files are
+- `.gitignore` — *generated, overwritten every sync* — the five patterns whose files are
   rewritten every batch and never committed: `gate-report*.txt` (including the per-level
-  `gate-report.<NN>.txt`), `**/*.stream.jsonl`, `**/*.logfifo` and `/review-report.md`.
+  `gate-report.<NN>.txt`), `**/*.stream.jsonl`, `**/*.logfifo`, `/gate-state/` (the
+  resumable gate's records) and `/review-report.md`.
   That last one is anchored to this directory so it catches the batch's live verdict
   without catching a feature's archived copy (`features/<slug>/review-report.md`), which
   is committed on purpose. Generated rather than an install instruction because nothing

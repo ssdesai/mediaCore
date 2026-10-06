@@ -52,11 +52,12 @@ set -uo pipefail
 #  11. and its costliest shape: an empty claim on a session with one real claimant must not
 #      be counted as a claimant at all, or the unshared path is lost and a whole feature's
 #      session is silently sliced;
-#  12. a SINGLE-claimant session that outruns its window says how much lies outside it —
-#      the `may span the window boundary` warning names the dollars and the seconds at or
-#      after `to` and that they are counted in full, while the same warning on the share
-#      path says they are not counted. Prose only: `cost_usd.total` is unchanged, which is
-#      what phase 6 pins from the other side;
+#  12. a SINGLE-claimant, BRANCH-selected session that outruns its window says how much
+#      lies outside it — the `may span the window boundary` warning names the dollars and
+#      the seconds at or after `to` and that they are counted in full, while the same
+#      warning on the share path says they are not counted. Prose only: `cost_usd.total` is
+#      unchanged, which is what phase 6 pins from the other side. (Pinned until
+#      cost-capture-collisions; a pin that outruns its window is now cut — phase 21);
 #  13. a claimant whose `to` is moved EARLIER loses the responses past it —
 #      `manifest.py set-window-to --tighten` is the repair path for a bound already
 #      written, and the sum invariant from (1) survives it;
@@ -94,6 +95,16 @@ set -uo pipefail
 #      a list of slugs;
 #  20. and the whole point of deriving it with the function the close calls: with the
 #      co-claimant closed at exactly that bound, a re-capture reports the same dollars.
+#  21. a PINNED sole claimant is cut to its window (cost-capture-collisions): billed for
+#      its window and the bounded head only, the rest in `unclaimed_usd` /
+#      `unclaimed_duration_s` with both sums exact, `share_basis` naming its own claim
+#      alone, no divided row, the boundary warning saying `not counted here` and nothing
+#      calling it shared — in planning.json, on stdout or in report.py's output — while
+#      the same pin with `to` still null cuts nothing and keeps the whole-session record.
+#
+# Phases 6 and 11 still pin share-solo's session: it lies wholly inside the window, so the
+# cut removes nothing and the record is the unshared one, byte for byte. Phases 12 and 14
+# select their sessions by branch since cost-capture-collisions (see phase 12).
 #
 # The other side of 18 is phase 15f, where head-a is in flight and its `branches` match no
 # transcript: `last_branch_instant` finds nothing, its claim is empty, and the empty-claim
@@ -130,7 +141,7 @@ AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
 
 export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
-for f in pricing.py litellm_prices.py rates_history.json roots.py transcript.py capture_planning.py manifest.py routing.py; do
+for f in pricing.py litellm_prices.py rates_history.json roots.py transcript.py capture_planning.py manifest.py routing.py report.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f"
 done
 
@@ -181,10 +192,15 @@ mkdir -p "$PROJECTS"
 # carries. Phase 18 needs one claimant whose branch a transcript DOES carry: an open
 # co-claimant is bounded by `last_branch_instant`, which selects by branch alone (a pin
 # is never evidence — the coordinator a manifest pins outlives the feature).
+# A SESSION_ID of `-` pins nothing, so the fifth argument's branch is the only route in:
+# phases 12 and 14 are about the BRANCH-selected sole claimant, which is billed whole,
+# since a pinned one is now cut to its window (phase 21, cost-capture-collisions).
 write_manifest() {
   local slug="$1" frm="$2" to="$3" session_id="$4" branch="${5:-$MANIFEST_BRANCH}"
   local to_json="\"$to\""
   if [ "$to" = null ]; then to_json=null; fi
+  local sessions_json="[\"$session_id\"]"
+  if [ "$session_id" = - ]; then sessions_json="[]"; fi
   local dir="$AT/self/features/$slug"
   mkdir -p "$dir"
   cat > "$dir/README.md" <<EOF
@@ -197,7 +213,7 @@ Fixture feature for self/tests/session-share.sh.
   "slug": "$slug",
   "branches": ["$branch"],
   "session_window": {"from": "$frm", "to": $to_json},
-  "sessions": ["$session_id"],
+  "sessions": $sessions_json,
   "exclude_sessions": []
 }
 \`\`\`
@@ -519,12 +535,20 @@ check "11d. capture names the offending claim rather than dropping it silently" 
 # the window and 3000 after it, so the dollars past `to` are exactly three quarters of
 # the session's cost and a warning that named the whole session, or only the part inside,
 # would print a different figure.
+#
+# Selected by BRANCH, not by pin, since cost-capture-collisions: the sole-claimant ruling
+# (that feature's README, "The sole-claimant cut: decided") cuts a PINNED session to its
+# window whatever the number of claimants, and keeps billing a branch-selected one whole.
+# This phase pinned the session until then; what it asserts — the unshared path's
+# disclosure, `counted in full` — is now the branch route's alone, and phase 21 is the
+# pinned twin, asserting the cut. Its own branch, so it selects no other fixture session.
 SESSION_OUT="44444444-0000-0000-0000-000000000004"
+OUTSIDE_BRANCH="outsideBranch"
 {
-  session_line "$SESSION_OUT" "$AT" "$BRANCH" "o0" "$MODEL" "2026-06-01T10:00:00.000Z" 0 1000 0 0 0
-  session_line "$SESSION_OUT" "$AT" "$BRANCH" "o1" "$MODEL" "2026-06-01T14:00:00.000Z" 0 3000 0 0 0
+  session_line "$SESSION_OUT" "$AT" "$OUTSIDE_BRANCH" "o0" "$MODEL" "2026-06-01T10:00:00.000Z" 0 1000 0 0 0
+  session_line "$SESSION_OUT" "$AT" "$OUTSIDE_BRANCH" "o1" "$MODEL" "2026-06-01T14:00:00.000Z" 0 3000 0 0 0
 } > "$PROJECTS/$SESSION_OUT.jsonl"
-write_manifest share-outside "2026-06-01T09:00:00Z" "2026-06-01T12:00:00Z" "$SESSION_OUT"
+write_manifest share-outside "2026-06-01T09:00:00Z" "2026-06-01T12:00:00Z" - "$OUTSIDE_BRANCH"
 PLANNING_OUT="$AT/self/features/share-outside/planning.json"
 capture share-outside > "$TMP/capture-outside.txt"
 
@@ -587,13 +611,15 @@ check "13d. the sum invariant from (1) survives the tightened bound" "close_enou
 # nothing billable is out there and the overrun is under a second, so the quantified
 # sentence would assert a measurement of nothing ($0.0000 and 0s) where the qualitative
 # one it replaced said something true. `share-quiet` is exactly that shape: one response
-# well inside the window, and half a second past `to` an unbilled user line.
+# well inside the window, and half a second past `to` an unbilled user line. Branch-selected
+# for phase 12's reason: a pin would now cut that half-second off rather than disclose it.
 SESSION_QUIET="55555555-0000-0000-0000-000000000005"
+QUIET_BRANCH="quietBranch"
 {
-  session_line "$SESSION_QUIET" "$AT" "$BRANCH" "q0" "$MODEL" "2026-06-01T10:00:00.000Z" 0 1000 0 0 0
+  session_line "$SESSION_QUIET" "$AT" "$QUIET_BRANCH" "q0" "$MODEL" "2026-06-01T10:00:00.000Z" 0 1000 0 0 0
   user_line "2026-06-01T12:00:00.500Z"
 } > "$PROJECTS/$SESSION_QUIET.jsonl"
-write_manifest share-quiet "2026-06-01T09:00:00Z" "2026-06-01T12:00:00Z" "$SESSION_QUIET"
+write_manifest share-quiet "2026-06-01T09:00:00Z" "2026-06-01T12:00:00Z" - "$QUIET_BRANCH"
 PLANNING_QUIET="$AT/self/features/share-quiet/planning.json"
 capture share-quiet > "$TMP/capture-quiet.txt"
 
@@ -943,6 +969,86 @@ check "20b. and the record no longer names an open claimant" \
   "[ \"\$(field \"$PLANNING_OPEN_CAP\" \"d['open_claimants']\")\" = '[]' ]"
 check "20c. nor carries open/provisional_to on the claim, the bound now being stamped" \
   "[ \"\$(field \"$PLANNING_OPEN_CAP\" \"any('open' in e for e in d['sessions'][0]['share_basis'])\")\" = False ]"
+
+# ── 21. a PINNED sole claimant is cut to its window ───────────────────────────────────
+# cost-capture-collisions, "The sole-claimant cut: decided". A pin claims a session
+# regardless of branch, window or cwd, and the sessions it is written for — a design session
+# on `main`, a coordinator that did other work too — outrun the feature: cloud-self-gate's
+# record carries a 9.7-hour design session for a 14-minute feature because a pin nobody
+# else shared was billed whole. Now the single-claimant shortcut is the BRANCH route's
+# alone; a pin goes through the same split two claimants do, with the claim set [itself]:
+# its responses in [from, to) are its own, the opening stretch is its own as far back as the
+# window is long (`head_bound`), and the rest is the disclosed unclaimed remainder.
+#
+# A fresh day and session, the phase-15 shape with one claimant: `cut-pin` 10:00-11:00 (one
+# hour, so the head is paid back to 09:00); k0 08:00/1000 (before the bound — unclaimed),
+# k1 09:30/2000 (head — paid), k2 10:30/4000 (window — paid), k3 13:00/3000 (tail —
+# unclaimed). So cut-pin owns 6000 of 10000 output tokens and 09:00-11:00 of the
+# 08:00-13:00 span. RED on main, which billed all 10000 and the whole 18000s.
+# Phase 12 is the branch-selected twin, still billed whole; `cut-open` below is the open
+# window, which cuts nothing.
+SESSION_CUT="bbbbbbbb-0000-0000-0000-00000000000b"
+SESSION_CUT_OPEN="cccccccc-0000-0000-0000-00000000000c"
+cut_session() {
+  {
+    session_line "$1" "$AT" "$BRANCH" "k0" "$MODEL" "2026-06-04T08:00:00.000Z" 0 1000 0 0 0
+    session_line "$1" "$AT" "$BRANCH" "k1" "$MODEL" "2026-06-04T09:30:00.000Z" 0 2000 0 0 0
+    session_line "$1" "$AT" "$BRANCH" "k2" "$MODEL" "2026-06-04T10:30:00.000Z" 0 4000 0 0 0
+    session_line "$1" "$AT" "$BRANCH" "k3" "$MODEL" "2026-06-04T13:00:00.000Z" 0 3000 0 0 0
+  } > "$PROJECTS/$1.jsonl"
+}
+cut_session "$SESSION_CUT"
+cut_session "$SESSION_CUT_OPEN"
+write_manifest cut-pin "2026-06-04T10:00:00Z" "2026-06-04T11:00:00Z" "$SESSION_CUT"
+write_manifest cut-open "2026-06-04T10:00:00Z" null "$SESSION_CUT_OPEN"
+PLANNING_CUT="$AT/self/features/cut-pin/planning.json"
+PLANNING_CUT_OPEN="$AT/self/features/cut-open/planning.json"
+capture cut-pin > "$TMP/capture-cut.txt"
+capture cut-open > "$TMP/capture-cut-open.txt"
+
+cut_session_cost="$(field "$PLANNING_CUT" "d['sessions'][0]['session_cost_usd']")"
+cut_total="$(field "$PLANNING_CUT" "d['cost_usd']['total']")"
+cut_unclaimed="$(field "$PLANNING_CUT" "d['sessions'][0]['unclaimed_usd']")"
+exp_cut_total="$(python3 -c "print(6000/10000*float('$cut_session_cost'))" 2>/dev/null)"
+exp_cut_unclaimed="$(python3 -c "print(4000/10000*float('$cut_session_cost'))" 2>/dev/null)"
+check "21a. a pinned sole claimant is billed only for its window and the bounded head: k1 + k2, 6000/10000 (got \$${cut_total:-<absent>})" \
+  "close_enough '$cut_total' '$exp_cut_total'"
+check "21b. the rest — k0 before the head's bound, k3 past to — is unclaimed_usd, 4000/10000 (got \$${cut_unclaimed:-<absent>})" \
+  "close_enough '$cut_unclaimed' '$exp_cut_unclaimed'"
+cut_sum="$(python3 -c "print(float('$cut_total')+float('$cut_unclaimed'))" 2>/dev/null)"
+check "21c. and the two sum to the session's own cost exactly" "close_enough '$cut_sum' '$cut_session_cost'"
+cut_dur="$(field "$PLANNING_CUT" "d['sessions'][0]['duration_s']")"
+cut_undur="$(field "$PLANNING_CUT" "d['sessions'][0]['unclaimed_duration_s']")"
+cut_sdur="$(field "$PLANNING_CUT" "d['sessions'][0]['session_duration_s']")"
+check "21d. duration_s is the bounded head plus the window, 09:00-11:00 = 7200 (got ${cut_dur:-<absent>})" "[ \"$cut_dur\" = 7200 ]"
+check "21e. unclaimed_duration_s is the 3600 before the bound plus the 7200 past to (got ${cut_undur:-<absent>})" "[ \"$cut_undur\" = 10800 ]"
+check "21f. and the seconds sum to the session's whole span, 18000 (got ${cut_sdur:-<absent>})" \
+  "[ \"$cut_sdur\" = 18000 ] && [ \"\$(( ${cut_dur:-0} + ${cut_undur:-0} ))\" = 18000 ]"
+check "21g. share_basis names the one claim the cut used, its own, with its window" \
+  "[ \"\$(field \"$PLANNING_CUT\" \"[(e['feature'], e['source'], e['from'], e['to']) for e in d['sessions'][0]['share_basis']]\")\" = \"[('agentTooling/cut-pin', 'self', '2026-06-04T10:00:00Z', '2026-06-04T11:00:00Z')]\" ]"
+check "21h. no priced row is divided — there is nobody to divide with" \
+  "[ \"\$(field \"$PLANNING_CUT\" \"any('share' in p or 'full_cost_usd' in p for p in d['priced'])\")\" = False ]"
+check "21i. the boundary warning says the stretch past to is not counted here" \
+  "grep 'may span the window boundary' \"$TMP/capture-cut.txt\" | grep -q 'not counted here'"
+check "21j. ... and nothing calls a sole claimant's cut a share" \
+  "! grep -q 'shared by' \"$TMP/capture-cut.txt\" && ! grep -q 'counted in full' \"$TMP/capture-cut.txt\""
+check "21k. the unclaimed warning names the head apart from the rest, with the set-window-from remedy" \
+  "grep -q '(3600s) is the opening stretch' \"$TMP/capture-cut.txt\" && grep -q '(7200s) is the rest' \"$TMP/capture-cut.txt\" \
+     && grep -q 'cut-pin set-window-from 2026-06-04T08:00:00Z --session $SESSION_CUT' \"$TMP/capture-cut.txt\""
+HOME="$FAKE_HOME" python3 "$AT/analysis/report.py" --self cut-pin > "$TMP/report-cut.txt" 2>&1; cut_report_rc=$?
+check "21l. report.py renders the cut record without failing (rc $cut_report_rc)" "[ $cut_report_rc -eq 0 ]"
+check "21m. ... with no shared session in it, and no shared-session footnote" \
+  "[ \"\$(field \"$AT/self/features/cut-pin/report.json\" \"d['cost']['shared_sessions']\")\" = '[]' ] \
+     && ! grep -q 'Sessions this feature' \"$AT/self/features/cut-pin/report.md\""
+# The open window: `to` null cuts nothing at the tail, and the head stays unbounded (a window
+# with no end has no length to bound by), so nothing is cut at all and the record is the
+# whole-session one it always was — no share fields.
+open_whole="$(field "$PLANNING_CUT_OPEN" "d['cost_usd']['total']")"
+open_priced="$(field "$PLANNING_CUT_OPEN" "sum(p['cost_usd'] for p in d['priced'])")"
+check "21n. a pinned sole claimant still in flight (to null) is cut nowhere — billed whole, no share fields" \
+  "close_enough '$open_whole' '$open_priced' && [ \"\$(field \"$PLANNING_CUT_OPEN\" \"'share_basis' in d['sessions'][0] or 'unclaimed_usd' in d['sessions'][0]\")\" = False ]"
+check "21o. ... and owns the session's whole span (got $(field "$PLANNING_CUT_OPEN" "d['sessions'][0]['duration_s']"))" \
+  "[ \"\$(field \"$PLANNING_CUT_OPEN\" \"d['sessions'][0]['duration_s']\")\" = 18000 ]"
 
 echo
 if [ "$fails" -eq 0 ]; then

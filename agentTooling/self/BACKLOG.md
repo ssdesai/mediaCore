@@ -5,15 +5,70 @@ the assertion that would catch it, with the feature that raised it. Remove an en
 feature that closes it. Same shape as a consuming repo's `plans/BACKLOG.md`; this one is
 agentTooling's own, for the harness rather than for a product.
 
-- **`feature-start.sh --self` regenerating the primary's settings "only when missing" is
-  untested.** S1v covers the missing file; nothing asserts that a present but drifted
-  primary `.claude/settings.json` is left byte for byte as it was (the start must never
-  rewrite a human's experiment — the gate reports drift instead), or that a failing
-  generator costs a `warn` line and never the start. Assertion: a second `--self` start
-  over a primary whose file was hand-edited leaves those bytes alone and exits 0. Rider:
-  `hooks/policy.py`'s docstring still calls that file "committed" — it is generated and
-  untracked (the review could not edit it: `hooks/` is behind the `Edit` ask rule).
-  Raised by `self-settings-untracked`.
+- **`recover_attempts.py` prices a collided session's null-cost attempt from the whole
+  transcript.** A usage.json attempt whose `session_id` is a coordinator's (a runner child
+  that inherited the parent's id, design 2026-10-05 §4) and whose `total_cost_usd` is null
+  is recovered by summing every line of `<id>.jsonl` — the coordinator's interactive lines
+  included, which `capture_planning.py` now prices as the coordinator's. Assertion: an
+  attempt whose transcript holds a headless tree and interactive lines recovers the
+  headless tree's cost alone (`capture_planning.tree_flags`). Only transcripts written
+  before the runner's scrub can collide. Raised by `cost-capture-collisions`.
+
+- **`--list-sessions --unclaimed` hides a collided coordinator.** `claimed_session_ids`
+  counts every id a usage.json names as claimed, so a coordinator a runner child collided
+  with — priced by no feature yet — is never listed as cost nobody counts. Assertion: a
+  session whose transcript holds interactive lines beside a headless tree, named by a
+  usage.json and by no planning.json, is listed. Raised by `cost-capture-collisions`.
+
+- **The runner's no-uuid fallback is untested.** `plan-runner-lib.sh` `mint_session_id`
+  tries `uuidgen`, `/proc/sys/kernel/random/uuid` and python3's `uuid`, and when all three
+  fail launches `claude -p` without `--session-id` and warns, rather than passing an empty
+  one. No test hides all three sources. Assertion: with none available, the launch carries
+  no `--session-id`, the WARN names the plan, and the child still sees neither
+  `CLAUDE_CODE_SESSION_ID` nor `CLAUDE_CODE_REMOTE_SESSION_ID`. Raised by
+  `cost-capture-collisions`.
+
+- **The cloud auto-merge body is unverified against the live route.** `forge.sh
+  auto-merge` under the cloud profile sends `PUT /repos/{o}/{r}/pulls/{n}/ccr/auto_merge`
+  with `-f merge_method=merge` — the REST spelling of GitHub's own merge endpoint; the
+  proxy's refusal text names the route but not its body, and `self/pr.sh` never requests a
+  merge, so no cloud run has exercised it. A wrong field name is advisory (pr.sh warns and
+  the PR waits for a human) but would silently never auto-merge, or merge with the
+  repository's default method — a squash would strand the prune. Assertion, by hand at the
+  first consuming repo's cloud close under `PR_AUTO_MERGE=1`: the PR shows auto-merge
+  enabled with the merge-commit method; if the route wants another field, change
+  `CLOUD_MERGE_METHOD_FIELD` and `self/tests/env-profile.sh` F2b together. Raised by
+  `execution-profiles` (NOTES.md ruling 19).
+
+- **A vendored `--self` build that changes the policy cannot regenerate the file it
+  ships.** In a vendored agentTooling `wire-settings.py --self --write` writes nothing, and
+  `--check` holds the shipped `agentTooling/.claude/settings.json` to the generator's bytes
+  (`self-cloud-bootstrap` NOTES), so a vendored build that changes `hooks/policy.py` or the
+  constants in `hooks/wire-settings.py` turns its own gate red, the fix named upstream:
+  such a change can only be built in a standalone checkout today. Assertion, if a vendored
+  policy build is ever wanted: a vendored `--self --write` regenerates the subtree's copy
+  and nothing else, and the gate's settings check goes green again. Raised by
+  `self-cloud-bootstrap`.
+
+- **The SessionStart wiring is unexercised in a real cloud session.** `sync-plans.sh`
+  wires `${CLAUDE_PROJECT_DIR}/plans/cloud-setup.sh` as a SessionStart hook with no
+  matcher, and the seeded script is a no-op until a repo fills it; no consuming repo has
+  yet run it in a container. Assertion, by hand at the first consuming repo's cloud setup
+  feature: a new session's context shows the script's output line, a resumed session runs
+  it again harmlessly, and its gate is green with no `--no-gate`. Raised by
+  `execution-profiles` (design §7).
+
+- **`AGENTTOOLING_SCRATCH` approves unread code for headless executors.** The hook
+  approves `bash`/`python3` on any script under the runner's per-pass scratch directory,
+  judging its path and arguments and never its contents. An executor can write any code
+  there with an unprompted Write and run it unseen, which launders every command the hook
+  denies for being unreadable. The OS sandbox that would contain it is off
+  (`SANDBOX_ENABLED = False`). It was a deliberate trade, since a headless run has nobody
+  to answer a prompt. Revisit it by making the approval conditional on the sandbox being
+  enabled, or by refusing the scratch entry point when it is not. Assertion: with
+  `SANDBOX_ENABLED` false, a headless `bash <scratch>/x.sh` is not approved by the hook.
+  Raised by the 2026-10-05 cloud-execution design (§9), which declined to extend the same
+  approval to interactive sessions.
 
 - **A dead half-start cut from a stacked `--base` is never pruned.** Since
   `start-takeover`, the prune removes another slug's abandoned half-start (branch at its
@@ -196,3 +251,15 @@ agentTooling's own, for the harness rather than for a product.
   three manifests pins `756102ea-…` or carries an `exclude_subagents` entry, and each
   `planning.json`'s `yielded_agent_ids` names the delegates the others pin. Raised by
   `unpin-and-yield`.
+
+- **The template gate has no `record_fresh`.** `self/gate.sh` runs its settings check —
+  made fresh while its input was an ignored file the resume's tree sha left out (it is
+  tracked since `self-cloud-bootstrap`, and the check stays fresh) — on every gate and
+  never records it; `templates/plans/gate.sh` has no such mode, so a consuming repo that
+  adds a check reading an ignored or generated file (a `.env`, a local config) gets a
+  recorded pass that survives that file changing under `GATE_RESUME=1`. Not built: no
+  seeded check reads one today, and the function is a template version bump every
+  consuming repo hand-merges. Assertion: a check `record_fresh`ed in the template gate,
+  run twice under `GATE_RESUME=1` on the same tree with its ignored input broken between
+  the runs, fails the second run and writes no `plans/gate-state/` record. Raised by
+  `session-start-precision`.

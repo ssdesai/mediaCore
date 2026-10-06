@@ -271,20 +271,34 @@ def collect_excluded_session_ids(features_dirs, manifest):
     own tree reintroduces exactly the bug the paragraph above describes.
     """
     excluded = set(manifest.get("exclude_sessions", []) or [])
+    excluded.update(runner_session_sidecars(features_dirs))
+    return excluded
+
+
+def runner_session_sidecars(features_dirs):
+    """`{session_id: ["<corpus-relative path of a usage.json naming it>", …]}` — the runner
+    sessions of `collect_excluded_session_ids`, each with the sidecars that name it, which
+    is what the collision warning has to point at (design 2026-10-05 §4). Same walk, same
+    two fields (`session_id` and every `attempts[].session_id`); paths are relative to the
+    corpus's repo root (`<root>/self/features/…` → `self/features/…`) and sorted."""
+    sidecars = {}
     for features_dir in features_dirs:
-        for usage_path in features_dir.rglob("*.usage.json"):
+        features_dir = Path(features_dir)
+        for usage_path in sorted(features_dir.rglob("*.usage.json")):
             try:
                 data = json.loads(usage_path.read_text())
             except (OSError, json.JSONDecodeError):
                 continue
-            session_id = data.get("session_id")
-            if session_id:
-                excluded.add(session_id)
-            for attempt in data.get("attempts") or []:
-                attempt_id = attempt.get("session_id")
-                if attempt_id:
-                    excluded.add(attempt_id)
-    return excluded
+            ids = {data.get("session_id")}
+            ids.update(attempt.get("session_id") for attempt in data.get("attempts") or [])
+            try:
+                label = str(usage_path.relative_to(features_dir.parents[1]))
+            except (ValueError, IndexError):
+                label = str(usage_path)
+            for session_id in ids:
+                if session_id:
+                    sidecars.setdefault(session_id, []).append(label)
+    return sidecars
 
 
 def find_transcript_dirs(repo_dir):
@@ -417,6 +431,29 @@ def find_pinned_elsewhere(agent_id, skip_dirs):
     return None
 
 
+def find_pinned_anywhere(agent_id, runner_ids):
+    """`(path, parent_collision)` for a pinned subagent's transcript under ANY project
+    directory, this repo's included — what the capture looks for once its own walk has not
+    reached a pin (design 2026-10-05 §4, rule 3) — or None. Each hit's parent is judged
+    from its own transcript by `fallback_parent_collision`, never from what the main walk
+    happened to record: a hit under a runner-only session, whose sidecar already holds its
+    delegates' cost, is passed over, so such a pin stays unmatched exactly as it was.
+    `parent_collision` is that judgement for the hit returned. Project directories in
+    sorted order, as `find_pinned_elsewhere` walks them."""
+    projects_root = Path.home() / ".claude" / "projects"
+    if not projects_root.exists():
+        return None
+    for project_dir in sorted(projects_root.iterdir()):
+        if not project_dir.is_dir():
+            continue
+        for hit in sorted(project_dir.glob(f"*/subagents/agent-{agent_id}.jsonl")):
+            parent_collision = fallback_parent_collision(hit, runner_ids)
+            if parent_collision is RUNNER_ONLY_PARENT:
+                continue
+            return hit, parent_collision
+    return None
+
+
 def price_subagent(totals, session_id, agent_id, agent_lines):
     """Add every billable message of one subagent transcript to `totals` under
     (session_id, agent_id, model, True, ()). Every line of a subagent transcript says
@@ -470,6 +507,200 @@ def agent_id_of(path, lines):
     return path.stem[len("agent-"):] if path.stem.startswith("agent-") else path.stem
 
 
+# ── A runner child's conversation inside its parent's transcript (design 2026-10-05 §4) ──
+# A `claude -p` that inherited its parent's CLAUDE_CODE_SESSION_ID reported that id as its
+# own and appended its lines to the PARENT's `<id>.jsonl`, as a separate conversation tree
+# rooted at a `user` line with `parentUuid: null`. The runner then wrote that id into a
+# usage.json, and the capture excluded the coordinator whole. plan-runner-lib.sh no longer
+# lets the id through, but transcripts written that way stay on disk for weeks, so an id a
+# usage.json names is judged by its lines: a tree whose OPENING PROMPT carries this
+# sentence is the runner's (headless), any other tree is interactive. The sentence is in
+# every runner's prompt — run-plans.sh, run-verify.sh's verify and escalation prompts,
+# run-review.sh — and self/tests/stream-capture.sh 11i-11m assert that it stays there, so
+# the two cannot drift. Not `entrypoint` (inherited from the parent) and not `promptSource`
+# (`"sdk"` on this CLI version, but a field the CLI is free to rename): the marker is the
+# one thing the harness itself writes into every runner conversation.
+HEADLESS_PROMPT_MARKER = "A progress log is maintained automatically by the harness"
+# A compaction writes a `system` line with this subtype and `parentUuid: null`; its
+# `logicalParentUuid` is what continues the tree it compacted, so it is not a new root.
+COMPACT_BOUNDARY_SUBTYPE = "compact_boundary"
+# Beside each delegate's transcript Claude Code writes `agent-<id>.meta.json`, whose
+# `toolUseId` is the parent's tool call that spawned it — how a delegate of a collided
+# session is attributed to the tree that spawned it.
+SUBAGENT_META_SUFFIX = ".meta.json"
+SUBAGENT_META_TOOL_USE_KEY = "toolUseId"
+
+
+def prompt_text(line):
+    """The text a `user` line was prompted with — a string `content`, or its `text` blocks
+    joined — or None when the line is no prompt (a tool result, an attachment, any other
+    type). Tool results are excluded on purpose: they carry file contents, and a
+    coordinator reading this very module would otherwise quote the marker into its own
+    tree."""
+    if line.get("type") != "user":
+        return None
+    content = (line.get("message") or {}).get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        texts = [
+            block.get("text", "") for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        ]
+        return "\n".join(texts) if texts else None
+    return None
+
+
+def tree_flags(lines):
+    """Per line: True when it belongs to a headless (runner) conversation tree, False when
+    to an interactive one, None when its tree cannot be told.
+
+    Trees are the `uuid` → `parentUuid` links, with a compaction boundary's
+    `logicalParentUuid` standing in for its null `parentUuid`. A tree's kind is decided by
+    its opening prompt — the first `prompt_text` in file order among its lines — carrying
+    `HEADLESS_PROMPT_MARKER`. None for a line with no `uuid` (a queue operation, a title,
+    every fixture written before trees mattered), for one whose chain leads to a uuid the
+    file does not hold, and for a tree with no prompt at all: unknown is never evidence
+    either way, and is never dropped."""
+    link = {}
+    for line in lines:
+        uuid = line.get("uuid")
+        if not isinstance(uuid, str):
+            continue
+        parent = line.get("parentUuid")
+        if parent is None and line.get("subtype") == COMPACT_BOUNDARY_SUBTYPE:
+            parent = line.get("logicalParentUuid")
+        link[uuid] = parent if isinstance(parent, str) else None
+    root_of = {}
+
+    def resolve(uuid):
+        chain = []
+        current = uuid
+        while current is not None and current not in root_of:
+            if current not in link or current in chain:
+                root = None
+                break
+            chain.append(current)
+            current = link[current]
+        else:
+            root = root_of[current] if current is not None else chain[-1]
+        for member in chain:
+            root_of[member] = root
+        return root
+
+    roots = [resolve(line["uuid"]) if isinstance(line.get("uuid"), str) else None for line in lines]
+    opening = {}
+    for line, root in zip(lines, roots):
+        if root is None or root in opening:
+            continue
+        text = prompt_text(line)
+        if text is not None:
+            opening[root] = HEADLESS_PROMPT_MARKER in text
+    return [opening.get(root) if root is not None else None for root in roots]
+
+
+def runner_collision(lines):
+    """`(kept_lines, flags)` when a transcript holds BOTH a headless tree and interactive
+    lines — a runner child that collided with its parent's id — else None. `kept_lines` is
+    every line not positively headless, in order; `flags` is `tree_flags(lines)` over the
+    whole file, for `spawning_tree`. None covers both a runner-only transcript (nothing
+    interactive) and one with no recognisable headless tree at all — a runner predating
+    the marker — so either way the id is excluded exactly as it always was."""
+    flags = tree_flags(lines)
+    if True not in flags or False not in flags:
+        return None
+    return [line for line, flag in zip(lines, flags) if flag is not True], flags
+
+
+def collision_warning(session_id, sidecars, dropped):
+    """The one warning a collided session earns: which session, which sidecar(s) name it,
+    and what was done about it — so the reader can find the runner's own record and see
+    that nothing was counted twice."""
+    return (
+        f"session {session_id} is named as a runner session by {', '.join(sidecars)}, but its "
+        "transcript also holds interactive lines — a runner child that inherited this "
+        "session's id and wrote into its transcript (design 2026-10-05 §4): its "
+        f"interactive lines are priced here as any session's, and the {dropped} line(s) of "
+        "the runner's own conversation are left to that usage.json, which already holds "
+        "their cost"
+    )
+
+
+def spawning_tree(agent_path, agent_id, lines, flags):
+    """Which tree of a collided session spawned one of its delegates: True headless, False
+    interactive, None when it cannot be told. Read from the delegate's
+    `agent-<id>.meta.json` `toolUseId` — the parent line holding that `tool_use` (or its
+    `tool_result`) — and failing that, from a parent line whose `toolUseResult.agentId` is
+    this delegate's. No meta file and no such line (an older CLI) is None."""
+    tool_use_id = None
+    meta_path = agent_path.with_name(agent_path.name[:-len(".jsonl")] + SUBAGENT_META_SUFFIX)
+    try:
+        meta = json.loads(meta_path.read_text())
+        if isinstance(meta, dict):
+            tool_use_id = meta.get(SUBAGENT_META_TOOL_USE_KEY)
+    except (OSError, json.JSONDecodeError):
+        pass
+    for line, flag in zip(lines, flags):
+        if flag is None:
+            continue
+        content = (line.get("message") or {}).get("content")
+        if tool_use_id and isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and tool_use_id in (block.get("id"), block.get("tool_use_id")):
+                    return flag
+        result = line.get("toolUseResult")
+        if isinstance(result, dict) and result.get("agentId") == agent_id:
+            return flag
+    return None
+
+
+def runner_spawned_pin_warning(agent_id, session_id):
+    """The warning for a pinned delegate `spawning_tree` attributes to the runner's tree —
+    the main walk and the pinned-delegate fallback say it the same way."""
+    return (
+        f"pinned subagent {agent_id!r} was spawned by the runner's conversation inside "
+        f"session {session_id}, whose cost a usage.json already holds — the pin is ignored"
+    )
+
+
+def untold_spawner_warning(agent_id, session_id):
+    """The warning for a delegate of a collided session whose spawning tree cannot be told,
+    priced as the coordinator's — from the main walk and the pinned-delegate fallback."""
+    return (
+        f"subagent {agent_id!r} of collided session {session_id} cannot be told apart: no "
+        "meta.json or parent line names the call that spawned it, so it is priced here as "
+        "the coordinator's — if the runner spawned it, its cost is also in that runner's "
+        "usage.json"
+    )
+
+
+# `fallback_parent_collision`'s answer for a parent that is a runner session and nothing
+# else: its sidecar holds the delegate's cost, so the pinned-delegate fallback passes over it.
+RUNNER_ONLY_PARENT = "runner-only"
+
+
+def fallback_parent_collision(agent_path, runner_ids):
+    """How the pinned-delegate fallback treats a hit's parent session, judged from the
+    parent's OWN transcript (`<project dir>/<parent id>.jsonl`, beside the delegate's
+    directory) by the main walk's rule. Not from the walk's `collided_ids`: a coordinator
+    filed outside this repo's directories is found collided only by the pinned-session
+    fallback, and one in them under an unclaimable cwd never has its delegates walked —
+    round 1's review of cost-capture-collisions. None when the parent is no runner id (an
+    ordinary parent); `RUNNER_ONLY_PARENT` when it is one whose transcript holds no
+    collision, or is not on disk (excluded as always); else `(all_lines, flags)` from
+    `runner_collision`, which `spawning_tree` needs to say which tree spawned the
+    delegate."""
+    parent_id = agent_path.parent.parent.name
+    if parent_id not in runner_ids:
+        return None
+    parent_path = agent_path.parents[2] / f"{parent_id}.jsonl"
+    lines = load_transcript_lines(parent_path) if parent_path.is_file() else []
+    collision = runner_collision(lines) if lines else None
+    if collision is None:
+        return RUNNER_ONLY_PARENT
+    return lines, collision[1]
+
+
 # The claims ledger: every subagent transcript and every top-level session this tool has
 # ever priced, with the feature that claimed it. It lives beside the transcripts (under
 # ~/.claude) and is scoped like them — local to this machine, meaningless once they
@@ -491,6 +722,35 @@ LEDGER_SESSIONS_KEY = "sessions"
 # unbounded, which reproduces the old "counts the whole transcript" behaviour as an even
 # split rather than silently dropping the claimant.
 LEDGER_CLAIM_WINDOW_KEY = "window"
+# Provenance: which repos and which of their features this ledger has ever had claims
+# from, so that a feature's ABSENCE from the claims can be read for what it is (design
+# 2026-10-05 §6). The ledger is local to one machine, and a fresh one — a new container,
+# a wiped home — holds nothing: read as "no longer a claimant", that emptiness deleted
+# `also_claimed_by` from 11 frozen sibling records at cloud-close's close. So an absence
+# means "no claim" only for a feature the ledger has SEEN, and "unknown" otherwise.
+#   "seen": { <normalized repo identity>: {
+#       "repo": <identity as last written>, "repo_name": <display name>,
+#       "registered_at": <instant this corpus's frozen records were first registered> | null,
+#       "features": { <slug>: <instant its claims were first written or registered> } } }
+# Written by a capture (its own feature) and by `register_frozen_claims` (every frozen
+# record it registers, and `registered_at` for the corpus). First-seen instants, never
+# refreshed: what matters is THAT it was seen, and a second run over an unchanged corpus
+# must write nothing — the ledger file included. A ledger written before this key has no
+# section, which reads as "nothing seen" — so it removes nothing, which is safe.
+LEDGER_SEEN_KEY = "seen"
+SEEN_REPO_KEY = "repo"
+SEEN_REPO_NAME_KEY = "repo_name"
+SEEN_REGISTERED_AT_KEY = "registered_at"
+SEEN_FEATURES_KEY = "features"
+# Repo identity normalised FOR COMPARISON ONLY — `host/owner/repo`, lowercase, with the
+# scheme, any `user@`, a port and a trailing `.git` dropped — so the cloud's
+# `https://github.com/o/r` and a laptop's `git@github.com:o/R.git` are one repo. Nothing
+# stored or written changes: the ledger keeps the identity it was given, and the display
+# names in `also_claimed_by`/`share_basis` (`agentTooling/<slug>`) are never derived from
+# this, so no frozen record moves without a recapture.
+URL_SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
+SCP_LIKE_REMOTE_RE = re.compile(r"^(?:[^@/]+@)?([^:/]+):(?!//)(.+)$")
+GIT_REMOTE_SUFFIX = ".git"
 # How a subagent was claimed — a claim's `selected_by`, in `subagents[]` and the ledger.
 # Only a PIN outranks a parent selection (the yield rule, `other_feature_pins`); two parent
 # selections of one delegate are the double-claim refusal's business, never a yield.
@@ -518,22 +778,29 @@ def load_ledger():
     the two-section shape is written by the next capture. A file that is missing,
     unparseable, or not an object yields two empty sections rather than raising — the
     ledger is a cache of what other captures did, and a corrupt one must not stop this
-    run from writing its own record."""
+    run from writing its own record.
+
+    The third section, `seen` (`LEDGER_SEEN_KEY`), is absent from every ledger written
+    before provenance existed and from a legacy flat one; either way it loads as `{}` —
+    nothing seen, so nothing a later annotation reads as absent is removed."""
     path = claims_ledger_path()
+    empty = {LEDGER_SUBAGENTS_KEY: {}, LEDGER_SESSIONS_KEY: {}, LEDGER_SEEN_KEY: {}}
     if not path.exists():
-        return {LEDGER_SUBAGENTS_KEY: {}, LEDGER_SESSIONS_KEY: {}}
+        return empty
     try:
         ledger = json.loads(path.read_text())
     except json.JSONDecodeError:
-        return {LEDGER_SUBAGENTS_KEY: {}, LEDGER_SESSIONS_KEY: {}}
+        return empty
     if not isinstance(ledger, dict):
-        return {LEDGER_SUBAGENTS_KEY: {}, LEDGER_SESSIONS_KEY: {}}
-    if LEDGER_SUBAGENTS_KEY in ledger or LEDGER_SESSIONS_KEY in ledger:
+        return empty
+    if any(key in ledger for key in (LEDGER_SUBAGENTS_KEY, LEDGER_SESSIONS_KEY, LEDGER_SEEN_KEY)):
+        seen = ledger.get(LEDGER_SEEN_KEY)
         return {
             LEDGER_SUBAGENTS_KEY: ledger.get(LEDGER_SUBAGENTS_KEY) or {},
             LEDGER_SESSIONS_KEY: ledger.get(LEDGER_SESSIONS_KEY) or {},
+            LEDGER_SEEN_KEY: seen if isinstance(seen, dict) else {},
         }
-    return {LEDGER_SUBAGENTS_KEY: ledger, LEDGER_SESSIONS_KEY: {}}
+    return {LEDGER_SUBAGENTS_KEY: ledger, LEDGER_SESSIONS_KEY: {}, LEDGER_SEEN_KEY: {}}
 
 
 def load_claims():
@@ -542,16 +809,96 @@ def load_claims():
     return load_ledger()[LEDGER_SUBAGENTS_KEY]
 
 
-def save_ledger(claims, session_claims):
-    """Write both sections. Always both: they share one file, so writing one alone would
-    drop the other."""
+def save_ledger(claims, session_claims, seen=None):
+    """Write every section. Always all of them: they share one file, so writing one alone
+    would drop the others — which is why a caller with no `seen` of its own to write gets
+    the one on disk carried over rather than erased."""
+    if seen is None:
+        seen = load_ledger()[LEDGER_SEEN_KEY]
     path = claims_ledger_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     ledger = {
         LEDGER_SUBAGENTS_KEY: dict(sorted(claims.items())),
         LEDGER_SESSIONS_KEY: dict(sorted(session_claims.items())),
+        LEDGER_SEEN_KEY: dict(sorted(seen.items())),
     }
     path.write_text(json.dumps(ledger, indent=2) + "\n")
+
+
+def normalize_repo_identity(identity):
+    """`host/owner/repo`, lowercase, for comparing two repo identities — never for writing
+    one (`URL_SCHEME_RE`'s comment). Drops a URL scheme and any `user@` and port after it,
+    turns an scp-style `[user@]host:owner/repo` into `host/owner/repo`, and drops a trailing
+    `/` and `.git`. An identity that is no URL at all — the directory name `repo_identity`
+    falls back to — is only lowercased."""
+    text = str(identity or "").strip()
+    if URL_SCHEME_RE.match(text):
+        rest = URL_SCHEME_RE.sub("", text)
+        host, _, path = rest.partition("/")
+        host = host.rsplit("@", 1)[-1].split(":", 1)[0]
+        text = f"{host}/{path}"
+    else:
+        scp = SCP_LIKE_REMOTE_RE.match(text)
+        if scp:
+            text = f"{scp.group(1)}/{scp.group(2)}"
+    text = text.rstrip("/")
+    if text.lower().endswith(GIT_REMOTE_SUFFIX):
+        text = text[:-len(GIT_REMOTE_SUFFIX)]
+    return text.lower()
+
+
+def claim_key(repo, slug):
+    """The `(repo, slug)` pair two claims are compared by, the repo half normalised —
+    every "is this the same feature" question about the ledger goes through here, so two
+    spellings of one origin never count as two claimants."""
+    return normalize_repo_identity(repo), slug
+
+
+def mark_seen(seen, repo, repo_name, slugs, registered=False):
+    """Record in `seen` that this ledger now holds what `repo`'s features `slugs` claim —
+    each one's claims were just written by a capture, or its frozen record just registered.
+    `registered` also stamps the corpus's `registered_at`: `register_frozen_claims` walked
+    the whole corpus. Returns True when anything changed, so an unchanged run writes
+    nothing. The instants are when this machine first saw it, not when the feature ran."""
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    key = normalize_repo_identity(repo)
+    entry = seen.get(key)
+    changed = False
+    if not isinstance(entry, dict):
+        entry = {SEEN_REPO_KEY: repo, SEEN_REPO_NAME_KEY: repo_name,
+                 SEEN_REGISTERED_AT_KEY: None, SEEN_FEATURES_KEY: {}}
+        seen[key] = entry
+        changed = True
+    features = entry.setdefault(SEEN_FEATURES_KEY, {})
+    for slug in slugs:
+        if slug not in features:
+            features[slug] = now
+            changed = True
+    if registered and entry.get(SEEN_REGISTERED_AT_KEY) is None:
+        entry[SEEN_REGISTERED_AT_KEY] = now
+        changed = True
+    return changed
+
+
+def claimant_seen(seen, mention):
+    """Whether the ledger has seen the claimant an `also_claimed_by` mention names. A mention
+    is a display name, `<repo_name>/<slug>` — the record never stored the identity — so the
+    repo half is matched against each seen repo's display name, case-insensitively, and the
+    slug against that repo's seen features. Two repos sharing a display name would both
+    match; the cost of that is a stale mention removed, never a figure moved."""
+    repo_name, _, slug = mention.rpartition("/")
+    if not repo_name or not slug:
+        return False
+    for key, entry in seen.items():
+        if not isinstance(entry, dict):
+            continue
+        names = {
+            str(entry.get(SEEN_REPO_NAME_KEY) or "").lower(),
+            repo_display_name(entry.get(SEEN_REPO_KEY) or key).lower(),
+        }
+        if repo_name.lower() in names and slug in (entry.get(SEEN_FEATURES_KEY) or {}):
+            return True
+    return False
 
 
 def repo_identity(checkout_dir):
@@ -662,7 +1009,7 @@ def check_claims(agent_ids, repo, slug, claims):
     conflicts = []
     for agent_id in sorted(agent_ids):
         claim = claims.get(agent_id)
-        if claim and (claim.get("repo"), claim.get("slug")) != (repo, slug):
+        if claim and claim_key(claim.get("repo"), claim.get("slug")) != claim_key(repo, slug):
             conflicts.append((
                 agent_id, claim.get("repo_name", claim.get("repo")), claim.get("slug"),
                 claim.get("repo"), claim.get("selected_by"),
@@ -680,7 +1027,11 @@ def pin_over_parent_advice(other_repo, other_repo_name, other_slug, repo):
     self corpus. Across repos the other capture sees this pin only through a `"pinned"`
     ledger claim, which this refused capture has not written — said, not hidden
     (self/BACKLOG.md)."""
-    self_flag = " --self" if other_repo == SELF_CORPUS_IDENTITY else ""
+    self_flag = (
+        " --self"
+        if normalize_repo_identity(other_repo) == normalize_repo_identity(SELF_CORPUS_IDENTITY)
+        else ""
+    )
     command = f"{FEATURE_CAPTURE_SCRIPT}{self_flag} {other_slug}"
     advice = (
         f"      this feature pins it, and a pin outranks a parent selection: "
@@ -688,7 +1039,7 @@ def pin_over_parent_advice(other_repo, other_repo_name, other_slug, repo):
         f"`{command} --recapture` from its primary checkout if it has merged, `{command}` "
         "in its worktree if not — then run this capture again"
     )
-    if other_repo != repo:
+    if normalize_repo_identity(other_repo) != normalize_repo_identity(repo):
         advice += (
             f" (from another repo it sees this pin only through the claims ledger, which "
             f"this refused capture has not written: see self/BACKLOG.md, "
@@ -711,7 +1062,7 @@ def record_claims(claims, agent_ids, agent_costs, agent_selected_by, repo, repo_
     refusal (`check_claims`) has always read the whole selected set for the same reason."""
     for agent_id in [
         aid for aid, claim in claims.items()
-        if (claim.get("repo"), claim.get("slug")) == (repo, slug)
+        if claim_key(claim.get("repo"), claim.get("slug")) == claim_key(repo, slug)
     ]:
         del claims[agent_id]
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -736,7 +1087,7 @@ def other_session_claimants(session_claims, session_id, repo, slug):
     alone, which is what this annotation is for."""
     others = []
     for claim in session_claims.get(session_id) or []:
-        if (claim.get("repo"), claim.get("slug")) == (repo, slug):
+        if claim_key(claim.get("repo"), claim.get("slug")) == claim_key(repo, slug):
             continue
         name = claim.get("repo_name") or claim.get("repo")
         others.append(f"{name}/{claim.get('slug')}")
@@ -774,7 +1125,7 @@ def record_session_claims(session_claims, session_costs, session_selected_by, re
     for session_id in list(session_claims):
         remaining = [
             claim for claim in session_claims[session_id]
-            if (claim.get("repo"), claim.get("slug")) != (repo, slug)
+            if claim_key(claim.get("repo"), claim.get("slug")) != claim_key(repo, slug)
         ]
         if remaining:
             session_claims[session_id] = remaining
@@ -812,7 +1163,7 @@ def add_session_claims(session_claims, session_costs, session_selected_by, repo,
     added = False
     for session_id, cost in session_costs.items():
         claims = session_claims.get(session_id) or []
-        if any((claim.get("repo"), claim.get("slug")) == (repo, slug) for claim in claims):
+        if any(claim_key(claim.get("repo"), claim.get("slug")) == claim_key(repo, slug) for claim in claims):
             continue
         claims.append({
             "repo": repo,
@@ -870,7 +1221,7 @@ def frozen_session_costs(record):
     return costs, selected_by
 
 
-def annotate_frozen_record(output_path, record, session_claims, repo, slug):
+def annotate_frozen_record(output_path, record, session_claims, repo, slug, seen=None, unchecked=None):
     """Refresh a frozen record's `sessions[].also_claimed_by` from the claims ledger,
     writing `planning.json` only when something changed. Returns
     `(annotated_session_ids, changed)`.
@@ -900,7 +1251,16 @@ def annotate_frozen_record(output_path, record, session_claims, repo, slug):
     A refresh, not an append: a claimant that has left the ledger — its feature
     re-captured without the pin — loses its mention, and an entry whose list would be
     empty loses the key entirely, so an unshared feature's record stays identical to one
-    written before this path existed."""
+    written before this path existed.
+
+    **But only a claimant the ledger has seen** (`seen`, `claimant_seen`; design
+    2026-10-05 §6). Absence from a ledger that never held that feature's claims says
+    nothing about whether it still claims the session — a fresh container's empty ledger
+    read that way deleted 11 sibling mentions at one close. So a mention whose claimant is
+    unseen is KEPT, and `(slug, session_id, mention)` is appended to `unchecked` (when a
+    list is passed) for the caller to say so on stderr. `seen` of None reads as nothing
+    seen, which is the safe default."""
+    seen = seen or {}
     changed = False
     annotated = []
     for entry in record.get("sessions") or []:
@@ -909,6 +1269,13 @@ def annotate_frozen_record(output_path, record, session_claims, repo, slug):
             other_session_claimants(session_claims, session_id, repo, slug)
             if session_id else []
         )
+        kept = sorted(
+            mention for mention in (entry.get("also_claimed_by") or [])
+            if mention not in others and not claimant_seen(seen, mention)
+        )
+        if unchecked is not None:
+            unchecked.extend((slug, session_id, mention) for mention in kept)
+        others = sorted(set(others) | set(kept))
         if others:
             annotated.append(session_id)
             if entry.get("also_claimed_by") != others:
@@ -1005,10 +1372,23 @@ def annotate_corpus(features_dir, except_slug=None):
     `except_slug` is the feature whose capture is running: its own record was written by
     that capture moments ago, already carrying the same annotation from the same ledger,
     and re-opening it here would say a record changed that this run itself had just
-    written."""
+    written.
+
+    **It registers this corpus first** (`register_frozen_claims`, design 2026-10-05 §6):
+    every frozen record here enters the ledger, and is marked seen, before any is
+    annotated — so a ledger that has never held this corpus (a fresh container) reads its
+    siblings' claims from their own records rather than reading their absence as "no
+    longer a claimant". A mention of a claimant the ledger has still never seen — another
+    repo this machine never captured — is kept, and named on stderr as not re-checked."""
     features_dir = Path(features_dir)
     repo = corpus_identity(features_dir)
-    session_claims = load_ledger()[LEDGER_SESSIONS_KEY]
+    register_frozen_claims(
+        feature_slugs(features_dir), features_dir, skip_in_flight=True, whole_corpus=True
+    )
+    ledger = load_ledger()
+    session_claims = ledger[LEDGER_SESSIONS_KEY]
+    seen = ledger[LEDGER_SEEN_KEY]
+    unchecked = []
     # The windows as the manifests stand NOW, across both corpora — no `sessions_dir`, so
     # nothing is bounded and no transcript is opened: this is the "what has been stamped
     # since" half of the drift check, and the frozen record is the other.
@@ -1029,14 +1409,30 @@ def annotate_corpus(features_dir, except_slug=None):
         for line in check_provisional_drift(slug, record, claimant_windows):
             print(line, file=sys.stderr)
         _, changed = annotate_frozen_record(
-            output_path, record, session_claims, repo, slug
+            output_path, record, session_claims, repo, slug, seen, unchecked
         )
         if changed:
             changed_slugs.append(slug)
+    for line in unchecked_mention_lines(unchecked):
+        print(line, file=sys.stderr)
     return changed_slugs
 
 
-def register_frozen_claims(slugs, features_dir, skip_in_flight):
+def unchecked_mention_lines(unchecked):
+    """One stderr line per mention `annotate_frozen_record` kept because its claimant was
+    never seen by this ledger — `(slug, session_id, mention)` triples, deduplicated. Never
+    stdout: `feature-capture.sh` reads `--annotate-frozen`'s stdout as slugs."""
+    lines = []
+    for slug, session_id, mention in sorted(set(unchecked)):
+        lines.append(
+            f"note: {slug}: also_claimed_by {mention} on session {session_id} not re-checked "
+            "— this machine's claims ledger has never seen that feature's claims, so its "
+            "absence there is not evidence it no longer claims the session; kept as written"
+        )
+    return lines
+
+
+def register_frozen_claims(slugs, features_dir, skip_in_flight, whole_corpus=False):
     """Phase one of the annotate-only path: every frozen record this run will annotate
     registers its own session claims in the ledger BEFORE any of them is annotated.
 
@@ -1063,7 +1459,9 @@ def register_frozen_claims(slugs, features_dir, skip_in_flight):
     repo_name = repo_display_name(repo)
     ledger = load_ledger()
     session_claims = ledger[LEDGER_SESSIONS_KEY]
+    seen = ledger[LEDGER_SEEN_KEY]
     added = False
+    registered = []
     for slug in slugs:
         record = load_frozen_record(Path(features_dir, slug, "planning.json"))
         if record is None:
@@ -1088,8 +1486,16 @@ def register_frozen_claims(slugs, features_dir, skip_in_flight):
         added |= add_session_claims(
             session_claims, costs, selected_by, repo, repo_name, slug, window
         )
+        registered.append(slug)
+    # Provenance (design 2026-10-05 §6): every record registered here is now SEEN, whether
+    # or not it added a claim — a frozen record that lists no session is as much a statement
+    # of what that feature claims as one that lists five.
+    # `registered_at` only when the whole corpus was walked: a single-slug run registered
+    # one record, which says nothing about the rest of the corpus.
+    if registered or whole_corpus:
+        added |= mark_seen(seen, repo, repo_name, registered, registered=whole_corpus)
     if added:
-        save_ledger(ledger[LEDGER_SUBAGENTS_KEY], session_claims)
+        save_ledger(ledger[LEDGER_SUBAGENTS_KEY], session_claims, seen)
 
 
 def manifest_pinned_subagents(features_dirs, slug, preferred_dir=None):
@@ -1279,7 +1685,7 @@ def other_feature_pins(features_dir, slug, repo, repo_name, claims):
     for agent_id, claim in sorted(claims.items()):
         if not isinstance(claim, dict) or claim.get("selected_by") != SELECTED_BY_PINNED:
             continue
-        if (claim.get("repo"), claim.get("slug")) == (repo, slug):
+        if claim_key(claim.get("repo"), claim.get("slug")) == claim_key(repo, slug):
             continue
         pins.setdefault(
             agent_id, f"{claim.get('repo_name', claim.get('repo'))}/{claim.get('slug')}"
@@ -2095,13 +2501,15 @@ def session_claim_intervals(session_id, session_start, session_branches, share_c
     claims = [
         {"feature": own_feature, "from": own_window["from"], "to": own_window["to"], "source": "self"}
     ]
-    seen = {(repo, slug)}
+    # Deduplicated on `claim_key`, the repo half normalised: two spellings of one origin
+    # are one feature, never two claimants splitting a session with themselves.
+    seen = {claim_key(repo, slug)}
 
     for other in share_ctx["claimants"]:
         other_slug = other["slug"]
         if other["features_dir"] == features_dir and other_slug == slug:
             continue
-        if (other["repo"], other_slug) in seen:
+        if claim_key(other["repo"], other_slug) in seen:
             continue
         if session_id in other["excluded"]:
             continue
@@ -2110,7 +2518,7 @@ def session_claim_intervals(session_id, session_start, session_branches, share_c
         shares_branch = bool(other["branches"] & session_branches)
         if not (pins or (shares_branch and in_window(session_start, other_window))):
             continue
-        seen.add((other["repo"], other_slug))
+        seen.add(claim_key(other["repo"], other_slug))
         claim = {
             "feature": f"{other['repo_name']}/{other_slug}",
             "from": other_window["from"], "to": other_window["to"],
@@ -2127,7 +2535,7 @@ def session_claim_intervals(session_id, session_start, session_branches, share_c
         claims.append(claim)
 
     for claim in share_ctx["session_claims"].get(session_id) or []:
-        key = (claim.get("repo"), claim.get("slug"))
+        key = claim_key(claim.get("repo"), claim.get("slug"))
         if key in seen:
             continue
         seen.add(key)
@@ -2228,7 +2636,7 @@ NO_OUTSIDE_COST_USD = 0.0
 MIN_REPORTED_OUTSIDE_SECONDS = 1
 
 
-def boundary_warning(session_id, window, lines, start_ts, end_ts, shared):
+def boundary_warning(session_id, window, lines, start_ts, end_ts, shared, cut=False):
     """The `may span the window boundary` warning for a SELECTED session whose last
     instant is at or after its window's `to`, saying how much lies outside and whether it
     was counted.
@@ -2261,6 +2669,11 @@ def boundary_warning(session_id, window, lines, start_ts, end_ts, shared):
     "$0.0000 and 0s of it fall at or after `to`, counted in full" asserts a measurement
     of nothing where the old sentence said something true. The disclosure is the point;
     a disclosure of zero is noise, so it says only that no billable response is out there.
+
+    `cut` is the third path (self/features/cost-capture-collisions): a PINNED session this
+    feature alone claims, cut to its window. Nothing past `to` is counted here either, and
+    nobody else's window can reach it, so the sentence says it went to the unclaimed
+    remainder without speaking of other claimants — and never `counted in full`.
     """
     to = window["to"]
     cost, partial = outside_window_cost(lines, to, start_ts.date().isoformat())
@@ -2272,14 +2685,23 @@ def boundary_warning(session_id, window, lines, start_ts, end_ts, shared):
     if cost <= NO_OUTSIDE_COST_USD and seconds < MIN_REPORTED_OUTSIDE_SECONDS:
         return f"{prefix}; no billable response of it falls at or after `to`"
     at_least = "at least " if partial else ""
-    counted = (
-        "not counted here (the split gives each response to the claimants whose window "
-        "still covers it, and only what is past every claimant's `to` to nobody, as the "
-        "unclaimed remainder)"
-        if shared else
-        "counted in full (this feature is its only claimant, so the session is priced "
-        "over its whole transcript)"
-    )
+    if cut:
+        counted = (
+            "not counted here (the session is pinned and this feature is its only "
+            "claimant, so it is cut to the window: what lies past `to` is the unclaimed "
+            "remainder)"
+        )
+    elif shared:
+        counted = (
+            "not counted here (the split gives each response to the claimants whose window "
+            "still covers it, and only what is past every claimant's `to` to nobody, as the "
+            "unclaimed remainder)"
+        )
+    else:
+        counted = (
+            "counted in full (this feature is its only claimant and selected it by branch, "
+            "so the session is priced over its whole transcript)"
+        )
     return f"{prefix}; {at_least}${cost:.4f} and {seconds}s of it fall at or after `to`, {counted}"
 
 
@@ -2445,6 +2867,15 @@ def partition_seconds(start, end, intervals):
     return per_feature, unclaimed, unclaimed_head
 
 
+def pin_is_cut(start, end, intervals):
+    """Whether cutting a sole claimant's session to its own claim removes anything. One
+    claim's coverage — its window, and before it the opening stretch `head_bound` allows —
+    is a single contiguous interval, so the session `[start, end]` lies wholly inside it
+    exactly when both its first and its last instant are owned (`share_owners`). An open
+    `to` with an unbounded head covers everything, and an empty own window covers nothing."""
+    return not share_owners(start, intervals) or not share_owners(end, intervals)
+
+
 def select_parent(
     lines, session_id, window, warnings, matched_session_ids,
     session_start, session_end, session_branch, matching_branches, totals,
@@ -2455,10 +2886,12 @@ def select_parent(
     can run for a parent this function rejected.
 
     Once selected, pricing goes through `session_claim_intervals`: a session with one
-    claimant (itself) is billed whole into `totals`, exactly as before; a session with
-    more is walked response by response and billed into `totals` only for the responses
-    this feature owns, with `share_detail[session_id]` left for `capture_feature` to
-    turn into `share_basis`, `session_cost_usd` and the apportioned `duration_s`."""
+    claimant (itself) is billed whole into `totals`, exactly as before — unless it is
+    PINNED and outruns what its claim covers (`pin_is_cut`), when it is cut like a shared
+    one; a session with more claimants, or a cut pin, is walked response by response and
+    billed into `totals` only for the responses this feature owns, with
+    `share_detail[session_id]` left for `capture_feature` to turn into `share_basis`,
+    `session_cost_usd` and the apportioned `duration_s`."""
     # Ordered as instants, not as strings. A session's *start* is what window
     # membership is decided on below, and string ordering picks the wrong line
     # as soon as the transcript mixes formats: "2026-08-21T23:00:00-04:00"
@@ -2505,20 +2938,36 @@ def select_parent(
     branches_seen = {line.get("gitBranch") for line in lines if line.get("gitBranch")}
     intervals = session_claim_intervals(session_id, start_ts, branches_seen, share_ctx, warnings)
 
+    # The sole-claimant cut (self/features/cost-capture-collisions, "The sole-claimant cut:
+    # decided"): a PINNED session goes through the split whatever the number of claimants,
+    # with the claim set [this feature] when nobody else claims it. A pin claims a session
+    # regardless of branch, window or cwd, and the sessions it exists for — a coordinator
+    # launched on `main`, a design session moved to the branch half-way — did other work
+    # too; the window is the one thing the manifest says about which part was this
+    # feature's. Billed whole, cloud-self-gate carried a 9.7-hour design session for a
+    # 14-minute feature. A BRANCH-selected sole claimant is still billed whole: its window
+    # is stamped from that same session's evidence, so a cut would remove nothing at the
+    # first capture and would change every consuming repo's ordinary path for no measured
+    # case. Taken only when it removes something (`pin_is_cut`), so a pin wholly inside its
+    # window keeps the unshared record byte for byte.
+    cut = len(intervals) <= 1 and pinned and pin_is_cut(start_ts, end_ts, intervals)
+    split = len(intervals) > 1 or cut
+
     # After the claim set, not before it: what lies past `to` is counted on the unshared
-    # path and excluded on the shared one, and the warning says which — so it cannot be
-    # written until `len(intervals)` is known.
+    # path and excluded on the split one, and the warning says which — so it cannot be
+    # written until the claim set and the cut are known.
     if window["to"] is not None and end_ts > window["to"]:
         warnings.append(
             boundary_warning(
-                session_id, window, lines, start_ts, end_ts, shared=len(intervals) > 1
+                session_id, window, lines, start_ts, end_ts, shared=split, cut=cut
             )
         )
 
-    if len(intervals) <= 1:
-        # A session nobody else claims has no double-count to remove, and slicing it
-        # would trade a disclosed over-count for a silent under-count — this must be
-        # byte-identical in effect to a capture that predates sharing altogether.
+    if not split:
+        # A session nobody else claims, selected by branch or pinned wholly inside its
+        # window, has no double-count to remove and nothing outside its window to cut —
+        # this must be byte-identical in effect to a capture that predates sharing
+        # altogether.
         for model, usage, is_sidechain in iter_billable_messages(lines):
             add_usage(totals, (session_id, None, model, is_sidechain, ()), usage)
         return True
@@ -2607,10 +3056,14 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         record = load_frozen_record(output_path)
         annotated, changed = [], False
         if record is not None:
+            ledger = load_ledger()
+            unchecked = []
             annotated, changed = annotate_frozen_record(
-                output_path, record, load_ledger()[LEDGER_SESSIONS_KEY],
-                corpus_identity(features_dir), slug,
+                output_path, record, ledger[LEDGER_SESSIONS_KEY],
+                corpus_identity(features_dir), slug, ledger[LEDGER_SEEN_KEY], unchecked,
             )
+            for line in unchecked_mention_lines(unchecked):
+                print(line, file=sys.stderr)
         if not changed:
             print(
                 f"{slug}: already captured {prior_at}, total ${prior_total:.4f} — skipping "
@@ -2654,15 +3107,23 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         # must not read as one that did.
         return "annotated" if changed else "skipped"
 
-    excluded_ids = collect_excluded_session_ids(both_corpora, manifest)
     # Runner-spawned exclusions (a usage.json already holds that session's cost, its
     # subagents included) are never overridable. A manual `exclude_sessions` entry drops
     # only the session's own context cost: a pin on one of its subagents is an explicit
     # claim and still wins — the coordinator case, where the parent's cost belongs to
     # the coordinator's manifest and the architect's to the feature's.
-    runner_excluded_ids = collect_excluded_session_ids(
-        both_corpora, {**manifest, "exclude_sessions": []}
-    )
+    # The one exception to "never overridable" is a COLLISION (design 2026-10-05 §4): an id
+    # a usage.json names whose transcript also holds interactive lines is a coordinator a
+    # runner child borrowed the id of, and the walk below keeps those lines
+    # (`runner_collision`) — the usage.json still holds, and is still the only record of,
+    # the headless tree's cost.
+    runner_sidecars = runner_session_sidecars(both_corpora)
+    runner_excluded_ids = set(runner_sidecars)
+    manual_excluded_ids = set(manifest.get("exclude_sessions", []) or [])
+    excluded_ids = runner_excluded_ids | manual_excluded_ids
+    # Runner ids whose transcript this scan found collided; every other runner id is
+    # runner-only, and its delegates are never priced here, pinned or not.
+    collided_ids = set()
     # Every excluded session whose transcript sits in this repo's directories. Serialized
     # as `excluded_session_ids` — deliberately wide, and NOT evidence about any branch.
     excluded_ids_encountered = set()
@@ -2753,8 +3214,9 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         ),
     }
     # session_id -> {"intervals", "session_tokens", "unclaimed_tokens"} for every
-    # multiply-claimed session `select_parent` selects — absent for a session with one
-    # claimant, which is priced exactly as before.
+    # multiply-claimed session `select_parent` selects, and every pinned sole-claimant one
+    # it cuts to its window — absent for any other session with one claimant, which is
+    # priced exactly as before.
     share_detail = {}
 
     for transcript_dir in find_transcript_dirs(sessions_dir):
@@ -2773,6 +3235,24 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             if session_id is None:
                 continue
 
+            # A runner id whose transcript also holds interactive lines is a COLLISION: a
+            # runner child that borrowed this session's id (design 2026-10-05 §4). From here
+            # on the session is its interactive lines alone — selected, priced and timed as
+            # any session would be — and `collision_flags` is kept to tell its delegates'
+            # spawning trees apart below. A runner id that does not collide is excluded
+            # exactly as before.
+            collision_flags = None
+            all_lines = lines
+            if session_id in runner_excluded_ids:
+                collision = runner_collision(lines)
+                if collision is not None:
+                    lines, collision_flags = collision
+                    collided_ids.add(session_id)
+                    warnings.append(collision_warning(
+                        session_id, runner_sidecars[session_id], len(all_lines) - len(lines)
+                    ))
+                    branches_seen = {line.get("gitBranch") for line in lines if line.get("gitBranch")}
+
             session_pinned = session_id in pinned_session_ids
             pins_only = False
             # Hoisted above the exclusion branch so an excluded session can be judged on
@@ -2781,7 +3261,8 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                 (line.get("cwd") for line in lines if isinstance(line.get("cwd"), str)), ""
             )
             repo_match = session_pinned or cwd_under_any(lines, claimable_roots, claim_fences)
-            if session_id in excluded_ids:
+            runner_only = session_id in runner_excluded_ids and session_id not in collided_ids
+            if runner_only or session_id in manual_excluded_ids:
                 excluded_ids_encountered.add(session_id)
                 # The evidenced zero rests on this narrower set, not on the wide one: an
                 # excluded session only confirms the branch name when it actually carries
@@ -2792,7 +3273,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                 # counting it as evidence would trade one silent zero for another.
                 if repo_match and (branches_seen & set(branches)):
                     excluded_on_branch.add(session_id)
-                if session_id in runner_excluded_ids:
+                if runner_only:
                     if session_pinned:
                         warnings.append(
                             f"session {session_id!r} is pinned in `sessions` but is a runner "
@@ -2848,6 +3329,19 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                 agent_start_ts = agent_start_of(agent_lines)
                 if agent_start_ts is None:
                     continue
+                # A delegate of a collided session belongs to the tree that spawned it: the
+                # runner's is in the sidecar's `total_cost_usd` already and is never priced
+                # here, pin or no pin; the coordinator's goes through the ordinary routes
+                # below; and one whose spawning tree cannot be told is treated as the
+                # coordinator's and said so — a disclosed possible double count, never a
+                # silent loss.
+                spawned_by = None
+                if collision_flags is not None:
+                    spawned_by = spawning_tree(agent_path, agent_id, all_lines, collision_flags)
+                    if spawned_by is True:
+                        if agent_id in pinned_agent_ids:
+                            warnings.append(runner_spawned_pin_warning(agent_id, session_id))
+                        continue
                 if agent_id in pinned_agent_ids:
                     selected_by = SELECTED_BY_PINNED
                     agent_briefs[agent_id] = brief_feature_of(agent_lines)
@@ -2866,20 +3360,30 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                     selected_by = SELECTED_BY_PARENT
                 else:
                     continue
+                if collision_flags is not None and spawned_by is None:
+                    warnings.append(untold_spawner_warning(agent_id, session_id))
                 agent_start[agent_id] = agent_start_ts
                 agent_end[agent_id] = agent_end_of(agent_lines)
                 agent_parent[agent_id] = session_id
                 agent_selected_by[agent_id] = selected_by
                 price_subagent(totals, session_id, agent_id, agent_lines)
 
-    # A pin this repo's directories do not carry is looked for everywhere else: the
-    # transcript is filed under the *parent's* cwd, and the parent was a coordinator
-    # in another repo. Pins only — nothing is parent-selected across repos.
+    # A pin the walk above did not reach is looked for EVERYWHERE, this repo's directories
+    # included (design 2026-10-05 §4, rule 3): the transcript is filed under the *parent's*
+    # cwd, and the parent was a coordinator in another repo — or sits in this repo's own
+    # directories where the walk never reached its subagents (a cwd this feature cannot
+    # claim from, another feature's worktree). Skipping this repo's directories here, as
+    # this once did, lost such a pin outright. What is still never priced is a delegate of
+    # a runner-only session: its sidecar's `total_cost_usd` includes it. Pins only —
+    # nothing is parent-selected this way. A hit's parent is judged from its own transcript
+    # (`fallback_parent_collision`), the main walk's collision rule and spawning-tree
+    # attribution applied again here, so the order of the two fallbacks cannot matter.
     this_repo_dirs = set(find_transcript_dirs(sessions_dir))
     for agent_id in sorted(pinned_agent_ids - reachable_agent_ids):
-        agent_path = find_pinned_elsewhere(agent_id, this_repo_dirs)
-        if agent_path is None:
+        found = find_pinned_anywhere(agent_id, runner_excluded_ids)
+        if found is None:
             continue
+        agent_path, parent_collision = found
         agent_lines = load_transcript_lines(agent_path)
         agent_start_ts = agent_start_of(agent_lines)
         if agent_start_ts is None:
@@ -2889,7 +3393,17 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             agent_path.parent.parent.name,
         )
         reachable_agent_ids.add(agent_id)
-        agent_cross_repo.add(agent_id)
+        if parent_collision is not None:
+            parent_lines, parent_flags = parent_collision
+            spawned_by = spawning_tree(agent_path, agent_id, parent_lines, parent_flags)
+            if spawned_by is True:
+                warnings.append(runner_spawned_pin_warning(agent_id, parent_id))
+                continue
+            if spawned_by is None:
+                warnings.append(untold_spawner_warning(agent_id, parent_id))
+        # `cross_repo` keeps its meaning: filed under ANOTHER repo's project directory.
+        if agent_path.parents[2] not in this_repo_dirs:
+            agent_cross_repo.add(agent_id)
         agent_start[agent_id] = agent_start_ts
         agent_end[agent_id] = agent_end_of(agent_lines)
         agent_parent[agent_id] = parent_id
@@ -2901,14 +3415,24 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     # checkout, on whatever branch, before this feature existed — is looked for
     # everywhere else and claimed on its id alone, window and cwd notwithstanding.
     for session_id in sorted(pinned_session_ids - matched_session_ids):
-        if session_id in runner_excluded_ids:
-            continue
         session_path = find_session_elsewhere(session_id, this_repo_dirs)
         if session_path is None:
             continue
         lines = load_transcript_lines(session_path)
         if not lines:
             continue
+        # The same collision rule as the walk above: a runner id is passed over unless its
+        # transcript also holds interactive lines, and then only those are claimed.
+        if session_id in runner_excluded_ids:
+            collision = runner_collision(lines)
+            if collision is None:
+                continue
+            kept, _flags = collision
+            collided_ids.add(session_id)
+            warnings.append(collision_warning(
+                session_id, runner_sidecars[session_id], len(lines) - len(kept)
+            ))
+            lines = kept
         reachable_session_ids.add(session_id)
         if select_parent(
             lines, session_id, window, warnings, matched_session_ids,
@@ -3135,11 +3659,20 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
 
         other_features = sorted(c["feature"] for c in intervals if c["feature"] != own_feature)
         own_share_cost = session_share_cost.get(sid, 0.0)
-        warnings.append(
-            f"session {sid} is shared by {len(intervals)} claimant(s); this feature's "
-            f"share is ${own_share_cost:.4f} of the session's own ${session_cost:.4f}, "
-            f"the rest going to {', '.join(other_features)}"
-        )
+        if other_features:
+            warnings.append(
+                f"session {sid} is shared by {len(intervals)} claimant(s); this feature's "
+                f"share is ${own_share_cost:.4f} of the session's own ${session_cost:.4f}, "
+                f"the rest going to {', '.join(other_features)}"
+            )
+        else:
+            # The sole-claimant cut: nobody to share with, so nothing here may call it a
+            # share — the part outside the window is the unclaimed remainder below.
+            warnings.append(
+                f"session {sid} is pinned and claimed by this feature alone, so it is cut "
+                f"to the window: this feature's part is ${own_share_cost:.4f} of the "
+                f"session's own ${session_cost:.4f}"
+            )
         # Either quantity is worth reporting on its own: unclaimed time with no unclaimed
         # dollars still means a stretch of the session belongs to nobody, and the advice
         # for repairing it is the same.
@@ -3417,7 +3950,12 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     record_session_claims(
         session_claims, session_costs, session_selected_by, repo, repo_name, slug, window
     )
-    save_ledger(claims, session_claims)
+    # This feature's claims are now exactly what the ledger holds for it, so its absence
+    # from any other session's claims is a fact from here on, not a gap (design 2026-10-05
+    # §6): an annotation may remove a stale mention of it.
+    seen = ledger[LEDGER_SEEN_KEY]
+    mark_seen(seen, repo, repo_name, [slug])
+    save_ledger(claims, session_claims, seen)
 
     cost_str = "cost unavailable — see warnings" if total_is_partial else f"${total_cost:.4f}"
     print(
@@ -3614,7 +4152,9 @@ def main():
     # before it (`register_frozen_claims`). Skipped under --recapture, where every
     # feature re-derives its claims from transcripts anyway.
     if not recapture:
-        register_frozen_claims(slugs, features_dir, args.all_features)
+        register_frozen_claims(
+            slugs, features_dir, args.all_features, whole_corpus=args.all_features
+        )
 
     counts = {
         "captured": 0, "annotated": 0, "skipped": 0, "refused": 0, "conflict": 0,

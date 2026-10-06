@@ -11,11 +11,13 @@ set -euo pipefail
 # Copying once solves nothing; syncing keeps one source of truth.
 #
 # Overwriting the generated stubs is safe because they carry no repo-specific content;
-# the six files that do — PROJECT_FACTS.md, BACKLOG.md, gate.sh, pr.sh,
-# worktree-setup.sh and open-session.sh — are seeded from the skeleton on first run and never overwritten
+# the eight files that do — PROJECT_FACTS.md, BACKLOG.md, gate.sh, pr.sh,
+# worktree-setup.sh, open-session.sh, environment.sh and cloud-setup.sh — are seeded
+# from the skeleton on first run and never overwritten
 # again. `--check` reports on both halves without writing anything: STALE or missing
 # generated stubs, and repo-owned scripts whose template-version line trails the
-# template's, plus an unfilled PROJECT_FACTS.md and a missing BACKLOG.md. The write path
+# template's or that are missing (environment.sh and cloud-setup.sh among them, reported
+# `missing` exactly as BACKLOG.md is), plus an unfilled PROJECT_FACTS.md. The write path
 # below is unchanged and ends with that same repo-owned report, since the stubs it just
 # wrote are always in sync.
 #
@@ -25,8 +27,10 @@ set -euo pipefail
 #
 # Beyond plans/, one file in .claude/ is maintained: the PreToolUse hook entry pointing at
 # hooks/allow-repo-commands.sh, which approves repo-confined reads and tests and denies a
-# chained `cd`. It is merged, never copied — see hooks/README.md.
-# A repo that hand-edits or removes the entry keeps its version; nothing is re-added.
+# chained `cd`, and the SessionStart hook entry running plans/cloud-setup.sh (a no-op
+# outside a Claude Code cloud container — the script guards itself). Both are merged,
+# never copied — see hooks/README.md. A repo that hand-edits an entry keeps its version;
+# one that is absent is appended, once.
 # The same file also gets the OS `sandbox` block, and there the merge is NOT hands-off:
 # `enabled`, `failIfUnavailable` and `allowUnsandboxedCommands` are set back to
 # wire-settings.py's `SANDBOX_ENABLED` (OFF today) / on / off on every run, even over a
@@ -78,8 +82,14 @@ GENERATED=(README.md interactive/README.md features/README.md features/TEMPLATE.
 # inside the new worktree; it is repo-owned because how a session is opened is a
 # per-machine, per-repo choice (a terminal, a tmux window, an editor).
 # Checked by template-version rather than by content, since a repo customizes
-# everything below each script's REPO-SPECIFIC marker.
-REPO_OWNED_SCRIPTS=(gate.sh pr.sh worktree-setup.sh open-session.sh)
+# everything below each script's REPO-SPECIFIC marker. The last two are the environment
+# adapters of agentTooling/self/DESIGN-2026-10-05-cloud-execution.md §7: environment.sh
+# (the facts that differ by profile, SOURCED by the gate and worktree-setup.sh) and
+# cloud-setup.sh (the once-per-container step the SessionStart hook runs).
+REPO_OWNED_SCRIPTS=(gate.sh pr.sh worktree-setup.sh open-session.sh environment.sh cloud-setup.sh)
+# The repo-owned scripts that are sourced, never run: seeded without the executable bit,
+# so running one by mistake fails rather than setting variables in a child nobody reads.
+SOURCED_SCRIPTS=(environment.sh)
 
 # Repo-owned docs seeded once and then reported by PRESENCE alone. An entry written into
 # one is content, not drift, and an EMPTY one is the correct steady state — a repo that
@@ -109,7 +119,18 @@ repo_owned_created_hint() {
     pr.sh) echo "check its forge CLI before relying on it; it bases the PR on whatever branch is checked out" ;;
     worktree-setup.sh) echo "fill in this repo's per-worktree setup (venv, npm install, dev port)" ;;
     open-session.sh) echo "it opens a Terminal.app window running claude; swap in this repo's launcher" ;;
+    environment.sh) echo "put the facts that differ between a laptop and a cloud container here (DB connection, browser path)" ;;
+    cloud-setup.sh) echo "a no-op outside a cloud container; start this repo's services there (Postgres, a role)" ;;
   esac
+}
+
+# is_sourced_script <name> — status 0 for a repo-owned script in SOURCED_SCRIPTS.
+is_sourced_script() {
+  local s
+  for s in "${SOURCED_SCRIPTS[@]}"; do
+    if [[ "$s" == "$1" ]]; then return 0; fi
+  done
+  return 1
 }
 
 # check_stubs — one in-sync/STALE/missing line per $GENERATED entry, in order. Returns
@@ -130,7 +151,7 @@ check_stubs() {
   return "$count"
 }
 
-# check_repo_owned — the three scripts by template-version, then PROJECT_FACTS.md by
+# check_repo_owned — the six scripts by template-version, then PROJECT_FACTS.md by
 # content, then SEEDED_DOCS by presence alone. Returns the count of items that need
 # attention.
 check_repo_owned() {
@@ -285,7 +306,11 @@ for f in "${REPO_OWNED_SCRIPTS[@]}"; do
     printf "  %-${STATUS_COL_WIDTH}s%s\n" "kept" "plans/$f (repo-owned — never overwritten)"
   else
     cp "$TEMPLATE_DIR/$f" "$PLANS_DIR/$f"
-    chmod +x "$PLANS_DIR/$f"
+    if is_sourced_script "$f"; then
+      chmod a-x "$PLANS_DIR/$f"
+    else
+      chmod +x "$PLANS_DIR/$f"
+    fi
     printf "  %-${STATUS_COL_WIDTH}s%s\n" "created" "plans/$f — $(repo_owned_created_hint "$f")"
   fi
 done

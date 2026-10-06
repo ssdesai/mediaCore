@@ -76,6 +76,18 @@ set -uo pipefail
 #      D2.    without `--self`, the plans corpus's feature pins it, so it is not;
 #      D3.    a slug the queried corpus does not hold at all still falls back to the slug
 #             alone across both — the vendored-subtree case the docstring argues for.
+#   E. the ledger knows what it has seen (self/features/cost-capture-collisions, design §6):
+#      E1-E3. from an EMPTY ledger `--annotate-frozen` changes no frozen record and prints
+#             no slug — sibling mentions and a never-seen repo's mention alike — and names
+#             the never-seen claimant once on stderr as not re-checked;
+#      E4-E5. it registered this corpus's frozen records first (`seen`, with
+#             `registered_at`), and a second run changes nothing either;
+#      E6-E7. a ledger that HAS seen the other repo and claimant, with no claim from it
+#             left, removes the stale mention as before, nothing else in the record moving;
+#      E8-E10. the https and ssh spellings of one origin are one identity: this feature's
+#             own claim under either is not a co-claimant, the session is not split with
+#             itself, and the capture's claim replaces both, written as declared.
+#      E1-E4, E6's removal message, E8-E10 were RED on main.
 #
 # A1-A4, every B assertion, C1, C2, C4, C6 and D1 were RED until their feature landed: A
 # on `--for` listing a pinned delegate, B on the second capture being refused as a double
@@ -420,6 +432,107 @@ d_fallback="$(list_for "$REPO/vendored")"
 check "D1. --self: the self corpus's same-slug feature pins nothing, so the delegate is unclaimed" 'grep -q "$AGENT_DUP" <<<"$d_self"'
 check "D2. no --self: the plans corpus's feature pins it, so it is not listed" '! grep -q "$AGENT_DUP" <<<"$d_plans"'
 check "D3. a slug the queried corpus does not hold falls back to the slug alone across both" '! grep -q "$AGENT_VENDOR" <<<"$d_fallback"'
+
+# ── E. the ledger knows what it has seen (design §6) ──────────────────────────
+# self/features/cost-capture-collisions. The ledger is local to one machine, and
+# `--annotate-frozen` used to read a claimant's absence from it as "no longer a claimant":
+# run from a fresh container's empty ledger at cloud-close's close, it deleted
+# `also_claimed_by` from 11 frozen sibling records and the close committed them. Now a
+# mention is removed only for a claimant the ledger has SEEN — a capture wrote that
+# feature's claims, or a registration of its frozen record did — and `--annotate-frozen`
+# registers this corpus's frozen records before it annotates. A mention of a repo the
+# ledger has never seen is kept, with one line on stderr saying it was not re-checked.
+#
+# The corpus now holds four frozen records, each naming its sibling (`one`/`two` on
+# $SHARED, `three`/`four` on $SHARED2). `one` gains a mention of a feature in another
+# repo this machine has never captured. RED on main: the empty ledger strips all five
+# mentions and prints all four slugs.
+annotate() { python3 "$AT/analysis/capture_planning.py" --self --annotate-frozen 2>"$TMP/annotate-err.txt"; }
+python3 - "$P_ONE" "$SHARED" <<'PYEOF'
+import json, sys
+path, session_id = sys.argv[1], sys.argv[2]
+data = json.load(open(path))
+for entry in data.get("sessions") or []:
+    if entry.get("session_id") == session_id:
+        entry["also_claimed_by"] = sorted(set(entry.get("also_claimed_by") or []) | {"otherRepo/far"})
+json.dump(data, open(path, "w"), indent=2)
+PYEOF
+for f in one two three four; do cp "$AT/self/features/$f/planning.json" "$TMP/$f-before-E.json"; done
+rm -f "$LEDGER"
+e_out="$(annotate)"; e_rc=$?
+e_err="$(cat "$TMP/annotate-err.txt")"
+check "E1. from an EMPTY ledger, --annotate-frozen changes no record and prints no slug (rc $e_rc, got: ${e_out:-<nothing>})" \
+  '[[ $e_rc -eq 0 && -z "$e_out" ]]'
+check "E2. every frozen record is byte-identical — sibling mentions and the foreign one alike" \
+  'cmp -s "$TMP/one-before-E.json" "$P_ONE" && cmp -s "$TMP/two-before-E.json" "$P_TWO" && cmp -s "$TMP/three-before-E.json" "$P_THREE" && cmp -s "$TMP/four-before-E.json" "$P_FOUR"'
+check "E3. the never-seen claimant is named on stderr as not re-checked, with the record that names it" \
+  'grep "otherRepo/far" <<<"$e_err" | grep "one" | grep -q "not re-checked"'
+check "E3b. ...exactly once" '[[ "$(grep -c "otherRepo/far" <<<"$e_err")" == "1" ]]'
+e_seen="$(jf "$LEDGER" '{"one", "two", "three", "four"} <= {s for r in d["seen"].values() for s in r["features"]}')"
+check "E4. the run registered this corpus first: the ledger has now seen the four frozen siblings (got ${e_seen:-<absent>})" \
+  '[[ "$e_seen" == "True" ]]'
+e_registered="$(jf "$LEDGER" '[r.get("registered_at") is not None for r in d["seen"].values()]')"
+check "E4b. ...and records when it registered this corpus (got ${e_registered:-<absent>})" '[[ "$e_registered" == "[True]" ]]'
+e_out2="$(annotate)"
+check "E5. a second run over the now-registered ledger still changes nothing" \
+  '[[ -z "$e_out2" ]] && cmp -s "$TMP/one-before-E.json" "$P_ONE" && cmp -s "$TMP/two-before-E.json" "$P_TWO"'
+
+# E6-E7: a ledger that HAS seen the other repo and the claimant, and holds no claim from it
+# on the session, removes the stale mention exactly as before — the repair path stands.
+python3 - "$LEDGER" <<'PYEOF'
+import json, os, sys
+path = sys.argv[1]
+data = json.load(open(path)) if os.path.exists(path) else {"subagents": {}, "sessions": {}}
+data.setdefault("seen", {})["github.com/someone/otherrepo"] = {
+    "repo": "git@github.com:someone/otherRepo.git", "repo_name": "otherRepo",
+    "registered_at": "2026-07-03T00:00:00+00:00",
+    "features": {"far": "2026-07-03T00:00:00+00:00"},
+}
+json.dump(data, open(path, "w"), indent=2)
+PYEOF
+e_out3="$(annotate)"
+e_err3="$(cat "$TMP/annotate-err.txt")"
+one_after="$(jf "$P_ONE" '[s.get("also_claimed_by") for s in d["sessions"]]')"
+check "E6. a seen claimant with no claim left is removed, and the record is printed (got ${e_out3:-<nothing>})" \
+  '[[ "$e_out3" == "one" && "$one_after" == "[['"'"'$REPO/two'"'"']]" ]]'
+check "E7. ...and is no longer reported as not re-checked" '! grep -q "otherRepo/far" <<<"$e_err3"'
+check "E7b. nothing else in the record moved" '[[ "$(same_but_annotation "$TMP/one-before-E.json" "$P_ONE")" == "same" ]]'
+
+# E8-E10: the https and ssh spellings of one origin are one identity. The ledger holds
+# `five`'s own claim on its session twice over, written under the spellings two machines
+# would use — the cloud's bare https URL and a laptop's scp-style ssh one — for the repo
+# the self corpus declares as `https://github.com/ssdesai/agentTooling.git`. Compared as
+# written they are two other claimants, and the capture splits the session with itself.
+SHARED3="ssssssss-0000-0000-0000-000000000004"
+session_line "$SHARED3" "/somewhere/else" "main" "msg-s3" "$MODEL" "$TS" 100 3000 0 0 0 > "$PROJECTS/$SHARED3.jsonl"
+manifest five "[\"$SHARED3\"]" "[]"
+python3 - "$LEDGER" "$SHARED3" "$WINDOW_FROM" "$WINDOW_TO" <<'PYEOF'
+import json, os, sys
+path, session_id, frm, to = sys.argv[1:5]
+data = json.load(open(path)) if os.path.exists(path) else {"subagents": {}, "sessions": {}}
+data.setdefault("sessions", {})[session_id] = [
+    {"repo": repo, "repo_name": name, "slug": "five", "selected_by": "pinned", "cost_usd": 1.0,
+     "claimed_at": "2026-07-03T00:00:00+00:00", "window": {"from": frm, "to": to}}
+    for repo, name in (("https://github.com/ssdesai/agenttooling", "agenttooling"),
+                       ("git@github.com:ssdesai/agentTooling.git", "agentTooling"))
+]
+json.dump(data, open(path, "w"), indent=2)
+PYEOF
+capture five > "$TMP/five-out.txt"
+P_FIVE="$AT/self/features/five/planning.json"
+five_also="$(jf "$P_FIVE" '[s.get("also_claimed_by") for s in d["sessions"]]')"
+check "E8. a claim under another spelling of this repo's origin is this feature's own, not a co-claimant (got ${five_also:-<absent>})" \
+  '[[ "$five_also" == "[None]" ]]'
+five_basis="$(jf "$P_FIVE" '["share_basis" in s for s in d["sessions"]]')"
+five_whole="$(jf "$P_FIVE" 'd["cost_usd"]["total"] > 0 and not any("share" in p for p in d["priced"])')"
+check "E9. ...so the session is not split with itself: no share_basis, no divided row (got ${five_basis:-<absent>}, ${five_whole:-<absent>})" \
+  '[[ "$five_basis" == "[False]" && "$five_whole" == "True" ]]'
+five_claims="$(jf "$LEDGER" 'len(d["sessions"]["'"$SHARED3"'"])')"
+check "E10. and the capture's own claim replaces both old spellings — one claim left on the session (got ${five_claims:-<absent>})" \
+  '[[ "$five_claims" == "1" ]]'
+five_written="$(jf "$LEDGER" 'd["sessions"]["'"$SHARED3"'"][0]["repo"]')"
+check "E10b. ...written under the identity the corpus declares, unnormalised — stored strings never change (got ${five_written:-<absent>})" \
+  '[[ "$five_written" == "https://github.com/ssdesai/agentTooling.git" ]]'
 
 echo
 if (( fails > 0 )); then echo "claims-ledger: $fails assertion(s) FAILED"; exit 1; fi

@@ -7,9 +7,9 @@ Shell helpers the tests under `self/tests/` source to build their throwaway corp
 transcripts and sidecars are synthesized into a `mktemp -d` at test run time, never
 committed here as JSON blobs.
 
-**Three files here are data**, and they are the exceptions that say why the rule holds
-elsewhere: a *command* is not a corpus, and neither is a price list or the output of code
-that no longer exists. `hook-replay-2026-09-18.json` is a table of command lines and
+**Six files here are data**, and they are the exceptions that say why the rule holds
+elsewhere: a *command* is not a corpus, and neither is a price list, the output of code
+that no longer exists, or a script as it stood before its template moved on. `hook-replay-2026-09-18.json` is a table of command lines and
 the verdict each must get, which nothing can synthesize — the commands are the fixture.
 
 - `hook-replay-2026-09-18.json` — `{ provenance, cwd, verdicts, records[] }`, where each
@@ -55,6 +55,20 @@ the verdict each must get, which nothing can synthesize — the commands are the
   `pricing.py`'s live-lookup source through `RATES_CHECK_SOURCE`), and by
   `../feature-lifecycle.sh` and `../recover-at-close.sh` through `RATES_CHECK_SOURCE`,
   so no capture under test reaches the network.
+
+- `pr-v4.sh` — `templates/plans/pr.sh` exactly as it stood at `template-version: 4`,
+  the last version whose open path is `gh auth status` / `gh pr view` / `gh pr create`,
+  frozen when cloud-close moved the template to 5 (`forge.sh`). It is what every
+  consuming repo's seeded `plans/pr.sh` is until it hand-merges the forge adapter, so
+  `../feature-lifecycle.sh` X6 drives a close through it (opened with `gh pr create`, url
+  stamped, merge still requested) and `../sync-check.sh` 4f–4g checks `--check` reports it
+  as `4 < 6` drift (it was `4 < 5` until execution-profiles). Never edit it; it stands for
+  code that has moved on.
+- `pr-v5.sh` — `templates/plans/pr.sh` exactly as it stood at `template-version: 5`: the
+  forge adapter's open path, and a merge request that still ran `gh pr merge <branch>
+  --auto` itself — GraphQL, refused in a cloud container — frozen when execution-profiles
+  moved the template to 6 (`forge.sh auto-merge`). `../sync-check.sh` 4h checks `--check`
+  reports it as `5 < 6` drift. Never edit it.
 
 - `transcripts/build-transcript.sh` — `transcript_line MESSAGE_ID MODEL TIMESTAMP INPUT
   OUTPUT CACHE_READ CACHE_5M CACHE_1H [IS_SIDECHAIN]` prints one `assistant`-line session

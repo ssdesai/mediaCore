@@ -22,7 +22,8 @@ set -uo pipefail
 #     parses, fence slug matches directory, method known, branches non-empty, window
 #     bounds carry a zone and `to` follows `from` (null `to` is in flight and passes; a
 #     `to` at or before `from` is an empty window and FAILs, naming both bounds; the two
-#     are compared as instants, so bounds in different zones order correctly),
+#     are compared as instants, so bounds in different zones order correctly, and so
+#     does a millisecond `from` against a whole-second `to`),
 #     plan filenames well-formed, plan numbers padded alike, no
 #     @@TODO@@ stubs queued, every plan file listed in plans[], every plans[] entry has a
 #     file, every queued plan names the feature, plans method has a queue — each FAILing
@@ -107,6 +108,24 @@ ok_lines="$(grep -c '^  ok    ' <<<"$out")"
 check "2b. exactly 14 ok lines (got $ok_lines)" '[[ "$ok_lines" -eq 14 ]]'
 check "2c. no FAIL lines" '! grep -q "^  FAIL  " <<<"$out"'
 check "2d. last line is 'check-plans: 14 checks, 0 failed'" '[[ "$(tail -1 <<<"$out")" == "check-plans: 14 checks, 0 failed" ]]'
+# The `profile` key feature-start.sh writes (self/features/execution-profiles): accepted —
+# the same fourteen checks pass with it in the fence, and none of them is about it.
+mkdir -p "$PLANS/c02p/review/incomplete"
+printf '# c02p\n\n```json\n{"slug": "c02p", "method": "direct", "plans": ["01-review-opus"], "branches": ["claude/c02p"], "base": "main", "profile": "cloud", "session_window": {"from": "2026-09-04T00:00:00Z", "to": null}}\n```\n' \
+  > "$PLANS/c02p/README.md"
+mkplan "$PLANS" c02p review incomplete 01-review-opus.md
+out="$("$AT/check-plans.sh" c02p 2>&1)"; rc=$?
+check "2e. a fence carrying profile \"cloud\" passes all 14 checks (got $rc)" \
+  '[[ $rc -eq 0 && "$(tail -1 <<<"$out")" == "check-plans: 14 checks, 0 failed" ]]'
+# The `gate` key beside it (slice B: "skipped" under --no-gate, else "green"): accepted the
+# same way, with no fifteenth check.
+mkdir -p "$PLANS/c02g/review/incomplete"
+printf '# c02g\n\n```json\n{"slug": "c02g", "method": "direct", "plans": ["01-review-opus"], "branches": ["c02g"], "base": "main", "profile": "local", "gate": "skipped", "session_window": {"from": "2026-09-04T00:00:00Z", "to": null}}\n```\n' \
+  > "$PLANS/c02g/README.md"
+mkplan "$PLANS" c02g review incomplete 01-review-opus.md
+out="$("$AT/check-plans.sh" c02g 2>&1)"; rc=$?
+check "2f. a fence carrying gate \"skipped\" passes all 14 checks (got $rc)" \
+  '[[ $rc -eq 0 && "$(tail -1 <<<"$out")" == "check-plans: 14 checks, 0 failed" ]]'
 
 # ── 3. slug with no directory ─────────────────────────────────────────────────
 out="$("$AT/check-plans.sh" c03-missing 2>&1)"; rc=$?
@@ -172,6 +191,16 @@ check "7e. a null to is in flight, not out of order: ok $WINDOW_LABEL (got $rc)"
 mkwindow c07f '"2026-09-04T17:00:00Z"' '"2026-09-04T14:00:00-04:00"'
 out="$("$AT/check-plans.sh" c07f 2>&1)"; rc=$?
 check "7f. bounds are compared as instants, not as strings: ok $WINDOW_LABEL (got $rc)" \
+  '[[ $rc -eq 0 ]] && grep -q "^  ok    $WINDOW_LABEL" <<<"$out"'
+# A millisecond `from`, the shape `manifest.py session-start` prints since #82
+# (self/features/session-start-precision). As strings `…00.500Z` sorts BEFORE `…00Z`
+# ('.' < 'Z'), so a string comparison would pass the empty window below.
+mkwindow c07g '"2026-09-04T17:00:00.500Z"' '"2026-09-04T17:00:00Z"'
+out="$("$AT/check-plans.sh" c07g 2>&1)"; rc=$?
+check "7g. a to before a millisecond from is empty: FAIL $WINDOW_LABEL" 'grep -q "^  FAIL  $WINDOW_LABEL" <<<"$out"'
+mkwindow c07h '"2026-09-04T17:00:00.500Z"' '"2026-09-04T17:00:01Z"'
+out="$("$AT/check-plans.sh" c07h 2>&1)"; rc=$?
+check "7h. ... and the whole second after it follows it: ok $WINDOW_LABEL (got $rc)" \
   '[[ $rc -eq 0 ]] && grep -q "^  ok    $WINDOW_LABEL" <<<"$out"'
 
 # ── 8. plan filenames well-formed ─────────────────────────────────────────────

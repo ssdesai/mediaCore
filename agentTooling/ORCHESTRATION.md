@@ -25,11 +25,12 @@ that picks between the two is in that file, from the measurements in `harness/EX
 - **Implementer** — an opus delegate, one per feature, for the features
   `AGENT_DIRECT.md` routes away from the plan workflow. Takes the brief, slices the
   work into `CHECKPOINT.md`, writes and commits the acceptance tests, builds slice by
-  slice keeping the checkpoint and `NOTES.md` current, gates to green, commits and
-  **terminates**. Its context is never resumed: if it dies, a fresh one is briefed to
-  resume from the checkpoint (`AGENT_DIRECT.md` → "Checkpoint and resume"). The
-  coordinator then runs `run-review.sh`, and `feature-close.sh` on the round it reports
-  clean — an escalated round is a rework and a second review, routed like any other build.
+  slice keeping the checkpoint and `NOTES.md` current, runs the checks it touched,
+  **commits and checkpoints, then stops** — its brief ends there. Its context is never
+  resumed: if it dies, a fresh one is briefed to resume from the checkpoint
+  (`AGENT_DIRECT.md` → "Checkpoint and resume"). The coordinator then runs the whole
+  gate, `run-review.sh`, and `feature-close.sh` on the round it reports clean — an
+  escalated round is a rework and a second review, routed like any other build.
 - **Judgment one-shot** — spawned only for a failure the red-gate tier ladder could
   not settle. Briefed with `NOTES.md`, the failed plan's `.progress.md`, and the one
   relevant spec section — never "read the design doc". Dies on delivery.
@@ -57,6 +58,16 @@ Two, and the number of features decides which.
   consuming repo, a delegate per pull, each pinned in its own repo (`LIFECYCLE.md` →
   "Propagate").
 
+**A session launched on the feature's branch is its coordinator, wherever it runs**
+(`self/DESIGN-2026-10-05-cloud-execution.md` §3). Router or coordinator is derived from
+the branch the session's checkout was on when `feature-start.sh` began, never configured:
+on another branch — `main`, locally — it is a router and the start writes its routing
+record; on the feature's own branch it is the coordinator, claimed by that branch under
+`LIFECYCLE.md` rule 1 with no pin and no routing record, and the start opens the
+feature's window at that session's first transcript instant so the capture selects it.
+In a Claude Code cloud container that is every session: the container is the worktree,
+and the session starts the feature on its assigned branch.
+
 ## Why
 
 Every agent wake re-bills its entire context, so an agent whose main activity is
@@ -77,7 +88,21 @@ warm context, persisted, at a fraction of the cost.
 
 - Never make a delegate the parent of a runner. `run-batch.sh` runs as the
   coordinator's background shell; completion notifications wake the coordinator.
-  Nobody polls, ever — no sleep loops, no "check the queue again".
+  Nobody polls, ever — no sleep loops, no "check the queue again". The permission hook
+  holds the line: a `sleep` on any Bash line is sent back with "nobody polls: run it in
+  the background and wait for the notification" (`hooks/README.md`).
+- **The coordinator, never a delegate, owns any run longer than a few minutes** — the
+  whole gate, a batch, a long suite (`self/DESIGN-2026-10-05-cloud-execution.md` §8). A
+  delegate's brief ends at "commit and checkpoint, then stop", so a container restart in
+  the middle of a long run costs no delegate: everything it knew is on disk, and only the
+  run is lost. Re-run a gate under `GATE_RESUME=1` (the runners and `feature-start.sh`
+  set it) and it skips the checks that already passed on that tree.
+- **In a Claude Code cloud session, arm one `send_later` check-in before such a run**, a
+  little past its expected end. A container restart kills the run and the notification it
+  would have sent, and leaves the coordinator with nothing to wake it; the check-in is
+  that wake. It is the session's tool, not a script's — the harness cannot call it — so
+  this is doctrine, not code. One check-in, not a polling loop: on waking, read the
+  run's output or re-run it, and arm the next only before the next long run.
 - All state lives on disk: queues, manifests, gate reports, `NOTES.md`. Any agent
   must be killable at any moment with zero loss. If losing an agent would lose
   information, that information should already have been written down.

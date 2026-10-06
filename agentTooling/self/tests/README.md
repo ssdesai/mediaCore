@@ -34,6 +34,16 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
 --check`, and without that seam it would fetch LiteLLM over the network
 (`feature-lifecycle.sh`, `recover-at-close.sh`).
 
+**Every sandbox that copies `feature-start.sh` or `forge.sh` copies `env-profile.sh`
+too, and forces the profile** (`self/DESIGN-2026-10-05-cloud-execution.md` §1). Both
+source the detector, so a missing copy fails every start and every forge call; and a
+Claude Code cloud container sets `CLAUDE_CODE_REMOTE=true`, which would send an unforced
+start down the cloud layout. So `feature-lifecycle.sh`, `start-takeover.sh`,
+`plan-numbering.sh` and `recover-at-close.sh` export `AGENTTOOLING_PROFILE=local`, and the
+phases that test the cloud (`feature-lifecycle.sh` P3 and CB, `cloud-start.sh`,
+`env-profile.sh`, `open-session.sh` O6) set `cloud` per call — never the machine's own
+value. The tests are on `self/profile-confinement.sh`'s allowlist for exactly this.
+
 - `level-sentinel.sh` — copies the runner scripts into a `mktemp -d` checkout with a stub
   `claude` (exit code from `CLAUDE_STUB_RC`) and a stub `self/gate.sh` (verdict from
   `GATE_STUB_VERDICT`), then asserts the level-sentinel contract `run-batch.sh` depends
@@ -78,7 +88,7 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
 - `feature-lifecycle.sh` — stands up a throwaway agentTooling checkout that is a real git
   repo with a bare `origin` beside it, copies in the real `feature-start.sh`,
   `feature-capture.sh`, `feature-close.sh`, all four runners (`run-plans.sh`,
-  `run-verify.sh`, `run-review.sh`, `run-batch.sh`), `stamp-timing.sh`,
+  `run-verify.sh`, `run-review.sh`, `run-batch.sh`), `stamp-timing.sh`, `forge.sh`,
   `plan-runner-{lib,roots}.sh`, `self/pr.sh`, `templates/plans/pr.sh` (outside the repo,
   as a consumer's copy) and `analysis/*.py` including `recover_attempts.py`, adds a stub
   gate, a stub setup hook and stub `claude`/`gh` on `PATH`, and drives the whole loop
@@ -91,7 +101,18 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   the stub `gh` remembers per branch that a PR was created — so a second close finds it
   already open the way a forge would — and records the ORIGIN branch's head at the moment
   of a `pr merge` (`GH_MERGE_HEAD_OUT`), which is how the close's ordering is asserted
-  rather than assumed. Every
+  rather than assumed. The stub `gh` also answers the two REST calls `forge.sh` makes
+  (`gh api -X GET|POST repos/<o>/<r>/pulls`), fails every REST call with `GH_API_RC` when
+  that is non-zero, answers a POST with no url under `GH_API_NO_URL`, writes the body a
+  POST sent to `GH_BODY_OUT`, and keeps **two logs**:
+  `GH_ARGV_LOG`, every argv verbatim — what the forge-adapter checks read for "no `gh pr`,
+  no `gh auth status`" — and `GH_LOG`, the forge-*event* log every older check reads, where
+  a `gh pr …` call is its argv and a REST call is the `pr` verb it amounts to (`pr view
+  <head>`, `pr create --base B --head H --title T`), so "a PR was opened against base B"
+  reads the same whichever spelling opened it. The fixture's origin URL is a GitHub one
+  (`FORGE_URL`), routed to the bare repo by `url.<bare>.insteadOf`: forge.sh parses
+  `repos/<o>/<r>` from the configured URL while every push and fetch stays on disk, and
+  `git remote get-url` — which applies `insteadOf` — still answers the bare path. Every
   capture is run from `$TMP`, outside every checkout, so nothing cwd-relative inside the
   script could reach the repo running the test. The rule under test
   (`../../LIFECYCLE.md`): for slug `S` and primary checkout `R`, branch `S`, worktree
@@ -140,14 +161,17 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   of template-version 2 is gone; and that a
   `--self` start from an agentTooling **vendored** one directory inside the primary
   commits the feature directory with `agentTooling/self/features/<slug>/routing.json`
-  inside it, and names that prefixed path in its output, and writes no nested
-  `agentTooling/.claude/settings.json` (`S6h`) — a
+  inside it, and names that prefixed path in its output, writes no nested
+  `agentTooling/.claude/settings.local.json` (`S6h`), and leaves the shipped, tracked
+  `agentTooling/.claude/settings.json` byte for byte the generator's (`S6i`) — a
   second, smaller scaffold built from `$AT`'s first commit with `git archive`, since the
   main one is a standalone checkout by construction. The sandbox copies the real
-  `hooks/{policy.py,wire-settings.py,allow-repo-commands.sh}` and ignores
-  `.claude/settings.json`, so **S1v** can assert the start regenerates the primary's own
-  untracked settings file when it is missing — byte for byte the generator's output, the
-  primary still clean, and a line saying so. Most features it later **merges** are
+  `hooks/{policy.py,wire-settings.py,allow-repo-commands.sh}`, commits the generator's
+  `.claude/settings.json` as the real checkout does and ignores
+  `.claude/settings.local.json`, so **S1v** can assert the start writes nothing under the
+  primary's `.claude/` and prints no `settings` line, the tracked file byte for byte the
+  generator's in the primary and the new worktree (`self/features/self-cloud-bootstrap/`
+  removed the start's regenerate-when-missing block). Most features it later **merges** are
   started with no session id (`start_unrouted`), which is simply the cheaper fixture; the
   routed case, two features one router starts from one `main`, is **MR** below. The first **S1** step
   also asserts the printed "Next" names `feature-close.sh --self S` as what opens the PR
@@ -188,22 +212,35 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   `feature-capture.sh --self <slug>` re-run command, the PR is open all the same, no merge
   is ever requested (the record is not pushed, which is the whole reason for the order),
   and `to` is rolled back to null.
-  **T4**, where the forge is unreachable: with the stub `gh` failing `auth status`
-  (`GH_AUTH_RC=1`), the review pass makes no forge call at all and commits its own round,
-  then the close's `pr.sh` takes its `skip` path and opens nothing while the capture still
+  **T4**, where the forge refuses: with every REST call failing (`GH_API_RC=1`), the review
+  pass makes no forge call at all and commits its own round, then the close's `pr.sh`
+  exits non-zero and opens nothing — no `skip`, the `gh auth status` probe that made one
+  being the defect cloud-close removed — `pr_opened` carries that rc and **no url**
+  (T4g), nothing probed `auth status` or called `gh pr` (T4h), and the capture still
   commits `<slug>: cost records` over the round's commit, leaving a clean worktree with no
-  "capture exited" line — the shape that used to fail every clean review in a repo with no
-  forge login. **T5**: the review runner invoked from the primary on `main` commits
+  "capture exited" line. **T5**: the review runner invoked from the primary on `main` commits
   nothing, says it is on the feature's base and left the output uncommitted, leaves the
   primary's work in progress where it was, and touches no forge and no capture.
   **P1**: `pr.sh` honours `FEATURE_BASE`, refuses on the base branch, and both copies carry
-  identical logic below their REPO-SPECIFIC line and never `checkout -b`. **P2**,
+  identical logic below their REPO-SPECIFIC line and never `checkout -b`; with
+  `FORGE_SCRIPT` naming no adapter it exits non-zero having committed nothing and asked
+  the forge nothing (P1f–P1g). **P2**,
   `PR_AUTO_MERGE` behind the second entry point: the OPEN path makes no `pr merge` call
   even with it set, `--merge-request` with it set makes exactly one `pr merge … --auto`
   asking for `--merge` and never `--squash` (the prune and the post-merge capture both
   decide "merged" by ancestry, which a squash merge never gives) and opens no PR of its
   own, `--merge-request` with it unset exits 0 saying nothing was requested, `self/pr.sh`
-  makes no call even with it set, and both copies read `template-version 4`.
+  makes no call even with it set, and both copies read `template-version 6` (the merge
+  request through `forge.sh auto-merge`, at or past the 4 the merge request needs).
+  **P3**, that merge request per profile (`../features/execution-profiles/`): under
+  `AGENTTOOLING_PROFILE=cloud` it exits 0 and logs exactly one `ccr auto_merge
+  repos/<o>/<r>/pulls/1/ccr/auto_merge merge_method=merge` (the stub `gh` logs the PUT that
+  way) with no `gh pr`, `auth status` or squash anywhere in the argv log; under `local` it is
+  `pr merge https://example.invalid/pr/1 --auto --merge --delete-branch`, the url `pr-find`
+  found; and a forge whose `pr-find` fails (`GH_API_RC=1`) is a warning, exit 0, with no
+  merge call. The stub's `pr merge` resolves a url to the branch checked out in its cwd,
+  since every PR it opens shares one url, so X2's origin-head record still names the
+  feature's branch.
   **X1**, the close's refusals, each asserted to come before any `pr create`: from the
   primary (not on the feature's branch), on a feature no review has finished (naming
   `run-review.sh`), and after a commit whose subject is not the harness's own follows the
@@ -256,6 +293,39 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   - `manifest.py pin-session` puts the id in the fence's `sessions`, and a second
     `pin-session` of the same id leaves the file byte-identical;
   - the same close then exits 0, and the pin is in the `S: cost records` commit.
+  **CB, CC, CD, F and X6** are cloud-close's (`../features/cloud-close/`,
+  `../DESIGN-2026-10-05-cloud-execution.md` §2 and §5), the last blocks of the file:
+  - **CB**, a close on a manifest whose `branches[0]` is `claude/<slug>` — the cloud
+    shape, built by hand: the checkout switched to that branch, the fence rewritten
+    (`set_fence_list`), the session transcript carrying it. Its first close runs under
+    `AGENTTOOLING_PROFILE=cloud` (execution-profiles; design §5's first assertion), the
+    rest under the file's `local`. The close exits 0, POSTs
+    `repos/lifecycle-owner/agentTooling/pulls` with that head, base `main`, the slug as
+    title and the review report as body (read back from `GH_BODY_OUT`), stamps `pr_opened`
+    rc 0 with the url, commits `S: cost records` on `claude/<slug>` and pushes **that**
+    branch while nothing named after the slug reaches the origin, and calls neither `gh
+    pr` nor `gh auth status`; a re-run finds the PR by `pr-find` and POSTs nothing; and on
+    a checkout of the slug-named branch the same close is refused, naming
+    `claude/<slug>`, before any forge call (CBj–CBk).
+  - **CC**, the capture on that manifest: on the branch it names `claude/<slug>` as its
+    mode and pushes it; and, last in the file, after merging it into `main`, removing the
+    checkout and deleting both local branches, `--recapture` from the primary finds
+    `origin/claude/<slug>` as the merged ref (CCc).
+  - **CD**: a fence whose `branches` is `[]` reads as the slug — on-branch mode on `S`.
+  - **F**, `forge.sh` on its own, copied to the root of throwaway checkouts: https with
+    and without `.git`, `ssh://` and scp-style origins (with and without `.git`) all ask
+    for the same `repos/<o>/<r>/pulls` (F1); a local-path origin and no origin are
+    refused non-zero with no forge call (F1e–F1f); `pr-find` prints nothing on a miss
+    (asking `head=<o>:<branch>`, `state=open`) and the url on a hit (F2); `pr-open` POSTs
+    head, base and a title with spaces and `$(…)` in it, and sends the body file's bytes
+    with quotes, `$(…)` and backticks unexpanded (F3); `GH_API_RC` fails both verbs
+    non-zero with no url, a missing body file fails before any POST, and a POST answered
+    with no `html_url` (`GH_API_NO_URL`) fails `pr-open` non-zero (F4); no verb, an
+    unknown one and too few arguments exit 2 (F5); and none of those calls was `gh pr`,
+    `gh auth status` or GraphQL (F6).
+  - **X6**, a consuming repo still at template-version 4: `fixtures/pr-v4.sh` committed as
+    the feature's `pr.sh` is driven by the close exactly as before — `gh pr create` against
+    `main`, the url stamped with rc 0, the merge requested once, the records committed.
   **B1/B2**, `run-batch.sh` ending a round: over empty build and verify queues (a clean
   no-op) a clean review makes it call the close — `pr create` seen, the record written and
   committed — and say so, while an escalated one exits 1 with no PR, no record, and the
@@ -549,12 +619,17 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   `$TMP/agentTooling/self/features` (the `--self` one). Asserts the usage contract (exit
   2 on no slug, an unknown flag, or an extra argument); that a well-formed feature prints
   exactly 14 `  ok    ` lines, no `  FAIL  ` line, and ends `check-plans: 14 checks, 0
-  failed`; and, one at a time, each of the fourteen ordered checks — feature directory
+  failed`, and that one whose fence carries `"profile": "cloud"` (with a `claude/…`
+  branch, a `base` and `method` direct) passes the same 14 (2e — the key is accepted, no
+  check is about it), as does one carrying `"gate": "skipped"` (2f, the same for the
+  start's `gate` key); and, one at a time, each of the fourteen ordered checks — feature directory
   exists, manifest present, fence parses, fence slug matches directory, method known,
   branches non-empty, `window bounds carry a zone and to follows from` (a naive bound
   FAILs; an offset one passes; a `to` at or before `from` FAILs naming both bounds, since
   an empty window owns nothing; a null `to` is in flight and passes; and two bounds in
-  different zones are compared as instants, which a string comparison gets backwards),
+  different zones are compared as instants, which a string comparison gets backwards — as
+  are a millisecond `from` and a whole-second `to`, 7g/7h, the shape
+  `manifest.py session-start` writes since issue #82),
   plan filenames well-formed, plan
   numbers padded alike, no `@@TODO@@` stubs queued, every plan file listed in `plans[]`,
   every `plans[]` entry has a file, every queued plan names the feature, plans method has
@@ -788,6 +863,35 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   claims it as `pinned` (Y6); and when the parent claim came first, the pinner's refusal
   names the other feature and `./feature-capture.sh --self <slug> --recapture`, whose run
   then yields and lets the pinner through (Y7). RED until the yield arm landed.
+  Its phase **C** is `cost-capture-collisions`' collision rule (design 2026-10-05 §4),
+  last in the file over fresh transcripts and a fresh ledger. A coordinator's transcript
+  is written as Claude Code writes one, with `uuid`/`parentUuid` trees (`tree_user`,
+  `tree_assistant`, `tree_compact`, local to the file): its own root and a response that
+  spawns its implementer (5000 output tokens), then a runner child's root — the review
+  runner's real opening, `HEADLESS_PROMPT_MARKER` sentence and all — with a response that
+  spawns a delegate of its own (7000), then a `compact_boundary` continuing the
+  coordinator's tree through `logicalParentUuid`, then one more coordinator response
+  (3000); a usage.json under another feature names the coordinator's id. Each delegate
+  gets the `agent-<id>.meta.json` Claude Code writes, naming the `toolUseId` that spawned
+  it — except one, whose spawning tree therefore cannot be told. Asserts: the capture
+  succeeds (C1); the coordinator is captured, by branch, not excluded (C2), priced at
+  its interactive 8000 tokens alone (C3, against `pricing.compute_cost` directly), its
+  span its own 09:00–11:05 (C3b); one WARN names the session and the sidecar's path (C4);
+  its pinned implementer is captured as pinned under it (C5); the runner tree's delegate
+  is never priced (C6); the untold one is priced by its parent and named in a WARN (C7);
+  a runner session with a transcript of its own is excluded as before with no collision
+  claimed (C8, C8b) and its pinned delegate never priced (C9); a pinned delegate whose
+  parent sits in this repo's own directories under ANOTHER feature's worktree — never
+  walked — is found and captured (C10, rule 3); and the priced delegates and the total
+  are exactly those (C11, C11b). RED on main, which excluded the coordinator whole.
+  Round 2 (round 1's review escalation) extends the same fixture with a second project
+  directory, `-elsewhere-coordinator`, holding coordinator E — pinned in `sessions`, named
+  by a third usage.json, its interactive tree spawning implementer EI and its runner tree
+  spawning ER, both pinned with `meta.json`s — so E is reached only by the pinned-session
+  fallback. Asserts: the capture succeeds and E is captured as pinned with its collision
+  warned (C12, C12b); EI is priced, as pinned, under E, and not reported unmatched (C13,
+  C13b); ER is not priced (C14) and a WARN says its pin is ignored (C14b). C13, C13b and
+  C14b RED on round 1's code, whose delegate fallback skipped E as runner-only.
 - `claims-ledger.sh` — `subagent-capture.sh`'s scaffolding, asserting what the ledger at
   `$HOME/.claude/subagent-claims.json` counts as claimed
   (`self/features/recovered-duration-lower-bound/README.md`, items 2 and 3, plus that
@@ -843,9 +947,26 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   and a slug the queried corpus does not hold at all falls back to the slug alone across
   both. Before it, the other corpus's pin silenced the close's stop-on-unpinned guard (now
   `feature-capture.sh`'s unclaimed-delegate warning) and the delegate was never priced.
-  Depends on `capture_planning.py`'s `load_ledger`/`save_ledger` two-section shape,
-  `manifest_pinned_subagents`, `register_frozen_claims`/`annotate_frozen_record`, and
-  `report.py`'s `compute_shared_sessions`; RED until each landed. D writes into
+  **E** is `cost-capture-collisions`' ledger provenance (design 2026-10-05 §6), over the
+  four frozen records B and C leave naming their siblings, with a mention of
+  `otherRepo/far` — a repo this machine never captured — added to `one`'s. From an
+  EMPTY ledger `--annotate-frozen` prints no slug and every record stays byte-identical
+  (E1, E2), the never-seen claimant named exactly once on stderr as `not re-checked`
+  beside the record (E3, E3b); the run registered the corpus first, so `seen` holds the
+  four siblings and a `registered_at` (E4, E4b), and a second run changes nothing (E5).
+  A `seen` entry for `otherRepo` naming `far`, written into the ledger by hand in the
+  documented shape, then lets the stale mention go — `one` printed, `otherRepo/far`
+  removed, no `not re-checked` line, nothing else in the record moved (E6, E7, E7b). E8–E10
+  are the https/ssh identity: `five`'s own claim on its session, seeded under the cloud's
+  `https://github.com/ssdesai/agenttooling` and a laptop's
+  `git@github.com:ssdesai/agentTooling.git`, is not a co-claimant (`also_claimed_by`
+  absent), the session is not split with itself (no `share_basis`, no divided row), and the
+  capture's own claim replaces both, written under the declared identity unnormalised
+  (E10b). E1–E4, E6 and E8–E10 were RED on main; E7/E7b are guards.
+  Depends on `capture_planning.py`'s `load_ledger`/`save_ledger` sectioned shape (`seen`
+  included), `manifest_pinned_subagents`, `register_frozen_claims`/`annotate_frozen_record`,
+  `normalize_repo_identity`, and `report.py`'s `compute_shared_sessions`; RED until each
+  landed. D writes into
   `$TMP/plans/features`, the host repo's corpus, which `all_features_roots()` resolves
   as the sibling of the throwaway agentTooling checkout.
 - `session-share.sh` — `claims-ledger.sh`'s arithmetic counterpart: same scaffolding
@@ -895,7 +1016,9 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   throughout — only `duration_s` is apportioned; (6) `share-solo`'s single-claimant entry
   carries none of `share_basis`, `session_cost_usd`, `session_duration_s` or
   `unclaimed_usd`, no `priced[]` row carries `share` or `full_cost_usd`, `duration_s`
-  equals `ended_at - started_at`, and `cost_usd.total` is the whole transcript's cost;
+  equals `ended_at - started_at`, and `cost_usd.total` is the whole transcript's cost
+  (still a pin: the session lies wholly inside the window, so the sole-claimant cut
+  removes nothing and the record stays the unshared one);
   (7) a second `r2` line appended at `11:59:59.500`, before `share-b`'s `from` of `12:00`,
   while `r2`'s first line — first in *file* order, which is what `iter_billable_messages_at`
   keys on — stays at `12:30` inside that window: the two lines of one response sit in
@@ -935,7 +1058,9 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   own first cut of `share_owners`, which filtered empty windows out of `in_window` matching
   but not out of the opening-stretch ranking. No model, no network.
   Two later phases are `claim-window-precision`'s. **12** is the size of what phase 6
-  leaves unsliced: `share-outside` pins a session of its own with 1000 output tokens
+  leaves unsliced: `share-outside` selects a session of its own by BRANCH (`outsideBranch`
+  — it pinned it until `cost-capture-collisions` made a pin that outruns its window a cut,
+  phase 21) with 1000 output tokens
   inside its window and 3000 after it, so the dollars past `to` are exactly three quarters
   of the session's cost and a warning that named the whole session, or only the part
   inside, prints a different figure. The figure is read back out of the warning
@@ -949,7 +1074,8 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   total ROSE, so a tighten that silently did nothing cannot pass. `16:00` was rejected as
   the tightened bound: it makes share-d's own window empty, and the assertion would then
   be satisfied by the pre-existing empty-claim drop rather than by the moved bound.
-  **14** is phase 12's warning where there is nothing to quantify: `share-quiet` pins a
+  **14** is phase 12's warning where there is nothing to quantify: `share-quiet` selects,
+  by branch for phase 12's reason (`quietBranch`), a
   session with one response well inside its window and, half a second past `to`, an
   unbilled `user_line`. The warning fires on the last LINE while the quantity counts
   billable RESPONSES at or after `to`, so the two are out of step and the quantified
@@ -1032,7 +1158,24 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   that `feature-capture.sh` can go on reading that pass's stdout as slugs). **20** is the
   reason the bound is derived with the function the close calls: with `open-co` closed at
   that bound, a re-capture of `open-cap` reports the same dollars and the record stops
-  naming an open claimant. The **no-evidence** half of the rule is phase **15f**, where
+  naming an open claimant.
+  **21** is `cost-capture-collisions`' sole-claimant cut, on a fresh day and two fresh
+  sessions (`bbbbbbbb-…-00000000000b`, `cccccccc-…-00000000000c`) of identical shape — `k0`
+  `08:00`/1000, `k1` `09:30`/2000, `k2` `10:30`/4000, `k3` `13:00`/3000 — so phase 15's
+  arithmetic with one claimant. `cut-pin` pins the first with `10:00`-`11:00`: it is billed
+  `k1 + k2` only, 6000/10000 (21a), `unclaimed_usd` is `k0 + k3`, 4000/10000 (21b), and the
+  two sum to `session_cost_usd` (21c); `duration_s` is `09:00`-`11:00` = 7200,
+  `unclaimed_duration_s` the 3600 before the bound plus the 7200 past `to`, summing to the
+  18000s span (21d–21f); `share_basis` is its own claim alone, `self`, with its window
+  (21g), and no `priced[]` row is divided (21h); the boundary warning says `not counted
+  here` (21i), nothing on stdout says `shared by` or `counted in full` (21j), and the
+  unclaimed warning names the head (3600s) apart from the rest (7200s) with the
+  `set-window-from` command filled in (21k). `report.py` (copied into this sandbox for
+  it) renders the record (21l) with `cost.shared_sessions` empty and no shared-session
+  footnote (21m). `cut-open` pins the second with `to: null`: no tail to cut and an
+  unbounded head, so nothing is cut — billed whole, no share fields, the whole 18000s
+  (21n, 21o). 21a–21k were RED on main, which billed all 10000 and the whole span; 21l–21o
+  are guards. Phase 12 is the branch-selected twin, still billed whole. The **no-evidence** half of the rule is phase **15f**, where
   `head-a` is in flight and its `branches` match no transcript: `last_branch_instant`
   finds nothing, the claim is empty, the empty-claim rule drops it naming it as open with
   no evidence (`15f-open-no-evidence`), and `head-b` — which used to be paid a 1800s share
@@ -1298,7 +1441,11 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   (`grep x f && git commit -m m`, whose reason names the first as approved and the second
   to run alone) — each of which used to print nothing, and every one of which is moved
   from a prompting list rather than from ALLOW or DENY
-  (`self/features/hook-rewrite-or-ask/NOTES.md` lists the moves); that the **ASK** class
+  (`self/features/hook-rewrite-or-ask/NOTES.md` lists the moves); that a `sleep` — bare,
+  by path, before or after another member (`SLEEP_REWRITE`) — is denied with a reason
+  saying nobody polls and to run it in the background and wait for the notification, and
+  naming the member (`ls && sleep 60` names `sleep 60`, ahead of the mixed-sequence
+  rewrite), where each used to prompt (`self/DESIGN-2026-10-05-cloud-execution.md` §9); that the **ASK** class
   prints nothing at all (`git diff main...HEAD`, `x=$(cd dir && pwd)`, an all-ASK
   sequence, a pipeline, `X=1 make`, `cat README.md > f`, `cat /etc/hosts`, a CR, a NUL), with no
   `ask` decision anywhere in it; that a heredoc or a `#` anywhere holds the new shapes off
@@ -1412,7 +1559,7 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   `ask` with the escalation's own reason. Depends on
   `OPAQUE_REWRITE_ATTEMPTS` being 2 and on
   the state directory being an explicit name under `$TMPDIR`. No model, no network.
-- `hook-wiring.sh` — twenty-six throwaway repos, one per starting state of
+- `hook-wiring.sh` — thirty throwaway repos, one per starting state of
   `.claude/settings.json` (absent, unrelated content, hook only, deny rules only, a
   partial deny list with a repo's own rule in it, the hook and the `Edit` rules but no
   `Bash` rules, everything but the ask rule, everything but the sandbox block, complete,
@@ -1421,8 +1568,15 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   switched off by hand, the complete block with only `enabled` flipped against the
   generator's switch, a different hook, twelve malformed shapes — a non-object `sandbox`,
   a non-list `allowedDomains`, and an explicit `null` for `sandbox`, `allowedDomains` and
-  `permissions.deny`, which a write used to crash on, among them), plus three more for the
-  two modes. The `Bash` deny list is **imported** from `hooks/policy.py` rather than
+  `permissions.deny`, which a write used to crash on, among them), complete but for the
+  `SessionStart` entry, a repo's customised spelling of it, a repo's own unrelated
+  SessionStart hook, a non-list `hooks.SessionStart` — plus four more for the two modes.
+  The complete fixtures carry `WIRED_HOOKS` (both entries) since execution-profiles; every
+  consumer write must leave exactly one SessionStart hook naming `cloud-setup.sh` — the
+  generator's own `SESSION_ENTRY` (no matcher, no guard: the script guards itself) when it
+  added one, the repo's spelling when it had one, after the repo's other SessionStart
+  hooks — a file missing only it reports `UNWIRED` naming it and nothing else, and
+  `--self` writes none. The `Bash` deny list is **imported** from `hooks/policy.py` rather than
   retyped, so a rule added to the table reaches this file with nobody editing it.
   Asserts `hooks/wire-settings.py --check` and `--write` report the
   documented status and exit code and agree; that after a write every deny rule and the
@@ -1451,53 +1605,83 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   generator's entries appended after, and that a hand-set owned value is set back to the
   generator's in either direction — a file with only `enabled` flipped against the switch
   reports one owned setting and is written back to the generated block; that
-  `--self` writes `${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh`
-  and the ask rules `Edit(**/hooks/**)`, `Edit(/hooks/**)` and differs from an ordinary
-  run in nothing else — the two files
-  are compared with those swapped — while `--self --check` over a
-  vendored-spelling file reports `UNWIRED`. Its last phase is the **byte-for-byte** half
-  (`self/DESIGN-2026-09-17-policy-module.md` §3): a hand-added allow rule, a hook command
-  repointed at the vendored path, and a merely REORDERED deny list each fail
-  `--self --check` — all three of which the merge check read as complete — the message
-  names the line and the entry, `--self --write` restores the generated bytes exactly,
+  `--self` writes the guarded command `test ! -f
+  "${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh" ||
+  "${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh"` (`SELF_HOOK_COMMAND`) and the ask
+  rules `Edit(**/hooks/**)`, `Edit(/hooks/**)` into `.claude/settings.json` alone — no
+  `settings.local.json` — and differs from an ordinary run in nothing else but the absent
+  SessionStart entry — the two files are compared with those swapped and that entry
+  dropped — while `--self --check` on a vendored file reports `UNWIRED`
+  (`self/features/self-cloud-bootstrap/`). Its last phase is the **byte-for-byte** half
+  (`self/DESIGN-2026-09-17-policy-module.md` §3): a hand-added allow rule, an UNGUARDED
+  hook command, and a merely REORDERED deny list each fail `--self --check` — all three
+  of which the merge check read as complete — the message names the file, the line and
+  the entry, `--self --write` restores the generated bytes exactly; a missing file is
+  `missing` naming the regenerate command with the repo's path, and the write puts it
+  back as `created`, still with no `settings.local.json`;
   `--self` writes the same sandbox block an ordinary run does with `enabled` per the
   switch, and a hand-added allowed domain (named in the message) or an `enabled` flipped by
   hand against the switch fails `--self --check`,
-  and this checkout's own generated (untracked) `.claude/settings.json` passes the same call
-  `self/gate.sh` records.
-- `self-settings.sh` — agentTooling's own `.claude/settings.json` is untracked and
-  generated per checkout (`self/features/self-settings-untracked/`). Stages the real
-  `hooks/{policy.py,wire-settings.py,allow-repo-commands.sh}`, `self/worktree-setup.sh`,
-  `self/gate.sh` and `.gitignore` into throwaway git repos and asserts: **A** — the setup
-  hook, run in a fresh standalone worktree the way `feature-start.sh` runs it (from the
-  worktree root, by absolute path), writes the file byte for byte what
-  `wire-settings.py --self --write` writes into an empty directory, the worktree stays
-  clean (ignored), and a second run changes nothing; **B** — `self/gate.sh`'s
+  and this checkout's own tracked file passes the same call `self/gate.sh` records.
+- `self-settings.sh` — agentTooling's own policy, `.claude/settings.json`, is one file,
+  **tracked** and generated (`self/features/self-cloud-bootstrap/`, which reverses
+  `self-settings-untracked/` and replaced its own round-1 `SessionStart` bootstrap).
+  Stages the real `hooks/{policy.py,wire-settings.py,allow-repo-commands.sh}`,
+  `self/worktree-setup.sh`, `self/gate.sh`, `.gitignore` and the generator's file into
+  throwaway git repos and asserts: **0** — the generator writes exactly that one file into
+  an empty directory, with no `permissions.allow`, no `SessionStart` entry, and as its one
+  `PreToolUse` command the guarded `test ! -f "${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh"
+  || "${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh"`; **A** — in a fresh standalone
+  worktree the tracked file is byte for byte the generator's, `--self --check` is
+  `in-sync`, and the setup hook, run the way `feature-start.sh` runs it (from the worktree
+  root, by absolute path), exits 0 and writes nothing (`git status --porcelain --ignored
+  --untracked-files=all` unchanged); **B** — `self/gate.sh`'s
   `permission policy wired into .claude/settings.json` section (read from the staged
   `gate-report.txt`; every other section fails there, since no other suite is staged, and
-  is not read) exits 0 on that file, 1 on a missing file and on a drifted one, naming
-  `python3 -B <abs>/hooks/wire-settings.py --self --repo <abs worktree> --write` both
-  times, and 0 again once that very command has been run; **C** — in the **vendored**
-  layout (`agentTooling/` inside a consuming repo whose root is wired by
-  `wire-settings.py` without `--self`) the setup hook writes no nested
-  `agentTooling/.claude/`, exactly one `settings.json` in the worktree names
-  `allow-repo-commands.sh` and it is the root's (the backlog assertion this closed),
-  `--self --check` and the gate's section pass on the absence, a nested copy is
-  `UNWIRED`, and `--self --write` writes nothing over one or into none; **D** — the real
-  checkout tracks no `.claude/settings.json` (`git ls-files`) and `.gitignore` covers it
-  (`git check-ignore --no-index`), which is what keeps it out of every subtree pull;
-  **E** — the sandbox block in each layout (`self/features/runner-sandbox/`): the self
-  worktree's file carries it with `enabled` at the `SANDBOX_ENABLED` switch (`False`
-  today; the test's `SANDBOX_ENABLED_EXPECTED` flips with it), fail-closed and no
-  unsandboxed retry, the three secret `denyRead` paths and the package domains; a domain
-  hand-added there fails the gate's section and the regenerate restores the bytes; the
-  vendored layout's root file carries the same owned settings, a consumer's own domain
-  survives a re-run of the wiring, first, with the generator's domains unioned in after
-  it, and a consumer's `enabled` flipped by hand is set back to the switch (E8).
-  Depends on the gate section's label staying that string, and on the vendored rule being
-  "no `.git` here and one above" — a scratch directory with no git anywhere above it is a
-  standalone checkout, which is what `hook-wiring.sh`'s `--self` cases rely on. No model,
-  no network; a few seconds.
+  is not read) exits 0 on that file, 1 on a missing and on a drifted one, naming the file
+  and `python3 -B <abs>/hooks/wire-settings.py --self --repo <abs worktree> --write` each
+  time, and 0 again once that very command has been run, the worktree clean; **C** — in
+  the **vendored** layout (`agentTooling/` inside a consuming repo whose root is wired by
+  `wire-settings.py` without `--self`) the setup hook writes nothing, the root file names
+  the vendored hook path, the shipped `agentTooling/.claude/settings.json` is the
+  generator's and `--self --check` and the gate's section pass on it; a drifted one is
+  `UNWIRED` and a missing one `missing`, each saying the fix is **upstream** and naming no
+  `--repo <vendored dir>` command, and `--self --write` writes nothing over either;
+  **D** — the real checkout tracks `.claude/settings.json` and nothing else under
+  `.claude/` (`git ls-files`), the index holds the generator's bytes, and `.gitignore`
+  covers `.claude/settings.local.json` (Claude Code's own per-user file) and not the
+  policy (`git check-ignore --no-index`); **E** — the sandbox block in each layout
+  (`self/features/runner-sandbox/`): the self worktree's file carries it with `enabled` at
+  the `SANDBOX_ENABLED` switch (`False` today; the test's `SANDBOX_ENABLED_EXPECTED` flips
+  with it), fail-closed and no unsandboxed retry, the three secret `denyRead` paths and
+  the package domains; a domain hand-added there fails the gate's section and the
+  regenerate restores the bytes; the vendored layout's root file carries the same owned
+  settings, a consumer's own domain survives a re-run of the wiring, first, with the
+  generator's domains unioned in after it, and a consumer's `enabled` flipped by hand is
+  set back to the switch (E8); **F** — the tracked hook command, read out of the generated
+  file and run as Claude Code runs a command hook (`sh -c` from the project dir,
+  `CLAUDE_PROJECT_DIR` set, a `PreToolUse` payload for `python3 -c 'print(1)'` on stdin,
+  `TMPDIR` a scratch directory): at the consuming repo's root (**Fa**, no `hooks/` there)
+  it exits 0 with empty stdout and stderr and writes nothing; with the project dir the
+  vendored `agentTooling/` (**Fb**) or a fresh standalone worktree (**Fc**) stdout carries
+  `"permissionDecision": "deny"` — the payload reached the hook through the `test ||`
+  guard — nothing is written, and standalone `--self --check` reports `in-sync`; the
+  payload names no `session_id`, so the hook keeps no escalation counter and the scratch
+  `TMPDIR` stays empty (**F4**); **G** — under `GATE_RESUME=1` the settings section is
+  never resumed (`self/features/session-start-precision`, `record_fresh` in
+  `self/gate.sh`): after two passing runs, a deleted and then a drifted working copy each
+  still exit 1, and no `self/gate-state/*/permission_policy_wired_into__claude_settings_json`
+  record exists. The file is tracked now, so the tree sha changes with it as well; **G4**,
+  the absent record, is what pins `record_fresh` itself. The staged gate runs with
+  `GATE_RESUME` **unset** everywhere but G, whose `run_gate_resumed` sets it for each of
+  its own runs: the start and the runners export `GATE_RESUME=1`, and an inherited value
+  let the staged gate replay its first recorded pass for every later run (B and E went red
+  on `main`). Depends on the gate section's label staying that string (and, for G4, on
+  `SETTINGS_STATE_NAME` mirroring the record name `gate_state_file` makes of it), on the hook reading its
+  payload from stdin with `session_id` optional, and on the vendored rule being "no `.git`
+  here and one above" — a scratch directory with no git anywhere above it is a standalone
+  checkout, which is what `hook-wiring.sh`'s `--self` cases rely on. No model, no
+  network; a few seconds.
 - `policy-table.sh` — the odd one out beside `template-versions.sh`: it stands up no
   sandbox at all, reading the checked-in `hooks/` instead. It imports `hooks/policy.py`,
   the one table the hook's git deny and `wire-settings.py`'s prefix rules are both built
@@ -1657,8 +1841,13 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   `$TMP/consumer` holding copies of the three under `agentTooling/`; it asserts the
   `sync-plans.sh --check` contract: a fresh seed reports the five generated stubs and
   the three repo-owned scripts (`gate.sh`, `pr.sh`, `worktree-setup.sh`) in-sync with
-  their `# template-version: <N>` line (2, 4, 1 in that order — `pr.sh` is at 4, the
-  version with the `--merge-request` entry point `feature-close.sh` needs) and only
+  their `# template-version: <N>` line (3, 6, 2 in that order — `pr.sh` is at 6, the
+  merge request through `forge.sh auto-merge`, past the 4 whose `--merge-request` entry
+  point `feature-close.sh` needs; `gate.sh` 3 and `worktree-setup.sh` 2 source
+  `plans/environment.sh`, and the gate resumes), `environment.sh` and `cloud-setup.sh`
+  in-sync at 1 (1l–1m), the first seeded without the executable bit and the second with
+  it (1n), and one SessionStart entry naming `cloud-setup.sh` that a second sync does not
+  double (1o–1p) — and only
   `PROJECT_FACTS.md` unfilled, exit 1, `needs attention: 1 item(s)`; that the seeded
   `BACKLOG.md` is `in-sync` rather than a second unfilled item — an *empty* backlog is
   the correct steady state for a repo that has closed everything it found, so only its
@@ -1667,11 +1856,24 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   `PROJECT_FACTS.md` brings it to exit 0 `is in sync`; a stale generated stub is
   reported `STALE` with `--check` writing nothing, and the plain sync repairs it; a
   repo-owned script stripped of its `template-version` line is reported `DRIFT` by both
-  `--check` and the plain sync (which still keeps the file); a body-only edit below a
-  script's `REPO-SPECIFIC` marker is not drift; a deleted repo-owned script is reported
+  `--check` and the plain sync (which still keeps the file), and so is a `pr.sh` still
+  at 4 — `fixtures/pr-v4.sh`, every consuming repo's copy until it hand-merges the forge
+  adapter — as `template-version 4 < 6` pointing at the hand-merge (4f–4g), and so is one
+  at 5 — `fixtures/pr-v5.sh`, the template as it stood before its merge request went
+  through `forge.sh` — as `5 < 6` (4h); a body-only
+  edit below a script's `REPO-SPECIFIC` marker is not drift; a deleted repo-owned script is reported
   `missing` and the plain sync recreates it; a `BACKLOG.md` carrying the repo's own
   entry survives a plain sync byte-identical as `kept` and is not drift, while a deleted
-  one is `missing` and is re-seeded; and an unknown flag is a usage error, exit
+  one is `missing` and is re-seeded; deleted `environment.sh` and `cloud-setup.sh` are
+  each reported `missing` (design §7's MISSING, the `BACKLOG.md` line), two items, and
+  re-seeded (6l–6q); `cloud-setup.sh` prints nothing and exits 0 under
+  `AGENTTOOLING_PROFILE=local` and with no `agentTooling/env-profile.sh` beside it (the
+  fixture copies the real one in), and runs its skeleton under `cloud` (6r–6t);
+  `environment.sh` run as a program refuses naming `source` (6u); the seeded gate sources
+  the skeleton under its `set -u` in both profiles (6v); and a repo-owned `environment.sh`
+  that leaves a mark when sourced shows `plans/gate.sh` and `plans/worktree-setup.sh` both
+  source it, and both run without one (6w–6y, run through `bash`, since section 5's awk
+  rewrite of `gate.sh` drops its mode bits); and an unknown flag is a usage error, exit
   2. It also reads — never writes — the real checkout, asserting `gate.sh`/`pr.sh`/
   `worktree-setup.sh` carry the same `template-version` in `templates/plans/` and in
   `self/` (8), and that the upstream URL is ONE string across the three places that
@@ -1750,8 +1952,9 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   label (`window bounds carry a zone and to follows from`) and on `run-batch.sh` writing
   the inferred slug through the `FEATURE_SLUG_OUT` handshake.
 - `template-versions.sh` — the odd one out: it reads the checked-in tree rather than
-  standing up a sandbox, and calls no runner. For each of the three repo-owned templates
-  (`templates/plans/{gate,pr,worktree-setup}.sh`) it asserts that the
+  standing up a sandbox, and calls no runner. For each of the six repo-owned templates
+  (`templates/plans/{gate,pr,worktree-setup,open-session,environment,cloud-setup}.sh` —
+  the last two the environment adapters of execution-profiles) it asserts that the
   `# template-version: N` line matches the version recorded in
   `templates/plans/TEMPLATE_VERSIONS` (rows `<file> <version> <sha256>`) and that the
   file's content hash matches the one recorded beside it — sha256 over the file with
@@ -1883,7 +2086,20 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   `acceptEdits` reaches the working directory alone — and that it is gone when the pass
   ends. `hooks/allow-repo-commands.sh` is the only reader
   of either variable, so without this phase the two ends of that contract are asserted
-  nowhere together. No model, no network.
+  nowhere together. **11** is `cost-capture-collisions`' scrub (design 2026-10-05 §4):
+  the stub reports its session id the way the CLI does — an explicit `--session-id`,
+  else an inherited `CLAUDE_CODE_SESSION_ID` — and records whether either
+  `CLAUDE_CODE_SESSION_ID` or `CLAUDE_CODE_REMOTE_SESSION_ID` reached it and what
+  `--session-id` it was handed. `run-review.sh` is driven with both set in the parent:
+  the child sees neither (11a–11b), is handed a valid uuid that is not the parent's
+  (11c–11d), and the review's `usage.json` records that uuid as its `session_id` and its
+  attempt's (11e–11f), which is what the capture's exclusion reads; phase 10's
+  `run-plans.sh` launch carries a minted uuid too, a different one (11g–11h). 11i–11m
+  read `capture_planning.HEADLESS_PROMPT_MARKER` and assert the prompt the review runner
+  really sent carries it, as do `run-plans.sh`, both of `run-verify.sh`'s prompts (verify
+  and escalation) and `run-review.sh` — the constant the capture recognises a collided
+  runner's conversation by, kept from drifting away from the prompts. RED on main:
+  every check but 11d. No model, no network.
   Depends on `plan-runner-lib.sh`'s `run_plan` capturing the stream where nothing
   downstream can truncate it, on `finalize_plan` warning on `rc == 0` with no `result`
   event, on `run_all` leaving the runner alive when its own stdout is closed, and — for
@@ -1892,7 +2108,10 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   here pass vacuously). Phase 10 also depends on the executor scratch directory living
   INSIDE `CAPTURE_TMPDIR`: `capture_dirs_left` counts directories at depth 1 under
   `$TMPDIR` and 8b/9b assert exactly one, so a second `mktemp -d` beside it would fail
-  those instead. None of this is visible from an import line.
+  those instead. Phase 11 also depends on `plan-runner-lib.sh`'s `EXECUTOR_SCRUBBED_ENV_NAMES`,
+  `EXECUTOR_SESSION_ID_FLAG` and `mint_session_id` at the one launch site, and on
+  `analysis/capture_planning.py` importing from `analysis/` with nothing but the
+  repository beside it. None of this is visible from an import line.
 - `usage-limit-kill.sh` — the runner scripts in a `mktemp -d` checkout with a stub
   `claude` that `cat`s a canned `.stream.jsonl` (`CLAUDE_STUB_STREAM`) and exits with
   `CLAUDE_STUB_RC`, driven through the real `run-plans.sh --self`. The canned stream is
@@ -2008,8 +2227,11 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   unescaped the way Terminal unescapes a string literal, then run by a shell whose
   `claude` prints `$PWD` — which must be that path intact
   (`self/DESIGN-2026-09-18-minutes-slug-and-quoting.md` §3). Also pins both copies at
-  `template-version: 3` and that the two compose the same command, since they are
-  hand-kept in step. Nothing is opened and nothing is billed: no Terminal, no model, no
+  `template-version: 4` and that the two compose the same command, since they are
+  hand-kept in step. O1–O5 run under `AGENTTOOLING_PROFILE=local`; **O6** runs each copy
+  under `cloud`, where it must exit 0, run no `osascript`, and say the session is already
+  in the checkout it was handed (`self/DESIGN-2026-10-05-cloud-execution.md` §1, §3).
+  Nothing is opened and nothing is billed: no Terminal, no model, no
   network. `feature-lifecycle.sh` S5c–S5f read the same two files as **text** (the two
   escaping layers are present, the bare single-quoted path is gone, neither spells a
   chained `cd` as a command of its own); this file runs them, which is the only way a
@@ -2052,3 +2274,105 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
   none of which is visible from an import line. The table's heading, header row, the `†`
   mark and the `—` absent cell are asserted by value, so a change to any of them is a
   visible change here.
+- `env-profile.sh` — the profile detector, the checkout-layout adapter, the confinement
+  check and `forge.sh`'s profile-dependent verbs
+  (`self/DESIGN-2026-10-05-cloud-execution.md` §1, §5; `self/features/execution-profiles/`).
+  The detector is sourced in a child shell with **both** variables cleared first and then
+  the case's own set, so the result never depends on the machine — a cloud container sets
+  `CLAUDE_CODE_REMOTE=true`, a laptop does not. D1–D5: an explicit `AGENTTOOLING_PROFILE`
+  wins either way and the description names it; `CLAUDE_CODE_REMOTE=true` alone is
+  `cloud`; neither (or `CLAUDE_CODE_REMOTE=false`) is `local` by `default`; a value that is
+  neither fails `profile_check` naming it; the decided value reaches a child. L1–L2, on a
+  throwaway repo with a bare origin: the local checkout is `<primary>/.worktrees/<slug>` on
+  branch `<slug>` and `create_checkout` makes exactly that worktree; the cloud checkout is
+  the primary, the branch the `--branch` value or the current branch off the base, none on
+  the base, and `create_checkout` cuts the named branch with no worktree, or does nothing
+  when already on it. C1–C3 run `self/profile-confinement.sh`: this checkout passes; a
+  planted tracked `feature-start.sh` reading `CLAUDE_CODE_REMOTE`, or `feature-close.sh`
+  reading `AGENTTOOLING_PROFILE`, fails naming the file; `CLAUDE_CODE_REMOTE_SESSION_ID`,
+  a `.md`, an allowlisted adapter, a file under `self/tests/` and an untracked file all
+  pass. F1–F5 drive a copy of `forge.sh` (with `env-profile.sh` beside it) in a checkout
+  whose origin is a GitHub url, against a stub `gh` logging every argv: `auto-merge`
+  locally is exactly one `pr merge <url> --auto --merge --delete-branch` and never a
+  squash; under cloud exactly one `api -X PUT repos/<o>/<r>/pulls/<n>/ccr/auto_merge -f
+  merge_method=merge` and no `gh pr` or `auth status`; a url with no number fails before
+  any call, a failing `gh` fails it non-zero, no url is a usage error; `reachable` is
+  `auth status` locally and `api repos/<o>/<r>` under cloud, non-zero when either fails;
+  an explicit profile that is neither refuses every verb before any call. No model, no
+  network.
+- `cloud-start.sh` — `feature-start.sh` under the cloud profile, where the container is
+  the worktree (`self/DESIGN-2026-10-05-cloud-execution.md` §2, §3, and the
+  start-instant ruling in `self/features/execution-profiles/README.md`). Every scenario is
+  a fresh "container" — a throwaway checkout with a bare origin, the real
+  `feature-start.sh`, `plan-runner-roots.sh`, `env-profile.sh`, `self/open-session.sh` and
+  `analysis/*.py`, a stub hook recording its cwd and failing on `HOOK_STUB_RC`, a stub
+  green gate, and no `.claude/` at all (the policy is tracked, so a `--self` start
+  generates nothing) — and every start runs with `AGENTTOOLING_PROFILE=cloud`,
+  `CLAUDE_CODE_REMOTE` cleared and `$HOME` a scratch directory. The assigned branch is cut
+  by the test itself (`git checkout -b claude/… origin/main`), as a cloud session finds
+  itself on before any start. Asserts B1 (on the base with no `--branch`: refused naming
+  the flag, nothing created), A1–A5 (on the assigned branch: no `.worktrees/`, the hook in
+  the primary, `S: start` directly on `origin/main`, `branches` that branch, `profile`
+  `cloud`, no pin, no routing record and the word "coordinator"; `from` the coordinator's
+  transcript's first instant **exactly** — the fixture's first line carries `.500`, which
+  `from` keeps (A2 expected the floor to the second until issue #82;
+  `self/features/session-start-precision`) — and `capture_planning.py` then selecting it
+  `by branch`; `report.py` printing `Profile: cloud`; with no readable transcript, the
+  clock and exactly one `warn` naming `set-window-from`), A6 (that warning's remedy: the
+  clock-stamped coordinator's transcript written afterwards, its `.500` first line two
+  hours before `from`, `set-window-from "$(manifest.py session-start <id>)" --session <id>`
+  exits 0 and moves `from` to that instant exactly, and a capture selects the session
+  `by branch` — on `main`'s floored output the refusal turned it away), G1–G5 (the fence's `gate` key — `green` after the stub gate ran, shown
+  by `report.py` as `Gate: green` and in `report.json`; `skipped` under `--no-gate` and in a
+  checkout with no gate script; and the start ran its gate with `GATE_RESUME=1`, which
+  the stub records to `$GATE_RESUME_OUT`), S1 (a second feature in that container refused naming the first),
+  R1–R3 (a foreign commit and a dirty tree refused with the work still there; a start
+  whose hook fails leaves the branch and a lock with `refused=`, and its re-run with a hand
+  fix in the tree resumes, commits `S: start` without the fix, and removes the lock),
+  N1–N3 (`--branch` from the base cuts the branch off `origin/main` and the session,
+  launched on `main`, is a router with a routing record; a refused `--branch` start re-run
+  from its new branch is still the router, from the lock's `launched_on`; an existing
+  branch not checked out is refused), U1 (a branch behind `origin/main`, the origin moved
+  by a second clone, is fast-forwarded with exit 3 and no start; the rerun starts), O1
+  (`--open` runs the real `self/open-session.sh`, which says the session is already in the
+  checkout, and no `osascript` stub is called), and P1 (under `local` the same start makes
+  `.worktrees/<slug>` with `profile` `local` and `gate` `skipped` under `--no-gate`, and
+  `--branch` is refused). Depends on
+  `feature-start.sh`'s lock living at `.git/feature-start.lock` with a `refused=` line,
+  and on `planning.json`'s `sessions[].selected_by`.
+- `gate-resume.sh` — the resumable gate (`self/DESIGN-2026-10-05-cloud-execution.md` §8):
+  a gate killed with its container re-runs only what had not finished. Run against **both**
+  gates that carry it — `templates/plans/gate.sh` and `self/gate.sh` — each copied into a
+  throwaway git repo with its checks block (from its header to the closing `# ────` rule)
+  replaced by four stub `record` lines (`c1`, `unit tests/fast`, `c3`, `c4`) calling one
+  stub script outside the repo that appends its name to a run log and hangs or fails on
+  request. The repo carries the gate's real ignore lines (`templates/plans/.gitignore`, or
+  the root `.gitignore`'s `self/gate-report*`/`self/gate-state/` lines) and a STAGED change.
+  K1: a gate killed (-9) while c3 runs leaves `c1` and `unit_tests_fast` (the label
+  sanitised) recorded under one `<state>/<tree-sha>/`, `c3` not, the real `.git/index`
+  byte-identical with the change still staged, and `git status` as it was. K2: resumed
+  under `GATE_RESUME=1` it runs `c3 c4`, says it reused `c1`, and writes a complete report
+  — four sections in order, `all checks passed`. K3: a third resumed run runs nothing and
+  still reports four. K4: without `GATE_RESUME`, all four. K5–K6: a changed tracked file,
+  and an untracked one, re-run everything and keep only the current tree's state, while the
+  gate's own report and state never move the sha. K7: a recorded failure re-runs and the
+  recorded passes do not. K8: a check whose command line changed (`$GATE_TEST_EXTRA_ARG`,
+  standing in for a level gate's expected-red flags) re-runs alone. K9: a `git` whose
+  `write-tree` fails (a stub ahead on `PATH`) runs everything. K10: in a directory with no
+  git (`GIT_CEILING_DIRECTORIES` stops the search at the sandbox), every resumed run runs
+  everything and no state directory appears. K11 (both gates; the sandbox carries a
+  committed `<features>/lvl/timing.jsonl`): once settled, an edit, an addition and a move
+  inside the features corpus (`plans/features` / `self/features`) keep the state and run
+  nothing, while a file outside it resets to all four. R1–R4 (escalation 01, NOTES ruling
+  42) drive the **runner entry point**: the template gate, stubbed, in a consuming-repo
+  layout (`<repo>/agentTooling/` holding the real `run-plans.sh` and its libs,
+  `<repo>/plans/gate.sh`, a feature directory with a queued `05-gate.md` level sentinel and
+  a stub `claude`), so `run_level_gate` runs with `stamp_timing` live. R1: killed (process
+  group, -9) during c3, `gate_start` is in `timing.jsonl`; R2: re-run through `run-plans.sh`
+  runs only `c3 c4` and files the sentinel; R3: a corpus edit between the runs keeps that;
+  R4: a file outside the corpus resets it to all four. Depends on both gates keeping their checks
+  block between a recognisable header and a `# ────` rule, `record` as the check
+  function, the report's `## <label>` sections and `# VERDICT` line, and
+  `run-plans.sh` resolving `plans/gate.sh` and `plans/features/` from the directory above
+  its own. The killed run's process group comes from bash job control (`set -m`), not
+  `setsid`, which macOS does not ship. No model, no network.

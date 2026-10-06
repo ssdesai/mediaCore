@@ -2,14 +2,55 @@
 set -uo pipefail
 
 # Start a feature: feature-start.sh [--self] <slug> [--method direct|plans|hand]
-#   [--base <branch>] [--no-gate] [--pin] [--session <id>] [--open]
+#   [--base <branch>] [--branch <name>] [--no-gate] [--pin] [--session <id>] [--open]
 #
 # The only sanctioned way to create a feature branch or worktree (LIFECYCLE.md). The
-# rule, for slug S in a repo whose primary checkout is R:
+# rule, for slug S in a repo whose primary checkout is R, under the LOCAL profile:
 #
 #   slug      ^[a-z0-9]+(-[a-z0-9]+)*$     kebab-case, no slash, no owner prefix
 #   branch    S
 #   worktree  R/.worktrees/S               inside the primary checkout, kept out of git
+#
+# **Where it runs is env-profile.sh's to decide, never this script's**
+# (self/DESIGN-2026-10-05-cloud-execution.md §1). It prints one `profile` line naming the
+# profile and the variable that decided it, records the profile in the manifest's fence,
+# and asks the layout adapter env-profile.sh defines for the checkout and the branch —
+# it never reads the profile variables itself (self/profile-confinement.sh fails if it
+# does). Everything below describes the LOCAL layout, which is unchanged; the CLOUD one
+# (design §2, §3), where a Claude Code container IS the worktree, differs only here:
+#
+#   - the checkout is R itself, on the session's assigned branch: `--branch <name>`, else
+#     the branch R is on when that is not the base. On the base with neither, the start
+#     refuses naming the flag; `--branch` names a NEW branch, which this script cuts off
+#     origin/<base> with `git checkout -b` (agents never do — LIFECYCLE.md rule 2), and an
+#     existing branch that is not checked out is refused. Locally `--branch` is refused:
+#     the branch is the slug;
+#   - before anything is written it refuses a second feature (a `<x>: start` commit not
+#     on origin/<base>, or a tracked manifest whose branches[0] is this branch — a
+#     container pushes one branch, so it holds one feature), a branch carrying commits
+#     not on origin/<base> (somebody's work), and a dirty tree; then "the checkout
+#     contains origin/<base>" replaces "the primary is on main": a checkout strictly
+#     behind with no commits of its own is fast-forwarded and the run exits 3 with the
+#     command to run again, exactly as a stale primary does locally;
+#   - the start lock is R's own .git/feature-start.lock, carrying the slug, the branch and
+#     the branch the start was LAUNCHED ON as well as the pid. A refused start leaves it;
+#     a re-run of the same slug on that branch whose pid is gone RESUMES at the setup hook:
+#     no clean-tree or own-commit refusal (the hand fix is exactly that), no new branch, an
+#     uncommitted manifest and review stub kept, and nothing deleted — the start commit
+#     only ever adds the feature directory, so a fix in the tree is never swept into it;
+#   - the prune runs as everywhere, and finds no worktrees in a container.
+#
+# **Router or coordinator is derived, not configured** (design §3, in both profiles). The
+# session running the start is the feature's COORDINATOR when the branch R was on when
+# the start began — before any `checkout -b` — is the feature's branch: in the cloud,
+# every session started on its assigned branch. Then no routing record is written and
+# nothing is pinned, and `from` is that session's FIRST transcript instant
+# (`manifest.py session-start`), truncated to the millisecond — never later than the
+# session's first line, and the exact instant `set-window-from` accepts (issue #82;
+# self/features/session-start-precision) — so the capture's branch route —
+# which selects a session by its start — selects it; when the transcript cannot be read,
+# `from` is the clock and one `warn` line names `set-window-from`. Locally R is on main
+# and the branch is S, so the session is a router, exactly as described below.
 #
 # Inside rather than beside R because a session launched in R can then reach the worktree
 # with no access outside its own folder. Features started before this layout keep their
@@ -26,8 +67,7 @@ set -uo pipefail
 #   2. makes sure the common git dir's info/exclude ignores /.worktrees/ — so the
 #      primary's `git status` stays clean with the worktree inside it — then fetches
 #      origin, and when the primary's main is BEHIND origin/main, fast-forwards it and
-#      exits asking to be run again (see "A stale primary" below); under --self it then
-#      regenerates the primary's own untracked .claude/settings.json if it is missing;
+#      exits asking to be run again (see "A stale primary" below);
 #   3. prunes the features that have merged: every worktree under R/.worktrees/ whose
 #      branch has moved since it was created and is an ancestor of origin/main is
 #      removed and its local branch deleted (`git branch -D` — ancestry against
@@ -49,10 +89,14 @@ set -uo pipefail
 #      dir (`git rev-parse --absolute-git-dir` inside it, .git/worktrees/<name>/);
 #   5. runs the repo's setup hook inside it — plans/worktree-setup.sh, or
 #      self/worktree-setup.sh under --self — for the venv, npm install, dev port;
-#   6. runs the repo's gate inside it and stops unless the verdict is green: a red base
-#      is the implementer's context spent on someone else's failures (`--no-gate` skips);
+#   6. runs the repo's gate inside it, with GATE_RESUME=1 (a re-run on the same tree skips
+#      the checks that already passed — design §8), and stops unless the verdict is green:
+#      a red base is the implementer's context spent on someone else's failures
+#      (`--no-gate` skips);
 #   7. writes the manifest from templates/plans/features/TEMPLATE.md with its fence
-#      filled (branches [S], base, `from` now in UTC with a Z, `to` null, and no pin),
+#      filled (branches [S], base, the profile, `gate` — "green" when step 6 ran green,
+#      "skipped" under --no-gate or with no gate script, design §7 — `from` now in UTC
+#      with a Z, `to` null, and no pin),
 #      and a review-brief stub carrying @@TODO@@ that run-review.sh refuses to run until
 #      it is replaced;
 #   8. writes the ROUTING RECORD for the session that ran it, INSIDE that feature
@@ -163,27 +207,41 @@ START_LOCK_NAME="feature-start.lock"
 START_LOCK_PID_KEY="pid"
 START_LOCK_STARTED_KEY="started"
 START_LOCK_REFUSED_KEY="refused"
+# The cloud lock's extra lines (header, the cloud layout): which start it is, on which
+# branch, and the branch it was launched on — what a resumed start is router or
+# coordinator by. The local lock carries none of them and is byte-identical to before.
+START_LOCK_SLUG_KEY="slug"
+START_LOCK_BRANCH_KEY="branch"
+START_LOCK_LAUNCHED_KEY="launched_on"
+# The subject of the commit a start ends with: `<slug>: start`. A branch carrying one not
+# on origin/<base> already holds a started feature (the cloud's one-feature rule).
+START_SUBJECT_SUFFIX=": start"
+# How many dirty paths the cloud's dirty-tree refusal names.
+DIRTY_PATHS_NAMED=3
+# The fence's `gate` key (self/DESIGN-2026-10-05-cloud-execution.md §7; manifest.py's
+# KNOWN_GATE_RECORDS): the base gate ran here and was green, or no gate ran at all.
+GATE_RECORD_GREEN="green"
+GATE_RECORD_SKIPPED="skipped"
 # The module that derives and writes the routing record, run from the new worktree's copy
 # so the record lands in the worktree's corpus and rides the `S: start` commit, and the
 # name it writes it under inside the feature directory (analysis/routing.py's
 # RECORD_NAME; this script only prints it, and the two move together).
 ROUTING_MODULE="analysis/routing.py"
 ROUTING_RECORD_NAME="routing.json"
-# Under --self: this checkout's own permission policy, which git does not track, and the
-# generator that writes it (hooks/README.md). Both relative to REPO_DIR.
-SELF_SETTINGS_REL=".claude/settings.json"
-WIRE_SETTINGS_LABEL="hooks/wire-settings.py"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The command as typed, for the "run it again" line a stale primary ends on.
 RERUN_CMD="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")$(printf ' %q' "$@")"
 source "$SCRIPT_DIR/plan-runner-roots.sh"
+# The detector and the layout adapter (header): the profile, and the checkout and branch
+# a feature gets under it. Sourced, so its functions are the only way this script asks.
+source "$SCRIPT_DIR/env-profile.sh"
 resolve_roots "${1:-}"
 SELF_FLAG=()
 if [[ "${1:-}" == "--self" ]]; then SELF_FLAG=(--self); shift; fi
 
 usage() {
-  echo "usage: feature-start.sh [--self] <slug> [--method direct|plans|hand] [--base <branch>] [--no-gate] [--pin] [--session <id>] [--open]" >&2
+  echo "usage: feature-start.sh [--self] <slug> [--method direct|plans|hand] [--base <branch>] [--branch <name>] [--no-gate] [--pin] [--session <id>] [--open]" >&2
   exit "$USAGE_RC"
 }
 # This run's start lock, once step 4 has written it; empty before that and after step 9.
@@ -203,6 +261,7 @@ refuse() {
 
 SLUG="${1:-}"; [[ -n "$SLUG" ]] || usage; shift
 METHOD="$DEFAULT_METHOD"; BASE="$DEFAULT_BASE"; RUN_GATE=1; PIN=0; SESSION_OPT=""; OPEN=0
+BRANCH_OPT=""
 while (( $# )); do
   # Every value-taking flag checks its arity first: `shift 2` with one argument left
   # returns non-zero WITHOUT shifting, and there is no `set -e` here to stop on it, so a
@@ -210,6 +269,7 @@ while (( $# )); do
   case "$1" in
     --method)  (( $# >= 2 )) || usage; METHOD="$2"; shift 2 ;;
     --base)    (( $# >= 2 )) || usage; BASE="$2"; shift 2 ;;
+    --branch)  (( $# >= 2 )) || usage; BRANCH_OPT="$2"; shift 2 ;;
     --no-gate) RUN_GATE=0; shift ;;
     --pin)     PIN=1; shift ;;
     # Accepted and ignored: not pinning is the default now, and a brief, a runbook or a
@@ -223,6 +283,11 @@ done
 [[ "$SLUG" =~ $SLUG_PATTERN ]] || refuse "slug '$SLUG' must match $SLUG_PATTERN — kebab-case, no slash, no prefix"
 case " $KNOWN_METHODS " in *" $METHOD "*) ;; *) refuse "--method must be one of: $KNOWN_METHODS" ;; esac
 [[ -n "$BASE" ]] || usage
+if ! profile_why="$(profile_check)"; then refuse "$profile_why"; fi
+echo "  profile   $(profile_describe)"
+if [[ -n "$BRANCH_OPT" ]] && ! profile_is_cloud; then
+  refuse "--branch is the cloud layout's (a container's assigned branch); under the $(profile_name) profile the feature's branch is its slug, '$SLUG' — drop --branch"
+fi
 
 # ── Where ─────────────────────────────────────────────────────────────────────
 # REPO_DIR is this script's repo root in the two modes; the git toplevel above it is
@@ -234,7 +299,13 @@ if [[ "$(git -C "$PRIMARY" rev-parse --git-dir)" != "$(git -C "$PRIMARY" rev-par
 fi
 REL_REPO="${REPO_DIR#"$PRIMARY"}"; REL_REPO="${REL_REPO#/}"          # "" or agentTooling
 REL_AT="${SCRIPT_DIR#"$PRIMARY"}"; REL_AT="${REL_AT#/}"              # "" or agentTooling
-WORKTREE="$PRIMARY/$WORKTREES_DIR_NAME/$SLUG"
+# The feature's checkout, from the layout adapter: R/.worktrees/S locally, R itself in the
+# cloud. Named WORKTREE throughout, as it always was; in the cloud it is the primary.
+layout_init "$PRIMARY" "$WORKTREES_DIR_NAME" "$BASE" "$BRANCH_OPT"
+WORKTREE="$(feature_checkout "$SLUG")"
+# The branch R is on as the start begins, before any `checkout -b` — what decides router
+# or coordinator (header). A resumed cloud start takes it from its lock instead, below.
+LAUNCH_BRANCH="$(layout_launch_branch)"
 WT_REPO_DIR="$WORKTREE${REL_REPO:+/$REL_REPO}"
 WT_AT="$WORKTREE${REL_AT:+/$REL_AT}"
 WT_FEATURES="$WT_REPO_DIR/$FEATURES_LABEL"
@@ -332,12 +403,59 @@ assess_own_half_start() {
   return 0
 }
 
+# lock_value <file> <key> — one `key=value` line of a start lock, the first one.
+lock_value() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -n 1; }
+
 # Checked here, before anything is fetched or pruned, so every refusal costs nothing; and
-# again at the takeover itself, below the stale-primary check (header).
+# again at the takeover itself, below the stale-primary check (header). Local only: the
+# takeover is of a WORKTREE and its branch S, which the cloud layout never makes.
 TAKEOVER=0
-if git -C "$PRIMARY" show-ref --verify --quiet "refs/heads/$SLUG" || [[ -e "$WORKTREE" ]]; then
-  assess_own_half_start || refuse "$HALF_START_WHY"
-  TAKEOVER=1
+if ! profile_is_cloud; then
+  if git -C "$PRIMARY" show-ref --verify --quiet "refs/heads/$SLUG" || [[ -e "$WORKTREE" ]]; then
+    assess_own_half_start || refuse "$HALF_START_WHY"
+    TAKEOVER=1
+  fi
+fi
+
+# ── The cloud layout: the branch, and a start to resume (header) ──────────────
+# Before anything is fetched, like the takeover check above. FEATURE_BRANCH is what the
+# manifest's branches[0] will say: the slug locally, the assigned branch in the cloud.
+FEATURE_BRANCH="$SLUG"
+RESUME=0
+CLOUD_LOCK=""
+if profile_is_cloud; then
+  CLOUD_LOCK="$(git -C "$PRIMARY" rev-parse --absolute-git-dir 2>/dev/null)/$START_LOCK_NAME"
+  if [[ -f "$CLOUD_LOCK" ]]; then
+    lock_pid="$(lock_value "$CLOUD_LOCK" "$START_LOCK_PID_KEY")"
+    lock_slug="$(lock_value "$CLOUD_LOCK" "$START_LOCK_SLUG_KEY")"
+    lock_branch="$(lock_value "$CLOUD_LOCK" "$START_LOCK_BRANCH_KEY")"
+    lock_launched="$(lock_value "$CLOUD_LOCK" "$START_LOCK_LAUNCHED_KEY")"
+    lock_refused="$(lock_value "$CLOUD_LOCK" "$START_LOCK_REFUSED_KEY")"
+    if [[ "$lock_pid" =~ ^[0-9]+$ ]] && ps -p "$lock_pid" >/dev/null 2>&1; then
+      refuse "a start of '${lock_slug:-?}' is still running in $PRIMARY (pid $lock_pid, per $CLOUD_LOCK) — let it finish; if pid $lock_pid is not a feature-start.sh (a reused pid), a human removes that lock"
+    fi
+    if [[ "$lock_slug" != "$SLUG" ]]; then
+      refuse "this checkout holds an unfinished start of '${lock_slug:-?}' on '${lock_branch:-?}'${lock_refused:+ (refused: $lock_refused)} — a container holds one feature: re-run that start, not a new one"
+    fi
+    if [[ "$LAUNCH_BRANCH" != "$lock_branch" ]]; then
+      refuse "the unfinished start of '$SLUG' was on branch '$lock_branch', and this checkout is on '${LAUNCH_BRANCH:-a detached HEAD}' — check out '$lock_branch' and run this again"
+    fi
+    if [[ -n "$BRANCH_OPT" && "$BRANCH_OPT" != "$lock_branch" ]]; then
+      refuse "the unfinished start of '$SLUG' is on branch '$lock_branch', not --branch '$BRANCH_OPT' — re-run it without --branch, or with --branch $lock_branch"
+    fi
+    RESUME=1
+    FEATURE_BRANCH="$lock_branch"
+    LAUNCH_BRANCH="${lock_launched:-$lock_branch}"
+  else
+    FEATURE_BRANCH="$(feature_branch "$SLUG")" \
+      || refuse "in the cloud the feature runs on the session's assigned branch, and $PRIMARY is on '${LAUNCH_BRANCH:-a detached HEAD}', the base — name the branch with --branch <name> (the start creates it off origin/$BASE)"
+    git check-ref-format --branch "$FEATURE_BRANCH" >/dev/null 2>&1 \
+      || refuse "'$FEATURE_BRANCH' is not a valid branch name"
+    if [[ "$FEATURE_BRANCH" != "$LAUNCH_BRANCH" ]] \
+        && git -C "$PRIMARY" show-ref --verify --quiet "refs/heads/$FEATURE_BRANCH"; then
+      refuse "--branch '$FEATURE_BRANCH' already exists and is not checked out — the start creates the feature's branch, or uses the one this session is on; it does not switch to another"
+    fi
+  fi
 fi
 
 # ── Keep the worktrees directory out of git ───────────────────────────────────
@@ -372,10 +490,70 @@ if git -C "$PRIMARY" remote get-url origin >/dev/null 2>&1; then
     echo "  warn  git fetch origin failed; branching from the local $BASE"
   fi
 fi
+# ── The cloud checkout: one feature, nobody's work, and origin/<base> in it ───
+# See the header's cloud layout. Before the prune, the branch and the lock, so a refusal
+# here has written nothing; the stale-checkout fast-forward last, so it only ever moves a
+# clean branch with no commits of its own.
+if profile_is_cloud; then
+  if git -C "$PRIMARY" show-ref --verify --quiet "refs/remotes/origin/$BASE"; then
+    CLOUD_UPSTREAM="origin/$BASE"
+  elif git -C "$PRIMARY" show-ref --verify --quiet "refs/heads/$BASE"; then
+    CLOUD_UPSTREAM="$BASE"
+  else
+    refuse "base branch '$BASE' exists neither as origin/$BASE nor locally"
+  fi
+  # A second feature: a start commit this branch carries past the base, or a tracked
+  # manifest that names this branch as its own.
+  started=""
+  while IFS= read -r subject; do
+    case "$subject" in
+      *"$START_SUBJECT_SUFFIX")
+        candidate="${subject%"$START_SUBJECT_SUFFIX"}"
+        if [[ "$candidate" =~ $SLUG_PATTERN ]]; then started="$candidate"; break; fi ;;
+    esac
+  done < <(git -C "$PRIMARY" log --format=%s "$CLOUD_UPSTREAM..HEAD" 2>/dev/null)
+  if [[ -z "$started" ]]; then
+    while IFS= read -r manifest_rel; do
+      case "$manifest_rel" in "$FEATURES_LABEL"/*/README.md) ;; *) continue ;; esac
+      other="${manifest_rel#"$FEATURES_LABEL"/}"; other="${other%/README.md}"
+      [[ "$other" != */* ]] || continue
+      if [[ "$(manifest_branch "$REPO_DIR/$manifest_rel" "")" == "$FEATURE_BRANCH" ]]; then
+        started="$other"; break
+      fi
+    done < <(git -C "$REPO_DIR" ls-files -- "$FEATURES_LABEL" 2>/dev/null)
+  fi
+  if [[ -n "$started" ]]; then
+    refuse "branch '$FEATURE_BRANCH' already carries the feature '$started' — a container pushes one branch, so it holds one feature: finish '$started' here, and start '$SLUG' in a session of its own"
+  fi
+  if (( ! RESUME )); then
+    own="$(git -C "$PRIMARY" rev-list --count "$CLOUD_UPSTREAM..HEAD" 2>/dev/null)"
+    if [[ "${own:-0}" != 0 ]]; then
+      refuse "'${LAUNCH_BRANCH:-HEAD}' carries $own commit(s) not on $CLOUD_UPSTREAM, newest '$(git -C "$PRIMARY" log -1 --format=%s 2>/dev/null)' — somebody's work; a feature starts from $CLOUD_UPSTREAM in a checkout with nothing of its own"
+    fi
+    dirty="$(git -C "$PRIMARY" status --porcelain 2>/dev/null | head -n "$DIRTY_PATHS_NAMED" | cut -c4- | tr '\n' ' ')"
+    if [[ -n "$dirty" ]]; then
+      refuse "$PRIMARY has uncommitted changes (${dirty% }) — somebody's work; commit or remove them, then run this again"
+    fi
+  fi
+  head_sha="$(git -C "$PRIMARY" rev-parse HEAD)"
+  upstream_sha="$(git -C "$PRIMARY" rev-parse "$CLOUD_UPSTREAM")"
+  if ! git -C "$PRIMARY" merge-base --is-ancestor "$upstream_sha" "$head_sha"; then
+    git -C "$PRIMARY" merge-base --is-ancestor "$head_sha" "$upstream_sha" \
+      || refuse "'${LAUNCH_BRANCH:-HEAD}' in $PRIMARY has diverged from $CLOUD_UPSTREAM; reconcile it by hand, then run this again"
+    git -C "$PRIMARY" merge -q --ff-only "$CLOUD_UPSTREAM" \
+      || refuse "could not fast-forward '${LAUNCH_BRANCH:-HEAD}' in $PRIMARY to $CLOUD_UPSTREAM (git's reason is above); nothing was started"
+    echo "  updated   ${LAUNCH_BRANCH:-HEAD} ${head_sha:0:8}..${upstream_sha:0:8} in $PRIMARY — it was behind $CLOUD_UPSTREAM"
+    echo "            This run may be the old copy of feature-start.sh; nothing was started. Run it again:"
+    echo "              $RERUN_CMD"
+    exit "$UPDATED_RC"
+  fi
+fi
+
 # ── A stale primary ───────────────────────────────────────────────────────────
 # See the header. Before the prune and the worktree, so a run that stops here has changed
-# nothing but main.
-if (( FETCHED )) && git -C "$PRIMARY" show-ref --verify --quiet "refs/remotes/$PRIMARY_UPSTREAM"; then
+# nothing but main. Local only: in the cloud the primary is on the assigned branch, and
+# the block above is this check.
+if ! profile_is_cloud && (( FETCHED )) && git -C "$PRIMARY" show-ref --verify --quiet "refs/remotes/$PRIMARY_UPSTREAM"; then
   primary_head="$(git -C "$PRIMARY" rev-parse HEAD)"
   upstream_head="$(git -C "$PRIMARY" rev-parse "$PRIMARY_UPSTREAM")"
   if [[ "$primary_head" != "$upstream_head" ]] \
@@ -391,25 +569,6 @@ if (( FETCHED )) && git -C "$PRIMARY" show-ref --verify --quiet "refs/remotes/$P
     echo "            This run was the old copy of feature-start.sh; nothing was started. Run it again:"
     echo "              $RERUN_CMD"
     exit "$UPDATED_RC"
-  fi
-fi
-# ── This checkout's own settings (--self)─────────────────────────────────────
-# agentTooling's .claude/settings.json is generated and untracked, so the fast-forward
-# above — over the commit that stopped tracking it — deletes it from the primary, and
-# every session there then runs with no hook. The fast-forward path cannot put it back:
-# it is by definition the OLD copy of this script. The rerun it asks for is the new copy,
-# and so is every later start, which is why this sits here: any --self start from a
-# primary that has lost the file writes it again. Only when missing — a primary's file is
-# never rewritten under a human who is experimenting with it; the gate reports drift. In
-# a vendored agentTooling the generator writes nothing (the consuming repo's own wiring
-# is at its root), and a failure here never stops the start.
-if (( SELF_MODE )) && [[ ! -e "$REPO_DIR/$SELF_SETTINGS_REL" ]]; then
-  if settings_out="$(python3 -B "$REPO_DIR/$WIRE_SETTINGS_LABEL" --self --repo "$REPO_DIR" --write 2>&1)"; then
-    if [[ -e "$REPO_DIR/$SELF_SETTINGS_REL" ]]; then
-      echo "  settings  $SELF_SETTINGS_REL was missing from $REPO_DIR; regenerated it (untracked, generated per checkout)"
-    fi
-  else
-    echo "  warn      could not regenerate $REPO_DIR/$SELF_SETTINGS_REL (${settings_out:-no output}); sessions in $REPO_DIR run with no hook until you run: python3 -B $REPO_DIR/$WIRE_SETTINGS_LABEL --self --repo $REPO_DIR --write"
   fi
 fi
 # ── Take over this slug's own half-start ──────────────────────────────────────
@@ -520,19 +679,43 @@ elif git -C "$PRIMARY" show-ref --verify --quiet "refs/heads/$BASE"; then
 else
   refuse "base branch '$BASE' exists neither as origin/$BASE nor locally"
 fi
-git -C "$PRIMARY" worktree add -q "$WORKTREE" -b "$SLUG" "$START_POINT" || refuse "git worktree add failed"
-# The start lock, at once: from here to the `S: start` commit this run is a half-start,
-# and the lock is what tells a later start — of this slug or any — whether it is still
-# running (header, "Taking over a half-start").
-wt_admin="$(git -C "$WORKTREE" rev-parse --absolute-git-dir 2>/dev/null)"
-[[ -n "$wt_admin" ]] || refuse "cannot resolve the admin dir of the new worktree $WORKTREE; it is left in place without a start lock"
-if ! printf '%s=%s\n%s=%s\n' "$START_LOCK_PID_KEY" "$$" "$START_LOCK_STARTED_KEY" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
-    > "$wt_admin/$START_LOCK_NAME"; then
-  refuse "cannot write the start lock $wt_admin/$START_LOCK_NAME; the worktree is left at $WORKTREE"
+if ! profile_is_cloud; then
+  create_checkout "$SLUG" "$START_POINT" || refuse "git worktree add failed"
+  # The start lock, at once: from here to the `S: start` commit this run is a half-start,
+  # and the lock is what tells a later start — of this slug or any — whether it is still
+  # running (header, "Taking over a half-start").
+  wt_admin="$(git -C "$WORKTREE" rev-parse --absolute-git-dir 2>/dev/null)"
+  [[ -n "$wt_admin" ]] || refuse "cannot resolve the admin dir of the new worktree $WORKTREE; it is left in place without a start lock"
+  if ! printf '%s=%s\n%s=%s\n' "$START_LOCK_PID_KEY" "$$" "$START_LOCK_STARTED_KEY" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+      > "$wt_admin/$START_LOCK_NAME"; then
+    refuse "cannot write the start lock $wt_admin/$START_LOCK_NAME; the worktree is left at $WORKTREE"
+  fi
+  START_LOCK="$wt_admin/$START_LOCK_NAME"
+  echo "  branch    $SLUG off $START_POINT"
+  echo "  worktree  $WORKTREE"
+else
+  # The cloud: the container is the worktree (header). A resumed start is already on its
+  # branch; a fresh one is either on it already (the assigned branch) or cuts it now.
+  if (( RESUME )); then
+    echo "  resume    an earlier start of $SLUG on $FEATURE_BRANCH stopped${lock_refused:+ (refused: $lock_refused)} and its pid ${lock_pid:-?} is gone — resuming at the setup hook; nothing is deleted"
+    echo "  branch    $FEATURE_BRANCH, as that start left it"
+  elif [[ "$FEATURE_BRANCH" == "$LAUNCH_BRANCH" ]]; then
+    echo "  branch    $FEATURE_BRANCH — the branch this session is on, at $START_POINT"
+  else
+    create_checkout "$SLUG" "$START_POINT" || refuse "git checkout -b $FEATURE_BRANCH $START_POINT failed in $PRIMARY"
+    echo "  branch    $FEATURE_BRANCH off $START_POINT"
+  fi
+  # The lock (header): written whole, a resumed start's included, so it names THIS pid;
+  # launched_on is what a later resume reads router or coordinator from.
+  if ! printf '%s=%s\n%s=%s\n%s=%s\n%s=%s\n%s=%s\n' \
+      "$START_LOCK_PID_KEY" "$$" "$START_LOCK_STARTED_KEY" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+      "$START_LOCK_SLUG_KEY" "$SLUG" "$START_LOCK_BRANCH_KEY" "$FEATURE_BRANCH" \
+      "$START_LOCK_LAUNCHED_KEY" "$LAUNCH_BRANCH" > "$CLOUD_LOCK"; then
+    refuse "cannot write the start lock $CLOUD_LOCK; $PRIMARY is left on $FEATURE_BRANCH"
+  fi
+  START_LOCK="$CLOUD_LOCK"
+  echo "  checkout  $WORKTREE — in the cloud the container is the worktree"
 fi
-START_LOCK="$wt_admin/$START_LOCK_NAME"
-echo "  branch    $SLUG off $START_POINT"
-echo "  worktree  $WORKTREE"
 
 # ── Hook, then gate, both inside the new worktree ─────────────────────────────
 if [[ -x "$WT_REPO_DIR/$HOOK_LABEL" ]]; then
@@ -544,18 +727,24 @@ if [[ -x "$WT_REPO_DIR/$HOOK_LABEL" ]]; then
 else
   echo "  hook      none ($HOOK_LABEL absent or not executable)"
 fi
+# The fence's `gate` key (design §7): green only when the gate ran here and was; skipped
+# otherwise — --no-gate, or no gate script to run — so a feature started on an unverified
+# base says so in its record. The gate runs under GATE_RESUME (design §8): a re-run of a
+# refused start on the same tree skips the checks that already passed.
+GATE_RECORD="$GATE_RECORD_SKIPPED"
 if (( RUN_GATE )); then
   if [[ -x "$WT_REPO_DIR/$GATE_SCRIPT_LABEL" ]]; then
-    if ! ( cd "$WT_REPO_DIR" && "$WT_REPO_DIR/$GATE_SCRIPT_LABEL" >/dev/null 2>&1 ); then
+    if ! ( cd "$WT_REPO_DIR" && GATE_RESUME="$GATE_RESUME_ON" "$WT_REPO_DIR/$GATE_SCRIPT_LABEL" >/dev/null 2>&1 ); then
       refuse "$GATE_SCRIPT_LABEL reported its environment unusable; the worktree is left at $WORKTREE"
     fi
     verdict="$(awk '/^# VERDICT/{getline; print; exit}' "$WT_REPO_DIR/$GATE_REPORT_LABEL" 2>/dev/null)"
     if [[ "$verdict" != "all checks passed" ]]; then
       refuse "the gate is not green on $START_POINT — verdict: '${verdict:-no report}'. Fix the base first, or pass --no-gate; the worktree is left at $WORKTREE"
     fi
+    GATE_RECORD="$GATE_RECORD_GREEN"
     echo "  gate      all checks passed"
   else
-    echo "  gate      none ($GATE_SCRIPT_LABEL absent) — pass --no-gate to silence this"
+    echo "  gate      none ($GATE_SCRIPT_LABEL absent; recorded as $GATE_RECORD_SKIPPED) — pass --no-gate to silence this"
   fi
 else
   echo "  gate      skipped (--no-gate)"
@@ -565,6 +754,34 @@ fi
 NOW="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 SESSION=""
 if (( PIN )); then SESSION="$ROUTER_SESSION"; fi
+# Router or coordinator (header): launched on the feature's own branch is the coordinator.
+COORDINATOR=0
+if [[ -n "$LAUNCH_BRANCH" && "$LAUNCH_BRANCH" == "$FEATURE_BRANCH" ]]; then COORDINATOR=1; fi
+# The window's `from`: the clock, unless this session is the coordinator — then its own
+# first transcript instant, since the capture's branch route selects a session by its
+# start and this one began before the feature existed (header; manifest.py
+# session-start, which prints it truncated to the millisecond and is written here as
+# printed). One warning, naming the remedy, when that cannot be read.
+WINDOW_FROM="$NOW"
+FROM_NOTE=""
+if (( COORDINATOR )); then
+  first_instant=""
+  if [[ -n "$ROUTER_SESSION" ]]; then
+    first_instant="$(python3 -B "$WT_AT/analysis/manifest.py" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} "$SLUG" \
+      session-start "$ROUTER_SESSION" 2>/dev/null)"
+  fi
+  if [[ -n "$first_instant" ]]; then
+    WINDOW_FROM="$first_instant"
+    FROM_NOTE=", session $ROUTER_SESSION's first instant"
+  else
+    if [[ -n "$ROUTER_SESSION" ]]; then
+      from_why="no transcript of session $ROUTER_SESSION was found"
+    else
+      from_why="no session id is set (\$CLAUDE_CODE_SESSION_ID, --session)"
+    fi
+    echo "  warn      this session is the coordinator, but $from_why; from is the clock, $NOW — if the capture leaves the session's head unclaimed, move it back with: python3 $WT_AT/analysis/manifest.py ${SELF_FLAG[@]+"${SELF_FLAG[@]} "}$SLUG set-window-from <its first instant> --session <id>"
+  fi
+fi
 # One rule, both modes: a new feature's stub is always 01 (self/PROJECT_FACTS.md,
 # AGENT_PLANS.md → "Plan file format"). This corpus used to number its plans as one
 # sequence across every feature instead, read off the corpus with `find | sed | sort -n`;
@@ -580,13 +797,20 @@ if [[ -n "$SESSION" ]]; then session_args=(--session "$SESSION"); fi
 # The first commit on the branch is the manifest and nothing else, and an untracked
 # byte-cache directory would be swept into the next `git add -A` (or, in a repo whose
 # .gitignore predates it, committed) as part of the feature.
-if ! python3 -B "$WT_AT/analysis/manifest.py" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} "$SLUG" init \
-    --method "$METHOD" --branch "$SLUG" --base "$BASE" --from "$NOW" --plan "$STEM" \
+FEATURE_DIR="$WT_FEATURES/$SLUG"
+# A resumed cloud start keeps a manifest and a stub an earlier run already wrote (header:
+# nothing is deleted); every other start writes both into a directory that is new.
+if (( RESUME )) && [[ -f "$FEATURE_DIR/README.md" ]]; then
+  WINDOW_FROM="$(python3 -B "$WT_AT/analysis/manifest.py" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} "$SLUG" get session_window.from 2>/dev/null)"
+  FROM_NOTE=", kept from the earlier start"
+elif ! python3 -B "$WT_AT/analysis/manifest.py" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} "$SLUG" init \
+    --method "$METHOD" --branch "$FEATURE_BRANCH" --base "$BASE" --from "$WINDOW_FROM" \
+    --profile "$(profile_name)" --gate "$GATE_RECORD" --plan "$STEM" \
     ${session_args[@]+"${session_args[@]}"} >/dev/null; then
   refuse "could not write the manifest; the worktree is left at $WORKTREE"
 fi
-FEATURE_DIR="$WT_FEATURES/$SLUG"
 mkdir -p "$FEATURE_DIR/review/incomplete"
+if [[ ! -e "$FEATURE_DIR/review/incomplete/$STEM.md" ]]; then
 cat > "$FEATURE_DIR/review/incomplete/$STEM.md" <<STUB
 # $NN — review: $SLUG
 
@@ -605,7 +829,8 @@ Base is \`$BASE\`. \`git diff $BASE...HEAD --stat\`, then the full diff.
 
 ## Verdict
 STUB
-echo "  manifest  ${FEATURE_DIR#"$WORKTREE"/}/README.md  (method $METHOD, from $NOW${SESSION:+, session $SESSION pinned})"
+fi
+echo "  manifest  ${FEATURE_DIR#"$WORKTREE"/}/README.md  (method $METHOD, from $WINDOW_FROM$FROM_NOTE${SESSION:+, session $SESSION pinned})"
 echo "  review    ${FEATURE_DIR#"$WORKTREE"/}/review/incomplete/$STEM.md  (stub — $TODO_MARKER)"
 
 # ── The routing record ────────────────────────────────────────────────────────
@@ -623,8 +848,14 @@ echo "  review    ${FEATURE_DIR#"$WORKTREE"/}/review/incomplete/$STEM.md  (stub 
 # would put its cost into the Routing table AND into this feature's frozen total — both
 # sides of the `--all` fraction (self/features/shell-write-rewrite, part 2). The pin is
 # the link. analysis/routing.py's `split_pinned` skips any such record already on disk.
+#
+# **Nor for the coordinator** (header; design §3): a session launched on the feature's own
+# branch — every cloud session on its assigned branch — is claimed by that branch under
+# LIFECYCLE.md rule 1, with no pin and nothing to route.
 if (( PIN )); then
   echo "  routing   none (--pin: session ${SESSION:-(none)} is this feature's, never also a router)"
+elif (( COORDINATOR )); then
+  echo "  routing   none (this session was launched on $FEATURE_BRANCH, the feature's branch: it is the feature's coordinator, claimed by that branch with no pin)"
 elif [[ -n "$ROUTER_SESSION" ]]; then
   if python3 -B "$WT_AT/$ROUTING_MODULE" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} \
       --session "$ROUTER_SESSION" --slug "$SLUG" --primary "$PRIMARY" >/dev/null; then
@@ -668,7 +899,14 @@ echo "  1. Replace $TODO_MARKER in review/incomplete/$STEM.md with the review br
 # in (LIFECYCLE.md, rule 1), so a coordinator launched in the worktree is claimed by
 # branch $SLUG and needs no pin — and this session, which started the feature, stays a
 # router with no claim on it.
-if (( OPEN )); then
+if profile_is_cloud && (( COORDINATOR )); then
+  echo "  2. Coordinate from this session: it is on $FEATURE_BRANCH, the feature's branch, so it is"
+  echo "     the coordinator, claimed by that branch with no pin."
+elif profile_is_cloud; then
+  echo "  2. This session was launched on ${LAUNCH_BRANCH:-a detached HEAD}, not $FEATURE_BRANCH, so it is this feature's"
+  echo "     router. A container has no other session to coordinate from: if this one builds the"
+  echo "     feature, pin it — python3 $WT_AT/analysis/manifest.py ${SELF_FLAG[@]+"${SELF_FLAG[@]} "}$SLUG pin-session ${ROUTER_SESSION:-<id>}"
+elif (( OPEN )); then
   echo "  2. Coordinate in the session --open just launched, in $WORKTREE."
 else
   echo "  2. Coordinate from inside the worktree, where the feature is claimed by branch $SLUG"

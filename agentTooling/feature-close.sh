@@ -6,8 +6,10 @@ set -uo pipefail
 # The only way out of a feature, and the counterpart of feature-start.sh: the two scripts
 # bracket a feature and nothing between them opens a PR or freezes a record
 # (LIFECYCLE.md → step 6; self/DESIGN-2026-09-17-close-and-review-rounds.md §5). Run from
-# the feature's worktree, on its branch, by the coordinator or by run-batch.sh. No model
-# is involved.
+# the feature's checkout, on its branch — the manifest's `branches[0]`, which is the slug
+# for a local feature and the assigned `claude/…` branch in a cloud container
+# (self/DESIGN-2026-10-05-cloud-execution.md §2) — by the coordinator or by run-batch.sh.
+# No model is involved.
 #
 # A feature is a sequence of ROUNDS — build → gate → verify → review — and a round ends in
 # the review's verdict. An escalated round stops at the review: the rework is routed like a
@@ -26,9 +28,11 @@ set -uo pipefail
 #      opened, rather than after.
 #   2. PR. The body is the review's report as the executor wrote it, followed by the
 #      Rounds table analysis/report.py renders (--rounds-md; absent or failing, the body
-#      is the report alone and one line says so). Then the repo-owned pr.sh — which
-#      pushes and opens, or says already open, or skips where there is no forge — and the
-#      `pr_opened` stamp with its rc and url.
+#      is the report alone and one line says so). Then the repo-owned pr.sh, with
+#      FEATURE_BASE and FORGE_SCRIPT exported — which pushes and opens (from
+#      template-version 5 through forge.sh, `gh api` REST only), or says already open, or
+#      skips where there is no forge CLI at all, and exits non-zero when the forge refused
+#      — and the `pr_opened` stamp with its rc and url.
 #   3. CAPTURE. feature-capture.sh, which stamps `session_window.to`, captures, reports,
 #      commits `<slug>: cost records` on the branch (the `pr_opened` stamp rides that
 #      commit) and pushes. Advisory as it is everywhere: a refusal is printed with the
@@ -60,6 +64,8 @@ PR_MERGE_REQUEST_VERSION=4
 PR_VERSION_LINE_RE='^# template-version:[[:space:]]*\([0-9][0-9]*\).*'
 CAPTURE_SCRIPT_NAME="feature-capture.sh"
 CLOSE_SCRIPT_NAME="feature-close.sh"
+# The forge adapter (forge.sh, beside this script), exported to pr.sh as FORGE_SCRIPT.
+FORGE_SCRIPT_NAME="forge.sh"
 REVIEW_RUNNER_NAME="run-review.sh"
 REPORT_PY_ROUNDS_FLAG="--rounds-md"
 # routing.py's entry point that names a router which built this feature unpinned. It
@@ -107,11 +113,14 @@ RERUN_HINT="$SCRIPT_DIR/$CLOSE_SCRIPT_NAME ${SELF_FLAG[@]+"${SELF_FLAG[@]} "}$FE
 
 [[ -f "$MANIFEST" ]] || refuse "no manifest at $FEATURE_LABEL/README.md — is that the right slug?"
 
-# On the branch, in its worktree. The post-merge repair path is feature-capture.sh from the
-# primary, and it stays there: that run writes locally and commits nothing, so forwarding
-# to it would look like a close that worked.
-if [[ "$CURRENT_BRANCH" != "$FEATURE_SLUG" ]]; then
-  refuse "this checkout is on '${CURRENT_BRANCH:-a detached HEAD}', not on '$FEATURE_SLUG' — run this from the feature's worktree, on its branch. After the merge there is nothing to close: to capture or repair a merged record, run '$CAPTURE_HINT [--recapture]' from the primary checkout"
+# On the branch, in its checkout. The branch is the manifest's `branches[0]` — the slug for
+# a local feature, the assigned `claude/…` branch in a cloud container — never derived from
+# the slug (manifest_branch, plan-runner-roots.sh). The post-merge repair path is
+# feature-capture.sh from the primary, and it stays there: that run writes locally and
+# commits nothing, so forwarding to it would look like a close that worked.
+FEATURE_BRANCH="$(manifest_branch "$MANIFEST" "$FEATURE_SLUG")"
+if [[ "$CURRENT_BRANCH" != "$FEATURE_BRANCH" ]]; then
+  refuse "this checkout is on '${CURRENT_BRANCH:-a detached HEAD}', not on '$FEATURE_BRANCH', the branch $FEATURE_LABEL/README.md names — run this from the feature's checkout, on that branch. After the merge there is nothing to close: to capture or repair a merged record, run '$CAPTURE_HINT [--recapture]' from the primary checkout"
 fi
 
 REVIEW_PLAN="$(latest_review_plan "$FEATURE_SLUG")"
@@ -247,6 +256,10 @@ else
   # so the repo-owned hook never parses markdown.
   feature_base="$(manifest_field "$MANIFEST" base)"
   if [[ -n "$feature_base" ]]; then export FEATURE_BASE="$feature_base"; fi
+  # And the forge adapter beside this script, which a template-version 5 pr.sh calls for
+  # the GitHub part (pr-find, pr-open). An older pr.sh never reads it, and a repo on
+  # another forge keeps its own code; either way exporting it changes nothing for them.
+  export FORGE_SCRIPT="$SCRIPT_DIR/$FORGE_SCRIPT_NAME"
   # Through tee so the url pr.sh prints can be stamped: the link is the one thing worth
   # keeping from its output.
   pr_log="$(mktemp "${TMPDIR:-/tmp}/feature-close-pr.XXXXXX")"

@@ -24,7 +24,10 @@ only.
   tokenize (which names the quote instead), a `$NAME` the shell expands, a `~`, a brace
   group the expansion refuses, a `..` path component, a bare or relative `cd`, a line
   break outside a quote or a heredoc, a sequence mixing approved reads with a command
-  only the human can judge, and a file authored through the shell — `echo`/`printf`
+  only the human can judge, a `sleep` anywhere on the line (nobody polls: run the
+  command in the background and wait for its notification — `ORCHESTRATION.md`; the
+  member's program is `SLEEP_PROGRAM`, the reason `SLEEP_REWRITE_REASON`), and a file
+  authored through the shell — `echo`/`printf`
   redirected to a path, `cat`/`tee` fed literally with output to a path, `sed -i` — whose
   reason names the Write and Edit tools and is judged ahead of the opaque shapes. Its git
   deny reads `policy.py`'s constants and nothing of its own.
@@ -61,7 +64,16 @@ only.
   repo being guarded, where a `__pycache__` has no business. It is on the gate's
   `py_compile hooks` line and asserted by `self/tests/policy-table.sh`.
 - `wire-settings.py` — `wire-settings.py [--self] --repo <dir> (--check | --write)`.
-  Maintains the `PreToolUse` entry for `allow-repo-commands.sh`, the `Edit` and `Bash`
+  Maintains the `PreToolUse` entry for `allow-repo-commands.sh`, the **`SessionStart`
+  entry** running `${CLAUDE_PROJECT_DIR}/plans/cloud-setup.sh` (consuming repos only —
+  `SESSION_MARKER`, `SESSION_COMMAND`, `SESSION_EVENT`; no matcher, so it runs on every
+  start, resume and compaction; **no guard in the entry**: the seeded script is the
+  guard, asking `env-profile.sh` and exiting 0 outside the cloud profile, so this file
+  spells no profile variable; recognised by the script's name in any SessionStart
+  command, so a repo's customised entry is kept and never doubled, and a repo's own other
+  SessionStart hooks stay first; a SessionStart that is not a list is `INVALID`; under
+  `--self` none is written, since that checkout has no `plans/cloud-setup.sh`), the
+  `Edit` and `Bash`
   deny rules, the `hooks/` **ask** rule and the OS **`sandbox` block** (below, "The
   sandbox block": `SANDBOX_ENABLED` — off today — `SANDBOX_OWNED_SETTINGS`,
   `SANDBOX_DENY_READ`, `SANDBOX_ALLOWED_DOMAINS`) in `<dir>/.claude/settings.json`, and removes
@@ -71,17 +83,28 @@ only.
   caller to format and exits 0 when nothing needs attention, 1 otherwise. Statuses:
   `in-sync`, `missing`, `UNWIRED`, `INVALID` for `--check`; `created`, `wired`, `kept`,
   `INVALID` for `--write`. `--self` works on agentTooling's own checkout instead of a
-  consuming repo's, and differs in more than the spelling: that file is wholly
-  **generated**, so `--check` is a byte comparison against a fresh write (`INVALID` is a
-  merge status and never reached there) and `--write` restores those bytes; that file is
-  **untracked**, and a `--check` failure (`missing` or `UNWIRED`) names the exact command
-  that regenerates it, `python3 -B <abs>/hooks/wire-settings.py --self --repo <abs root>
-  --write`. Under `--self` a **vendored** `--repo` — no `.git` of its own and one in an
-  ancestor — carries no file at all: both modes report `in-sync` on the absence and
-  `UNWIRED` on a nested copy, and `--write` writes nothing. Called by `sync-plans.sh`
-  (without `--self`); with `--self`, by `self/worktree-setup.sh` and
-  `feature-start.sh --self` (`--write`) and by `self/gate.sh` (`--check`); tested by
-  `self/tests/hook-wiring.sh` and `self/tests/self-settings.sh`.
+  consuming repo's, and differs in more than the spelling: its one file,
+  `<dir>/.claude/settings.json`, is wholly **generated** and **tracked**
+  (`self/features/self-cloud-bootstrap/`), its `PreToolUse` command the guarded
+  `SELF_HOOK_COMMAND`, `test ! -f "${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh" ||
+  "${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh"` — a silent exit 0 where the
+  script is absent, the script itself (reading the payload the shell hands on) where it
+  is not — with no `SessionStart` entry and no `settings.local.json` written. `--check` is
+  a byte comparison against a fresh write (`INVALID` is a merge status and never reached
+  there): `in-sync`, `missing` on an absent file, `UNWIRED` on a drifted one, the message
+  naming where it first differs and the exact command that regenerates, `python3 -B
+  <abs>/hooks/wire-settings.py --self --repo <abs root> --write`. `--write` restores the
+  bytes and reports `created`, `wired` or `kept`. Under `--self` a **vendored** `--repo` —
+  no `.git` of its own and one in an ancestor — is compared the same way, the shipped
+  copy against the generator's bytes, but `--write` writes nothing there, so a mismatch
+  is reported in both modes with the fix **upstream** (`VENDORED_FIX_HINT`: regenerate in
+  a standalone checkout, commit, pull) and no local command. Called by `sync-plans.sh`
+  (without `--self`); with `--self`, by hand (`--write`, then commit) and by
+  `self/gate.sh` (`--check`); tested by `self/tests/hook-wiring.sh` and
+  `self/tests/self-settings.sh` (which also runs the guarded command as Claude Code does,
+  in each layout). Depends on Claude Code setting `${CLAUDE_PROJECT_DIR}` to the launch
+  directory for hook processes, and on a hook inheriting the payload on stdin through
+  `sh -c`.
 
 ## Why `allow-repo-commands.sh` exists
 
@@ -378,8 +401,14 @@ that always works. Each has a named reason constant, each names the member as wr
 | a bare or relative `cd`/`pushd` | `cd src`, `cd` | `cd <absolute path>` as its own call |
 | a line break outside a quote or a heredoc, or a `\` continuation | two commands on two lines | one call per line |
 | a sequence (`&&`, `\|\|`, `;`) mixing approved members with members only the human can judge | `grep x f && git commit -m m` | which members to run on their own (approved) and which to run alone |
+| a member whose program is `sleep`, bare or by path (`SLEEP_PROGRAM`) — added 2026-10-05 by `self/features/execution-profiles` (`self/DESIGN-2026-10-05-cloud-execution.md` §9) | `sleep 60`, `ls && sleep 5` | nobody polls: run it in the background and wait for the notification (`ORCHESTRATION.md`) |
 
-**One write per Bash call** is what the last row is for (design §2). A sequence whose
+The `sleep` row only tightens: every such line used to fall through to a silent prompt, and
+it is judged in the per-member loop beside the others, so on a sequence it is named ahead
+of the mixed-sequence rewrite (`ls && sleep 60` is told about the sleep, not about which
+member is approved).
+
+**One write per Bash call** is what the mixed-sequence row is for (design §2). A sequence whose
 members are **all** ASK (`git add x && git commit -m m`) is one ASK — one prompt, not two;
 the rule takes noise out of the prompt, it does not multiply prompts. A **pipeline** is
 one command, judged by its members and never split: `./run-review.sh --self x 2>&1 | tail
@@ -921,8 +950,9 @@ termination at the proxy — see `self/BACKLOG.md`.
 **In a consuming repo**, `.claude/settings.json` is repo-owned and may hold anything, so
 everything is **merged,
 not copied**. The hook entry is appended when no hook command anywhere in the file
-mentions `allow-repo-commands.sh`; each deny and ask rule is appended when its exact
-string is absent. Otherwise the file is left byte-for-byte alone. It never reorders or
+mentions `allow-repo-commands.sh`, and the `SessionStart` entry when no SessionStart hook
+command mentions `cloud-setup.sh` — after any SessionStart hooks the repo has of its own;
+each deny and ask rule is appended when its exact string is absent. Otherwise the file is left byte-for-byte alone. It never reorders or
 rewrites another entry, and it never adds an allow rule. It removes exactly one kind of
 entry: a `Bash` deny rule it once wrote itself and the table has since retired
 (`policy.retired_bash_deny_rules()`, today only `Bash(git stash:*)`), because a deny rule
@@ -943,18 +973,26 @@ run, or a reordered deny list all left `self/gate.sh` green while this file said
 failed it. They fail it now. The corollary is that a hand edit to that file is **lost**
 on the next write rather than merged — which is what "generated" means, and why the
 `Edit(/.claude/**)` deny rule refuses to let one be made through the Edit tool at all.
+Claude Code's own "don't ask again" approvals go to `.claude/settings.local.json`, which
+is git-ignored and never generated, so they never touch the policy.
 
-**And under `--self` the file is untracked.** `.gitignore` lists `.claude/settings.json`,
-so it never ships with the subtree: a tracked copy handed every consuming repo an
-`agentTooling/.claude/settings.json` naming `${CLAUDE_PROJECT_DIR}/hooks/…`, a path that
-does not exist there. Each self checkout writes its own — `self/worktree-setup.sh` in
-every new feature worktree, before the gate and before any session there loads it, and
-`feature-start.sh --self` in the primary checkout whenever the primary has lost it (a
-fast-forward over the commit that untracked it deletes it). `self/gate.sh` fails on a
-missing file as on a drifted one, and the message names the command to run. A
-**vendored** agentTooling — `--repo` with no `.git` of its own and one above it — is the
-other layout, and there `--self` expects *no* file: the consuming repo's hook, wired at
-its own root by `sync-plans.sh`, is the only one that loads.
+**And under `--self` the file is tracked** (`self/features/self-cloud-bootstrap/`), so a
+fresh clone — every new cloud container, and a review, close or router session that never
+ran a start — has the hook and the deny rules from its first tool call. Only a file
+present at startup gives that: round 1 of that feature committed a `SessionStart` hook
+that generated the policy into an untracked file, and the settings watcher's reload
+missed the first tool call in 3 of 15 fresh sessions (its `NOTES.md`). A worktree has the
+file from its checkout too, so nothing generates it there. `self/gate.sh` fails on a
+missing file as on a drifted one, and the message names the command to run. It ships with
+the subtree, which is harmless: a session launched at a consuming repo's root loads only
+that root's own settings, and one launched inside the vendored `agentTooling/` loads this
+file with `${CLAUDE_PROJECT_DIR}` that directory, where every path it names exists — the
+self policy is what such a session should have. The guard in `SELF_HOOK_COMMAND` covers
+anything left: no `hooks/allow-repo-commands.sh` under the project directory, a silent
+exit 0. In a **vendored** agentTooling — `--repo` with no `.git` of its own and one above
+it — `--check` holds the shipped copy to the same bytes, and since `--write` writes nothing
+there, a failure names the fix upstream rather than a local command. The consuming repo's
+own hook, wired at its root by `sync-plans.sh`, is untouched by any of it.
 
 The hook marker is the script's basename, so a repo that hand-edits the entry — a
 different path, a narrower `matcher`, an added `if:` — keeps its version and never gets a
@@ -972,7 +1010,7 @@ vendored repo's file reports `UNWIRED`, and an ordinary `--check` over this chec
 reports it too.
 
 A consuming repo's file that does not parse, or whose `hooks`, `hooks.PreToolUse`,
-`permissions`, `permissions.deny`, `permissions.ask`, `sandbox`, `sandbox.filesystem`,
+`hooks.SessionStart`, `permissions`, `permissions.deny`, `permissions.ask`, `sandbox`, `sandbox.filesystem`,
 `sandbox.filesystem.denyRead`, `sandbox.network` or `sandbox.network.allowedDomains`
 values are the wrong type — an explicit `null` included, which is present, not absent —
 is reported `INVALID` and left untouched. `--self` never reports `INVALID`: a generated file
@@ -1019,22 +1057,20 @@ that does not parse is drift like any other, and the write replaces it.
   ignored globally by Claude Code's default `~/.config/git/ignore` entry. The shared file
   is the only copy a worktree or a fresh clone can inherit. `sync-plans.sh` says so when
   it writes one.
-- **This checkout's own `.claude/settings.json` is generated per checkout, and never
-  tracked.** `python3 -B hooks/wire-settings.py --self --repo <root> --write` writes it;
-  `self/worktree-setup.sh` runs that in every new self worktree (a worktree inherits
-  nothing untracked), and `feature-start.sh --self` runs it in the primary checkout when
-  the file is missing there. `self/gate.sh` records
+- **This checkout's own `.claude/settings.json` is generated and tracked.**
+  `python3 -B hooks/wire-settings.py --self --repo <root> --write` writes it; run it after
+  changing the constants here and commit the result. `self/gate.sh` records
   `wire-settings.py --self --repo <root> --check` as a blocking check, which fails on a
   missing file and compares a present one byte for byte, so a hand edit of any kind — an
   added rule as much as a missing one — fails the gate, and the failure names the command
   that regenerates. Do not edit that file directly — the `Edit(/.claude/**)` rule in it
-  refuses anyway; change the constants here and re-run the write. It does **not** ship
-  with the subtree (`.gitignore`), and a vendored agentTooling must carry none: a
-  consuming repo's own wiring is the one at *its* root, written by `sync-plans.sh` without
-  `--self`. **After the merge that untracked it**, a primary checkout fast-forwarded over
-  that commit has lost the file; the next `feature-start.sh --self` puts it back, or by
-  hand, from the primary's root: `python3 -B hooks/wire-settings.py --self --repo
-  <primary root> --write`.
+  refuses anyway. Its hook command depends on `${CLAUDE_PROJECT_DIR}`, which Claude Code
+  sets to the launch directory for hook processes, for both its guard and its path. It
+  ships with the subtree and is loaded only by a session launched inside
+  `agentTooling/`; a consuming repo's own wiring is the one at *its* root, written by
+  `sync-plans.sh` without `--self`. Why it is tracked rather than generated at session
+  start is recorded live in `self/features/self-cloud-bootstrap/NOTES.md`.
+  `.claude/settings.local.json` is git-ignored: Claude Code's own per-user file.
 - **The hook is trusted code that lives in the repo.** `update.sh` pulls it from the
   agentTooling upstream and re-runs the wiring, so that upstream is the trust root for
   the policy. The `Edit(**/agentTooling/hooks/**)` **ask** rule keeps an unattended
@@ -1046,6 +1082,11 @@ that does not parse is drift like any other, and the write replaces it.
   writable), so that path stays open to a Bash command the runner auto-approves.
 - **Hooks are read at session start.** A change to the wiring takes effect in the next
   session; `/hooks` shows what the current one loaded.
+- **The `SessionStart` entry depends on the repo's seeded `plans/cloud-setup.sh` being
+  executable and on `agentTooling/env-profile.sh` beside it** — the script's guard. With
+  the script absent the hook errors at each session start (non-blocking); `sync-plans.sh`
+  re-seeds it, and `sync-plans.sh --check` reports it `missing`. With the detector absent
+  the script does nothing.
 
 ## Wiring
 
@@ -1061,14 +1102,32 @@ that does not parse is drift like any other, and the write replaces it.
           { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/agentTooling/hooks/allow-repo-commands.sh" }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/plans/cloud-setup.sh" }
+        ]
+      }
     ]
   }
 }
 ```
 
+The `SessionStart` entry runs the repo's seeded `plans/cloud-setup.sh` on every session
+start (`self/DESIGN-2026-10-05-cloud-execution.md` §7). It has no guard of its own because
+the script is the guard: it sources `agentTooling/env-profile.sh` and exits 0 at once
+outside the cloud profile, so a laptop pays one short process per session and a container
+gets its services started. The alternative — the cloud environment's own setup script —
+is in `templates/README.md`.
+
 In agentTooling's own checkout the command is
-`${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh`, which is what
-`wire-settings.py --self --write` writes.
+`test ! -f "${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh" ||
+"${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh"`, which is what
+`wire-settings.py --self --write` writes into the tracked `.claude/settings.json`, with no
+`SessionStart` entry: that checkout has no `plans/cloud-setup.sh`, and its policy needs no
+hook to write it, being committed — a fresh container has it at startup
+(`self/features/self-cloud-bootstrap/`).
 
 ## Editing the policy
 
@@ -1119,8 +1178,8 @@ and `GIT_WORKTREE_SUBCOMMANDS`; the hook imports them for `git_mutates`, and
 So a subcommand is added **once**, and what follows is: a `DENY` case and a `NOT_DENIED`
 case in `self/tests/allow-repo-commands.sh`, and
 `python3 -B hooks/wire-settings.py --self --repo <root> --write` to regenerate this
-checkout's untracked `.claude/settings.json` — and every other self checkout's, each of
-which writes its own (the gate's byte-for-byte check fails until you do).
+checkout's tracked `.claude/settings.json`, committed with the change — every other self
+checkout takes it with the commit (the gate's byte-for-byte check fails until you do).
 `self/tests/hook-wiring.sh` and `self/tests/policy-table.sh` render the list from the
 table rather than repeating it, so neither needs editing. Consuming repos pick the new
 rule up on their next `sync-plans.sh`.
