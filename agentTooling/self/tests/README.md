@@ -43,6 +43,21 @@ start down the cloud layout. So `feature-lifecycle.sh`, `start-takeover.sh`,
 phases that test the cloud (`feature-lifecycle.sh` P3 and CB, `cloud-start.sh`,
 `env-profile.sh`, `open-session.sh` O6) set `cloud` per call — never the machine's own
 value. The tests are on `self/profile-confinement.sh`'s allowlist for exactly this.
+**And `env-profile.sh` no longer decides alone**: it runs `hooks/env_profile.py` from its
+own directory's `hooks/` (`self/features/review-base-and-cloud-hook/`), so every sandbox
+that copies `env-profile.sh` copies the module beside it, at `<dir>/hooks/env_profile.py`
+(`cloud-start.sh`, `feature-lifecycle.sh` both copies, `plan-numbering.sh`,
+`recover-at-close.sh`, `session-start.sh`, `start-takeover.sh`, `env-profile.sh`'s forge
+checkout; `sync-check.sh` copies all of `hooks/`) — without it the profile is empty and
+every start refuses.
+
+**Every test that runs the hook pins the profile** — `AGENTTOOLING_PROFILE` set,
+`CLAUDE_CODE_REMOTE` cleared — because the hook now reads the profile (through
+`hooks/env_profile.py`) and a cloud container would otherwise test the cloud silently:
+`allow-repo-commands.sh` runs every case under both profiles, `hook-cloud-profile.sh` pins
+per call, and `hook-escalation.sh`, `hook-quote-oracle.sh`, `self-settings.sh` (section F)
+and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's files
+(`feature-lifecycle.sh`, `self-settings.sh`) copies `env_profile.py` with them.
 
 - `level-sentinel.sh` — copies the runner scripts into a `mktemp -d` checkout with a stub
   `claude` (exit code from `CLAUDE_STUB_RC`) and a stub `self/gate.sh` (verdict from
@@ -370,7 +385,19 @@ value. The tests are on `self/profile-confinement.sh`'s allowlist for exactly th
   a bound stamped at capture time could never equal. W1 also asserts that both the session
   and the delegate are still captured under the now-exclusive bound. **W7**: on the branch
   a hand-written `to` LATER than the evidence is moved EARLIER onto it — before the merge
-  the bound moves either way (C2 is the other way). **W2** gives a feature nothing but a
+  the bound moves either way (C2 is the other way). **W8** is the later direction after a
+  capture (SPEC "Round 4"): a second branch session that BEGINS after the stamped `to`
+  (`14:00`–`14:30:00.700`) is evidence on a re-capture on the branch, which moves `to` to
+  `14:30:01Z`, printing `old -> new`, and prices that session too (W8a–b) — red before
+  `feature-capture.sh` passed `--ignore-to`, when the stamped `to` fenced its own
+  evidence; `--last-branch-instant --ignore-to` stops that open bound at the `from`
+  (`13:30`) of an untracked successor manifest sharing the branch, removed straight after
+  (W8c); the late session is then disowned by a hand-written `exclude_sessions` (a local
+  `set_excluded`; deleting its transcript would make the re-capture refuse a priced session
+  gone missing) and the branch capture is back on the W1 evidence (W8d); after the merge,
+  with the exclusion lifted, a post-merge `--recapture` leaves the merged `to` alone and
+  prints neither `never widened` nor the later bound — it never even offers it (W8e–g).
+  The session is excluded again before W3, whose bounds are the W1 evidence. **W2** gives a feature nothing but a
   pinned session off the branch and in another checkout: no branch-selected session, so
   the capture falls back to its own clock and prints the `no branch session` line.
   **W5**: a capture over a fence with no `to` key at all (so `set-window-to` fails for a
@@ -1360,7 +1387,13 @@ value. The tests are on `self/profile-confinement.sh`'s allowlist for exactly th
   and value, a `Z`-suffixed or explicit-offset one is not, and a *sibling* manifest's
   naive bound is not — that last one is what keeps the warning actionable rather than a
   standing complaint about every other feature in both corpora.
-- `allow-repo-commands.sh` — builds a throwaway project root with a venv symlink, an
+- `allow-repo-commands.sh` — **every case below runs twice**, once per profile
+  (`AGENTTOOLING_PROFILE=local`, then `cloud`, `CLAUDE_CODE_REMOTE` cleared, each pass in
+  its own fixture), expecting identical answers: the fixture root is no git repo, so the
+  cloud pass reads no branch and the cloud-only denies stay silent, and the git deny's
+  reason carries `LIFECYCLE`, rule 2 and both feature scripts under either profile. A pass
+  started without the pin fails at once. The cases that differ by profile are
+  `hook-cloud-profile.sh`'s. It builds a throwaway project root with a venv symlink, an
   in-repo worktree, the harness's own entry points in both spellings (a consuming repo's
   `plans/gate.sh`, `agentTooling/check-plans.sh`, `agentTooling/analysis/*.py` and this
   checkout's `self/gate.sh`, `./check-plans.sh`, `analysis/*.py` — empty files, since the
@@ -1382,7 +1415,11 @@ value. The tests are on `self/profile-confinement.sh`'s allowlist for exactly th
   denied, the four shapes `permissions.deny` used to miss — while `git branch --show-current`, `git worktree
   list`, `git branch --list 'feat*'` (after a listing flag a positional is a pattern),
   a plain `git push`, `git checkout -- <file>`, `git reset <file>`, a quoted
-  `'git rebase'`, a heredoc and a `#` are not; that
+  `'git rebase'`, a heredoc and a `#` are not; that a push to `main` (round 2: `origin
+  main` — a prompt until then — `-u`, `HEAD:main`, `+main`, `refs/heads/main`, `:main`,
+  `--delete`, `--repo origin main`, `--repo=origin main`, behind `-C`, in a chain) is
+  **denied** in both profiles with a reason naming LIFECYCLE rule 2 and
+  `feature-close.sh`, while `main-x`, `mainline` and `main:x` still prompt; that
   both denies fire with no `CLAUDE_PROJECT_DIR` and no `cwd`; that any command chaining `cd` or
   `pushd` with another command is **denied** (separators `&&`, `||`, `;`, `|`, `&`, a
   line break, a `(` subshell) with a reason naming the rewrite, while `cd`
@@ -1559,6 +1596,52 @@ value. The tests are on `self/profile-confinement.sh`'s allowlist for exactly th
   `ask` with the escalation's own reason. Depends on
   `OPAQUE_REWRITE_ATTEMPTS` being 2 and on
   the state directory being an explicit name under `$TMPDIR`. No model, no network.
+- `hook-cloud-profile.sh` — the hook's **profile** half
+  (`self/features/review-base-and-cloud-hook/`): the git deny's reason chosen by profile,
+  and the two cloud-only denies of `hooks/policy.py`'s table. Four fixtures under one
+  `mktemp -d`: **C**, a consuming repo on its assigned branch `claude/feat-x` with the
+  hook files (`allow-repo-commands.sh`, `policy.py`, `env_profile.py`) vendored under
+  `agentTooling/hooks/`, a tracked manifest whose `branches[0]` is that branch (and which
+  mentions another branch in prose), and a bare origin holding `main`, the branch and a
+  `remote-only` branch with no local twin; **S**, agentTooling's own shape (the hook at
+  `<root>/hooks/`) on `claude/other` with no feature; **D**, a detached HEAD; **N**, no repo
+  at all. Each call feeds the copied hook the real payload with the profile pinned
+  (`AGENTTOOLING_PROFILE` set, `CLAUDE_CODE_REMOTE` cleared) except where detection itself
+  is the point. A fifth fixture, **M**, is a repo checked out on `main` itself. T: **the
+  table** — each case with its local and its cloud answer, each run under both: reads
+  approved in both; `git switch main`, `git checkout main` prompt locally and are denied
+  in the cloud; `git checkout -b x` denied in both; round 2's **push to `main`** denied in
+  both, every spelling (`origin main`, `-u`, `HEAD:main`, `x:main`, `+main`,
+  `refs/heads/main`, `HEAD:refs/heads/main`, `main:main`, `--repo origin main`,
+  `--repo=origin main`, `:main`, `--delete`/`-d origin main`, `--dry-run`, a quoted
+  `'main'`, `upstream main`, two refspecs, `git -C <root> …`, inside a chain), while
+  `mainline`, `feature/main`, `main-x` and `main:x` keep round 1's answers and `git log
+  main`, `echo '…'` and a commit message carrying the text are untouched; `--repo
+  <r>`/`--repo=<r>` read as naming the remote (`--repo origin x` refused in the cloud,
+  `--repo origin <current>` a prompt) and a bare `--repo` a prompt; `git push -u origin <current>`, plain `git push`, `git push origin
+  HEAD[:<current>]`, a switch to the current branch and every file checkout (`-- f`, `f`,
+  `HEAD -- f`, `main -- f`, `-p f`) prompt in both; an env prefix stays an ask; and the
+  rest of the cloud-only shapes (`-`, `--detach`, `--orphan`, a sha, a remote-only
+  branch, `HEAD:x`, `x`, `--all`, `--mirror`, `--tags`, `--prune`, `--delete`, `-d`, `:x`,
+  `+main`, `refs/heads/main`, two refspecs, and `git -C <root> …`). R: the local reason is
+  today's (`.worktrees/<slug>`, the primary checkout); the cloud reason names the branch,
+  the started feature and `./agentTooling/feature-close.sh feat-x`, `LIFECYCLE` rule 2 and
+  `feature-start.sh`, and never `.worktrees` or "primary"; the two differ; S's names
+  `./feature-start.sh --self` and its branch. R5–R6: locally a push to `main` gets its own
+  reason (agents never push `main`, `feature-close.sh`'s PR, nothing cloud-specific), not
+  today's; in the cloud, on **M**, a plain `git push` is refused with the cloud reason
+  naming `main`, and `git push origin main` gets the cloud reason. F: a detached HEAD and
+  no repo keep today's prompt for the cloud-only shapes while `git checkout -b x` and a
+  push to `main` are still denied (with the cloud reason), and an invalid
+  `AGENTTOOLING_PROFILE` gives today's answers and today's reason (and the local
+  push-to-main reason); F4: malformed pushes (`--repo` with no value, `-o`, `:`, `+`,
+  `''`) never crash the hook in either profile. P: `CLAUDE_CODE_REMOTE=true` alone is
+  cloud, neither variable is local, and `AGENTTOOLING_PROFILE=local` wins. X: under a
+  logging `git` stub first on `PATH`, no case runs git locally (nor on **M**), a local push
+  to `main` is refused and runs none (X4), a cloud read or non-git command runs none, and
+  a cloud `git switch main` does (the stub is live). Depends on the
+  manifest fence's `branches[0]` and on the hook finding its repo shape from its own path.
+  No model, no network.
 - `hook-wiring.sh` — thirty throwaway repos, one per starting state of
   `.claude/settings.json` (absent, unrelated content, hook only, deny rules only, a
   partial deny list with a repo's own rule in it, the hook and the `Edit` rules but no
@@ -1701,8 +1784,15 @@ value. The tests are on `self/profile-confinement.sh`'s allowlist for exactly th
   plain `git push`, `git reset <file>`); and that neither script keeps a copy of the
   table, by reading their source for a `BASH_DENY_RULES` tuple and a `GIT_*` frozenset
   that must no longer be there, and by checking the hook's constants are the table's own
-  objects. RED until `hooks/policy.py` landed. No model, no network, no filesystem of its
-  own.
+  objects. §6: the cloud-only entries (`policy.GIT_CLOUD_ONLY` — `switch` and `checkout`
+  as `CLOUD_SWITCH_AWAY`, `push` as `CLOUD_PUSH_ELSEWHERE`) are in the table and render no
+  rule — none matches a cloud-only spelling (`git push --all`, `git switch --detach`, …)
+  nor a plain `git push origin main`, `git switch main` or `git checkout main`, which are
+  the hook's to refuse. §7: the both-profile push-to-`main` entry (`policy.GIT_HOOK_ONLY`,
+  `push` as `PUSH_TO_PROTECTED`, `GIT_PROTECTED_BRANCH` exactly `main`) is in the table and
+  renders no rule — none matches any of its spellings, and nothing rendered names `main` as
+  a push target. RED until `hooks/policy.py` landed (§6 until `review-base-and-cloud-hook`,
+  §7 until its round 2). No model, no network, no filesystem of its own.
 - `plan-numbering.sh` — two throwaway checkouts under one `mktemp -d`, each a real git repo
   with a bare `origin` beside it carrying the real `feature-start.sh`,
   `plan-runner-roots.sh`, `analysis/{roots,manifest,pricing,transcript,routing}.py`,
@@ -2282,7 +2372,14 @@ value. The tests are on `self/profile-confinement.sh`'s allowlist for exactly th
   `CLAUDE_CODE_REMOTE=true`, a laptop does not. D1–D5: an explicit `AGENTTOOLING_PROFILE`
   wins either way and the description names it; `CLAUDE_CODE_REMOTE=true` alone is
   `cloud`; neither (or `CLAUDE_CODE_REMOTE=false`) is `local` by `default`; a value that is
-  neither fails `profile_check` naming it; the decided value reaches a child. L1–L2, on a
+  neither fails `profile_check` naming it; the decided value reaches a child. M1–M6
+  import `hooks/env_profile.py` as the hook does, with an explicit mapping: the same three
+  steps, each returning the profile AND its decider; an invalid override raises
+  `InvalidProfile`, a `ValueError` carrying the value, never a silent `local`; no mapping
+  reads the process environment. M7: sourcing `env-profile.sh` makes exactly one `python3`
+  call (a logging `python3` first on `PATH`), to that module. M8: with no module beside a
+  copy of `env-profile.sh`, the profile is empty, a warning names `env_profile.py`, and
+  `profile_check` refuses. L1–L2, on a
   throwaway repo with a bare origin: the local checkout is `<primary>/.worktrees/<slug>` on
   branch `<slug>` and `create_checkout` makes exactly that worktree; the cloud checkout is
   the primary, the branch the `--branch` value or the current branch off the base, none on
@@ -2291,7 +2388,10 @@ value. The tests are on `self/profile-confinement.sh`'s allowlist for exactly th
   planted tracked `feature-start.sh` reading `CLAUDE_CODE_REMOTE`, or `feature-close.sh`
   reading `AGENTTOOLING_PROFILE`, fails naming the file; `CLAUDE_CODE_REMOTE_SESSION_ID`,
   a `.md`, an allowlisted adapter, a file under `self/tests/` and an untracked file all
-  pass. F1–F5 drive a copy of `forge.sh` (with `env-profile.sh` beside it) in a checkout
+  pass; C4: the detector module `hooks/env_profile.py` spelling both passes, and a hook
+  `hooks/allow-repo-commands.sh` spelling one fails naming it — the hook is not
+  allowlisted. F1–F5 drive a copy of `forge.sh` (with `env-profile.sh` and
+  `hooks/env_profile.py` beside it) in a checkout
   whose origin is a GitHub url, against a stub `gh` logging every argv: `auto-merge`
   locally is exactly one `pr merge <url> --auto --merge --delete-branch` and never a
   squash; under cloud exactly one `api -X PUT repos/<o>/<r>/pulls/<n>/ccr/auto_merge -f
@@ -2333,13 +2433,51 @@ value. The tests are on `self/profile-confinement.sh`'s allowlist for exactly th
   launched on `main`, is a router with a routing record; a refused `--branch` start re-run
   from its new branch is still the router, from the lock's `launched_on`; an existing
   branch not checked out is refused), U1 (a branch behind `origin/main`, the origin moved
-  by a second clone, is fast-forwarded with exit 3 and no start; the rerun starts), O1
+  by a second clone, is fast-forwarded with exit 3 and no start; the rerun starts, and
+  fast-forwards the clone's stale local `main` to `origin/main` too, so a `main...HEAD`
+  diff carries no already-merged commits — the review itself diffs `origin/main`,
+  `review-base.sh`), U2 (a local `main` with a commit of its own is left where it was,
+  with one warning, and the start goes on), O1
   (`--open` runs the real `self/open-session.sh`, which says the session is already in the
   checkout, and no `osascript` stub is called), and P1 (under `local` the same start makes
   `.worktrees/<slug>` with `profile` `local` and `gate` `skipped` under `--no-gate`, and
   `--branch` is refused). Depends on
   `feature-start.sh`'s lock living at `.git/feature-start.lock` with a `refused=` line,
   and on `planning.json`'s `sessions[].selected_by`.
+- `session-start.sh` — the `SessionStart` hook every repo runs (`../../session-start.sh`).
+  Each scenario is a throwaway consuming repo with `session-start.sh`, `env-profile.sh`,
+  `hooks/env_profile.py` and `plan-runner-roots.sh` under `agentTooling/` and a stub `plans/cloud-setup.sh` that
+  prints a marker and exits `$CLOUD_SETUP_RC`; the profile is forced with
+  `AGENTTOOLING_PROFILE` and `CLAUDE_CODE_REMOTE` cleared. Asserts C1–C6 (cloud: on an
+  assigned branch the profile line and `feature-start.sh <slug>` run here with no other
+  branch and not `main`; the stub run once, rc 0; a failing stub's code is the hook's,
+  after the orientation; on `main`, `--branch <name>`; a tracked manifest whose
+  `branches[0]` is this branch names that feature and its close and offers no start,
+  while one that only mentions the branch in prose is not it; no stub, one line naming
+  `sync-plans.sh` and rc 0), L1–L3 (local: the primary's start and worktree on `main`
+  with the stub NOT run; a feature's branch; a branch no feature names), S1 (`--self`:
+  `./feature-start.sh --self`, `self/features/`, `./feature-close.sh --self`, and no
+  `plans/cloud-setup.sh` run even under cloud), P1 (a bogus profile: one line, rc 0,
+  nothing run) and R1 (every fixture's `git status` clean afterwards). Depends on the
+  manifest fence's `branches` and on `resolve_roots`' `--self` roots.
+- `review-base.sh` — the review's base (`self/features/review-base-and-cloud-hook/`,
+  Part B): `run-review.sh` fetches `origin <base>` before each review plan, best-effort,
+  and names `origin/<base>...HEAD` in the prompt, falling back to the local `<base>` only
+  with no `origin/<base>`. A consuming repo per scenario under `mktemp -d`, with
+  `run-review.sh`, `plan-runner-lib.sh`, `plan-runner-roots.sh` and `stamp-timing.sh` under
+  `agentTooling/`, a bare origin, a stub `claude` that saves the prompt it is handed
+  (`$PROMPT_OUT`), and the scenario the fix exists for: a feature cut from `main` at M0
+  merges a newer `origin/main` (M1, another clone's commit) mid-way, local `main` stays at
+  M0, and `origin/main` is wound back to M0 as a fresh container's would be. Under BOTH
+  profiles (`AGENTTOOLING_PROFILE` pinned, `CLAUDE_CODE_REMOTE` cleared): B0 the premise —
+  local `main...HEAD` carries M1's file; B1 the pass exits 0 and the fetch moved
+  `origin/main` to the remote's tip; B2 the prompt names `git diff origin/main...HEAD`;
+  B3 the diff from the base the prompt names holds the feature's files and NOT M1's —
+  what fails if the base reverts to the local `main`; B4 both profiles name the same base
+  and diff. W1: an unreachable origin with no `origin/main` warns about the fetch, exits 0,
+  and the prompt falls back to `main...HEAD`, saying there is no `origin/main`. N1: no
+  remote at all, the same fallback. Depends on the prompt spelling the base as
+  ``git diff <ref>...HEAD`` and on the manifest fence's `base`. No model, no network.
 - `gate-resume.sh` — the resumable gate (`self/DESIGN-2026-10-05-cloud-execution.md` §8):
   a gate killed with its container re-runs only what had not finished. Run against **both**
   gates that carry it — `templates/plans/gate.sh` and `self/gate.sh` — each copied into a

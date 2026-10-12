@@ -106,6 +106,66 @@ GIT_BRANCH_MUTATING_FLAGS = ("-d", "-D", "--delete", "-m", "-M", "--move")
 # for them — they are how the hook reads a positional, not a shape it denies.
 GIT_BRANCH_LIST_FLAGS = ("--list", "-l")
 
+# ── Cloud-only entries ────────────────────────────────────────────────────────
+# Under the `cloud` profile (hooks/env_profile.py) the container IS the feature's checkout,
+# on the one branch the session was assigned, so two more shapes are wrong there that are
+# ordinary locally (self/features/review-base-and-cloud-hook/):
+#
+#   CLOUD_SWITCH_AWAY     `git switch` / `git checkout` onto anything but the current
+#                         branch — another branch (a remote-only one included, which git
+#                         would create), a commit, `-` (the previous branch), `--detach`,
+#                         `--orphan`. A file checkout (`git checkout -- f`, `git checkout
+#                         <path>`, `git checkout <tree-ish> -- f`) switches nothing.
+#   CLOUD_PUSH_ELSEWHERE  a `git push` whose target is not the current branch — a
+#                         refspec naming another destination (`origin main`, `HEAD:x`,
+#                         `:x`, a tag), or a flag that pushes or deletes refs wholesale.
+#                         Plain `git push`, `git push origin` and `git push -u origin
+#                         <current>` are not: they keep today's answer, a prompt.
+#
+# These are HOOK-ONLY entries: "a branch other than the current one" is a relation to the
+# repository's state, which no `permissions.deny` command prefix can express, so nothing
+# here reaches denied_git_commands() or bash_deny_rules(), and the settings file is
+# unchanged by them. Locally the hook never consults them; in the cloud, a current branch
+# it cannot read (a detached HEAD, a git failure) leaves them silent — today's answers.
+CLOUD_SWITCH_AWAY = "switch-away"
+CLOUD_PUSH_ELSEWHERE = "push-elsewhere"
+GIT_CLOUD_ONLY = {
+    GIT_SWITCH: CLOUD_SWITCH_AWAY,
+    GIT_CHECKOUT: CLOUD_SWITCH_AWAY,
+    GIT_PUSH: CLOUD_PUSH_ELSEWHERE,
+}
+# Leaving the branch without naming one: `git switch -d` is `--detach`; `git checkout -d`
+# is not a flag at all, so only the long form is listed for checkout.
+GIT_SWITCH_DETACH_FLAGS = ("--detach", "-d")
+GIT_CHECKOUT_DETACH_FLAGS = ("--detach",)
+GIT_ORPHAN_FLAG = "--orphan"                          # a new, unborn branch
+GIT_PREVIOUS_BRANCH = "-"                             # `git switch -`: the last branch
+# Push flags whose target is never just the current branch: every branch, every ref, every
+# tag — and the deletions, which are never the current branch's to make.
+GIT_PUSH_EVERY_REF_FLAGS = ("--all", "--branches", "--mirror", "--tags")
+GIT_PUSH_DELETE_FLAGS = ("--delete", "-d", "--prune")
+
+# ── Hook-only entries, in BOTH profiles ──────────────────────────────────────
+# A push whose destination is the protected branch is refused locally and in the cloud
+# (self/features/review-base-and-cloud-hook/SPEC.md → "Round 2"): agents never push
+# `main`; work reaches it only through the PR feature-close.sh opens and a human merges.
+#
+#   PUSH_TO_PROTECTED  a `git push` refspec whose destination — `dst` of `[+]<src>[:<dst>]`,
+#                      else `src`, `refs/heads/` stripped — is GIT_PROTECTED_BRANCH, a
+#                      deletion of it included (`:main`, `--delete origin main`). Locally it
+#                      is read from the command's words alone, no git probe; in the cloud,
+#                      where the hook already reads the current branch, `HEAD`/`@` and a
+#                      push with no refspec resolve to it too.
+#
+# One literal, no probe: `main` only — not `master`, not a manifest's `base`. Hook-only
+# like the cloud-only entries: a prefix rule cannot tell `main` from `main-x`, so nothing
+# here reaches denied_git_commands() or bash_deny_rules().
+GIT_PROTECTED_BRANCH = "main"
+PUSH_TO_PROTECTED = "push-to-protected"
+GIT_HOOK_ONLY = {
+    GIT_PUSH: PUSH_TO_PROTECTED,
+}
+
 # The prefix rule's spelling in `permissions.deny`. The `:*` is what makes it a prefix,
 # and a rule this helper writes is never an allow rule.
 BASH_RULE_TEMPLATE = "Bash(%s:*)"
@@ -121,6 +181,18 @@ GIT_BARE_DENIED = (GIT_STASH,)
 # so one left in a consuming repo's settings would go on denying what the hook now
 # approves: `wire-settings.py` removes exactly these in a merge, and nothing else.
 RETIRED_DENIED_GIT_COMMANDS = ((GIT_STASH,),)
+
+
+def cloud_only_rule(subcommand):
+    """The cloud-only entry a git subcommand falls under — CLOUD_SWITCH_AWAY,
+    CLOUD_PUSH_ELSEWHERE — or None. Hook-only: no prefix rule is rendered for it."""
+    return GIT_CLOUD_ONLY.get(subcommand)
+
+
+def hook_only_rule(subcommand):
+    """The both-profile hook-only entry a git subcommand falls under — PUSH_TO_PROTECTED —
+    or None. No prefix rule is rendered for it."""
+    return GIT_HOOK_ONLY.get(subcommand)
 
 
 def _subcommands(table, kind):

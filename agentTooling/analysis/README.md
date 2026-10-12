@@ -44,8 +44,10 @@ claimants hold, so a bound written afterwards freezes this feature's own record 
 window that is still open, and a `to` taken from the wall clock hands it an equal share
 of the coordinator for every hour since its work actually stopped. The bound is
 `capture_planning.py --last-branch-instant <slug>` (below); before the merge it is
-provisional and moves either way (`manifest.py set-window-to --replace`), and a capture
-that refuses rolls the stamp back with the recovered sidecars.
+provisional and moves either way (`manifest.py set-window-to --replace`) — later too,
+because the on-branch run asks for it with `--ignore-to`, so the `to` an earlier capture
+stamped does not fence the sessions that began after it — and a capture that refuses
+rolls the stamp back with the recovered sidecars.
 
 **The capture is also where the corpus-wide work happens now.** After its own report it
 refreshes `sessions[].also_claimed_by` on every other already-captured record in this
@@ -474,7 +476,7 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `… --list-subagents [--since YYYY-MM-DD]`,
   `… --list-subagents --unclaimed [--for <repo>/<slug>]`,
   `… --list-sessions [--unclaimed] [--since YYYY-MM-DD]`, or
-  `… --last-branch-instant <slug>`.
+  `… --last-branch-instant <slug> [--ignore-to]`.
   **`--last-branch-instant <slug>` is the bound `feature-capture.sh` stamps**, and the one
   mode here that writes nothing at all: it prints, as ISO 8601 UTC with a `Z`, one second
   past the last instant of every session this feature's `branches` and `session_window`
@@ -494,7 +496,18 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   and dropping it finds a bound for one of agentTooling's sixteen features instead of
   nine. The manifest's own `exclude_sessions` is honoured — a session the author disowned
   is not this feature's work by the author's own word. It opens no ledger and runs no git
-  command, because `--recapture` calls it with the branch long deleted.
+  command, because `--recapture` calls it with the branch long deleted. **`--ignore-to`
+  (`last_branch_instant(..., ignore_to=True)`) is the on-branch reading**, and only
+  `feature-capture.sh`'s on-branch path passes it: before the merge the fence's `to` is the
+  provisional bound an earlier capture stamped from this same evidence, and read as written
+  it would leave out every session that began after it — a later round's runner, a
+  rework's parent — so a feature once captured could never have its `to` moved later.
+  With it, sessions and delegates are admitted on `from`, branch, `cwd` and exclusions
+  alone, with no upper bound but the `from` of a later feature in the same corpus sharing
+  one of its `branches` (`chained_successor_from`: a cloud `claude/…` branch reused for the
+  next feature after a merge; locally the branch is the slug and never shared). The
+  post-merge `--recapture` path and the claim index's `provisional_to` (which only bounds a
+  window whose `to` is null, where the two readings agree) read the window as written.
   **A session may belong to more than one feature, and the ledger says so.** Top-level
   session claims are recorded in the same file under its `sessions` section, `{
   <session-id>: [ { repo, repo_name, slug, selected_by, cost_usd, claimed_at, window:

@@ -24,11 +24,14 @@ set -uo pipefail
 # the count of missing Bash rules, and the write appends exactly those, in order.
 #
 # The SessionStart entry (self/DESIGN-2026-10-05-cloud-execution.md §7): every written
-# consumer file carries exactly one SessionStart hook running plans/cloud-setup.sh — added
-# once, never duplicated (the second write is byte-identical), a repo's customized
+# consumer file carries exactly one SessionStart hook running agentTooling/session-start.sh
+# — added once, never duplicated (the second write is byte-identical), a repo's customized
 # spelling of it kept as the entry, a repo's own unrelated SessionStart hook kept first;
 # a file complete but for it reports UNWIRED naming only it; a SessionStart that is not a
-# list is INVALID; and --self writes none (no plans/cloud-setup.sh exists there).
+# list is INVALID. The command the helper used to write, plans/cloud-setup.sh run
+# directly, is RETIRED: removed where it stands, its entry dropped once empty, a hook
+# sharing that entry kept — and a repo's own spelling of a cloud-setup.sh hook is not
+# touched. --self writes the guarded `--self` spelling.
 # Malformed files are reported INVALID by both modes and left untouched.
 #
 # The sandbox block (self/features/runner-sandbox): every written file has
@@ -79,17 +82,27 @@ HOOK_COMMAND = "${CLAUDE_PROJECT_DIR}/agentTooling/hooks/allow-repo-commands.sh"
 # so where the script is absent (a consuming repo's root) it must be a silent exit 0.
 SELF_HOOK_PATH = "${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh"
 SELF_HOOK_COMMAND = 'test ! -f "%s" || "%s"' % (SELF_HOOK_PATH, SELF_HOOK_PATH)
-# The SessionStart entry (self/DESIGN-2026-10-05-cloud-execution.md §7): the repo's seeded
-# plans/cloud-setup.sh, once per container. The guard is the script's own — it asks
-# env-profile.sh and is a no-op outside the cloud profile — so the entry names nothing but
-# the script, and every session start runs it. Recognised by the script's name, so a
-# repo's customized entry (a matcher, another spelling) is kept and never doubled.
-SESSION_MARKER = "cloud-setup.sh"
-SESSION_COMMAND = "${CLAUDE_PROJECT_DIR}/plans/cloud-setup.sh"
+# The SessionStart entry (self/DESIGN-2026-10-05-cloud-execution.md §7): agentTooling's
+# session-start.sh, the orientation and then, in the cloud, the repo's plans/cloud-setup.sh.
+# It decides the profile itself, so the entry names nothing but the script, and every
+# session start runs it. Recognised by the script's name, so a repo's customized entry (a
+# matcher, another spelling) is kept and never doubled.
+SESSION_MARKER = "session-start.sh"
+SESSION_COMMAND = "${CLAUDE_PROJECT_DIR}/agentTooling/session-start.sh"
 SESSION_ENTRY = {"hooks": [{"type": "command", "command": SESSION_COMMAND}]}
+SELF_SESSION_PATH = "${CLAUDE_PROJECT_DIR}/session-start.sh"
+SELF_SESSION_COMMAND = 'test ! -f "%s" || "%s" --self' % (SELF_SESSION_PATH, SELF_SESSION_PATH)
 SESSION_CUSTOM = {"matcher": "startup", "hooks": [{"type": "command",
-                  "command": "bash /custom/plans/cloud-setup.sh"}]}
+                  "command": "bash /custom/agentTooling/session-start.sh"}]}
 OTHER_SESSION = {"hooks": [{"type": "command", "command": "/x/warm-cache.sh"}]}
+# The command the helper wrote before session-start.sh existed: retired, so removed —
+# alone in its entry (the entry goes), or beside a repo's own hook (that hook stays).
+RETIRED_SESSION_COMMAND = "${CLAUDE_PROJECT_DIR}/plans/cloud-setup.sh"
+RETIRED_SESSION_ENTRY = {"hooks": [{"type": "command", "command": RETIRED_SESSION_COMMAND}]}
+SHARED_SESSION_ENTRY = {"hooks": [{"type": "command", "command": "/x/warm-cache.sh"},
+                                  {"type": "command", "command": RETIRED_SESSION_COMMAND}]}
+# A repo's own spelling of a cloud-setup.sh hook is not the helper's to remove
+CUSTOM_CLOUD_SETUP = {"hooks": [{"type": "command", "command": "bash plans/cloud-setup.sh"}]}
 # Both hook entries, as a complete file carries them
 WIRED_HOOKS = {"PreToolUse": [HOOK_ENTRY], "SessionStart": [SESSION_ENTRY]}
 # The Edit deny rules, then the Bash rules rendered from the table. The policy's own
@@ -220,6 +233,22 @@ CASES = {
                        "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
                        "sandbox": sandbox_with()},
                       "UNWIRED", "wired"),
+    # A repo wired before session-start.sh: the retired direct entry goes, ours replaces it
+    "session-retired": ({"hooks": {"PreToolUse": [HOOK_ENTRY],
+                                   "SessionStart": [RETIRED_SESSION_ENTRY]},
+                         "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
+                         "sandbox": sandbox_with()},
+                        "UNWIRED", "wired"),
+    "session-shared": ({"hooks": {"PreToolUse": [HOOK_ENTRY],
+                                  "SessionStart": [SHARED_SESSION_ENTRY]},
+                        "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
+                        "sandbox": sandbox_with()},
+                       "UNWIRED", "wired"),
+    "session-own-setup": ({"hooks": {"PreToolUse": [HOOK_ENTRY],
+                                     "SessionStart": [CUSTOM_CLOUD_SETUP]},
+                           "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
+                           "sandbox": sandbox_with()},
+                          "UNWIRED", "wired"),
     "other-hook":   ({"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
                         {"type": "command", "command": "/x/other.sh"}]}]}}, "UNWIRED", "wired"),
     "broken":       ("{not json", "INVALID", "INVALID"),
@@ -398,12 +427,22 @@ for name, (content, want_check, want_write) in CASES.items():
     session = after["hooks"].get("SessionStart") or []
     session_marked = [h for e in session for h in e["hooks"]
                       if SESSION_MARKER in h["command"]]
-    check("%s: exactly one SessionStart entry runs plans/cloud-setup.sh" % name,
+    check("%s: exactly one SessionStart entry runs session-start.sh" % name,
           len(session_marked) == 1, "%d entries" % len(session_marked))
-    if name in ("fresh", "no-session"):
-        check("%s: the SessionStart entry the write added is the generator's, unguarded "
-              "in the settings (the script guards itself)" % name,
+    check("%s: no retired SessionStart command is left" % name,
+          not any(h.get("command") == RETIRED_SESSION_COMMAND
+                  for e in session for h in e["hooks"]), "got %r" % session)
+    if name in ("fresh", "no-session", "session-retired"):
+        check("%s: the SessionStart entry is the generator's alone, unguarded in the "
+              "settings (the script decides the profile itself)" % name,
               session == [SESSION_ENTRY], "got %r" % session)
+    if name == "session-shared":
+        check("session-shared: the retired command leaves its entry, the repo's hook in it "
+              "stays, ours after it", session == [OTHER_SESSION, SESSION_ENTRY],
+              "got %r" % session)
+    if name == "session-own-setup":
+        check("session-own-setup: a repo's own cloud-setup.sh spelling is kept, ours after it",
+              session == [CUSTOM_CLOUD_SETUP, SESSION_ENTRY], "got %r" % session)
     if name == "session-custom":
         check("session-custom: the repo's own spelling is kept and not doubled",
               session == [SESSION_CUSTOM], "got %r" % session)
@@ -417,9 +456,12 @@ for name, (content, want_check, want_write) in CASES.items():
                         if r not in RETIRED)
         kept_allow = all(r in after["permissions"].get("allow", [])
                          for r in (content.get("permissions") or {}).get("allow") or [])
+        # An entry holding the retired command is changed by design, and checked above
         kept_hooks = all(e in after["hooks"].get(event, [])
                          for event in ("PreToolUse", "SessionStart")
-                         for e in (content.get("hooks") or {}).get(event) or [])
+                         for e in (content.get("hooks") or {}).get(event) or []
+                         if not any(h.get("command") == RETIRED_SESSION_COMMAND
+                                    for h in e.get("hooks") or []))
         check("%s: nothing the repo had was removed or changed" % name,
               kept_keys and kept_deny and kept_allow and kept_hooks)
         if content.get("hooks", {}).get("PreToolUse") == [HOOK_ENTRY]:
@@ -462,19 +504,22 @@ check("neither mode denies hooks/ any more — the prompt is the point",
 check("the deny rules are the same in both modes",
       v["permissions"]["deny"] == s["permissions"]["deny"] == ALL_DENY,
       "got %s" % s["permissions"]["deny"])
-check("an ordinary run writes the SessionStart entry for plans/cloud-setup.sh",
+check("an ordinary run writes the SessionStart entry for agentTooling/session-start.sh",
       v["hooks"].get("SessionStart") == [SESSION_ENTRY], "got %r" % v["hooks"].get("SessionStart"))
-# A --self checkout has no plans/cloud-setup.sh (its corpus is self/, never seeded), and
-# the round-1 SessionStart bootstrap is gone (self-cloud-bootstrap NOTES.md: a policy
-# written during startup raced the first tool call) — so it carries no SessionStart entry.
-check("--self writes no SessionStart entry — there is no plans/cloud-setup.sh to run",
-      "SessionStart" not in s["hooks"], "got %r" % s["hooks"].get("SessionStart"))
+# The orientation is wanted in agentTooling's own sessions too. The command is guarded
+# like the hook's — the file is tracked and ships with the subtree — and passes --self.
+# (The round-1 SessionStart bootstrap that wrote the POLICY at startup stays gone:
+# self-cloud-bootstrap NOTES.md. This one reads, and prints.)
+check("--self writes the guarded --self SessionStart command",
+      s["hooks"].get("SessionStart") == [{"hooks": [{"type": "command",
+                                                     "command": SELF_SESSION_COMMAND}]}],
+      "got %r" % s["hooks"].get("SessionStart"))
 swapped = json.loads(json.dumps(v))
 swapped["hooks"]["PreToolUse"][0]["hooks"][0]["command"] = SELF_HOOK_COMMAND
+swapped["hooks"]["SessionStart"][0]["hooks"][0]["command"] = SELF_SESSION_COMMAND
 swapped["permissions"]["ask"] = SELF_ASK
-swapped["hooks"].pop("SessionStart", None)
-check("--self differs in the hook command, the ask rules and the SessionStart entry and "
-      "nothing else", swapped == s)
+check("--self differs in the two hook commands and the ask rules and nothing else",
+      swapped == s)
 check("--self on its own file reports in-sync",
       run(selfrepo, "--check", self_mode=True)[0] == "in-sync")
 check("--self on a vendored file reports UNWIRED — the two are not interchangeable",

@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# The SessionStart hook: what every session in a repo using agentTooling runs first.
+#
+#   session-start.sh [--self]
+#
+# `hooks/wire-settings.py` wires this script, and only this script, as the repo's
+# `SessionStart` command — `${CLAUDE_PROJECT_DIR}/agentTooling/session-start.sh` in a
+# consuming repo, the guarded `--self` spelling in agentTooling's own tracked settings. It
+# is agentTooling's, so a change here reaches every consuming repo on its next
+# `subtree pull`, with no re-seeding: the repo's own part is a script this one CALLS, the
+# shape feature-start.sh has with plans/worktree-setup.sh and feature-close.sh with
+# plans/pr.sh.
+#
+# Two halves, in this order:
+#
+#   1. ORIENTATION, every profile (agentTooling's own): two or three lines naming the
+#      profile and what decided it, the branch this checkout is on, and the one command
+#      that comes next — `feature-start.sh <slug>` where no feature is started on this
+#      branch, the feature and its close where one is. Under `cloud` it says outright that
+#      the start runs HERE, on this branch, and creates or pushes no other: a session told
+#      to stay on its assigned branch is already running the standard flow, and must not
+#      read LIFECYCLE.md's local layout as a conflict (it did — the reason this exists).
+#   2. THE REPO'S SETUP, cloud only: the consuming repo's seeded `plans/cloud-setup.sh`,
+#      when there is one — services a fresh container lacks (Postgres, a role). Its exit
+#      code is this script's, so a failed setup is not hidden behind the orientation. A
+#      `--self` checkout has no plans/ and runs nothing here.
+#
+# Constraints, since a SessionStart hook runs on every start — a new session, a resume, a
+# compaction — and its stdout lands in the session's context each time:
+#
+#   - READ-ONLY. It changes no ref, no file, no setting. The fast-forwards and refusals
+#     are feature-start.sh's; this only says which command to run.
+#   - FAST: git and a manifest read, no network, no fetch.
+#   - SHORT: a handful of lines, each prefixed `agentTooling`, so its source is plain.
+#   - The profile comes from env-profile.sh's functions; this file spells no profile
+#     variable (self/profile-confinement.sh).
+#
+# Depends on: env-profile.sh (profile_is_cloud, profile_describe) and plan-runner-roots.sh
+# (resolve_roots — REPO_DIR, FEATURES_DIR, FEATURES_LABEL, SELF_ARG — and manifest_branch,
+# the one reader of a feature's branch). A feature "is started on this branch" exactly
+# when a TRACKED manifest's `branches[0]` is the branch — the same reading
+# feature-start.sh's cloud one-feature refusal makes.
+
+# Every line this prints starts with it
+LINE_PREFIX="agentTooling  "
+# The branch a local primary checkout stays on, and a feature's default base
+# (feature-start.sh's PRIMARY_BRANCH and DEFAULT_BASE; the three move together)
+BASE_BRANCH="main"
+# The repo's own cloud step, relative to the consuming repo's root
+REPO_CLOUD_SETUP_REL="plans/cloud-setup.sh"
+# How a manifest is named inside a feature directory
+MANIFEST_NAME="README.md"
+# The docs a line points at, relative to agentTooling's own directory
+LIFECYCLE_DOC="LIFECYCLE.md"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/plan-runner-roots.sh"
+source "$SCRIPT_DIR/env-profile.sh"
+resolve_roots "${1:-}"
+
+say() { echo "$LINE_PREFIX$1"; }
+
+# The commands as a session types them from the repo root (its working directory).
+if (( SELF_MODE )); then
+  TOOL_PREFIX="./"
+  DOC_PREFIX=""
+else
+  TOOL_PREFIX="./agentTooling/"
+  DOC_PREFIX="agentTooling/"
+fi
+START_CMD="${TOOL_PREFIX}feature-start.sh ${SELF_ARG}<slug>"
+
+if ! profile_check >/dev/null; then
+  say "$(profile_check) — feature-start.sh will refuse until it is fixed"
+  exit 0
+fi
+
+BRANCH="$(git -C "$REPO_DIR" branch --show-current 2>/dev/null)"
+
+# started_feature <branch> — the slug whose tracked manifest names <branch> as its
+# branches[0], or nothing. git grep narrows the manifests to those that mention the branch
+# at all, so a corpus of hundreds costs one search; manifest_branch then decides.
+started_feature() {
+  local branch="$1" rel slug
+  [[ -n "$branch" ]] || return 0
+  while IFS= read -r rel; do
+    slug="${rel#"$FEATURES_LABEL"/}"; slug="${slug%/"$MANIFEST_NAME"}"
+    [[ "$slug" != */* ]] || continue
+    if [[ "$(manifest_branch "$REPO_DIR/$rel" "$slug")" == "$branch" ]]; then
+      echo "$slug"
+      return 0
+    fi
+  done < <(git -C "$REPO_DIR" grep -l -F -e "$branch" -- "$FEATURES_LABEL/*/$MANIFEST_NAME" 2>/dev/null)
+}
+
+say "profile $(profile_describe); branch ${BRANCH:-(detached HEAD)}"
+
+STARTED="$(started_feature "$BRANCH")"
+if [[ -n "$STARTED" ]]; then
+  say "feature '$STARTED' is started on this branch ($FEATURES_LABEL/$STARTED/$MANIFEST_NAME): build it here, and close it with ${TOOL_PREFIX}feature-close.sh ${SELF_ARG}$STARTED (${DOC_PREFIX}$LIFECYCLE_DOC)"
+elif profile_is_cloud; then
+  if [[ -z "$BRANCH" || "$BRANCH" == "$BASE_BRANCH" ]]; then
+    say "this container is one feature's checkout. Start it with $START_CMD --branch <name>: the start cuts <name> off origin/$BASE_BRANCH — never create a branch yourself (${DOC_PREFIX}$LIFECYCLE_DOC)"
+  else
+    say "this container is one feature's checkout, on '$BRANCH'. Start it with $START_CMD, run here: the feature's branch IS '$BRANCH' — no worktree, and no other branch created or pushed. Do not check out $BASE_BRANCH or make a branch per slug; that is the local layout (${DOC_PREFIX}$LIFECYCLE_DOC)"
+  fi
+elif [[ "$BRANCH" == "$BASE_BRANCH" ]]; then
+  say "the primary checkout. Start a feature with $START_CMD: it makes branch <slug> and the worktree .worktrees/<slug>, and the feature is built there, not here (${DOC_PREFIX}$LIFECYCLE_DOC)"
+else
+  say "no started feature names '${BRANCH:-this checkout}'. Features start from the primary checkout on $BASE_BRANCH with $START_CMD (${DOC_PREFIX}$LIFECYCLE_DOC)"
+fi
+
+# ── The repo's own cloud step ─────────────────────────────────────────────────
+if ! profile_is_cloud || (( SELF_MODE )); then
+  exit 0
+fi
+REPO_CLOUD_SETUP="$REPO_DIR/$REPO_CLOUD_SETUP_REL"
+if [[ ! -f "$REPO_CLOUD_SETUP" ]]; then
+  say "no $REPO_CLOUD_SETUP_REL — run ./agentTooling/sync-plans.sh to seed it"
+  exit 0
+fi
+bash "$REPO_CLOUD_SETUP"

@@ -17,7 +17,7 @@ set -uo pipefail
 # repo-owned scripts in-sync (template-version 3, 6, 2 in that order — gate.sh 3 and
 # worktree-setup.sh 2 source plans/environment.sh, and the gate resumes, since
 # execution-profiles), environment.sh and cloud-setup.sh in-sync at 1 (the first not
-# executable, since it is sourced), one SessionStart entry for cloud-setup.sh that a second
+# executable, since it is sourced), one SessionStart entry for session-start.sh that a second
 # sync does not double, and the hook wiring it just wrote in-sync, with only
 # PROJECT_FACTS.md unfilled, rc 1, "needs attention: 1 item(s)"; the seeded BACKLOG.md
 # is in-sync rather than a second unfilled item, since an empty backlog is a correct
@@ -149,8 +149,8 @@ check "1l. environment.sh in-sync (template-version 1)" 'grep -qF "  in-sync    
 check "1m. cloud-setup.sh in-sync (template-version 1)" 'grep -qF "  in-sync    plans/cloud-setup.sh (template-version 1)" <<<"$out"'
 check "1n. environment.sh is seeded not executable, cloud-setup.sh executable" \
   '[[ -f "$CONSUMER/plans/environment.sh" && ! -x "$CONSUMER/plans/environment.sh" && -x "$CONSUMER/plans/cloud-setup.sh" ]]'
-session_entries() { python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); print(sum(1 for e in (s.get("hooks") or {}).get("SessionStart") or [] for h in e.get("hooks") or [] if "cloud-setup.sh" in h.get("command", "")))' "$1" 2>/dev/null; }
-check "1o. the seed wired one SessionStart entry running plans/cloud-setup.sh" \
+session_entries() { python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); print(sum(1 for e in (s.get("hooks") or {}).get("SessionStart") or [] for h in e.get("hooks") or [] if "session-start.sh" in h.get("command", "")))' "$1" 2>/dev/null; }
+check "1o. the seed wired one SessionStart entry running agentTooling/session-start.sh" \
   '[[ "$(session_entries "$CONSUMER/.claude/settings.json")" == 1 ]]'
 "$S" >/dev/null 2>&1
 check "1p. ... and a second sync leaves it at one" \

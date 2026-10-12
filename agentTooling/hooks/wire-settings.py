@@ -8,13 +8,15 @@ for agentTooling's own checkout, by hand after a change to the policy constants
 **In a consuming repo the file is repo-owned and may hold anything, so this merges
 rather than copies**: it appends the `PreToolUse` entry for `allow-repo-commands.sh`
 when no hook already references the script, the `SessionStart` entry running
-`plans/cloud-setup.sh` when no SessionStart hook already names that script (once per
-container in a Claude Code cloud container; the script itself is a no-op anywhere else),
-and appends each `Edit` deny, `Bash` deny
+agentTooling's `session-start.sh` when no SessionStart hook already names that script
+(the session's orientation in every profile, then the repo's `plans/cloud-setup.sh` in a
+Claude Code cloud container), and appends each `Edit` deny, `Bash` deny
 and `Edit` ask rule that is absent. It never reorders or rewrites another entry, and it
-removes exactly one kind: a `Bash` deny rule this helper itself once wrote and the policy
-table has since retired (`policy.retired_bash_deny_rules()` — `Bash(git stash:*)`, which
-denied `git stash list` too, and a deny rule beats the hook's allow). Everything it adds
+removes exactly two kinds, each something this helper itself once wrote and has since
+retired: a `Bash` deny rule the policy table dropped (`policy.retired_bash_deny_rules()` —
+`Bash(git stash:*)`, which denied `git stash list` too, and a deny rule beats the hook's
+allow), and the SessionStart command that ran `plans/cloud-setup.sh` directly
+(`RETIRED_SESSION_COMMANDS`), which `session-start.sh` now calls. Everything it adds
 is a restriction or a prompt-remover for reads; it never adds an allow rule.
 
 The `sandbox` block is the one section with owned VALUES: `enabled`, `failIfUnavailable`
@@ -33,9 +35,11 @@ first line that differs, and `--write` puts those bytes back. That is the differ
 merge check could not see — a hand-added allow rule, a hook command repointed at a path
 that would never run, a reordered list — each of which left the gate green while
 `hooks/README.md` said it failed. The hook path loses its `agentTooling/` segment there
-and is GUARDED (`SELF_HOOK_COMMAND`), and the policy ask rule is spelled for a checkout
-whose `hooks/` is at the root. Nothing else is generated: no SessionStart entry, and no
-`.claude/settings.local.json`, which is Claude Code's own per-user file (git-ignored).
+and is GUARDED (`SELF_HOOK_COMMAND`), as is the SessionStart command, which also passes
+`--self` (`SELF_SESSION_COMMAND`: the orientation only, since that checkout has no
+`plans/cloud-setup.sh`), and the policy ask rule is spelled for a checkout whose `hooks/`
+is at the root. Nothing else is generated: no `.claude/settings.local.json`, which is
+Claude Code's own per-user file (git-ignored).
 
 It is tracked because a fresh clone — every new cloud container — must have the hook and
 the deny rules from its FIRST tool call, and only a file present at startup is read before
@@ -113,17 +117,25 @@ SELF_HOOK_COMMAND = 'test ! -f "%s" || "%s"' % (SELF_HOOK_PATH, SELF_HOOK_PATH)
 HOOK_EVENT = "PreToolUse"
 HOOK_MATCHER = "Bash"
 
-# The SessionStart entry (self/DESIGN-2026-10-05-cloud-execution.md §7): the repo's seeded
-# plans/cloud-setup.sh, the once-per-container step. It carries no matcher (every start —
-# a container restart resumes the session) and no guard: the GUARD IS THE SCRIPT'S OWN, which
-# asks env-profile.sh and exits 0 outside the cloud profile, so nothing in this file spells
-# the profile variables (self/profile-confinement.sh). Recognised by the marker across
-# hand-edits, like the PreToolUse entry. Consuming repos only: a `--self` checkout has no
-# plans/cloud-setup.sh (its corpus is self/, never seeded), so its generated file carries
-# none (self/features/execution-profiles/NOTES.md) — and needs none, being tracked.
-SESSION_MARKER = "cloud-setup.sh"
-SESSION_COMMAND = "${CLAUDE_PROJECT_DIR}/plans/cloud-setup.sh"
+# The SessionStart entry (self/DESIGN-2026-10-05-cloud-execution.md §7): agentTooling's own
+# session-start.sh, which prints the session's orientation in every profile and then, in
+# the cloud, runs the repo's seeded plans/cloud-setup.sh. agentTooling's rather than the
+# repo's so a change to it ships with the subtree, with nothing to re-seed. It carries no
+# matcher (every start — a container restart resumes the session) and decides the profile
+# itself through env-profile.sh, so nothing in this file spells the profile variables
+# (self/profile-confinement.sh). Recognised by the marker across hand-edits, like the
+# PreToolUse entry. Under `--self` it is GUARDED like the hook, for the same reason: the
+# file is tracked and ships with the subtree.
+SESSION_MARKER = "session-start.sh"
+SESSION_COMMAND = "${CLAUDE_PROJECT_DIR}/agentTooling/session-start.sh"
+SELF_SESSION_PATH = "${CLAUDE_PROJECT_DIR}/session-start.sh"
+SELF_SESSION_COMMAND = 'test ! -f "%s" || "%s" --self' % (SELF_SESSION_PATH, SELF_SESSION_PATH)
 SESSION_EVENT = "SessionStart"
+# The SessionStart commands this helper once wrote and has since retired, removed wherever
+# they stand: the entry used to run the repo's plans/cloud-setup.sh directly, which
+# session-start.sh now calls, so leaving it would run that step twice. Only the exact
+# string it wrote — a repo's own spelling of a cloud-setup.sh hook is the repo's to remove.
+RETIRED_SESSION_COMMANDS = ("${CLAUDE_PROJECT_DIR}/plans/cloud-setup.sh",)
 
 # Edit-tool deny rules, matched by exact string. `**/x/**` matches at any depth; the
 # root-anchored `/x/**` forms are insurance for the two that matter most, since `/`
@@ -268,8 +280,12 @@ def entry_for_hook(self_mode):
     }
 
 
-def entry_for_session():
-    return {"hooks": [{"type": "command", "command": SESSION_COMMAND}]}
+def session_command(self_mode):
+    return SELF_SESSION_COMMAND if self_mode else SESSION_COMMAND
+
+
+def entry_for_session(self_mode):
+    return {"hooks": [{"type": "command", "command": session_command(self_mode)}]}
 
 
 def wrong_type(container, key, kind):
@@ -317,10 +333,32 @@ def hook_wired(settings):
     return event_wired(settings, HOOK_EVENT, HOOK_MARKER)
 
 
-def session_needed(settings, self_mode):
-    """True when a consuming repo's file has no SessionStart entry naming cloud-setup.sh.
-    Never under `--self`, whose generated file carries none."""
-    return not self_mode and not event_wired(settings, SESSION_EVENT, SESSION_MARKER)
+def session_needed(settings):
+    """True when the file has no SessionStart entry naming session-start.sh."""
+    return not event_wired(settings, SESSION_EVENT, SESSION_MARKER)
+
+
+def retired_session_commands(settings):
+    """The retired SessionStart commands this file still carries, each once."""
+    found = []
+    for entry in (settings.get("hooks") or {}).get(SESSION_EVENT) or []:
+        for hook in (entry or {}).get("hooks") or []:
+            command = (hook or {}).get("command")
+            if command in RETIRED_SESSION_COMMANDS and command not in found:
+                found.append(command)
+    return found
+
+
+def remove_session_commands(settings, commands):
+    """Drop every SessionStart hook running one of `commands`, then any entry left with
+    no hooks. Every other hook, the repo's own included, stays where it stands."""
+    entries = settings["hooks"][SESSION_EVENT]
+    for entry in entries:
+        if isinstance(entry, dict) and isinstance(entry.get("hooks"), list):
+            entry["hooks"] = [hook for hook in entry["hooks"]
+                              if (hook or {}).get("command") not in commands]
+    entries[:] = [entry for entry in entries
+                  if not (isinstance(entry, dict) and entry.get("hooks") == [])]
 
 
 def missing_rules(settings, key, rules):
@@ -352,10 +390,10 @@ def missing_entries(present, wanted):
 def gaps_in(settings, self_mode):
     """(need_hook, missing Edit denies, missing Bash denies, missing ask rules, retired
     Bash denies still present, wrong owned sandbox settings, missing denyRead paths,
-    missing allowed domains, need_session). Only the hook command, the ask spelling and
-    the SessionStart entry (consuming repos only) differ between the modes; the deny rules
-    and the sandbox block are the same in both, since the policy's own rule left it for
-    `permissions.ask`."""
+    missing allowed domains, need_session, retired SessionStart commands still present).
+    Only the two hook commands and the ask spelling differ between the modes; the deny
+    rules and the sandbox block are the same in both, since the policy's own rule left it
+    for `permissions.ask`."""
     return (
         not hook_wired(settings),
         missing_rules(settings, DENY_KEY, EDIT_DENY_RULES),
@@ -367,7 +405,8 @@ def gaps_in(settings, self_mode):
             SANDBOX_DENY_READ_KEY), SANDBOX_DENY_READ),
         missing_entries(sandbox_section(settings, SANDBOX_NETWORK_KEY).get(
             SANDBOX_DOMAINS_KEY), SANDBOX_ALLOWED_DOMAINS),
-        session_needed(settings, self_mode),
+        session_needed(settings),
+        retired_session_commands(settings),
     )
 
 
@@ -390,18 +429,22 @@ def apply_sandbox(settings, wrong_owned, missing_deny_read, missing_domains):
 
 
 def apply_gaps(settings, self_mode, need_hook, missing_edit, missing_bash, missing_ask,
-               retired_bash, wrong_owned, missing_deny_read, missing_domains, need_session):
-    """Remove the retired rules where they stand, append what is absent, in the
-    documented order, set the owned sandbox keys, and change nothing else."""
+               retired_bash, wrong_owned, missing_deny_read, missing_domains, need_session,
+               retired_session):
+    """Remove the retired rules and SessionStart commands where they stand, append what
+    is absent, in the documented order, set the owned sandbox keys, and change nothing
+    else."""
     if retired_bash:
         deny = settings[PERMISSIONS_KEY][DENY_KEY]
         deny[:] = [rule for rule in deny if rule not in retired_bash]
+    if retired_session:
+        remove_session_commands(settings, retired_session)
     if need_hook:
         settings.setdefault("hooks", {}).setdefault(HOOK_EVENT, []).append(
             entry_for_hook(self_mode))
     if need_session:
         settings.setdefault("hooks", {}).setdefault(SESSION_EVENT, []).append(
-            entry_for_session())
+            entry_for_session(self_mode))
     if missing_edit or missing_bash:
         settings.setdefault(PERMISSIONS_KEY, {}).setdefault(DENY_KEY, []).extend(
             missing_edit + missing_bash)
@@ -520,17 +563,18 @@ def describe_changes(gaps, check):
     """The whole gap as one clause: what is missing (`no …` for a check, `added …` for a
     write) and the retired rules (`… to remove`, `removed …`)."""
     (need_hook, missing_edit, missing_bash, missing_ask, retired_bash, wrong_owned,
-     missing_deny_read, missing_domains, need_session) = gaps
+     missing_deny_read, missing_domains, need_session, retired_session) = gaps
     parts = []
     missing = describe_gaps(need_hook, missing_edit, missing_bash, missing_ask,
                             wrong_owned, missing_deny_read, missing_domains, need_session)
     if missing:
         parts.append((CHECK_MISSING_LEAD if check else WRITE_MISSING_LEAD) + missing)
-    if retired_bash:
-        retired = "%d %s %s %s rule(s) (%s)" % (
-            len(retired_bash), RETIRED_RULE_LABEL, BASH_RULE_LABEL, DENY_RULE_KIND,
-            ", ".join(retired_bash))
-        parts.append(retired + CHECK_RETIRED_TAIL if check else WRITE_RETIRED_LEAD + retired)
+    for retired_items, what in ((retired_bash, "%s %s rule(s)" % (BASH_RULE_LABEL, DENY_RULE_KIND)),
+                                (retired_session, "%s command(s)" % SESSION_EVENT)):
+        if retired_items:
+            retired = "%d %s %s (%s)" % (
+                len(retired_items), RETIRED_RULE_LABEL, what, ", ".join(retired_items))
+            parts.append(retired + CHECK_RETIRED_TAIL if check else WRITE_RETIRED_LEAD + retired)
     return CHANGE_SEPARATOR.join(parts)
 
 

@@ -112,6 +112,9 @@ container() {
   for f in feature-start.sh plan-runner-roots.sh env-profile.sh; do
     cp "$HERE/$f" "$at/$f" 2>/dev/null || true
   done
+  # The detector env-profile.sh asks, where it looks for it
+  mkdir -p "$at/hooks"
+  cp "$HERE/hooks/env_profile.py" "$at/hooks/env_profile.py" 2>/dev/null || true
   for f in pricing.py litellm_prices.py rates_history.json roots.py transcript.py capture_planning.py report.py manifest.py routing.py recover_attempts.py; do
     cp "$HERE/analysis/$f" "$at/analysis/$f" 2>/dev/null || true
   done
@@ -337,6 +340,19 @@ check "U1b. ... fast-forwarded to origin/$BASE, nothing started, the rerun comma
   '[[ "$(git -C "$AT" rev-parse HEAD)" == "$(git -C "$AT" rev-parse "origin/$BASE")" && "$(git -C "$AT" rev-parse HEAD)" != "$old_head" && ! -e "$AT/self/features/cs-behind" ]] && grep -qF "feature-start.sh" <<<"$out"'
 out="$(cstart "$AT" "" cs-behind --no-gate)"; rc=$?
 check "U1c. the rerun starts (got $rc)" '[[ $rc -eq 0 && "$(git -C "$AT" log -1 --format=%s)" == "cs-behind: start" ]]'
+check "U1d. ... and local $BASE, which the clone left behind, is fast-forwarded to origin/$BASE" \
+  '[[ "$(git -C "$AT" rev-parse "refs/heads/$BASE")" == "$(git -C "$AT" rev-parse "origin/$BASE")" ]] && grep -qF "updated   local $BASE" <<<"$out"'
+
+# ── U2. a local <base> with a commit of its own is left alone ────────────────
+AT="$(container u2)"
+git -C "$AT" commit -q --allow-empty -m "local only"
+local_base="$(git -C "$AT" rev-parse HEAD)"
+assigned "$AT" "claude/cs-localbase"
+out="$(cstart "$AT" "" cs-localbase --no-gate)"; rc=$?
+check "U2a. a local $BASE diverged from origin/$BASE does not stop the start (got $rc)" \
+  '[[ $rc -eq 0 && "$(git -C "$AT" log -1 --format=%s)" == "cs-localbase: start" ]]'
+check "U2b. ... it is left where it was, with one warning" \
+  '[[ "$(git -C "$AT" rev-parse "refs/heads/$BASE")" == "$local_base" ]] && grep -qF "could not fast-forward local $BASE" <<<"$out"'
 
 # ── O1. --open in the cloud ───────────────────────────────────────────────────
 AT="$(container o1)"

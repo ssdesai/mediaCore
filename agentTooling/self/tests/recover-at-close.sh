@@ -280,6 +280,9 @@ mkdir -p "$LA/analysis" "$LA/self/features" "$LA/templates/plans/features"
 for f in feature-start.sh feature-capture.sh plan-runner-roots.sh plan-runner-lib.sh stamp-timing.sh env-profile.sh; do
   cp "$HERE/$f" "$LA/$f" 2>/dev/null || true
 done
+# The detector env-profile.sh asks, where it looks for it
+mkdir -p "$LA/hooks"
+cp "$HERE/hooks/env_profile.py" "$LA/hooks/env_profile.py" 2>/dev/null || true
 # The local layout, forced: a container's CLAUDE_CODE_REMOTE=true must not decide it.
 export AGENTTOOLING_PROFILE=local
 for f in pricing.py litellm_prices.py rates_history.json refresh_rates.py roots.py transcript.py capture_planning.py report.py manifest.py recover_attempts.py routing.py; do

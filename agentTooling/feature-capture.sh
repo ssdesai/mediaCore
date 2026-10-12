@@ -30,7 +30,12 @@ set -uo pipefail
 #        the feature's `branches` and `session_window` select and of their subagents —
 #        with `manifest.py set-window-to --replace`: before the merge the bound is
 #        provisional and moves EITHER way, so a re-run after more work moves it later.
-#        With no branch session the bound is this run's clock, announced in one line;
+#        That is true because the evidence here is read with `--ignore-to`
+#        (ON_BRANCH_EVIDENCE_ARGS): the `to` an earlier capture stamped does not fence the
+#        sessions that begin after it — a later round's runner, a rework's parent — which
+#        are admitted on `from`, branch, cwd and exclusions alone, up to the `from` of a
+#        later feature sharing the branch name. With no branch session the bound is this
+#        run's clock, announced in one line;
 #     3. recovers what the CLI never priced, over this feature only
 #        (`recover_attempts.py --for <slug>`) — reported, never fatal;
 #     4. captures (`capture_planning.py <slug>`, with --recapture once a record exists on
@@ -72,10 +77,10 @@ set -uo pipefail
 #   locally, then as origin/<branch> — and refuses one not merged into what is checked out, and
 #   with no branch left at all (a forge with delete-on-merge) proceeds only on the
 #   feature's manifest being tracked here and its `<slug>: start` commit being in this
-#   history — both, never either. Steps 2–8 as above, except that the stamp fills a null
-#   `to` and leaves a set one alone, and under --recapture is `--tighten`: a bound is
-#   replaced only by an EARLIER one, and a refused widen (manifest.py's exit 3, and that
-#   code alone) warns and carries on with the bound already published. It WRITES
+#   history — both, never either. Steps 2–8 as above, except that the evidence reads the
+#   window as written (no `--ignore-to`), and the stamp fills a null `to` and leaves a set
+#   one alone, and under --recapture is `--tighten`: a bound is replaced only by an
+#   EARLIER one, and a refused widen (manifest.py's exit 3, and that code alone) warns and carries on with the bound already published. It WRITES
 #   LOCALLY, COMMITS NOTHING AND PUSHES NOTHING: a repair of a merged record goes through
 #   a PR of its own, which the human opens.
 #
@@ -90,6 +95,10 @@ REFUSED_RC=1
 # (WIDEN_REFUSED_EXIT there; bash cannot import it, so self/tests/feature-lifecycle.sh W6
 # holds the two in step).
 WIDEN_REFUSED_RC=3
+# The on-branch evidence's reading of the window (step 2): no upper bound, since the `to`
+# in the fence is the provisional one an earlier capture stamped and must not fence the
+# evidence that moves it later. The post-merge path passes nothing and reads it as written.
+ON_BRANCH_EVIDENCE_ARGS=(--ignore-to)
 # The harness's own records — COST_FILES (the routing record among them), the per-plan
 # sidecars and the three ANNOTATION_FILES a sibling's annotation may carry — and the reader that tells
 # them from a stranger's work in progress live in plan-runner-roots.sh, sourced below:
@@ -255,7 +264,11 @@ rollback_recovery() {
 # is the documented no-evidence case.
 echo ""
 echo "=== window ==="
-EVIDENCE="$("${CAPTURE_PY[@]}" --last-branch-instant "$SLUG" 2>/dev/null)"
+EVIDENCE_ARGS=()
+if (( ON_BRANCH )); then
+  EVIDENCE_ARGS=("${ON_BRANCH_EVIDENCE_ARGS[@]}")
+fi
+EVIDENCE="$("${CAPTURE_PY[@]}" --last-branch-instant "$SLUG" ${EVIDENCE_ARGS[@]+"${EVIDENCE_ARGS[@]}"} 2>/dev/null)"
 if [[ -n "$EVIDENCE" ]]; then
   echo "  window    evidence: last branch instant + 1s = $EVIDENCE"
 else

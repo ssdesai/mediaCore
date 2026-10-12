@@ -208,7 +208,9 @@ brief** plus this paragraph, adapted:
 
 > Resume. A previous implementer died. Before anything else read
 > `plans/features/<slug>/CHECKPOINT.md` and `NOTES.md`, then `git status --short`,
-> `git log --oneline <base>..HEAD` and `git diff --stat`. A ticked slice is a hint,
+> `git fetch origin <base>`, `git log --oneline origin/<base>..HEAD` (`<base>..HEAD`
+> only with no `origin` — a stale local `<base>` lists commits that are not this
+> feature's) and `git diff --stat`. A ticked slice is a hint,
 > not a fact: run the tests the checkpoint names and check each ticked slice on disk
 > before trusting it. Continue from the first unticked slice, keep the checkpoint
 > current, and finish the procedure from there. If there is no checkpoint, the tree

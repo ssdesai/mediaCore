@@ -27,10 +27,11 @@ set -euo pipefail
 #
 # Beyond plans/, one file in .claude/ is maintained: the PreToolUse hook entry pointing at
 # hooks/allow-repo-commands.sh, which approves repo-confined reads and tests and denies a
-# chained `cd`, and the SessionStart hook entry running plans/cloud-setup.sh (a no-op
-# outside a Claude Code cloud container — the script guards itself). Both are merged,
-# never copied — see hooks/README.md. A repo that hand-edits an entry keeps its version;
-# one that is absent is appended, once.
+# chained `cd`, and the SessionStart hook entry running agentTooling/session-start.sh (the
+# session's orientation everywhere, then plans/cloud-setup.sh in a Claude Code cloud
+# container). Both are merged, never copied — see hooks/README.md. A repo that hand-edits
+# an entry keeps its version; one that is absent is appended, once; and the entry that ran
+# plans/cloud-setup.sh directly, which the helper wrote before session-start.sh, is removed.
 # The same file also gets the OS `sandbox` block, and there the merge is NOT hands-off:
 # `enabled`, `failIfUnavailable` and `allowUnsandboxedCommands` are set back to
 # wire-settings.py's `SANDBOX_ENABLED` (OFF today) / on / off on every run, even over a
@@ -85,7 +86,8 @@ GENERATED=(README.md interactive/README.md features/README.md features/TEMPLATE.
 # everything below each script's REPO-SPECIFIC marker. The last two are the environment
 # adapters of agentTooling/self/DESIGN-2026-10-05-cloud-execution.md §7: environment.sh
 # (the facts that differ by profile, SOURCED by the gate and worktree-setup.sh) and
-# cloud-setup.sh (the once-per-container step the SessionStart hook runs).
+# cloud-setup.sh (the repo's part of session start, which agentTooling/session-start.sh
+# runs in the cloud).
 REPO_OWNED_SCRIPTS=(gate.sh pr.sh worktree-setup.sh open-session.sh environment.sh cloud-setup.sh)
 # The repo-owned scripts that are sourced, never run: seeded without the executable bit,
 # so running one by mistake fails rather than setting variables in a child nobody reads.

@@ -52,6 +52,9 @@ copy_tooling() {
   for f in feature-start.sh plan-runner-roots.sh env-profile.sh; do
     cp "$HERE/$f" "$dest/$f" 2>/dev/null || true
   done
+  # The detector env-profile.sh asks, where it looks for it
+  mkdir -p "$dest/hooks"
+  cp "$HERE/hooks/env_profile.py" "$dest/hooks/env_profile.py" 2>/dev/null || true
   # The local layout, forced: a container's CLAUDE_CODE_REMOTE=true must not decide it.
   export AGENTTOOLING_PROFILE=local
   export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)

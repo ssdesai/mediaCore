@@ -56,6 +56,18 @@ PASS_COMMIT_ROUND_PREFIX=": review round "
 # the commit decision below uses it: on the base branch itself there is nothing to commit
 # to, and pr.sh's own refusal says so.
 FALLBACK_BASE="main"
+# The remote whose copy of the base the review diffs against
+# (self/features/review-base-and-cloud-hook/, Part B). Three dots take the merge-base, so
+# a local <base> NEWER than the branch point is harmless, and an OLDER one — a feature
+# that merged a newer origin/<base> mid-way while local <base> stayed put, a fresh
+# container, a consumer that never pulled — puts already-merged commits in the review and
+# in the PR body written from it. `origin/<base>`, fetched just before, is where the
+# feature really branched from; the local <base> is only the fallback with no remote.
+REVIEW_REMOTE="origin"
+REMOTE_TRACKING_PREFIX="refs/remotes/"
+# The fetch is unattended: a remote that wants credentials fails it rather than waiting
+# on a prompt nobody will answer (git's own GIT_TERMINAL_PROMPT switch)
+FETCH_TERMINAL_PROMPT="0"
 
 # Bash is on for the same reason it is on for verify, plus one specific to this pass:
 # establishing what the batch changed is read-only git (status/diff/log/show), and there
@@ -76,9 +88,41 @@ CLAUDE_TOOL_ARGS=(--allowedTools Bash)
 REVIEW_BUDGET_USD="${REVIEW_BUDGET_USD:-7.00}"
 CLAUDE_BUDGET_ARGS=(--max-budget-usd "$REVIEW_BUDGET_USD")
 
+# review_diff_base <base> — fetch <base> from REVIEW_REMOTE, best-effort, and print the ref
+# the review diffs from: `origin/<base>` when that ref exists after the fetch, else the
+# local <base>. A failed fetch (no network, a remote that is gone) warns on stderr and
+# carries on with whatever `origin/<base>` already holds; it never refuses the pass and
+# never changes an exit code. The explicit refspec updates the remote-tracking ref however
+# the remote's fetch refspecs are configured. Called from build_prompt, so it runs before
+# each review plan's executor starts; its output is the prompt's, so the fetch is quiet
+# and the warning goes to stderr, which reaches the terminal.
+review_diff_base() {
+  local base="$1" tracking="$REVIEW_REMOTE/$base"
+  if git -C "$REPO_DIR" remote get-url "$REVIEW_REMOTE" >/dev/null 2>&1; then
+    if ! GIT_TERMINAL_PROMPT="$FETCH_TERMINAL_PROMPT" git -C "$REPO_DIR" fetch -q "$REVIEW_REMOTE" \
+        "+refs/heads/$base:$REMOTE_TRACKING_PREFIX$tracking" >/dev/null 2>&1; then
+      echo "WARN: git fetch $REVIEW_REMOTE $base failed — the review diffs against what $tracking already holds, or the local $base if nothing" >&2
+    fi
+    if git -C "$REPO_DIR" rev-parse --verify -q "$REMOTE_TRACKING_PREFIX$tracking^{commit}" >/dev/null 2>&1; then
+      echo "$tracking"
+      return 0
+    fi
+  fi
+  echo "$base"
+}
+
 build_prompt() {
   local plan_path="$1"
   local log_path="$2"
+  local base diff_base base_note
+  base="$(manifest_field "$FEATURES_DIR/$FEATURE_SLUG/README.md" base)"
+  base="${base:-$FALLBACK_BASE}"
+  diff_base="$(review_diff_base "$base")"
+  if [[ "$diff_base" == "$REVIEW_REMOTE/$base" ]]; then
+    base_note="That is the remote's \`$base\`, fetched just now — never the local \`$base\` branch, which can be older than where this feature branched and would put already-merged commits in the diff. Use it even where the plan names a bare \`$base\`."
+  else
+    base_note="There is no $REVIEW_REMOTE/$base here (no \`$REVIEW_REMOTE\` remote, or nothing could be fetched from it), so this falls back to the local \`$base\`; if the diff carries commits that are plainly not this feature's, say so in your verdict."
+  fi
   cat <<PROMPT
 You are running a REVIEW plan: a post-verify pass that reads the DIFF a batch produced and judges the code itself. The build pass wrote it, the mechanical gate ran the deterministic checks, and the verify pass already ran the work and fixed what running revealed. You are the last pass, and you are looking for what all three of those miss: defects that are still there while every check is green. A progress log is maintained automatically by the harness so this work can be resumed if interrupted.
 
@@ -89,7 +133,7 @@ Relevant files (absolute paths):
 Process:
 1. Read the progress log first. Each line was appended by the harness as '<tool>: <absolute file path>', recording a mutating tool call from a previous run. Treat it as a hint about which files you may already have changed.
 2. Read the plan. It is a BRIEF, not a diff: it states what the batch was supposed to do and which contracts to hold it to. Use your judgment.
-3. ESTABLISH THE DIFF FIRST, before reading any file in full. Read-only git is available and is the right tool: \`git status\`, \`git diff\`, \`git log --oneline\`, \`git diff <base>...HEAD\`, \`git show\`. The plan names the base to compare against. Read the diff before opening whole files — a diff shows you what changed, and a file shows you everything, most of which this batch did not touch.
+3. ESTABLISH THE DIFF FIRST, before reading any file in full. Read-only git is available and is the right tool: \`git status\`, \`git diff\`, \`git log --oneline\`, \`git diff $diff_base...HEAD\`, \`git show\`. The base to compare against is \`$diff_base\`: \`git diff $diff_base...HEAD --stat\`, then the full diff. $base_note Read the diff before opening whole files — a diff shows you what changed, and a file shows you everything, most of which this batch did not touch.
 4. If $GATE_REPORT_LABEL exists, read it. Install, format, lint, tests, typecheck and build ALREADY RAN. Do not re-run them, and do not re-derive their verdict. A green gate is your starting condition, not your finding. If it lists a check as SKIPPED, treat that as absent information, not as a pass: either run that check yourself or state in your verdict exactly what is consequently unverified.
 5. DO NOT REDO THE VERIFY PASS. It already ran the work, exercised the behaviour, and triaged what failed. Re-running tests, starting a server, driving an endpoint, or constructing fixtures is either its job or a test's job, and it is not yours. If the only way to settle a question is to run something, that is a signal you are answering the wrong question in this pass — record it as a missing test instead.
 6. LOOK FOR WHAT STAYS GREEN. That is the entire value of this pass, and it is where the batch's real defects live. In particular:

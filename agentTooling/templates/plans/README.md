@@ -77,9 +77,10 @@ to the machinery is made once and pulled everywhere.
   `../agentTooling/env-profile.sh` which profile it is in.
 - `cloud-setup.sh` — *seeded once, then repo-owned* — the once-per-container step: start
   the services the gate needs (Postgres, a role) and write what `environment.sh` reads.
-  `sync-plans.sh` wires it as a `SessionStart` hook in `../.claude/settings.json`; outside
-  a cloud container it exits at once, doing nothing. Keep every step idempotent — it runs
-  at every session start. `../agentTooling/templates/README.md` says when the cloud
+  `../agentTooling/session-start.sh`, the `SessionStart` hook `sync-plans.sh` wires into
+  `../.claude/settings.json`, runs it in a cloud container after printing the session's
+  orientation; outside one it is not run, and exits at once if run by hand. Put only what
+  this repo needs here. Keep every step idempotent — it runs at every session start. `../agentTooling/templates/README.md` says when the cloud
   environment's own setup script is the better place.
 - `open-session.sh` — *seeded once, then repo-owned* — how this repo opens a coordinator
   session inside a new feature worktree. `../agentTooling/feature-start.sh --open` runs it

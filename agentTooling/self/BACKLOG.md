@@ -50,12 +50,14 @@ agentTooling's own, for the harness rather than for a product.
   and nothing else, and the gate's settings check goes green again. Raised by
   `self-cloud-bootstrap`.
 
-- **The SessionStart wiring is unexercised in a real cloud session.** `sync-plans.sh`
-  wires `${CLAUDE_PROJECT_DIR}/plans/cloud-setup.sh` as a SessionStart hook with no
-  matcher, and the seeded script is a no-op until a repo fills it; no consuming repo has
-  yet run it in a container. Assertion, by hand at the first consuming repo's cloud setup
-  feature: a new session's context shows the script's output line, a resumed session runs
-  it again harmlessly, and its gate is green with no `--no-gate`. Raised by
+- **The SessionStart wiring is unexercised in a CONSUMING repo's cloud session.**
+  `sync-plans.sh` wires `${CLAUDE_PROJECT_DIR}/agentTooling/session-start.sh` as a
+  SessionStart hook with no matcher, which runs the repo's `plans/cloud-setup.sh` in the
+  cloud; agentTooling's own `--self` entry has run in a real cloud session (a resume
+  printed the orientation), but no consuming repo has yet run its `cloud-setup.sh` this way
+  in a container. Assertion, by hand at the first consuming repo's cloud setup feature: a
+  new session's context shows the orientation and the script's output line, a resumed
+  session runs it again harmlessly, and its gate is green with no `--no-gate`. Raised by
   `execution-profiles` (design §7).
 
 - **`AGENTTOOLING_SCRATCH` approves unread code for headless executors.** The hook
@@ -263,3 +265,50 @@ agentTooling's own, for the harness rather than for a product.
   run twice under `GATE_RESUME=1` on the same tree with its ignored input broken between
   the runs, fails the second run and writes no `plans/gate-state/` record. Raised by
   `session-start-precision`.
+
+- **A squash-merged cloud branch can't start its next feature.** After a PR is
+  squash-merged, the session's assigned `claude/…` branch still carries commits that are
+  not on `origin/main`, though its tree is identical. So `feature-start.sh` refuses a next
+  feature there ("somebody's work"), and no agent can reset the branch: the hook denies
+  `reset --hard`, `checkout -B` and a force-push (`LIFECYCLE.md` rule 2). Possible fix: the
+  start recognises a branch whose tree equals `origin/<base>` (or whose own commits are all
+  patch-equivalent, `git cherry`) and resets it itself, since the start is the one place
+  allowed to move refs; the close then pushes with `--force-with-lease`. Assertion: a cloud
+  start on a branch whose commits a squash merge already carried to `origin/main` starts
+  the next feature on that branch, and one with a genuinely unmerged commit is still
+  refused. Raised by the session that merged ssdesai/agentTooling#85 (recorded by
+  `review-base-and-cloud-hook`).
+
+- **Running several features at once from one cloud orchestrator is undocumented.**
+  Agent-tool subagents share the orchestrator's container and branch, so they can't hold a
+  second feature; child cloud sessions (`create_session`) each get their own container and
+  `claude/…` branch, so each can run `feature-start.sh` and coordinate one feature.
+  `ORCHESTRATION.md` covers routers, coordinators and in-session delegates, but not this.
+  It should say: how the orchestrator spawns and briefs children; how it monitors them —
+  `get_session` and `list_events`, steering with `send_message` — and that a cloud child
+  can't message its parent back, the parent being notified only when a child's turn fails;
+  that permission prompts must be answered in each child's session; that overlapping
+  features merge in PR order, the later one resolving conflicts; and where the
+  orchestrator's own cost goes — it never runs a start, so no routing record is written
+  and its spend is attributed to no feature (decide whether that is acceptable or needs a
+  record of its own). Until then `create_session` has only been used to acceptance-test
+  `self-cloud-bootstrap`. Assertion: `ORCHESTRATION.md` has a section on cloud fan-out
+  naming each point above. Raised by the same session (recorded by
+  `review-base-and-cloud-hook`).
+
+- **A recapture re-prices a record from the table instead of from the rates it already
+  recorded.** `planning.json` stores `rates_applied` (five rates, `from`, `source`) for
+  every model of every session it prices, but `capture_planning.py --recapture` ignores
+  them and prices again from `analysis/rates_history.json` (or the `litellm-live`
+  fallback). So a frozen record's figure is reproducible only while the table and LiteLLM
+  stay as they were: a refresh that appends a new entry, or a manual correction, can move
+  the cost of a feature that already merged when somebody repairs it. Proposed: the
+  record's own `rates_applied` win for a session it has already priced, and the table
+  (then the live lookup) prices only sessions the record has not seen; re-pricing a record
+  on purpose — to carry a correction — is an explicit flag. Keep the table: it still prices
+  each session at its own date across a price change mid-feature, keeps the two halves of a
+  session shared between features summing to the session, carries `manual` corrections to
+  every record in one place, and prices with no network. Assertion: a captured feature,
+  then a new dated entry for its model appended to the history, then `--recapture` — the
+  figure is unchanged; the same with the explicit re-price flag moves it. Raised by the
+  human during `review-base-and-cloud-hook` (round 5 recorded it).

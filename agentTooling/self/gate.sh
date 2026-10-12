@@ -253,6 +253,7 @@ shell_scripts=(
   feature-close.sh
   forge.sh
   env-profile.sh
+  session-start.sh
   check-plans.sh
   update.sh
   self/gate.sh
@@ -295,6 +296,7 @@ shell_scripts=(
   self/tests/allow-repo-commands.sh
   self/tests/hook-quote-oracle.sh
   self/tests/hook-escalation.sh
+  self/tests/hook-cloud-profile.sh
   self/tests/hook-wiring.sh
   self/tests/self-settings.sh
   self/tests/policy-table.sh
@@ -303,7 +305,9 @@ shell_scripts=(
   self/tests/rates-history.sh
   self/tests/env-profile.sh
   self/tests/cloud-start.sh
+  self/tests/session-start.sh
   self/tests/gate-resume.sh
+  self/tests/review-base.sh
   run-escalation-plan.sh
   templates/plans/gate.sh
   templates/plans/pr.sh
@@ -389,6 +393,10 @@ record "hook quote oracle self-test" bash self/tests/hook-quote-oracle.sh
 # The other half of the same policy: the per-session escalation counter, the headless
 # fall-through and the scratch entry point, none of which a single decision can show.
 record "hook escalation self-test" bash self/tests/hook-escalation.sh
+# The hook's profile half (self/features/review-base-and-cloud-hook/): the git deny's
+# reason chosen by profile, and the two cloud-only denies — every case with its local and
+# its cloud answer, each run under both profiles, plus the fallbacks to today's answers.
+record "hook cloud profile self-test" bash self/tests/hook-cloud-profile.sh
 record "hook wiring self-test" bash self/tests/hook-wiring.sh
 # This checkout's own policy file is tracked and generated: the check below fails on a
 # missing or drifted copy, its guarded hook command is a no-op where the hook script is
@@ -417,14 +425,23 @@ record "rates history self-test" bash self/tests/rates-history.sh
 # record whose window opens at its own first instant (self/features/execution-profiles/).
 record "env profile self-test" bash self/tests/env-profile.sh
 record "cloud start self-test" bash self/tests/cloud-start.sh
+# The SessionStart hook every repo runs: the orientation names the start to run where the
+# session stands — in the cloud, on its assigned branch — or the feature already started
+# there; then the repo's cloud-setup.sh, in the cloud only; and nothing is written.
+record "session start self-test" bash self/tests/session-start.sh
 # A gate killed with its container re-runs only what had not finished on the same tree,
 # and everything on a changed one (design §8) — the template gate and this one, each
 # copied into a sandbox with stub checks, killed mid-run and resumed.
 record "gate resume self-test" bash self/tests/gate-resume.sh
+# The review diffs origin/<base>...HEAD after a best-effort fetch, never a stale local
+# <base> — a feature that merged a newer origin/main mid-way shows only its own commits,
+# under both profiles alike (self/features/review-base-and-cloud-hook/, Part B).
+record "review base self-test" bash self/tests/review-base.sh
 
 echo "=== gate: profile confinement ==="
-# Only env-profile.sh, the adapters and their tests may spell the two profile variables
-# (the script names them); every lifecycle script asks env-profile.sh's functions instead.
+# Only the detector (hooks/env_profile.py and env-profile.sh), the adapters and their tests
+# may spell the two profile variables (the script names them); every lifecycle script asks
+# env-profile.sh's functions instead, and the hook imports the module.
 # Blocking: a script that reads the variable itself is the per-environment branch the
 # design exists to keep out of the lifecycle. Prose (*.md) is exempt.
 record "profile variables confined to the detector and its adapters" bash self/profile-confinement.sh
@@ -436,7 +453,7 @@ echo "=== gate: python syntax ==="
 record "py_compile analysis" python3 -m py_compile analysis/*.py
 # The hook keeps a .sh name so its settings.json entry reads as a hook script; it is
 # Python, and this is the one place its syntax is checked without running it.
-record "py_compile hooks" python3 -m py_compile hooks/policy.py hooks/wire-settings.py hooks/allow-repo-commands.sh
+record "py_compile hooks" python3 -m py_compile hooks/policy.py hooks/env_profile.py hooks/wire-settings.py hooks/allow-repo-commands.sh
 
 echo "=== gate: permission policy ==="
 # This checkout's .claude/settings.json is tracked but not hand-authored:

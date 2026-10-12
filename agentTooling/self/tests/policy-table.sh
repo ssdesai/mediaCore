@@ -25,7 +25,15 @@ set -uo pipefail
 #   4. and it does NOT deny the table's read-only spellings (`git worktree list`,
 #      `git branch --list <pattern>`, a plain `git push`, `git reset <file>`);
 #   5. neither script carries its own copy of the table any more: `wire-settings.py`
-#      calls the renderer and `allow-repo-commands.sh` imports the constants.
+#      calls the renderer and `allow-repo-commands.sh` imports the constants;
+#   6. the cloud-only entries (switching away from the current branch, pushing anything
+#      but it) are in the table and render NO prefix rule — they are hook-only, since no
+#      prefix can say "a branch other than the current one";
+#   7. the push-to-`main` entry (both profiles, round 2 of review-base-and-cloud-hook) is
+#      in the table with its one protected name, `main`, and renders NO prefix rule either
+#      — a prefix cannot tell `main` from `main-x` — so the rendering in 1a is unchanged.
+#      (`git_mutates`, which 3 and 4 judge, is the prefix rules' twin; the push to `main`
+#      is a separate, hook-only deny, which is why 4 still lists `git push origin main`.)
 #
 # No model, no network, no filesystem of its own — it reads the checked-in tree, like
 # self/tests/template-versions.sh.
@@ -162,7 +170,7 @@ READ_ONLY_COMMANDS = (
 )
 for command in READ_ONLY_COMMANDS:
     args = hook.git_subcommand_args(command.split())
-    check("4. the hook does not deny %r" % command,
+    check("4. the hook's git_mutates (the prefix rules' twin) does not deny %r" % command,
           args is not None and not hook.git_mutates(args))
 
 # ── 5: neither script keeps its own copy ─────────────────────────────────────
@@ -182,6 +190,55 @@ check("5d. allow-repo-commands.sh spells no git constant of its own",
 check("5e. the hook's constants are the table's",
       hook.GIT_ALWAYS_MUTATING is policy.GIT_ALWAYS_MUTATING
       and hook.GIT_BRANCH_MUTATING_FLAGS is policy.GIT_BRANCH_MUTATING_FLAGS)
+
+# ── 6: the cloud-only entries are hook-only ──────────────────────────────────
+# "A branch other than the current one" is a relation no command prefix can express, so
+# the cloud-only denies are entries of the table that render NO rule: everything above
+# is unchanged by them, and none of their flags or verbs reaches permissions.deny.
+CLOUD_ONLY = getattr(policy, "GIT_CLOUD_ONLY", None)
+check("6a. the table carries the cloud-only entries: switch and checkout switch away, "
+      "push pushes elsewhere",
+      isinstance(CLOUD_ONLY, dict)
+      and CLOUD_ONLY.get(policy.GIT_SWITCH) == getattr(policy, "CLOUD_SWITCH_AWAY", object())
+      and CLOUD_ONLY.get(policy.GIT_CHECKOUT) == getattr(policy, "CLOUD_SWITCH_AWAY", object())
+      and CLOUD_ONLY.get(policy.GIT_PUSH) == getattr(policy, "CLOUD_PUSH_ELSEWHERE", object()),
+      CLOUD_ONLY)
+ORPHAN = getattr(policy, "GIT_ORPHAN_FLAG", "--orphan")
+CLOUD_SPELLINGS = (
+    ["git push %s" % f for f in getattr(policy, "GIT_PUSH_EVERY_REF_FLAGS", ())
+     + getattr(policy, "GIT_PUSH_DELETE_FLAGS", ())]
+    + ["git switch %s" % f for f in getattr(policy, "GIT_SWITCH_DETACH_FLAGS", ()) + (ORPHAN,)]
+    + ["git checkout %s" % f
+       for f in getattr(policy, "GIT_CHECKOUT_DETACH_FLAGS", ()) + (ORPHAN,)])
+check("6b. no rendered rule matches a cloud-only spelling (%d)" % len(CLOUD_SPELLINGS),
+      len(CLOUD_SPELLINGS) > 2
+      and not any(rule_matches(r, c) for r in RULES for c in CLOUD_SPELLINGS),
+      [(r, c) for r in RULES for c in CLOUD_SPELLINGS if rule_matches(r, c)])
+check("6c. ... and none denies a plain `git push origin main`, `git switch main` or "
+      "`git checkout main` — those are the hook's alone",
+      not any(rule_matches(r, c) for r in RULES
+              for c in ("git push origin main", "git switch main", "git checkout main")))
+
+# ── 7: the push-to-main entry is hook-only too ───────────────────────────────
+HOOK_ONLY = getattr(policy, "GIT_HOOK_ONLY", None)
+PROTECTED = getattr(policy, "GIT_PROTECTED_BRANCH", None)
+check("7a. the table carries the push-to-main entry, in both profiles, naming `main` only",
+      isinstance(HOOK_ONLY, dict)
+      and HOOK_ONLY.get(policy.GIT_PUSH) == getattr(policy, "PUSH_TO_PROTECTED", object())
+      and getattr(policy, "hook_only_rule", lambda s: None)(policy.GIT_PUSH)
+      == getattr(policy, "PUSH_TO_PROTECTED", object())
+      and PROTECTED == "main",
+      (HOOK_ONLY, PROTECTED))
+PROTECTED_SPELLINGS = ["git push origin %s" % s
+                       for s in ("main", "HEAD:main", "+main", ":main", "refs/heads/main")]
+PROTECTED_SPELLINGS += ["git push -u origin main", "git push --repo origin main",
+                        "git push --delete origin main"]
+check("7b. no rendered rule matches a push to `main` (%d spellings)"
+      % len(PROTECTED_SPELLINGS),
+      not any(rule_matches(r, c) for r in RULES for c in PROTECTED_SPELLINGS),
+      [(r, c) for r in RULES for c in PROTECTED_SPELLINGS if rule_matches(r, c)])
+check("7c. ... and nothing in the rendering names the protected branch as a push target",
+      not any(r.startswith("Bash(git push") and "main" in r for r in RULES), list(RULES))
 
 sys.exit(1 if fails else 0)
 PY
