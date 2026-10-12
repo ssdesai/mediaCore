@@ -2,3 +2,4 @@
 {"at":"2026-10-12T19:00:04Z","event":"plan_start","plan":"01-review-opus","queue":"review","round":"1"}
 {"at":"2026-10-12T19:01:03Z","event":"plan_end","plan":"01-review-opus","queue":"review","rc":"0","verdict":"clean","head":"ea40a1ead215c819e623ebe0dd185ae5f379a211","round":"1"}
 {"at":"2026-10-12T19:01:03Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"1"}
+{"at":"2026-10-12T19:01:18Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/mediaCore/pull/30","round":"1"}

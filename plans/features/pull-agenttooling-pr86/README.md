@@ -44,7 +44,7 @@ is in sync with its template, so nothing was hand-merged. `sync-plans.sh --check
   "base": "main",
   "profile": "cloud",
   "gate": "green",
-  "session_window": {"from": "2026-10-12T18:57:25Z", "to": null},
+  "session_window": {"from": "2026-10-12T18:57:25Z", "to": "2026-10-12T19:01:00Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],
