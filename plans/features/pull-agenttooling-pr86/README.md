@@ -1,39 +1,37 @@
-# <Feature title>
+# Pull agentTooling PR 86
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+Propagate agentTooling PR 86 ("review-base-and-cloud-hook") into this repo. The pull also
+carries PR 85 ("Cloud start fixes: current local main, local/cloud docs,
+agentTooling-owned SessionStart hook"): `git subtree pull --squash` of agentTooling
+`50f454e..b88137c`, split sha `b88137c0301123fb89757442683e5204bac5a572`. PR 85 makes the
+cloud start use the current local main, adds local/cloud docs, and moves the
+`SessionStart` hook into agentTooling (`agentTooling/session-start.sh`, which prints the
+session's orientation and then runs the repo's `plans/cloud-setup.sh`). PR 86 makes
+`run-review.sh` fetch `origin/<base>` and review `origin/<base>...HEAD` (falling back to
+`<base>` with no remote), moves the profile rule into `hooks/env_profile.py`, and makes
+the hook's git deny profile-aware, refusing in the cloud a branch switch and a push to
+anything but the current branch, and a push to `main` in both profiles.
+
+Run in a Claude Code cloud container on the session's assigned branch,
+`pull-agenttooling-pr86`, started by `feature-start.sh` (method `hand`).
+
+The sync wrote two files: `.claude/settings.json` (the `SessionStart` hook now points at
+`agentTooling/session-start.sh`, replacing the retired direct `plans/cloud-setup.sh`
+command) and `plans/README.md` (the `cloud-setup.sh` entry describes the new hook).
+`sync-plans.sh` reported no `DRIFT`: every repo-owned script (`gate.sh` v3, `pr.sh` v6,
+`worktree-setup.sh` v2, `open-session.sh` v4, `environment.sh` v1, `cloud-setup.sh` v1)
+is in sync with its template, so nothing was hand-merged. `sync-plans.sh --check` is clean.
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Reviews the agentTooling prefix diff, the sync's two written files and the clean `--check`. |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- `plans/environment.sh` and `plans/cloud-setup.sh` are left as they are; filling in
+  repo-specific cloud setup is a feature of its own.
 
 ## Machine-readable
 
