@@ -34,7 +34,8 @@ set -uo pipefail
 # standalone `cd` and the command; that every ref-moving git shape is denied wherever it
 # appears — after a separator, inside a `$(…)` substitution, behind `-C`, `--git-dir=` or
 # `-c k=v`, `git worktree move|lock|unlock|repair`, `git branch --delete|--move` and every
-# mutating `git stash` form included — while the read-only forms (`git branch --list
+# mutating `git stash` form included — and a push whose destination is `main`, in both
+# profiles (review-base-and-cloud-hook round 2) — while the read-only forms (`git branch --list
 # <pattern>`, `git stash list`/`show` among them) and the
 # heredoc/`#`/quoted guards are
 # not; that each REWRITABLE shape is denied with a reason naming the member and the
@@ -68,18 +69,43 @@ set -uo pipefail
 # outside the root, for another tool, or without CLAUDE_PROJECT_DIR approves nothing
 # while a deny still fires. The home directory and /etc/hosts appear only as symlink
 # targets and in command text — nothing is read from either. No model, no network.
+#
+# All of it runs twice, once per profile (AGENTTOOLING_PROFILE=local, then cloud, with
+# CLAUDE_CODE_REMOTE cleared), expecting identical answers: the hook's profile-dependent
+# half changes nothing these cases can see. The cases that DO differ by profile, and the
+# reasons that differ, are self/tests/hook-cloud-profile.sh's.
 
 AT="$(cd "$(dirname "$0")/../.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 TMP="$(cd "$TMP" && pwd -P)"
 
+# Every case runs under BOTH profiles, expecting the same answer
+# (self/features/review-base-and-cloud-hook/): the profile is pinned for each pass —
+# AGENTTOOLING_PROFILE set, CLAUDE_CODE_REMOTE cleared — and every hook call below copies
+# that environment, so nothing is inherited from the machine. A Claude Code cloud
+# container sets CLAUDE_CODE_REMOTE=true; unpinned, this file would test only the cloud.
+# The fixture root is no git repo, so the cloud pass cannot read a current branch and
+# the cloud-only denies stay silent here, as designed — self/tests/hook-cloud-profile.sh
+# owns those, and the reasons that differ by profile.
+PROFILES=(local cloud)
+
 echo "allow-repo-commands"
-python3 - "$AT/hooks/allow-repo-commands.sh" "$TMP" \
+rc=0
+for profile in "${PROFILES[@]}"; do
+echo "  -- profile: $profile"
+env -u CLAUDE_CODE_REMOTE AGENTTOOLING_PROFILE="$profile" \
+python3 - "$AT/hooks/allow-repo-commands.sh" "$TMP/$profile" \
   "$AT/self/tests/fixtures/hook-replay-2026-09-18.json" <<'PY'
 import json, os, subprocess, sys
 
 HOOK, TMP, REPLAY_FIXTURE = sys.argv[1], sys.argv[2], sys.argv[3]
+os.makedirs(TMP)
+# The pass's pinned profile (the loop above). Every hook call below copies os.environ, so
+# this is what pins each one; a pass started without it would test the machine instead.
+if not os.environ.get("AGENTTOOLING_PROFILE") or "CLAUDE_CODE_REMOTE" in os.environ:
+    print("  FAIL  the profile is not pinned for this pass")
+    sys.exit(1)
 ROOT = os.path.join(TMP, "repo")
 WT = os.path.join(ROOT, ".worktrees", "wt")
 HOME = os.path.expanduser("~")
@@ -564,6 +590,20 @@ GIT_DENY = [
     f"git --git-dir={ROOT}/.git stash", f"git --git-dir {ROOT}/.git rebase main",
     "git -c user.name=x rebase main", "git -c core.pager=less -C /tmp worktree add x",
 ]
+# A push whose destination is `main` — denied in BOTH profiles, read from the words alone
+# (self/features/review-base-and-cloud-hook/SPEC.md → "Round 2"). `git push origin main`
+# was a prompt here until round 2; the fixture root is no repo, so the cloud pass cannot
+# read a branch, and these still deny there.
+GIT_PUSH_MAIN_DENY = [
+    "git push origin main", "git push -u origin main", "git push origin HEAD:main",
+    "git push origin +main", "git push origin refs/heads/main", "git push origin :main",
+    "git push --delete origin main", "git push --repo origin main",
+    "git push --repo=origin main", f"git -C {ROOT} push origin main",
+    "git status && git push origin main",
+]
+# The reason, in either profile: the rule, and the way out. The words that differ by
+# profile are self/tests/hook-cloud-profile.sh's (R5, R6).
+GIT_PUSH_MAIN_REASON_WORDS = ("LIFECYCLE", "rule 2", "feature-close.sh")
 # Read-only git, the shapes that only look like mutations, and the same guards the
 # chained-cd deny keeps: a heredoc, a `#`, quoted text, or a line that will not tokenize
 # is never denied
@@ -584,7 +624,8 @@ GIT_NOT_DENIED = [
     # the same reading (self/BACKLOG.md, raised by the permissions-policy-inherit review).
     ("git branch --list 'feat*'", "prompt"), ("git branch -l 'feat*'", "prompt"),
     ("git branch --list --all 'feat*'", "prompt"),
-    ("git push", "prompt"), ("git push origin main", "prompt"),
+    ("git push", "prompt"), ("git push origin main-x", "prompt"),
+    ("git push origin mainline", "prompt"), ("git push origin main:x", "prompt"),
     ("git checkout -- README.md", "prompt"), ("git reset README.md", "prompt"),
     ("git commit -m 'git push --force'", "prompt"), ("git switch main", "prompt"),
     ("git worktree", "prompt"), ("git log --oneline -5", "ALLOW"),
@@ -897,6 +938,10 @@ group("approves simple brace lists", [(c, "ALLOW") for c in BRACE_ALLOW], run)
 group("refuses brace bypasses", [(c, "prompt") for c in BRACE_PROMPT], run)
 group("denies every ref-moving git shape", [(c, "DENY") for c in GIT_DENY], run)
 group("does not deny read-only git or an unjudgeable line", GIT_NOT_DENIED, run)
+group("denies a push to main", [(c, "DENY") for c in GIT_PUSH_MAIN_DENY], run)
+group("the push-to-main deny names LIFECYCLE rule 2 and feature-close.sh",
+      [(c, "ok") for c in ["git push origin main", "git push --repo origin main"]],
+      lambda c: deny_reason_ok(c, GIT_PUSH_MAIN_REASON_WORDS))
 group("judges git by its subcommand behind the global location options",
       GIT_GLOBAL_OPTION_CASES, run)
 group("denies an assignment whose own $NAME is used later on the line",
@@ -1045,6 +1090,8 @@ group("both denies fire without a root or a cwd",
       lambda p: decide(p, env_root=False))
 sys.exit(1 if fails else 0)
 PY
-rc=$?
+pass_rc=$?
+if (( pass_rc != 0 )); then rc=1; fi
+done
 if (( rc == 0 )); then echo "allow-repo-commands: all checks passed"; else echo "allow-repo-commands: FAILED"; fi
 exit "$rc"

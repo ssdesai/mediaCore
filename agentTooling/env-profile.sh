@@ -5,14 +5,21 @@
 #
 # **The lifecycle never asks where it is running.** Every difference between a laptop and
 # a Claude Code cloud container lives here and in a few adapters with fixed interfaces
-# (forge.sh, the repo's open-session.sh). This file is the ONLY place that decides the
-# profile, and self/profile-confinement.sh — a blocking self/gate.sh check — fails when
-# either variable below is spelled in any tracked file other than this detector, the
-# adapters and their tests. A lifecycle script calls the functions here instead.
+# (forge.sh, the repo's open-session.sh). The RULE lives in one Python module,
+# hooks/env_profile.py, which the PreToolUse hook imports in-process and this file runs
+# once when sourced (self/features/review-base-and-cloud-hook/); this file is the shell's
+# one way in to it. self/profile-confinement.sh — a blocking self/gate.sh check — fails
+# when either variable is spelled in any tracked file other than that module, this file,
+# the adapters and their tests. This file stays on that list because it EXPORTS the
+# decided value under AGENTTOOLING_PROFILE and its functions read it back; it no longer
+# spells CLAUDE_CODE_REMOTE as anything but the text profile_describe prints. A lifecycle
+# script calls the functions here instead.
 #
 # ── The detector ──────────────────────────────────────────────────────────────
-# Run when this file is sourced. AGENTTOOLING_PROFILE ends up `local` or `cloud`, and is
-# EXPORTED, so an adapter the caller runs (open-session.sh) reads the decided value:
+# Run when this file is sourced: ONE `python3 -B <this dir>/hooks/env_profile.py`, whose
+# two output lines are the profile and what decided it. AGENTTOOLING_PROFILE ends up
+# `local` or `cloud`, and is EXPORTED, so an adapter the caller runs (open-session.sh)
+# reads the decided value. The module's rule:
 #
 #   1. an explicit AGENTTOOLING_PROFILE already in the environment wins — tests, forcing;
 #      a value that is neither `local` nor `cloud` is an error (profile_check), never a
@@ -21,6 +28,11 @@
 #   3. otherwise `local`.
 #
 # PROFILE_DECIDED_BY names which: `AGENTTOOLING_PROFILE`, `CLAUDE_CODE_REMOTE` or `default`.
+# An invalid override comes back as itself, decided by AGENTTOOLING_PROFILE, so
+# profile_check refuses it by name. When the module cannot be asked at all (python3 or
+# hooks/env_profile.py missing — a broken install, never a real profile), the profile is
+# EMPTY, a warning naming the module goes to stderr, and profile_check refuses: nothing
+# here may quietly decide `local`.
 #
 #   profile_name        the profile, on stdout
 #   profile_describe    one line: the profile and the variable that decided it — what
@@ -59,19 +71,27 @@ PROFILE_CLOUD="cloud"
 PROFILE_REMOTE_ON="true"
 # What PROFILE_DECIDED_BY holds when neither variable decided the profile.
 PROFILE_DEFAULT_DECIDER="default"
+# The detector module, beside this file in agentTooling's own hooks/ — vendored with it,
+# so a consuming repo's agentTooling/env-profile.sh finds agentTooling/hooks/env_profile.py.
+PROFILE_DETECTOR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hooks/env_profile.py"
+# What PROFILE_DECIDED_BY holds when the module could not be asked
+PROFILE_UNDETECTED_DECIDER="undetected"
 
-# detect_profile — the rule above, into AGENTTOOLING_PROFILE (exported) and
-# PROFILE_DECIDED_BY. Run once below, when this file is sourced.
+# detect_profile — the module's answer into AGENTTOOLING_PROFILE (exported) and
+# PROFILE_DECIDED_BY. Run once below, when this file is sourced: one python3 call, its
+# two lines read through a process substitution so this shell keeps what it reads.
 detect_profile() {
-  if [[ -n "${AGENTTOOLING_PROFILE:-}" ]]; then
-    PROFILE_DECIDED_BY="AGENTTOOLING_PROFILE"
-  elif [[ "${CLAUDE_CODE_REMOTE:-}" == "$PROFILE_REMOTE_ON" ]]; then
-    AGENTTOOLING_PROFILE="$PROFILE_CLOUD"
-    PROFILE_DECIDED_BY="CLAUDE_CODE_REMOTE"
-  else
-    AGENTTOOLING_PROFILE="$PROFILE_LOCAL"
-    PROFILE_DECIDED_BY="$PROFILE_DEFAULT_DECIDER"
+  local decided="" decider=""
+  {
+    IFS= read -r decided
+    IFS= read -r decider
+  } < <(python3 -B "$PROFILE_DETECTOR" 2>/dev/null)
+  if [[ -z "$decided" ]]; then
+    echo "env-profile.sh: the profile detector $PROFILE_DETECTOR did not answer (is python3 installed, and is hooks/env_profile.py beside this file?) — no profile is decided" >&2
+    decider="$PROFILE_UNDETECTED_DECIDER"
   fi
+  AGENTTOOLING_PROFILE="$decided"
+  PROFILE_DECIDED_BY="$decider"
   export AGENTTOOLING_PROFILE
 }
 
@@ -83,6 +103,10 @@ profile_check() {
   case "$AGENTTOOLING_PROFILE" in
     "$PROFILE_LOCAL"|"$PROFILE_CLOUD") return 0 ;;
   esac
+  if [[ "$PROFILE_DECIDED_BY" == "$PROFILE_UNDETECTED_DECIDER" ]]; then
+    echo "no profile was decided: the detector $PROFILE_DETECTOR did not answer (is python3 installed, and is hooks/env_profile.py beside env-profile.sh?)"
+    return 1
+  fi
   echo "AGENTTOOLING_PROFILE='$AGENTTOOLING_PROFILE' is neither $PROFILE_LOCAL nor $PROFILE_CLOUD — unset it to detect the profile, or set one of the two"
   return 1
 }
@@ -91,7 +115,8 @@ profile_describe() {
   case "$PROFILE_DECIDED_BY" in
     AGENTTOOLING_PROFILE) echo "$AGENTTOOLING_PROFILE (AGENTTOOLING_PROFILE=$AGENTTOOLING_PROFILE)" ;;
     CLAUDE_CODE_REMOTE)   echo "$AGENTTOOLING_PROFILE (CLAUDE_CODE_REMOTE=$PROFILE_REMOTE_ON)" ;;
-    *)                    echo "$AGENTTOOLING_PROFILE (default: no AGENTTOOLING_PROFILE, and CLAUDE_CODE_REMOTE is not $PROFILE_REMOTE_ON)" ;;
+    "$PROFILE_UNDETECTED_DECIDER") echo "(none) ($PROFILE_UNDETECTED_DECIDER: $PROFILE_DETECTOR did not answer)" ;;
+    *)                   echo "$AGENTTOOLING_PROFILE (default: no AGENTTOOLING_PROFILE, and CLAUDE_CODE_REMOTE is not $PROFILE_REMOTE_ON)" ;;
   esac
 }
 

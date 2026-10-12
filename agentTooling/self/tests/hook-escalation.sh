@@ -63,6 +63,10 @@ trap 'rm -rf "$TMP"' EXIT
 TMP="$(cd "$TMP" && pwd -P)"
 
 echo "hook-escalation"
+# The profile is pinned, never inherited (every hook call copies this environment): a
+# Claude Code cloud container sets CLAUDE_CODE_REMOTE=true, and nothing here is about the
+# cloud — self/tests/hook-cloud-profile.sh is.
+env -u CLAUDE_CODE_REMOTE AGENTTOOLING_PROFILE=local \
 python3 - "$AT/hooks/allow-repo-commands.sh" "$TMP" <<'PY'
 import importlib.machinery, importlib.util
 import json, os, subprocess, sys

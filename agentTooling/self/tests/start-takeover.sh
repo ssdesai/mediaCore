@@ -72,6 +72,9 @@ mkdir -p "$AT/analysis" "$AT/self/features" "$AT/templates/plans/features"
 for f in feature-start.sh plan-runner-roots.sh env-profile.sh; do
   cp "$HERE/$f" "$AT/$f" 2>/dev/null || true
 done
+# The detector env-profile.sh asks, where it looks for it
+mkdir -p "$AT/hooks"
+cp "$HERE/hooks/env_profile.py" "$AT/hooks/env_profile.py" 2>/dev/null || true
 # The takeover is the LOCAL layout's: forced, so a container's CLAUDE_CODE_REMOTE=true
 # cannot send these starts down the cloud path (self/tests/cloud-start.sh owns that).
 export AGENTTOOLING_PROFILE=local

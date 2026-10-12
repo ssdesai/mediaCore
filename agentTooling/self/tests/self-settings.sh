@@ -12,8 +12,9 @@ set -uo pipefail
 # Stages the real hooks/, self/worktree-setup.sh, self/gate.sh, .gitignore and the tracked
 # file into throwaway git repos under mktemp -d and asserts, in order:
 #   0. the generator writes exactly one file into an empty directory, .claude/settings.json,
-#      carrying no permissions.allow and no SessionStart entry, its one PreToolUse command
-#      the guarded one;
+#      carrying no permissions.allow, its one PreToolUse command the guarded one, and one
+#      SessionStart entry — the guarded `session-start.sh --self`, which only reads and
+#      prints (hook-wiring.sh pins its command);
 #   A. in a fresh standalone worktree the tracked file is byte for byte what the generator
 #      writes, `--self --check` says in-sync, and the setup hook — run the way
 #      feature-start.sh runs it — exits 0 and writes nothing at all;
@@ -69,7 +70,7 @@ SETTINGS_REL=".claude/settings.json"
 LOCAL_REL=".claude/settings.local.json"
 SETTINGS_DIR_REL=".claude"
 SETTINGS_NAME="settings.json"
-HOOK_FILES=(policy.py wire-settings.py allow-repo-commands.sh)
+HOOK_FILES=(policy.py env_profile.py wire-settings.py allow-repo-commands.sh)
 SELF_SCRIPTS=(worktree-setup.sh gate.sh)
 # The tracked hook command, as the brief fixed it: a no-op where the script is absent, the
 # script itself otherwise (it reads the payload on stdin, which `test` leaves alone).
@@ -182,8 +183,8 @@ EXPECTED="$EXPECTED_DIR/$SETTINGS_REL"
 check "0a. the generator writes the whole policy into $SETTINGS_REL" '[[ -s "$EXPECTED" ]]'
 check "0b. ... and nothing else: $SETTINGS_DIR_REL/ holds that one file (got '$(ls -A "$EXPECTED_DIR/$SETTINGS_DIR_REL" 2>/dev/null | tr '\n' ' ')')" \
   '[[ "$(ls -A "$EXPECTED_DIR/$SETTINGS_DIR_REL" 2>/dev/null)" == "$SETTINGS_NAME" ]]'
-check "0c. it carries no permissions.allow and no SessionStart entry, only PreToolUse (got '$(settings_field "$EXPECTED" shape)')" \
-  '[[ "$(settings_field "$EXPECTED" shape)" == "allow=False sessionstart=False events=PreToolUse" ]]'
+check "0c. it carries no permissions.allow, and the PreToolUse hook and the session-start.sh SessionStart entry (got '$(settings_field "$EXPECTED" shape)')" \
+  '[[ "$(settings_field "$EXPECTED" shape)" == "allow=False sessionstart=True events=PreToolUse,SessionStart" ]]'
 HOOK_CMD="$(settings_field "$EXPECTED" hook-command)"
 check "0d. its one PreToolUse command is the guarded one (got '$HOOK_CMD')" \
   '[[ "$HOOK_CMD" == "$HOOK_GUARDED_COMMAND" ]]'
@@ -351,7 +352,8 @@ mkdir -p "$HOOK_TMP"
 run_hook() {
   printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"}' \
     "$UNREADABLE_COMMAND" "$1" >"$TMP/hook.in"
-  ( cd "$1" && CLAUDE_PROJECT_DIR="$1" TMPDIR="$HOOK_TMP" sh -c "$HOOK_CMD" ) \
+  ( cd "$1" && env -u CLAUDE_CODE_REMOTE AGENTTOOLING_PROFILE=local \
+      CLAUDE_PROJECT_DIR="$1" TMPDIR="$HOOK_TMP" sh -c "$HOOK_CMD" ) \
     <"$TMP/hook.in" >"$TMP/hook.out" 2>"$TMP/hook.err"
 }
 # (a) the consuming repo's root: no hooks/allow-repo-commands.sh there

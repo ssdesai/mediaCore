@@ -31,7 +31,12 @@ set -uo pipefail
 #     not on origin/<base> (somebody's work), and a dirty tree; then "the checkout
 #     contains origin/<base>" replaces "the primary is on main": a checkout strictly
 #     behind with no commits of its own is fast-forwarded and the run exits 3 with the
-#     command to run again, exactly as a stale primary does locally;
+#     command to run again, exactly as a stale primary does locally. Then the local
+#     <base> branch, which nothing checks out here and the clone left wherever it was,
+#     is fast-forwarded to origin/<base> (`git fetch origin <base>:<base>`; a warning,
+#     never a refusal, when it cannot be) — anything that diffs `<base>...HEAD` against
+#     a stale <base> sees already-merged commits (the review itself diffs a freshly
+#     fetched `origin/<base>` now, run-review.sh, so this is the belt to that brace);
 #   - the start lock is R's own .git/feature-start.lock, carrying the slug, the branch and
 #     the branch the start was LAUNCHED ON as well as the pid. A refused start leaves it;
 #     a re-run of the same slug on that branch whose pid is gone RESUMES at the setup hook:
@@ -547,6 +552,23 @@ if profile_is_cloud; then
     echo "              $RERUN_CMD"
     exit "$UPDATED_RC"
   fi
+  # The local base branch: the checkout is on the assigned branch, so nothing above moves
+  # local <base>, and it stays wherever the container's clone left it. The manifest records
+  # `base`, and a `<base>...HEAD` diff against a stale <base> carries every commit merged
+  # since the clone (the review diffs a freshly fetched `origin/<base>` instead —
+  # run-review.sh — and this keeps the local name honest for everything else). A refspec without `+`
+  # only fast-forwards, and git refuses it for a branch checked out anywhere, so a local
+  # <base> with commits of its own, or one in use, is left alone with a warning.
+  if (( FETCHED )) && [[ "$CLOUD_UPSTREAM" == "origin/$BASE" && "$LAUNCH_BRANCH" != "$BASE" ]]; then
+    base_before="$(git -C "$PRIMARY" rev-parse -q --verify "refs/heads/$BASE" 2>/dev/null)"
+    if [[ "$base_before" != "$upstream_sha" ]]; then
+      if git -C "$PRIMARY" fetch -q origin "refs/heads/$BASE:refs/heads/$BASE" 2>/dev/null; then
+        echo "  updated   local $BASE ${base_before:0:8}..$(git -C "$PRIMARY" rev-parse --short=8 "refs/heads/$BASE") — it was behind $CLOUD_UPSTREAM"
+      else
+        echo "  warn  could not fast-forward local $BASE to $CLOUD_UPSTREAM; a $BASE...HEAD diff will show commits that are not this feature's (the review diffs origin/$BASE)"
+      fi
+    fi
+  fi
 fi
 
 # ── A stale primary ───────────────────────────────────────────────────────────
@@ -823,7 +845,10 @@ run-review.sh refuses to run a brief that still contains the marker above.
 
 ## The diff
 
-Base is \`$BASE\`. \`git diff $BASE...HEAD --stat\`, then the full diff.
+Base is \`$BASE\`. Fetch it first (\`git fetch origin $BASE\`), then
+\`git diff origin/$BASE...HEAD --stat\`, then the full diff — the local \`$BASE\` only when
+there is no \`origin\`: one older than this feature's branch point puts already-merged
+commits in the diff.
 
 ## Contracts to hold it to
 

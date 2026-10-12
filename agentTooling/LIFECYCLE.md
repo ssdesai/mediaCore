@@ -12,6 +12,23 @@ checkout is `R`:
     branch    S
     worktree  R/.worktrees/S               inside the primary checkout, kept out of git
 
+That is the **local** layout. **Which one applies is decided for you, never chosen**: the
+same command, `./agentTooling/feature-start.sh <slug>`, asks `env-profile.sh` (which asks
+the one detector, `hooks/env_profile.py`, the hook's too) and prints a
+`profile` line saying which it took. There are no separate cloud commands.
+
+| | local | Claude Code cloud container (`CLAUDE_CODE_REMOTE=true`) |
+|---|---|---|
+| start from | the primary checkout, on `main` | the container's checkout, on the session's assigned `claude/…` branch |
+| the feature's branch | `S`, created by the start | the assigned branch — no other branch is created or pushed |
+| the feature's checkout | `R/.worktrees/S` | the container itself; no worktree |
+| features per checkout | any number, one worktree each | one; a second feature is a second session |
+| the PR | from `S` | from the assigned branch |
+
+So a cloud session told to develop only on its assigned branch and push no other is
+**already** running the standard flow: it runs the start where it stands, and the start
+refuses rather than make a second branch. It does not check out `main` or make `S`.
+
 The branch is written once, by `feature-start.sh`, into the manifest's `branches` — and
 every later script reads it from there (`branches[0]`, `manifest_branch` in
 `plan-runner-roots.sh`), never from the slug. Locally the two are the same, `S`; in a
@@ -19,7 +36,7 @@ Claude Code cloud container the feature runs on the session's assigned `claude/�
 the only one it may push (`self/DESIGN-2026-10-05-cloud-execution.md` §2). Where the steps
 below say "the branch", that is `branches[0]`, which is `S` for a local feature.
 
-The primary checkout stays on `main`, and nothing is built in it: features are started
+Locally, the primary checkout stays on `main`, and nothing is built in it: features are started
 there, and a coordinator launched there may reach the worktree (rule 1 says how such a
 session is claimed). The worktree sits inside `R` precisely so that a session launched in
 `R` reaches it with no access outside its own folder. `feature-start.sh` keeps
@@ -276,9 +293,14 @@ feature's `branches` and `session_window` select and of their subagents
 (`capture_planning.py --last-branch-instant <slug>`, which consults no pin); with no such
 session it falls back to the capture's own clock and says so in one line. Before the
 merge it moves **either way** (`manifest.py set-window-to --replace`), so a re-run after
-more work moves it later. Before the capture, because the capture splits a session several
-features claim by the windows they hold it with, so a bound written afterwards freezes
-this feature's own record against a window that is still open. A stamp that fails for any
+more work moves it later — which holds because the on-branch run reads its evidence with
+`--ignore-to`: the `to` an earlier capture stamped does not fence the sessions that begin
+after it (a later round's runner, a rework's parent), only `from`, branch, cwd and
+exclusions do, up to the `from` of a later feature sharing the branch name. After the
+merge the evidence reads the window as written and the bound only ever tightens. Before
+the capture, because the capture splits a session several features claim by the windows
+they hold it with, so a bound written afterwards freezes this feature's own record
+against a window that is still open. A stamp that fails for any
 reason — a fence with no `to` key, a bound that will not parse, one that would empty the
 window — refuses the capture, since carrying on would record a feature with an open
 window.
@@ -418,7 +440,21 @@ own capture (step 6) or is a repair somebody reaches for with a reason:
    is wired, those commands are **denied** rather than prompted for — along with
    `push --force`, `reset --hard`, `clean`, `stash`, `rebase`, `switch -c` and the rest
    of the ref-moving set — and the denial's reason is this rule (`hooks/README.md` →
-   "The git shape").
+   "The git shape"). The reason is chosen by profile (`hooks/env_profile.py`, the one
+   module that decides it): locally it names the primary checkout and the worktree; in a
+   cloud container it names the assigned branch, and the started feature and its close.
+   In the cloud two more shapes are denied there that locally only prompt — switching to
+   any branch other than the current one (`git switch main`, `git checkout main`, a
+   commit, `--detach`), and a push whose target is not the current branch
+   (`git push origin x`, `HEAD:x`, `--all`, `--mirror`, `--tags`, any deletion).
+   And in **both** profiles **agents never push `main`**: a push whose destination is
+   `main` — `origin main`, `-u origin main`, `HEAD:main`, `x:main`, `+main`,
+   `refs/heads/main`, `--repo origin main`, a deletion (`:main`, `--delete origin main`) —
+   is denied; locally its reason says work reaches `main` only through the PR
+   `feature-close.sh` opens (step 6) and a human merges (step 7). Locally it is read from
+   the command's words, so a bare `git push` while on `main` still prompts there; in the
+   cloud that is refused too. Plain `git push` and `git push -u origin <branch>` still
+   prompt in both, on any branch but `main`.
 3. **The manifest's fence is written by the scripts, its prose by whoever authors the
    feature.** `feature-start.sh` fills the fence — with `sessions` empty, since it pins
    nothing by default — `feature-capture.sh` stamps `to`, which is provisional until the

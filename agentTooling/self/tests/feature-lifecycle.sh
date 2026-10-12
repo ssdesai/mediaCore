@@ -171,6 +171,12 @@ set -uo pipefail
 #       later, at second resolution, not at its own wall clock;
 #   W7. before the merge that bound is provisional and moves EITHER way: a hand-written
 #       `to` later than the evidence is replaced by the earlier evidence;
+#   W8. ... and LATER: a branch session that BEGINS after the stamped `to` (the next
+#       round's runner, a rework's parent) is evidence again on a re-capture on the
+#       branch, which moves `to` past its last instant — the stamped `to` does not fence
+#       its own evidence (SPEC "Round 4"); that open upper bound stops at the `from` of a
+#       later feature sharing the branch name; and the same late session after the merge,
+#       through --recapture, neither widens the bound nor attempts to;
 #   W2. a feature with no branch session at all — only a pinned session off the branch —
 #       stamps `to` at capture time and says so in one line;
 #   W5. a capture whose stamp fails for any reason but a refused widen refuses, names what
@@ -238,6 +244,7 @@ done
 # CLAUDE_CODE_REMOTE=true, and every start and merge request below pins the LOCAL layout
 # unless a phase says otherwise (P3, CB). self/tests/cloud-start.sh owns the cloud start.
 export AGENTTOOLING_PROFILE=local
+unset CLAUDE_CODE_REMOTE
 export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
 for f in pricing.py litellm_prices.py rates_history.json refresh_rates.py roots.py transcript.py capture_planning.py report.py manifest.py routing.py recover_attempts.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f" 2>/dev/null || true
@@ -247,7 +254,7 @@ cp "$HERE/self/pr.sh" "$AT/self/pr.sh" 2>/dev/null || true
 # The settings generator and the hook beside the tracked policy, as the real checkout has
 # them; the start no longer runs the generator (S1v, S6h).
 mkdir -p "$AT/hooks"
-for f in policy.py wire-settings.py allow-repo-commands.sh; do
+for f in policy.py env_profile.py wire-settings.py allow-repo-commands.sh; do
   cp "$HERE/hooks/$f" "$AT/hooks/$f" 2>/dev/null || true
 done
 # The seeded template, outside the repo: P2 runs it as a consuming repo's plans/pr.sh.
@@ -1817,6 +1824,60 @@ out7="$(capture "$WTW" "$SLUGW")"; rc7=$?
 check "W7a. before the merge a later hand-written to is moved EARLIER onto the evidence (got $rc7)" \
   '[[ $rc7 -eq 0 && "$(fence "$MW_WT" "d[\"session_window\"][\"to\"]")" == "2026-06-01T13:00:01Z" ]] && grep -q "2026-06-02T00:00:00Z -> 2026-06-01T13:00:01Z" <<<"$out7"'
 
+# W8. ... and it moves LATER: more work on the branch after a capture is a session that
+# BEGINS after the `to` that capture stamped — the next round's review runner, a rework
+# implementer's parent, a new coordinator. Read through the window as stamped, it was never
+# admitted, so once a feature had been captured its `to` could never move later (SPEC.md
+# "Round 4"). The late session is planted on its own and excluded again before the
+# merge, so W3's tighten still lands on the W1 evidence.
+SESSION_WIN_LATE="wnwnwnwn-0000-0000-0000-000000000009"
+LATE_SESSION_FILE="$(project_dir "$WTW")/$SESSION_WIN_LATE.jsonl"
+LATE_BOUND_W8="2026-06-01T14:30:01Z"
+{
+  session_line "$SESSION_WIN_LATE" "$WTW" "$SLUGW" "msg-w8" "$MODEL" "2026-06-01T14:00:00.000Z" 100 1000 0 0 0
+  session_line "$SESSION_WIN_LATE" "$WTW" "$SLUGW" "msg-w8b" "$MODEL" "2026-06-01T14:30:00.700Z" 100 1000 0 0 0
+} > "$LATE_SESSION_FILE"
+out8="$(capture "$WTW" "$SLUGW")"; rc8=$?
+to_8="$(fence "$MW_WT" "d[\"session_window\"][\"to\"]")"
+check "W8a. a re-capture on the branch after a session that began past the stamped to moves to LATER, past that session's last instant (got $rc8, $to_8)" \
+  '[[ $rc8 -eq 0 && "$to_8" == "$LATE_BOUND_W8" ]] && grep -q "2026-06-01T13:00:01Z -> $LATE_BOUND_W8" <<<"$out8"'
+check "W8b. ... and the capture under that bound prices the late session beside the first" \
+  '[[ "$(pj "$WTW/self/features/$SLUGW/planning.json" "sorted(s[\"session_id\"] for s in d[\"sessions\"])")" == "['"'"'$SESSION_WIN'"'"', '"'"'$SESSION_WIN_LATE'"'"']" ]]'
+# The open upper bound is not open past a NEXT feature on the same branch name — a cloud
+# container's `claude/…` branch reused after the merge, its next feature chained at a
+# `from` of its own. An untracked successor manifest sharing the branch, from 13:30, puts
+# the late session (14:00) on the successor's side; removed before anything commits.
+NEXT_W_DIR="$WTW/self/features/$SLUGW-next"
+li_ignore_to() { HOME="$FAKE_HOME" python3 -B "$WTW/analysis/capture_planning.py" --self --last-branch-instant "$SLUGW" --ignore-to 2>&1; }
+li_open="$(li_ignore_to)"
+mkdir -p "$NEXT_W_DIR"
+cp "$MW_WT" "$NEXT_W_DIR/README.md"
+set_bound "$NEXT_W_DIR/README.md" from "2026-06-01T13:30:00Z"
+set_bound "$NEXT_W_DIR/README.md" to null
+li_chained="$(li_ignore_to)"
+rm -rf "$NEXT_W_DIR"
+check "W8c. --last-branch-instant --ignore-to is the open evidence ($li_open), stopped at a later feature's from on the same branch ($li_chained)" \
+  '[[ "$li_open" == "$LATE_BOUND_W8" && "$li_chained" == "2026-06-01T13:00:01Z" ]]'
+# Back onto the W1 evidence for the phases after this one: the late session is disowned
+# with `exclude_sessions` (hand-written — that list has no writer), not deleted, because a
+# re-capture refuses a session its record priced whose transcript has gone.
+set_excluded() {
+  python3 - "$1" "$2" <<'PY'
+import json, re, sys
+path, ids = sys.argv[1], json.loads(sys.argv[2])
+text = open(path).read()
+match = list(re.finditer(r"```json\n(.*?)\n```", text, re.S))[-1]
+fence, n = re.subn(r'("exclude_sessions"\s*:\s*)\[[^\]]*\]', lambda m: m.group(1) + json.dumps(ids), match.group(1), count=1)
+assert n == 1, "no exclude_sessions in the fence of %s" % path
+open(path, "w").write(text[: match.start(1)] + fence + text[match.end(1):])
+PY
+}
+set_excluded "$MW_WT" "[\"$SESSION_WIN_LATE\"]"
+git -C "$WTW" commit -q -am "$SLUGW: the late session disowned"
+out8r="$(capture "$WTW" "$SLUGW")"; rc8r=$?
+check "W8d. (fixture) with the late session excluded the branch capture is back on the W1 evidence (got $rc8r)" \
+  '[[ $rc8r -eq 0 && "$(fence "$MW_WT" "d[\"session_window\"][\"to\"]")" == "2026-06-01T13:00:01Z" && -z "$(git -C "$WTW" status --porcelain)" ]]'
+
 # W2. No branch session at all: the pinned session is off the branch and in another
 # checkout, so it is claimed by id and is not evidence of when work on the branch
 # stopped. The capture falls back to its own clock and announces it.
@@ -1863,6 +1924,21 @@ check "W5d. ... and committing nothing, leaving the worktree clean" '[[ -z "$(gi
 git -C "$AT" merge -q --no-ff -m "Merge $SLUGW" "$SLUGW"
 git -C "$AT" push -q origin main 2>/dev/null
 MW="$AT/self/features/$SLUGW/README.md"
+
+# W8, after the merge: the same late session, its exclusion lifted, through --recapture.
+# The post-merge path reads the window as written, so the session that begins after `to`
+# is not evidence there at all: the bound stays, and no widen is even attempted — a run
+# that took the on-branch reading here would offer the later bound and print the refusal.
+set_excluded "$MW" "[]"
+git -C "$AT" commit -q -am "$SLUGW: the late session owned again"
+out8m="$(capture "$AT" "$SLUGW" --recapture)"; rc8m=$?
+check "W8e. post-merge, --recapture with a session past the merged to exits 0 (got $rc8m)" '[[ $rc8m -eq 0 ]]'
+check "W8f. ... leaving the merged bound where it was" '[[ "$(fence "$MW" "d[\"session_window\"][\"to\"]")" == "2026-06-01T13:00:01Z" ]]'
+check "W8g. ... and never offering the later bound: no widen refused, because none was attempted" '! grep -q "never widened" <<<"$out8m" && ! grep -q "$LATE_BOUND_W8" <<<"$out8m"'
+# Disowned again, so W3's later hand-written bound tightens onto the W1 evidence alone.
+set_excluded "$MW" "[\"$SESSION_WIN_LATE\"]"
+git -C "$AT" add -A
+git -C "$AT" commit -q -m "$SLUGW: the post-merge W8 run's records, the late session disowned" 2>/dev/null
 
 # W3. The repair path for a `to` stamped too late: --recapture re-derives the evidence and
 # TIGHTENS the bound onto it.
@@ -2166,6 +2242,8 @@ forge_checkout() {
   git init -q "$1"
   cp "$HERE/forge.sh" "$1/forge.sh" 2>/dev/null
   cp "$HERE/env-profile.sh" "$1/env-profile.sh" 2>/dev/null
+  mkdir -p "$1/hooks"
+  cp "$HERE/hooks/env_profile.py" "$1/hooks/env_profile.py" 2>/dev/null
   chmod +x "$1/forge.sh" 2>/dev/null
   if [[ -n "${2:-}" ]]; then git -C "$1" remote add origin "$2"; fi
 }

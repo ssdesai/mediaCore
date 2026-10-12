@@ -5,9 +5,11 @@ set -uo pipefail
 #
 #   self/profile-confinement.sh [<checkout>]       default: the checkout holding this file
 #
-# **The lifecycle never asks where it is running.** Only the detector (env-profile.sh),
-# the adapters and their tests may spell the two profile variables; every other script
-# calls the functions env-profile.sh defines. This fails — exit 1, one `FAIL` line per
+# **The lifecycle never asks where it is running.** Only the detector (hooks/env_profile.py,
+# the one place the rule lives, and env-profile.sh, the shell's way in to it), the
+# adapters and their tests may spell the two profile variables; every other script calls
+# the functions env-profile.sh defines, or — in Python — imports the module. This fails —
+# exit 1, one `FAIL` line per
 # offending file with its first matching line — when either name appears in any other
 # TRACKED file of <checkout>. self/gate.sh records it as a blocking check;
 # self/tests/env-profile.sh runs it against planted repos to show it is not vacuous.
@@ -25,12 +27,19 @@ set -uo pipefail
 CONFINED_NAMES_RE='CLAUDE_CODE_REMOTE|AGENTTOOLING_PROFILE'
 PROSE_SUFFIX=".md"
 # The detector, the adapters that branch on the profile, and this check itself, relative
-# to the checkout root. The two environment adapters of design §7 are adapters by
-# definition and listed with them, though both ask env-profile.sh's functions today and
-# spell neither variable. The SessionStart hook's guard is cloud-setup.sh's own, so the
-# wiring (hooks/wire-settings.py) spells nothing and is not listed
-# (self/features/execution-profiles/NOTES.md).
+# to the checkout root. The detector is two files: hooks/env_profile.py holds the rule and
+# spells both variables; env-profile.sh runs it once when sourced and stays listed because
+# it EXPORTS the answer as AGENTTOOLING_PROFILE and its functions read that back
+# (self/features/review-base-and-cloud-hook/). The PreToolUse hook,
+# hooks/allow-repo-commands.sh, is deliberately NOT listed: it imports the module and
+# spells neither variable itself, and this check is what keeps it that way. The two
+# environment adapters of design §7 are adapters by definition and listed with them,
+# though both ask env-profile.sh's functions today and spell neither variable. The
+# SessionStart hook, session-start.sh, decides the profile through env-profile.sh's
+# functions, so neither it nor the wiring (hooks/wire-settings.py) spells anything, and
+# neither is listed (self/features/execution-profiles/NOTES.md).
 CONFINEMENT_ALLOWED=(
+  hooks/env_profile.py
   env-profile.sh
   forge.sh
   self/open-session.sh
@@ -73,7 +82,7 @@ while IFS= read -r path; do
   hit="$(grep -nwE "$CONFINED_NAMES_RE" "$CHECKOUT/$path" 2>/dev/null | head -n 1)"
   if [[ -n "$hit" ]]; then
     offending=$((offending + 1))
-    echo "  FAIL  $path:$hit — only env-profile.sh, the adapters and their tests may read the profile; call env-profile.sh's functions instead"
+    echo "  FAIL  $path:$hit — only the detector (hooks/env_profile.py, env-profile.sh), the adapters and their tests may read the profile; call env-profile.sh's functions, or import hooks/env_profile.py, instead"
   fi
 done < <(git -C "$CHECKOUT" ls-files 2>/dev/null)
 

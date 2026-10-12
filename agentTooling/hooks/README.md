@@ -2,7 +2,7 @@
 
 Claude Code hook scripts, vendored with the rest of `agentTooling/`. A hook does nothing
 until a settings file names it; `sync-plans.sh` does that wiring, so a repo gets it at
-install and after every `subtree pull`. All three files are Python 3, standard library
+install and after every `subtree pull`. All four files are Python 3, standard library
 only.
 
 - `allow-repo-commands.sh` — `PreToolUse` hook for the `Bash` tool. Reads the hook payload
@@ -17,7 +17,10 @@ only.
   it reads and refuses outright — a command chaining `cd` or `pushd` with any other
   command, with a reason naming the rewrite; a git command that moves a ref or rewrites
   history, with a reason naming `LIFECYCLE.md` rule 2, `feature-start.sh` and
-  `feature-close.sh`; an assignment at command position whose own `$NAME` is used later on
+  `feature-close.sh` — `GIT_DENY_REASON` locally, the cloud reason in a cloud container,
+  where the table's two cloud-only shapes are denied too, and a push to `main` in both
+  profiles (`GIT_PUSH_PROTECTED_DENY_REASON` locally) ("The git shape, by profile");
+  an assignment at command position whose own `$NAME` is used later on
   the same line, with a reason saying to inline the literal — and for every REWRITE, whose
   reason is the rewrite: a heredoc into an interpreter, code as a string, a pipe into one,
   a program or a path decided at run time, a one-line compound, a line that does not
@@ -30,7 +33,12 @@ only.
   authored through the shell — `echo`/`printf`
   redirected to a path, `cat`/`tee` fed literally with output to a path, `sed -i` — whose
   reason names the Write and Edit tools and is judged ahead of the opaque shapes. Its git
-  deny reads `policy.py`'s constants and nothing of its own.
+  deny reads `policy.py`'s constants and nothing of its own, and the profile from
+  `env_profile.py`, imported in-process (guarded: a missing module reads as local); it
+  spells neither profile variable itself, and `self/profile-confinement.sh` keeps it that
+  way. Depends on `git` on `PATH` only for the cloud path (a missing or failing `git`
+  there leaves today's answer), and on the manifest fence's `branches[0]` under
+  `<features dir>/<slug>/README.md` to name a started feature.
   After `OPAQUE_REWRITE_ATTEMPTS` opaque commands in one session it emits
   `permissionDecision: "ask"` instead, keyed on the payload's `session_id` and `agent_id`
   through a state file under `$TMPDIR`; under `AGENTTOOLING_HEADLESS` it prints nothing
@@ -47,10 +55,22 @@ only.
   (`list` READ_ONLY; `add`, `remove`, `prune`, `move`, `lock`, `unlock`, `repair`
   MUTATING); `GIT_CHECKOUT` / `GIT_CHECKOUT_BRANCH_FLAGS`; `GIT_SWITCH` /
   `GIT_SWITCH_BRANCH_FLAGS`; `GIT_BRANCH` / `GIT_BRANCH_MUTATING_FLAGS` /
-  `GIT_BRANCH_LIST_FLAGS`; `BASH_RULE_TEMPLATE` (a prefix rule) and
+  `GIT_BRANCH_LIST_FLAGS`; the **cloud-only entries** — `GIT_CLOUD_ONLY`
+  (`{switch: CLOUD_SWITCH_AWAY, checkout: CLOUD_SWITCH_AWAY, push: CLOUD_PUSH_ELSEWHERE}`),
+  `GIT_SWITCH_DETACH_FLAGS` (`--detach`, `-d`), `GIT_CHECKOUT_DETACH_FLAGS` (`--detach`),
+  `GIT_ORPHAN_FLAG`, `GIT_PREVIOUS_BRANCH` (`-`), `GIT_PUSH_EVERY_REF_FLAGS` (`--all`,
+  `--branches`, `--mirror`, `--tags`) and `GIT_PUSH_DELETE_FLAGS` (`--delete`, `-d`,
+  `--prune`), **hook-only**: none of them reaches `denied_git_commands()` or
+  `bash_deny_rules()`, since no command prefix can say "a branch other than the current
+  one"; the **both-profile hook-only entry** — `GIT_PROTECTED_BRANCH` (`main`, one literal:
+  not `master`, not a manifest's `base`), `PUSH_TO_PROTECTED` and `GIT_HOOK_ONLY`
+  (`{push: PUSH_TO_PROTECTED}`), likewise never rendered as a rule, since a prefix cannot
+  tell `main` from `main-x`; `BASH_RULE_TEMPLATE` (a prefix rule) and
   `BASH_EXACT_RULE_TEMPLATE` (an exact one); `GIT_BARE_DENIED` (`stash`, denied bare by
   an exact rule); and `RETIRED_DENIED_GIT_COMMANDS` (`git stash`, whose old prefix rule
-  denied `git stash list` too). Functions: `worktree_read_only()`, `worktree_mutating()`,
+  denied `git stash list` too). Functions: `cloud_only_rule(subcommand)` (the
+  cloud-only entry a subcommand falls under, or None), `hook_only_rule(subcommand)` (the
+  both-profile entry, or None), `worktree_read_only()`, `worktree_mutating()`,
   `stash_read_only()`, `stash_mutating()`, `denied_git_commands()`, `bash_deny_rules()`,
   which renders the `permissions.deny` twin in the fixed order below, and
   `retired_bash_deny_rules()`, what a merge removes. Every constant a rule is
@@ -63,21 +83,49 @@ only.
   `--repo` that is somebody else's checkout — and because that directory is inside the
   repo being guarded, where a `__pycache__` has no business. It is on the gate's
   `py_compile hooks` line and asserted by `self/tests/policy-table.sh`.
+- `env_profile.py` — the **profile detector**: where agentTooling is running, `local` or
+  `cloud` (`self/DESIGN-2026-10-05-cloud-execution.md` §1,
+  `self/features/review-base-and-cloud-hook/`). The one place the rule lives and the only
+  code that spells `AGENTTOOLING_PROFILE` or `CLAUDE_CODE_REMOTE` besides `../env-profile.sh`
+  (which exports the answer), the adapters and the tests — `self/profile-confinement.sh`
+  allowlists it, and deliberately not the hook. The rule: an explicit
+  `AGENTTOOLING_PROFILE` wins (neither `local` nor `cloud` is an error); else
+  `CLAUDE_CODE_REMOTE=true` → `cloud`; else `local`. `detect(environ=None)` returns
+  `Detection { profile, decided_by }` — `decided_by` one of `AGENTTOOLING_PROFILE`,
+  `CLAUDE_CODE_REMOTE`, `default` — over the mapping given or the process environment,
+  and raises `InvalidProfile` (a `ValueError`, `.value` the bad value) for an invalid
+  override; `is_cloud(environ=None)` is the yes/no, an invalid override reading as not
+  cloud. Constants: `PROFILE_ENV`, `REMOTE_ENV`, `PROFILE_LOCAL`, `PROFILE_CLOUD`,
+  `PROFILES`, `REMOTE_ON`, `DECIDED_BY_OVERRIDE` / `_REMOTE` / `_DEFAULT`,
+  `INVALID_PROFILE_RC` (2). Two ways in: the hook **imports** it as a sibling, like
+  `policy.py` — no process per Bash call; `../env-profile.sh` **runs** it once when
+  sourced, `python3 -B <agentTooling>/hooks/env_profile.py`, reading two stdout lines,
+  the profile then the decider (for an invalid override: the raw value and
+  `AGENTTOOLING_PROFILE`, exit 2, the reason on stderr). Not `profile.py`: that would
+  shadow the standard library's module. No I/O beyond the environment and, run as a
+  script, those two lines. On the gate's `py_compile hooks` line; driven by
+  `self/tests/env-profile.sh` (M1–M8) and, through the hook, `self/tests/hook-cloud-profile.sh`.
 - `wire-settings.py` — `wire-settings.py [--self] --repo <dir> (--check | --write)`.
   Maintains the `PreToolUse` entry for `allow-repo-commands.sh`, the **`SessionStart`
-  entry** running `${CLAUDE_PROJECT_DIR}/plans/cloud-setup.sh` (consuming repos only —
-  `SESSION_MARKER`, `SESSION_COMMAND`, `SESSION_EVENT`; no matcher, so it runs on every
-  start, resume and compaction; **no guard in the entry**: the seeded script is the
-  guard, asking `env-profile.sh` and exiting 0 outside the cloud profile, so this file
-  spells no profile variable; recognised by the script's name in any SessionStart
-  command, so a repo's customised entry is kept and never doubled, and a repo's own other
-  SessionStart hooks stay first; a SessionStart that is not a list is `INVALID`; under
-  `--self` none is written, since that checkout has no `plans/cloud-setup.sh`), the
-  `Edit` and `Bash`
+  entry** running agentTooling's own `../session-start.sh` —
+  `${CLAUDE_PROJECT_DIR}/agentTooling/session-start.sh` (`SESSION_MARKER`,
+  `SESSION_COMMAND`, `SESSION_EVENT`; no matcher, so it runs on every start, resume and
+  compaction; **no profile guard in the entry**: the script asks `env-profile.sh` itself —
+  the orientation in every profile, the repo's `plans/cloud-setup.sh` in the cloud only —
+  so this file spells no profile variable; recognised by the script's name in any
+  SessionStart command, so a repo's customised entry is kept and never doubled, and a
+  repo's own other SessionStart hooks stay first; a SessionStart that is not a list is
+  `INVALID`; under `--self` the guarded `SELF_SESSION_COMMAND`, `test ! -f
+  "${CLAUDE_PROJECT_DIR}/session-start.sh" || "${CLAUDE_PROJECT_DIR}/session-start.sh"
+  --self`), the `Edit` and `Bash`
   deny rules, the `hooks/` **ask** rule and the OS **`sandbox` block** (below, "The
   sandbox block": `SANDBOX_ENABLED` — off today — `SANDBOX_OWNED_SETTINGS`,
   `SANDBOX_DENY_READ`, `SANDBOX_ALLOWED_DOMAINS`) in `<dir>/.claude/settings.json`, and removes
-  any `policy.retired_bash_deny_rules()` it finds there. The Bash
+  any `policy.retired_bash_deny_rules()` it finds there, and any SessionStart hook whose
+  command is one of `RETIRED_SESSION_COMMANDS` — exactly
+  `${CLAUDE_PROJECT_DIR}/plans/cloud-setup.sh`, the entry it wrote before
+  `session-start.sh` existed, which would now run that step twice — dropping the entry
+  once it holds no hook (a repo's own spelling of a `cloud-setup.sh` hook is not touched). The Bash
   rules are `policy.bash_deny_rules()`, never a list of its own. Prints one
   `status<TAB>message` line for the
   caller to format and exits 0 when nothing needs attention, 1 otherwise. Statuses:
@@ -89,7 +137,8 @@ only.
   `SELF_HOOK_COMMAND`, `test ! -f "${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh" ||
   "${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh"` — a silent exit 0 where the
   script is absent, the script itself (reading the payload the shell hands on) where it
-  is not — with no `SessionStart` entry and no `settings.local.json` written. `--check` is
+  is not — its `SessionStart` command the guarded `--self` one above, and no
+  `settings.local.json` written. `--check` is
   a byte comparison against a fresh write (`INVALID` is a merge status and never reached
   there): `in-sync`, `missing` on an absent file, `UNWIRED` on a drifted one, the message
   naming where it first differs and the exact command that regenerates, `python3 -B
@@ -250,6 +299,86 @@ prompts, and it is the approval analysis, which does expand, that refuses it.
 
 The check runs after the `cd` deny and before the approval analysis, and like the `cd`
 deny it needs neither `CLAUDE_PROJECT_DIR` nor `cwd`.
+
+#### The git shape, by profile
+
+`GIT_DENY_REASON` describes the **local** layout — run the start from the primary
+checkout, edit inside `.worktrees/<slug>` — which is wrong advice in a Claude Code cloud
+container, where the container IS the feature's checkout on its assigned branch. So the
+reason is chosen by profile (`self/features/review-base-and-cloud-hook/`), the profile
+coming from `env_profile.py`, imported in-process — this file spells neither profile
+variable:
+
+- **local** (and an invalid `AGENTTOOLING_PROFILE`, or a missing module, which read as
+  local): `GIT_DENY_REASON`, unchanged, and no subprocess is run. The one local change is
+  the push to `main` below, refused with `GIT_PUSH_PROTECTED_DENY_REASON` (when the line is
+  also a ref-moving shape, `GIT_DENY_REASON` wins); every other case in
+  `self/tests/allow-repo-commands.sh` answers as before.
+- **cloud**: `GIT_CLOUD_DENY_REASON_TEMPLATE` — still `LIFECYCLE.md` rule 2, then: this
+  container is the feature's checkout on `<branch>`, no worktree and no other branch to
+  make, switch to or push; commit on `<branch>` and push only it. When a tracked manifest
+  under `<features dir>/*/README.md` names the branch as its `branches[0]` (the reading
+  `session-start.sh` makes: `git grep` narrows, the fence decides, a fence with no
+  branches reads as its slug), it names that feature, its manifest and
+  `<prefix>feature-close.sh [--self] <slug>` (`GIT_CLOUD_STARTED_TEMPLATE`); otherwise the
+  start to run here, `<prefix>feature-start.sh [--self] <slug>`
+  (`GIT_CLOUD_UNSTARTED_TEMPLATE`). `<prefix>` and `--self` come from where this file sits
+  (`repo_shape`): at `<root>/hooks/` it is agentTooling's own checkout (`./`, `--self`,
+  `self/features`), otherwise a consuming repo (`./agentTooling/`, `plans/features`). It
+  never mentions `.worktrees/` or the primary checkout. When the branch cannot be read it
+  says "this session's assigned branch" instead; the reason never fails to be emitted.
+
+And in the cloud, **two more shapes** are denied with that reason — `policy.py`'s
+cloud-only entries, which are hook-only (no prefix can express them, so the settings file
+does not change):
+
+- **switching away** (`CLOUD_SWITCH_AWAY`): `git switch <x>` for any `x` but the current
+  branch, `git switch -`, `--detach`/`-d`, `--orphan`; `git checkout` with one positional
+  that is `-` or that git resolves to a commit (`rev-parse --verify --quiet <x>^{commit}`)
+  or that names a remote-tracking branch (`origin/<x>`, which `git checkout <x>` would
+  turn into a local branch), unless it is the current branch, `HEAD` or `@`;
+  `git checkout --detach`, `--orphan`. A **file checkout is never a switch**: anything
+  after `--`, `-p`/`--patch`, `--pathspec-from-file`, two or more positionals, or one git
+  cannot resolve (a path) keeps today's answer.
+- **pushing elsewhere** (`CLOUD_PUSH_ELSEWHERE`): `git push` with `--all`, `--branches`,
+  `--mirror`, `--tags`, `--delete`/`-d` (also inside a short cluster) or `--prune`, or a
+  refspec — `[+]<src>[:<dst>]`, after the first positional, which is the remote — whose
+  destination (`dst`, else `src`; `HEAD`/`@` the current branch; `refs/heads/` stripped)
+  is not the current branch, or whose `src` is empty (`:x`, a deletion). Plain `git push`,
+  `git push origin`, `git push origin HEAD`, `git push -u origin <current>` and
+  `git push origin HEAD:<current>` keep today's prompt (unless the current branch is
+  `main`, below).
+
+`--repo <r>` / `--repo=<r>` names the remote, so after it **every** positional is a
+refspec: `git push --repo origin x` is judged like `git push origin x`, in both judges. A
+`--repo` with no value consumes nothing and is never a crash.
+
+And in **both profiles**, a **push to `main`** (`PUSH_TO_PROTECTED`, round 2): a `git
+push` with a refspec whose destination, read as above, is `GIT_PROTECTED_BRANCH` —
+`origin main`, `-u origin main`, `HEAD:main`, `x:main`, `+main`, `refs/heads/main`,
+`--repo origin main`, a deletion (`:main`, `--delete origin main`), any remote, behind git's
+global options or inside a chain. Locally it is read from the **words alone, no git
+probe**, so `HEAD`/`@` and a push with no refspec are not resolved: a bare `git push` while
+on `main` locally stays a prompt. Locally the reason is `GIT_PUSH_PROTECTED_DENY_REASON`
+(agents never push `main`; push the feature's branch; work reaches `main` only through the
+PR `feature-close.sh` opens and a human merges — `LIFECYCLE.md` rule 2, steps 6–7); in the
+cloud it is the cloud reason, and there the current branch resolves `HEAD` and a bare
+`git push`, so either on `main` is refused too. `main` as a source only (`main:x`), and
+`mainline`, `feature/main`, `main-x`, are not a push to `main`
+(`self/features/review-base-and-cloud-hook/NOTES.md` rulings 21–29).
+
+What the hook needs from the repository — the checkout's root and branch (one
+`git -C <dir> rev-parse --show-toplevel --symbolic-full-name HEAD`), whether a checkout
+argument is a commit (up to two more), the started feature (a `git grep`) — is asked only
+on the cloud path of a git command that could be denied: a switch, a checkout or a push,
+or an already-denied shape whose reason needs the branch. Never locally, never for a read
+(`self/tests/hook-cloud-profile.sh` X1–X3, under a logging `git`). `<dir>` is the payload's
+`cwd` (else `CLAUDE_PROJECT_DIR`), moved by each `-C <path>` among git's global options.
+Every probe is bounded (`GIT_PROBE_TIMEOUT_SECONDS`) and any failure — a detached HEAD, no
+repo, no git, a timeout — leaves the cloud-only shapes silent: today's answer, never a
+crash and never an allow. An env prefix (`AGENTTOOLING_PROFILE=local git push …`) is not
+read as git by either deny, so it stays an ASK; it changes that command's environment, not
+the hook's.
 
 **Both sides read past git's global options now, but not the same ones**
 (`self/DESIGN-2026-09-18-minutes-slug-and-quoting.md` §5b). The deny side skips the whole
@@ -951,14 +1080,18 @@ termination at the proxy — see `self/BACKLOG.md`.
 everything is **merged,
 not copied**. The hook entry is appended when no hook command anywhere in the file
 mentions `allow-repo-commands.sh`, and the `SessionStart` entry when no SessionStart hook
-command mentions `cloud-setup.sh` — after any SessionStart hooks the repo has of its own;
+command mentions `session-start.sh` — after any SessionStart hooks the repo has of its own;
 each deny and ask rule is appended when its exact string is absent. Otherwise the file is left byte-for-byte alone. It never reorders or
-rewrites another entry, and it never adds an allow rule. It removes exactly one kind of
-entry: a `Bash` deny rule it once wrote itself and the table has since retired
-(`policy.retired_bash_deny_rules()`, today only `Bash(git stash:*)`), because a deny rule
-left behind would go on overriding the hook's approval of what the table now calls
-read-only. `--check` reports such a file `UNWIRED` with "N retired Bash deny rule(s) (…)
-to remove"; `--write` takes the rule out where it stands and reports what it removed.
+rewrites another entry, and it never adds an allow rule. It removes exactly two kinds of
+entry, each one it once wrote itself and has since retired. A `Bash` deny rule the table
+dropped (`policy.retired_bash_deny_rules()`, today only `Bash(git stash:*)`), because a
+deny rule left behind would go on overriding the hook's approval of what the table now
+calls read-only. And the SessionStart hook running
+`${CLAUDE_PROJECT_DIR}/plans/cloud-setup.sh` directly (`RETIRED_SESSION_COMMANDS`), because
+`session-start.sh` now runs that script and leaving it would run it twice; its entry goes
+once it holds no other hook, and a repo's own differently-spelled `cloud-setup.sh` hook
+stays. `--check` reports such a file `UNWIRED` with "N retired … (…) to remove"; `--write`
+takes them out where they stand and reports what it removed.
 And it owns three values in the `sandbox` block, which it sets wherever they stand, while
 unioning its `denyRead` paths and domains into the repo's own ("The sandbox block" above).
 
@@ -1050,6 +1183,19 @@ that does not parse is drift like any other, and the write replaces it.
   without the other two, is an `ImportError` at the first Bash call rather than a silent
   fallback. Both set `sys.dont_write_bytecode` so the import leaves no `__pycache__` in
   the repo being guarded.
+- **`env_profile.py` beside the hook, and `AGENTTOOLING_PROFILE` / `CLAUDE_CODE_REMOTE`
+  in its environment** — the hook imports the module the same sibling way, guarded: a
+  missing module, an invalid override or any detection failure reads as **local**, i.e.
+  today's answers. It reads the two variables only through the module. `../env-profile.sh`
+  depends on the module too, at `<its own dir>/hooks/env_profile.py`, so a test fixture
+  that copies `env-profile.sh` copies the module beside it.
+- **`git` on `PATH`, the session's checkout, and the manifest fence** — the cloud path only
+  ("The git shape, by profile"): the current branch from `rev-parse`, the started feature
+  from a tracked `<features dir>/<slug>/README.md` whose fence's `branches[0]` is that
+  branch (`plan-runner-roots.sh`'s `manifest_branch` contract, written by
+  `feature-start.sh`), and the repo's shape from this file's own location (`<root>/hooks/`
+  for agentTooling's checkout, `<root>/agentTooling/hooks/` vendored). Any of them missing
+  degrades to today's answer or a reason that names less, never a crash.
 - **`python3` on `PATH`** — `sync-plans.sh` skips the wiring with a `SKIPPED` line when it
   is absent. The hook itself is `#!/usr/bin/env python3`.
 - **A consuming repo's `.claude/settings.json` must be committed** to reach worktrees. A
@@ -1082,11 +1228,11 @@ that does not parse is drift like any other, and the write replaces it.
   writable), so that path stays open to a Bash command the runner auto-approves.
 - **Hooks are read at session start.** A change to the wiring takes effect in the next
   session; `/hooks` shows what the current one loaded.
-- **The `SessionStart` entry depends on the repo's seeded `plans/cloud-setup.sh` being
-  executable and on `agentTooling/env-profile.sh` beside it** — the script's guard. With
-  the script absent the hook errors at each session start (non-blocking); `sync-plans.sh`
-  re-seeds it, and `sync-plans.sh --check` reports it `missing`. With the detector absent
-  the script does nothing.
+- **The `SessionStart` entry depends on `agentTooling/session-start.sh` with
+  `env-profile.sh` and `plan-runner-roots.sh` beside it**, all three shipped with the
+  subtree. In the cloud it then runs the repo's seeded `plans/cloud-setup.sh` with
+  `bash`; with that script absent it prints one line saying to run `sync-plans.sh` (which
+  re-seeds it, and whose `--check` reports it `missing`) and exits 0.
 
 ## Wiring
 
@@ -1106,7 +1252,7 @@ that does not parse is drift like any other, and the write replaces it.
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/plans/cloud-setup.sh" }
+          { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/agentTooling/session-start.sh" }
         ]
       }
     ]
@@ -1114,20 +1260,24 @@ that does not parse is drift like any other, and the write replaces it.
 }
 ```
 
-The `SessionStart` entry runs the repo's seeded `plans/cloud-setup.sh` on every session
-start (`self/DESIGN-2026-10-05-cloud-execution.md` §7). It has no guard of its own because
-the script is the guard: it sources `agentTooling/env-profile.sh` and exits 0 at once
-outside the cloud profile, so a laptop pays one short process per session and a container
-gets its services started. The alternative — the cloud environment's own setup script —
-is in `templates/README.md`.
+The `SessionStart` entry runs agentTooling's `session-start.sh` on every session start
+(`self/DESIGN-2026-10-05-cloud-execution.md` §7): a few read-only lines naming the profile,
+the branch and the command that comes next — `feature-start.sh <slug>` run where the
+session stands, or the feature already started on this branch and its close — and then, in
+the cloud only, the repo's seeded `plans/cloud-setup.sh` for what THIS repo needs (its exit
+code is the hook's). The universal part is agentTooling's, so it reaches every repo on its
+next `subtree pull`; only the repo's part is seeded and repo-owned. The alternative for
+the repo's part — the cloud environment's own setup script — is in `templates/README.md`.
 
-In agentTooling's own checkout the command is
+In agentTooling's own checkout the commands are
 `test ! -f "${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh" ||
-"${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh"`, which is what
-`wire-settings.py --self --write` writes into the tracked `.claude/settings.json`, with no
-`SessionStart` entry: that checkout has no `plans/cloud-setup.sh`, and its policy needs no
-hook to write it, being committed — a fresh container has it at startup
-(`self/features/self-cloud-bootstrap/`).
+"${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh"` and
+`test ! -f "${CLAUDE_PROJECT_DIR}/session-start.sh" ||
+"${CLAUDE_PROJECT_DIR}/session-start.sh" --self`, which is what
+`wire-settings.py --self --write` writes into the tracked `.claude/settings.json`. The
+session-start command only reads and prints (that checkout has no `plans/cloud-setup.sh`);
+the policy itself is still committed rather than written at startup, so a fresh container
+has it before its first tool call (`self/features/self-cloud-bootstrap/`).
 
 ## Editing the policy
 
@@ -1141,7 +1291,22 @@ harness's own entry points, plus `CHDIR_PROGRAMS` and
 `ASSIGNMENT_RE` / `ASSIGNMENT_BUILTINS` / `VAR_USE_RE` for the
 three shape denies. **The `GIT_*` mutation constants are not there**: they are
 `policy.py`'s, the table `wire-settings.py` renders its prefix rules from, and the hook
-binds the same objects under the same names. The opaque deny is `OPAQUE_REWRITE_ATTEMPTS`,
+binds the same objects under the same names — the cloud-only entries (`GIT_CLOUD_ONLY` and
+its flags) included, and the both-profile push-to-`main` entry (`PUSH_TO_PROTECTED`,
+`GIT_PROTECTED_BRANCH`, `GIT_HOOK_ONLY_RULE` bound to `policy.hook_only_rule`), whose local
+reason `GIT_PUSH_PROTECTED_DENY_REASON` is the hook's own. How the push and cloud paths READ
+their arguments stays here, beside the reader:
+`GIT_SWITCH_VALUE_FLAGS`, `GIT_CHECKOUT_VALUE_FLAGS`, `GIT_PUSH_REPO_FLAG`, `GIT_PUSH_VALUE_FLAGS`,
+`GIT_PUSH_VALUE_LETTER`, `GIT_PUSH_DELETE_LETTER`, `GIT_PATHSPEC_SEPARATOR`,
+`GIT_CHECKOUT_PATH_FLAGS`, `GIT_HEAD_NAMES`, `GIT_BRANCH_REF_PREFIX`, the `GIT_REFSPEC_*`
+and `GIT_PROBE_*` constants, `GIT_LOCATION_FLAG`, `GIT_PROBE_TIMEOUT_SECONDS`, the
+`MANIFEST_*` fence readers, the repo-shape constants (`SELF_TOOL_PREFIX`, `SELF_ARG`,
+`SELF_FEATURES_DIR`, `CONSUMER_FEATURES_DIR`, `VENDORED_DIR_DEFAULT`,
+`TOOL_PREFIX_TEMPLATE`), and the cloud reason (`GIT_CLOUD_DENY_REASON_TEMPLATE`,
+`GIT_CLOUD_STARTED_TEMPLATE`, `GIT_CLOUD_UNSTARTED_TEMPLATE`, `BRANCH_QUOTE`,
+`BRANCH_UNKNOWN`); a new cloud-only shape is an entry in `policy.GIT_CLOUD_ONLY`, a branch
+in `cloud_refuses`, and a row in `self/tests/hook-cloud-profile.sh`'s table with its local
+and its cloud answer. The opaque deny is `OPAQUE_REWRITE_ATTEMPTS`,
 `HEREDOC_LITERAL_PROGRAMS`, `INTERPRETER_CODE_LETTER`, `EVAL_PROGRAM`,
 `COMMAND_CARRIER_PROGRAMS`, `FIND_EXEC_FLAGS`, `COMPOUND_KEYWORDS`, `SEGMENT_BREAKS` and
 `LINE_BREAK_CHARS` (the subset of `SEGMENT_BREAKS` that ends the command's first line,

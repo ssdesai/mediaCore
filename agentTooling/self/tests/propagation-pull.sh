@@ -151,7 +151,9 @@ decision() {
   python3 - "$AT/hooks/allow-repo-commands.sh" "$CONSUMER" "$1" "$2" <<'PY'
 import json, os, subprocess, sys
 hook, root, cwd, cmd = sys.argv[1:5]
-env = dict(os.environ, CLAUDE_PROJECT_DIR=root)
+# The profile is pinned, never inherited (a cloud container sets CLAUDE_CODE_REMOTE=true)
+env = {k: v for k, v in os.environ.items() if k != "CLAUDE_CODE_REMOTE"}
+env.update(CLAUDE_PROJECT_DIR=root, AGENTTOOLING_PROFILE="local")
 payload = {"tool_name": "Bash", "cwd": cwd, "tool_input": {"command": cmd}}
 p = subprocess.run([hook], input=json.dumps(payload), capture_output=True, text=True, env=env)
 if p.returncode != 0:

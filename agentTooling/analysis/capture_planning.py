@@ -50,7 +50,7 @@ Usage: python3 agentTooling/analysis/capture_planning.py <slug>
        python3 agentTooling/analysis/capture_planning.py --annotate-frozen [--except <slug>]
        python3 agentTooling/analysis/capture_planning.py --list-subagents [--since YYYY-MM-DD]
        python3 agentTooling/analysis/capture_planning.py --list-subagents --unclaimed --for <repo>/<slug>
-       python3 agentTooling/analysis/capture_planning.py --last-branch-instant <slug>
+       python3 agentTooling/analysis/capture_planning.py --last-branch-instant <slug> [--ignore-to]
 """
 
 from __future__ import annotations
@@ -2371,11 +2371,56 @@ def build_claimant_index(features_dirs, sessions_dir=None, capturing=None):
 EVIDENCE_OFFSET_SECONDS = 1
 
 
-def last_branch_instant(slug, features_dir, sessions_dir):
+def chained_successor_from(slug, features_dir, branches, own_from):
+    """The earliest `session_window.from` of another feature in `features_dir` that shares
+    one of `branches` and starts strictly after `own_from` (any `from` at all when
+    `own_from` is None) — the feature chained on after this one on the same branch name —
+    or None when there is none.
+
+    Only the open-ended evidence (`last_branch_instant(..., ignore_to=True)`) needs it: a
+    cloud container's `claude/…` branch reused for the next feature after a merge makes a
+    re-run of this feature's capture on that branch the on-branch path, and with no upper
+    bound its evidence would run on over the next feature's sessions. Locally the branch
+    is the slug and is never shared, so this finds nothing. A manifest that will not parse
+    is skipped, the claim index's tolerance."""
+    successor = None
+    for readme_path in sorted(Path(features_dir).glob("*/README.md")):
+        other_slug = readme_path.parent.name
+        if other_slug == slug:
+            continue
+        try:
+            other = parse_manifest(readme_path)
+        except (ValueError, OSError, json.JSONDecodeError):
+            continue
+        if not (set(other.get("branches") or []) & branches):
+            continue
+        other_from = normalize_window(other)["from"]
+        if other_from is None or (own_from is not None and other_from <= own_from):
+            continue
+        successor = other_from if successor is None else min(successor, other_from)
+    return successor
+
+
+def last_branch_instant(slug, features_dir, sessions_dir, ignore_to=False):
     """The bound `feature-capture.sh` stamps as `session_window.to`: one second past the
     last instant of every session this feature's `branches` + `session_window` select and
     of those sessions' own subagents. None when the feature has no branch-selected
     session, which is the caller's cue to fall back to its own clock and say so.
+
+    **`ignore_to` — the on-branch reading.** Before the merge the `to` in the fence is the
+    provisional bound an EARLIER capture stamped from this same evidence, and read as
+    written it fences the evidence it is about to be re-derived from: every session that
+    begins after it — the next round's review runner, a rework implementer's parent, a new
+    coordinator — would be left out, so a feature once captured on its branch could never
+    have its `to` moved later. `feature-capture.sh`'s on-branch path passes
+    `ignore_to=True` (`--ignore-to`): sessions and delegates are admitted on `from`,
+    branch, cwd and exclusions exactly as otherwise, with no upper bound — except the
+    `from` of a later feature chained on the same branch name
+    (`chained_successor_from`), which is where the chain already says this feature ends.
+    Every other caller keeps the default: the post-merge `--recapture` path, which only
+    ever tightens and reads the window as written, and the claim index's
+    `provisional_to`, which only runs for a window whose `to` is null — where the two
+    readings agree.
 
     **Selection is the capture's, by the branch route.** Every term is the shared one —
     `normalize_window`, `in_window`, `cwd_under_any`, `find_transcript_dirs`,
@@ -2410,6 +2455,8 @@ def last_branch_instant(slug, features_dir, sessions_dir):
     manifest = parse_manifest(Path(features_dir, slug, "README.md"))
     branches = set(manifest.get("branches") or [])
     window = normalize_window(manifest)
+    if ignore_to:
+        window["to"] = chained_successor_from(slug, features_dir, branches, window["from"])
     excluded_ids = set(manifest.get("exclude_sessions") or [])
     excluded_agent_ids = set(manifest.get("exclude_subagents") or [])
 
@@ -4026,6 +4073,14 @@ def main():
         "timestamps only; writes nothing",
     )
     parser.add_argument(
+        "--ignore-to",
+        action="store_true",
+        help="with --last-branch-instant: read the window with no upper bound — the "
+        "on-branch reading feature-capture.sh uses, where `to` is the provisional bound an "
+        "earlier capture stamped and must not fence the evidence that moves it later. "
+        "Still bounded by the `from` of a later feature sharing the branch name",
+    )
+    parser.add_argument(
         "--carry-lost",
         action="store_true",
         help="re-capture, keeping the prior entries whose transcripts have expired "
@@ -4123,7 +4178,7 @@ def main():
             parser.error("--last-branch-instant takes its own slug and no --all")
         moment = last_branch_instant(
             args.last_branch_instant, features_root(args.self_mode),
-            session_root(args.self_mode),
+            session_root(args.self_mode), ignore_to=args.ignore_to,
         )
         # Nothing, exit 0, when there is no branch-selected session: an empty answer is a
         # fact about the feature, not a failure, and feature-capture.sh reads it as its cue
@@ -4131,6 +4186,8 @@ def main():
         if moment is not None:
             print(_iso_or_none(moment))
         return
+    if args.ignore_to:
+        parser.error("--ignore-to takes --last-branch-instant")
 
     if args.all_features == bool(args.slug):
         parser.error("give either a feature slug or --all, not both and not neither")

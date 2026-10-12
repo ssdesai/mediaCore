@@ -38,6 +38,9 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 echo "hook-quote-oracle"
+# The profile is pinned, never inherited: a Claude Code cloud container sets
+# CLAUDE_CODE_REMOTE=true, and nothing here is about the cloud.
+env -u CLAUDE_CODE_REMOTE AGENTTOOLING_PROFILE=local \
 python3 - "$AT/hooks/allow-repo-commands.sh" "$TMP" <<'PY'
 import importlib.machinery
 import importlib.util

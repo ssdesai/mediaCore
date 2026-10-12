@@ -14,6 +14,13 @@ set -uo pipefail
 #       reason to be cloud;
 #   D4. an explicit value that is neither fails profile_check, naming it;
 #   D5. the decided profile is exported to a child process;
+#   M1–M6. the module hooks/env_profile.py, imported as the hook imports it: the same
+#       three steps and the invalid override (an InvalidProfile, a ValueError naming the
+#       value, never a silent `local`), each returning the profile AND what decided it,
+#       and with no mapping given it reads the process environment;
+#   M7. sourcing env-profile.sh makes exactly one python3 call, to that module;
+#   M8. with no module beside it, env-profile.sh leaves the profile empty, says so on
+#       stderr, and profile_check refuses;
 #   L1. the layout, local: feature_checkout is <primary>/.worktrees/<slug> and
 #       feature_branch the slug; create_checkout makes that worktree on that branch;
 #   L2. the layout, cloud: feature_checkout is the primary itself; feature_branch is the
@@ -26,6 +33,8 @@ set -uo pipefail
 #   C3. it passes on CLAUDE_CODE_REMOTE_SESSION_ID (a different variable), on prose
 #       (*.md), on an allowlisted adapter, on a test under self/tests/, and on an
 #       untracked file;
+#   C4. it passes on the detector module hooks/env_profile.py, and fails on the hook
+#       hooks/allow-repo-commands.sh spelling one — the hook is not allowlisted;
 #   F1. forge.sh auto-merge, local: one `gh pr merge <url> --auto --merge --delete-branch`,
 #       never squash, printing the url;
 #   F2. auto-merge, cloud: one `gh api -X PUT repos/<o>/<r>/pulls/<n>/ccr/auto_merge` with
@@ -94,6 +103,66 @@ check "D4. AGENTTOOLING_PROFILE=bogus fails profile_check, naming the value (got
   'grep -q "refused" <<<"$out" && grep -qF "bogus" <<<"$out" && ! grep -q "passed" <<<"$out"'
 out="$(probe 'bash -c "echo \$AGENTTOOLING_PROFILE"' CLAUDE_CODE_REMOTE=true)"
 check "D5. the decided profile is exported to a child (got '$out')" '[[ "$out" == cloud ]]'
+
+# ── M. the module, hooks/env_profile.py — the one place the rule lives ────────
+# M1–M5 import it as the hook does, with an explicit environment mapping, so the
+# machine's own variables cannot leak in; M6 asks it with the process environment cleared.
+out="$(env -u CLAUDE_CODE_REMOTE -u AGENTTOOLING_PROFILE python3 -B - "$HERE/hooks" <<'PY' 2>&1
+import sys
+sys.dont_write_bytecode = True
+sys.path.insert(0, sys.argv[1])
+import env_profile as m
+
+def show(label, environ):
+    try:
+        d = m.detect(environ)
+        print("%s %s %s" % (label, d.profile, d.decided_by))
+    except m.InvalidProfile as exc:
+        print("%s invalid %s %s" % (label, isinstance(exc, ValueError), exc.value))
+
+show("M1", {"AGENTTOOLING_PROFILE": "cloud"})
+show("M1b", {"AGENTTOOLING_PROFILE": "local", "CLAUDE_CODE_REMOTE": "true"})
+show("M2", {"CLAUDE_CODE_REMOTE": "true"})
+show("M3", {})
+show("M3b", {"CLAUDE_CODE_REMOTE": "false"})
+show("M4", {"AGENTTOOLING_PROFILE": "bogus", "CLAUDE_CODE_REMOTE": "true"})
+show("M6", None)
+PY
+)"
+line() { grep "^$1 " <<<"$out"; }
+check "M1. module: AGENTTOOLING_PROFILE=cloud is cloud, decided by AGENTTOOLING_PROFILE (got '$(line M1)')" \
+  '[[ "$(line M1)" == "M1 cloud AGENTTOOLING_PROFILE" ]]'
+check "M1b. module: the override wins over CLAUDE_CODE_REMOTE=true (got '$(line M1b)')" \
+  '[[ "$(line M1b)" == "M1b local AGENTTOOLING_PROFILE" ]]'
+check "M2. module: CLAUDE_CODE_REMOTE=true alone is cloud, decided by it (got '$(line M2)')" \
+  '[[ "$(line M2)" == "M2 cloud CLAUDE_CODE_REMOTE" ]]'
+check "M3. module: neither is local by default, and CLAUDE_CODE_REMOTE=false is no reason to be cloud (got '$(line M3)', '$(line M3b)')" \
+  '[[ "$(line M3)" == "M3 local default" && "$(line M3b)" == "M3b local default" ]]'
+check "M4. module: an invalid override raises InvalidProfile, a ValueError naming the value — never a silent local (got '$(line M4)')" \
+  '[[ "$(line M4)" == "M4 invalid True bogus" ]]'
+check "M6. module: with no mapping it reads the process environment (got '$(line M6)')" \
+  '[[ "$(line M6)" == "M6 local default" ]]'
+
+# M7. env-profile.sh asks the module exactly once when sourced: a logging python3 first on
+# PATH, handing every call to the real one.
+REAL_PYTHON="$(command -v python3)"
+PY_LOG="$TMP/python3-calls.log"
+mkdir -p "$TMP/pybin"
+printf '#!/usr/bin/env bash\necho "$*" >> "%s"\nexec "%s" "$@"\n' "$PY_LOG" "$REAL_PYTHON" > "$TMP/pybin/python3"
+chmod +x "$TMP/pybin/python3"
+: > "$PY_LOG"
+out="$(probe 'profile_name; echo "$PROFILE_DECIDED_BY"' CLAUDE_CODE_REMOTE=true PATH="$TMP/pybin:$PATH")"
+check "M7. sourcing env-profile.sh makes exactly one python3 call, to hooks/env_profile.py (got $(wc -l < "$PY_LOG"): $(head -1 "$PY_LOG"))" \
+  '[[ "$(wc -l < "$PY_LOG" | tr -d " ")" == 1 ]] && grep -q "hooks/env_profile.py" "$PY_LOG" && [[ "$(sed -n 1p <<<"$out")" == cloud && "$(sed -n 2p <<<"$out")" == CLAUDE_CODE_REMOTE ]]'
+
+# M8. with the module gone, env-profile.sh decides nothing: the profile is empty, it says
+# why on stderr, and profile_check refuses — never a silent local.
+NOMOD="$TMP/no-module"
+mkdir -p "$NOMOD"
+cp "$DETECTOR" "$NOMOD/env-profile.sh"
+out="$(env -u CLAUDE_CODE_REMOTE -u AGENTTOOLING_PROFILE bash "$TMP/probe.sh" "$NOMOD/env-profile.sh" 'echo "profile=[$(profile_name)]"; if profile_check >/dev/null; then echo passed; else echo refused; fi' 2>&1)"
+check "M8. no module beside env-profile.sh: empty profile, a warning naming it, profile_check refuses (got '$out')" \
+  'grep -qF "profile=[]" <<<"$out" && grep -qF "env_profile.py" <<<"$out" && grep -q "refused" <<<"$out" && ! grep -q "passed" <<<"$out"'
 
 # ── L. the checkout layout ────────────────────────────────────────────────────
 REPO="$TMP/layout"
@@ -169,6 +238,17 @@ printf '#!/usr/bin/env bash\necho "$CLAUDE_CODE_REMOTE"\n' > "$PLANT/untracked-s
 out="$(bash "$CONFINEMENT" "$PLANT" 2>&1)"; rc=$?
 check "C3. the session-id variable, prose, an allowlisted adapter, a test and an untracked file all pass (got $rc: $out)" \
   '[[ $rc -eq 0 ]]'
+plant_reset
+mkdir -p "$PLANT/hooks"
+printf 'PROFILE_ENV = "AGENTTOOLING_PROFILE"\nREMOTE_ENV = "CLAUDE_CODE_REMOTE"\n' > "$PLANT/hooks/env_profile.py"
+plant_commit
+out="$(bash "$CONFINEMENT" "$PLANT" 2>&1)"; rc=$?
+check "C4a. the detector module hooks/env_profile.py is allowlisted (got $rc: $out)" '[[ $rc -eq 0 ]]'
+printf '#!/usr/bin/env python3\nimport os\nos.environ.get("CLAUDE_CODE_REMOTE")\n' > "$PLANT/hooks/allow-repo-commands.sh"
+plant_commit
+out="$(bash "$CONFINEMENT" "$PLANT" 2>&1)"; rc=$?
+check "C4b. the hook is NOT: one that spells a variable fails the check, naming it (got $rc)" \
+  '[[ $rc -ne 0 ]] && grep -qF "hooks/allow-repo-commands.sh" <<<"$out"'
 
 # ── F. forge.sh's profile-dependent verbs ─────────────────────────────────────
 GH_ARGV_LOG="$TMP/gh-argv.log"
@@ -193,6 +273,8 @@ FORGE_DIR="$TMP/forge"
 git init -q "$FORGE_DIR"
 git -C "$FORGE_DIR" remote add origin "$FORGE_URL"
 cp "$HERE/forge.sh" "$HERE/env-profile.sh" "$FORGE_DIR/" 2>/dev/null
+mkdir -p "$FORGE_DIR/hooks"
+cp "$HERE/hooks/env_profile.py" "$FORGE_DIR/hooks/env_profile.py" 2>/dev/null
 chmod +x "$FORGE_DIR/forge.sh" 2>/dev/null
 # forge <profile> <args...> — forge.sh under that profile, the stub gh first on PATH.
 forge() {

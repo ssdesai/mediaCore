@@ -38,7 +38,12 @@ Three shapes are denied outright before any of that, each read perfectly well an
 always a mistake with a mechanical answer: a `cd` or `pushd` sharing the command with
 anything else; a git command that moves a ref, rewrites history or throws work away
 (LIFECYCLE.md → "The three rules", rule 2); and an assignment at command position whose
-own `$NAME` is used later on the same line, whose reason says to inline the literal.
+own `$NAME` is used later on the same line, whose reason says to inline the literal. The
+git deny's reason is chosen by profile (env_profile.py, imported beside policy.py): the
+local layout's locally, and in a Claude Code cloud container one naming the assigned
+branch and the started feature — where two more shapes are denied too, from policy.py's
+cloud-only entries: switching to another branch, and a push whose target is not the
+current one (README.md § The git shape, by profile).
 
 Its reason for existing is `permissions.blockReadsOutsideWorkingDirectories`: that
 fence stops any command whose paths resolve at run time, which is every
@@ -62,6 +67,7 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import sys
 
 # The policy table, imported as a sibling: this script is a hook command Claude Code runs
@@ -71,6 +77,13 @@ import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import policy                                                        # noqa: E402
+# The profile detector, the same way: the one place the profile rule lives
+# (self/features/review-base-and-cloud-hook/). Guarded, unlike policy: a copy of hooks/
+# that lacks it reads as LOCAL — today's answers — rather than crashing every Bash call.
+try:
+    import env_profile                                               # noqa: E402
+except ImportError:
+    env_profile = None
 
 # Hook protocol
 HOOK_EVENT = "PreToolUse"
@@ -289,6 +302,126 @@ GIT_BRANCH_VALUE_FLAGS = frozenset([
     "--contains", "--no-contains", "--merged", "--no-merged", "--points-at",
     "--sort", "--format", "--color",
 ])
+
+# ── The git deny, by profile ──────────────────────────────────────────────────
+# Which profile this session runs under is env_profile.py's to say (the module beside
+# this file, imported in-process: no process per Bash call), never this file's — it
+# spells neither profile variable, and self/profile-confinement.sh keeps it that way.
+# Locally nothing below changes an answer but one: GIT_DENY_REASON, the local layout's, is
+# printed exactly as before, and a push to `main` — denied in BOTH profiles since round 2,
+# read from the words alone — gets GIT_PUSH_PROTECTED_DENY_REASON (below). Under `cloud`
+# (self/features/review-base-and-cloud-hook/):
+#   - the git deny's reason is the cloud one — this container IS the feature's checkout
+#     on its branch — naming the branch, and the started feature and its close when one
+#     exists, the way session-start.sh orients a session;
+#   - and the table's two cloud-only entries are enforced (policy.GIT_CLOUD_ONLY):
+#     switching away from the current branch, and a push whose target is not it.
+# Everything that needs the repository — the current branch, the started feature, whether
+# a `git checkout` argument names a commit — is asked of git in a subprocess, and ONLY on
+# the cloud path of a git command that could be denied. Any failure there (a detached
+# HEAD, no repo, git missing, a timeout) leaves today's answer in place, never a crash and
+# never an allow; an invalid profile reads as local.
+GIT_CLOUD_ONLY_RULE = policy.cloud_only_rule
+CLOUD_SWITCH_AWAY = policy.CLOUD_SWITCH_AWAY
+CLOUD_PUSH_ELSEWHERE = policy.CLOUD_PUSH_ELSEWHERE
+GIT_SWITCH_DETACH_FLAGS = policy.GIT_SWITCH_DETACH_FLAGS
+GIT_CHECKOUT_DETACH_FLAGS = policy.GIT_CHECKOUT_DETACH_FLAGS
+GIT_ORPHAN_FLAG = policy.GIT_ORPHAN_FLAG
+GIT_PREVIOUS_BRANCH = policy.GIT_PREVIOUS_BRANCH
+GIT_PUSH_EVERY_REF_FLAGS = policy.GIT_PUSH_EVERY_REF_FLAGS
+GIT_PUSH_DELETE_FLAGS = policy.GIT_PUSH_DELETE_FLAGS
+# ── The push to `main`, in BOTH profiles ──────────────────────────────────────
+# policy.GIT_HOOK_ONLY's entry (self/features/review-base-and-cloud-hook/SPEC.md → "Round
+# 2"): a push whose destination is policy.GIT_PROTECTED_BRANCH is refused locally and in
+# the cloud. Locally it is read from the command's words alone — no git probe, so a bare
+# `git push` while checked out on `main` is not caught there (NOTES.md ruling 21); in the
+# cloud the current branch is read anyway, so `HEAD` and a push with no refspec resolve to
+# it. The cloud refuses it with the cloud reason; locally it has its own.
+GIT_HOOK_ONLY_RULE = policy.hook_only_rule
+PUSH_TO_PROTECTED = policy.PUSH_TO_PROTECTED
+GIT_PROTECTED_BRANCH = policy.GIT_PROTECTED_BRANCH
+GIT_PUSH_PROTECTED_DENY_REASON = (
+    "allow-repo-commands: this git command pushes to `%(protected)s`, and agents never push "
+    "`%(protected)s` (LIFECYCLE.md § The three rules, rule 2). Push the feature's own "
+    "branch — the one you are on — instead. Work reaches `%(protected)s` only through the "
+    "PR that feature-close.sh opens after a clean review (LIFECYCLE.md step 6), and a "
+    "human merges it (step 7); nothing an agent runs pushes it. Commit on the branch you are on "
+    "and say what you need instead." % {"protected": GIT_PROTECTED_BRANCH})
+# How the arguments are READ — parsing helpers, not policy, so they stay here beside the
+# reader like GIT_BRANCH_VALUE_FLAGS. Flags of each verb that take the NEXT token as their
+# value, so the value is not mistaken for the branch or the refspec.
+GIT_SWITCH_VALUE_FLAGS = frozenset(["-c", "-C", GIT_ORPHAN_FLAG])
+GIT_CHECKOUT_VALUE_FLAGS = frozenset(["-b", "-B", GIT_ORPHAN_FLAG])
+# `--repo <r>` / `--repo=<r>` NAMES the remote, so every positional after it is a refspec
+# (round 2: `git push --repo origin main` is judged like `git push origin main`)
+GIT_PUSH_REPO_FLAG = "--repo"
+GIT_PUSH_VALUE_FLAGS = frozenset([GIT_PUSH_REPO_FLAG, "--receive-pack", "--exec",
+                                  "--push-option"])
+GIT_PUSH_VALUE_LETTER = "o"                       # `-o <option>`, also `-o<option>`
+GIT_PUSH_DELETE_LETTER = "d"                      # `-d`, also inside `-ud`
+# A `git checkout` that restores files and switches nothing: everything after `--` is a
+# path, and these flags make every positional one.
+GIT_PATHSPEC_SEPARATOR = "--"
+GIT_CHECKOUT_PATH_FLAGS = frozenset(["-p", "--patch", "--pathspec-from-file"])
+# Names that mean "the branch I am on"
+GIT_HEAD_NAMES = frozenset(["HEAD", "@"])
+GIT_BRANCH_REF_PREFIX = "refs/heads/"
+# A refspec: `[+]<src>[:<dst>]`; an empty src deletes dst
+GIT_REFSPEC_FORCE_PREFIX = "+"
+GIT_REFSPEC_SEPARATOR = ":"
+LONG_FLAG_PREFIX = "--"
+# The git calls, each bounded: a hook that hangs stalls every Bash call in the session.
+# `rev-parse --show-toplevel --symbolic-full-name HEAD` answers the checkout's root and
+# its branch in one process (`HEAD` alone on a detached HEAD).
+GIT_LOCATION_FLAG = "-C"
+GIT_PROBE_TIMEOUT_SECONDS = 5
+GIT_PROBE_TOPLEVEL_AND_HEAD = ("rev-parse", "--show-toplevel", "--symbolic-full-name",
+                               "HEAD")
+GIT_PROBE_COMMIT = ("rev-parse", "--verify", "--quiet")
+GIT_COMMIT_PEEL = "^{commit}"
+# Remote-tracking branch names, `origin/x` → `x`: what `git checkout x` / `git switch x`
+# would create a local branch from when no local `x` exists
+GIT_PROBE_REMOTE_BRANCHES = ("for-each-ref", "--format=%(refname:lstrip=3)", "refs/remotes")
+# The started feature: a tracked manifest whose `branches[0]` is this branch — the reading
+# session-start.sh makes (git grep narrows, the fence decides; a fence with no branches
+# reads as its slug, plan-runner-roots.sh's manifest_branch).
+GIT_PROBE_GREP = ("grep", "-l", "-F", "-e")
+MANIFEST_NAME = "README.md"
+MANIFEST_FENCE_OPEN_RE = re.compile(r"^```json\s*$")
+MANIFEST_FENCE_CLOSE_RE = re.compile(r"^```\s*$")
+MANIFEST_BRANCHES_FIELD = "branches"
+# The repo's shape, from where THIS file sits relative to the project root: agentTooling's
+# own checkout (the hook at <root>/hooks/) spells `./feature-start.sh --self` and keeps its
+# features in self/features; a consuming repo vendors it (at <root>/agentTooling/hooks/)
+# and keeps them in plans/features. session-start.sh's TOOL_PREFIX / SELF_ARG, read the
+# same way.
+SELF_TOOL_PREFIX = "./"
+SELF_ARG = "--self "
+SELF_FEATURES_DIR = "self/features"
+CONSUMER_FEATURES_DIR = "plans/features"
+VENDORED_DIR_DEFAULT = "agentTooling"
+TOOL_PREFIX_TEMPLATE = "./%s/"
+# The branch, as the reason names it, and what it says when it cannot be read
+BRANCH_QUOTE = "`%s`"
+BRANCH_UNKNOWN = ("this session's assigned branch (HEAD is detached or unreadable here, "
+                  "so it could not be named)")
+GIT_CLOUD_DENY_REASON_TEMPLATE = (
+    "allow-repo-commands: this git command creates, switches or deletes a branch, pushes "
+    "somewhere other than this branch, or moves a ref, and agents never do that "
+    "(LIFECYCLE.md § The three rules, rule 2). This is a Claude Code cloud container: it "
+    "IS the feature's checkout, on %(branch)s — no worktree, and no other branch to make, "
+    "switch to or push. %(feature)s Commit on %(branch)s, push only %(branch)s, and say "
+    "what you need instead.")
+GIT_CLOUD_STARTED_TEMPLATE = (
+    "Feature '%(slug)s' is started on this branch (%(manifest)s, written by "
+    "feature-start.sh): build it here, and close it with "
+    "`%(prefix)sfeature-close.sh %(self_arg)s%(slug)s` after a clean review and BEFORE "
+    "the merge — merging the PR is the last step.")
+GIT_CLOUD_UNSTARTED_TEMPLATE = (
+    "Start the feature here, on this branch, with "
+    "`%(prefix)sfeature-start.sh %(self_arg)s<slug>` — it makes no worktree and no other "
+    "branch; `%(prefix)sfeature-close.sh %(self_arg)s<slug>` is the way out, after a clean "
+    "review and before the merge.")
 
 # ── The run-time-value deny ───────────────────────────────────────────────────
 # The generalisation of the chained `cd`: what blocks the reads fence is a path decided at
@@ -839,12 +972,14 @@ def git_mutates(args):
     return False
 
 
-def mutates_git_refs(command):
-    """True when any command on the line is a ref-moving git command. Independent of the
-    root and the cwd: the shape is wrong wherever it runs."""
+def git_commands(command):
+    """`(words, args)` for every git command on the line the deny may judge: `args` are
+    the tokens after `git` and its global options. Empty when the line cannot be judged
+    (`command_words`' guards)."""
     commands = command_words(command)
     if commands is None:
-        return False
+        return []
+    judged = []
     for words in commands:
         # A brace is one more thing this analysis does not read: it performs no
         # expansion, so what git would really be handed is a guess. `git branch {-a,new}`
@@ -854,9 +989,350 @@ def mutates_git_refs(command):
         if any(ch in BRACE_CHARS for word in words for ch in word):
             continue
         args = git_subcommand_args(words)
-        if args is not None and git_mutates(args):
+        if args is not None:
+            judged.append((words, args))
+    return judged
+
+
+def mutates_git_refs(command):
+    """True when any command on the line is a ref-moving git command. Independent of the
+    root, the cwd and the profile: the shape is wrong wherever it runs."""
+    return any(git_mutates(args) for _, args in git_commands(command))
+
+
+def profile_is_cloud():
+    """True only when hooks/env_profile.py decides `cloud`. Never raises: a module that is
+    missing, an invalid override, any failure at all reads as local — today's answers."""
+    if env_profile is None:
+        return False
+    try:
+        return env_profile.is_cloud()
+    except Exception:  # detection failing is never a deny and never a crash
+        return False
+
+
+def git_location(words, cwd):
+    """The directory a git command runs in: the payload's cwd (else the project root),
+    moved by each `-C <path>` among git's global options the way git itself composes them.
+    None when nothing absolute can be had."""
+    location = cwd if isinstance(cwd, str) and os.path.isabs(cwd) else project_root()
+    args = words[1:]
+    while args and args[0].startswith(FLAG_PREFIX):
+        flag = args[0]
+        takes_value = flag.split(FLAG_VALUE_SEP, 1)[0] in GIT_GLOBAL_VALUE_FLAGS
+        attached = FLAG_VALUE_SEP in flag
+        if flag == GIT_LOCATION_FLAG and len(args) > 1 and location is not None:
+            location = os.path.join(location, args[1])
+        args = args[2:] if (takes_value and not attached) else args[1:]
+    return location
+
+
+def git_probe(location, *argv):
+    """`git -C <location> <argv>`: its stdout lines, or None on any failure — a non-zero
+    exit, no git, a timeout. Bounded and silent; never raises."""
+    try:
+        done = subprocess.run((GIT_PROGRAM, "-C", location) + tuple(argv),
+                              stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              timeout=GIT_PROBE_TIMEOUT_SECONDS)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    if done.returncode != 0:
+        return None
+    return done.stdout.splitlines()
+
+
+def checkout_state(location):
+    """`(toplevel, branch)` of the checkout at `location`; `branch` is None on a detached
+    HEAD, and both are None when git cannot say."""
+    if not location:
+        return None, None
+    lines = git_probe(location, *GIT_PROBE_TOPLEVEL_AND_HEAD)
+    if not lines or len(lines) < 2:
+        return None, None
+    toplevel, head = lines[0], lines[1]
+    branch = head[len(GIT_BRANCH_REF_PREFIX):] if head.startswith(GIT_BRANCH_REF_PREFIX) else None
+    return toplevel, branch
+
+
+def branch_name(ref, branch):
+    """A branch-or-HEAD spelling as the branch it names: `HEAD`/`@` are `branch`, and
+    `refs/heads/x` is `x`."""
+    if ref in GIT_HEAD_NAMES:
+        return branch
+    if ref.startswith(GIT_BRANCH_REF_PREFIX):
+        return ref[len(GIT_BRANCH_REF_PREFIX):]
+    return ref
+
+
+def switch_leaves(rest, branch):
+    """True when `git switch <rest>` would leave `branch`: `--detach`/`-d`, `--orphan`,
+    `-` (the previous branch), or a first positional that is any other branch."""
+    skip = False
+    for token in rest:
+        if skip:
+            skip = False
+            continue
+        if token == GIT_PREVIOUS_BRANCH:
+            return True
+        if token.startswith(FLAG_PREFIX):
+            name = token.split(FLAG_VALUE_SEP, 1)[0]
+            if name in GIT_SWITCH_DETACH_FLAGS or name == GIT_ORPHAN_FLAG:
+                return True
+            skip = name in GIT_SWITCH_VALUE_FLAGS and FLAG_VALUE_SEP not in token
+            continue
+        return branch_name(token, branch) != branch
+    return False
+
+
+def names_a_commit(location, ref):
+    """True when `ref` is a commit git would switch to: one it resolves (a branch, a tag,
+    a sha), or a remote-tracking branch's short name, which `git checkout <name>` turns
+    into a new local branch. False when git cannot say — a path, then."""
+    if git_probe(location, *(GIT_PROBE_COMMIT + (ref + GIT_COMMIT_PEEL,))) is not None:
+        return True
+    remote_branches = git_probe(location, *GIT_PROBE_REMOTE_BRANCHES)
+    return bool(remote_branches) and ref in remote_branches
+
+
+def checkout_leaves(rest, branch, location):
+    """True when `git checkout <rest>` would leave `branch`. A file checkout never does:
+    anything after `--`, a path-mode flag, or more than one positional (a tree-ish and
+    paths, or only paths). One positional leaves when it is `-`, or names a commit that is
+    not this branch; one git cannot resolve is a path."""
+    if GIT_PATHSPEC_SEPARATOR in rest:
+        return False
+    positionals, skip = [], False
+    for token in rest:
+        if skip:
+            skip = False
+            continue
+        if token == GIT_PREVIOUS_BRANCH:
+            return True
+        if token.startswith(FLAG_PREFIX):
+            name = token.split(FLAG_VALUE_SEP, 1)[0]
+            if name in GIT_CHECKOUT_PATH_FLAGS:
+                return False
+            if name in GIT_CHECKOUT_DETACH_FLAGS or name == GIT_ORPHAN_FLAG:
+                return True
+            skip = name in GIT_CHECKOUT_VALUE_FLAGS and FLAG_VALUE_SEP not in token
+            continue
+        positionals.append(token)
+    if len(positionals) != 1:
+        return False
+    target = positionals[0]
+    if branch_name(target, branch) == branch:
+        return False
+    return names_a_commit(location, target)
+
+
+def push_reading(rest):
+    """`(refspecs, wholesale)` of `git push <rest>`, read from its words alone. `refspecs`
+    are the positionals after the remote — the first positional is the remote unless
+    `--repo <r>` / `--repo=<r>` named it, in which case every positional is a refspec.
+    `wholesale` is a flag that pushes every branch, ref or tag, or deletes."""
+    positionals, pending, wholesale, repo_named = [], None, False, False
+    for token in rest:
+        if pending is not None:
+            repo_named = repo_named or pending == GIT_PUSH_REPO_FLAG
+            pending = None
+            continue
+        if token.startswith(LONG_FLAG_PREFIX):
+            name = token.split(FLAG_VALUE_SEP, 1)[0]
+            if name in GIT_PUSH_EVERY_REF_FLAGS or name in GIT_PUSH_DELETE_FLAGS:
+                wholesale = True
+            if name in GIT_PUSH_VALUE_FLAGS:
+                if FLAG_VALUE_SEP in token:
+                    repo_named = repo_named or name == GIT_PUSH_REPO_FLAG
+                else:
+                    pending = name             # the next token is its value
+            continue
+        if token.startswith(FLAG_PREFIX) and token != FLAG_PREFIX:
+            for i, letter in enumerate(token[1:]):
+                if letter == GIT_PUSH_DELETE_LETTER:
+                    wholesale = True
+                if letter == GIT_PUSH_VALUE_LETTER:
+                    if i == len(token) - 2:    # `-o <value>`; `-o<value>` is attached
+                        pending = GIT_PUSH_VALUE_LETTER
+                    break
+            continue
+        positionals.append(token)
+    return (positionals if repo_named else positionals[1:]), wholesale
+
+
+def refspec_destination(refspec, branch):
+    """`(destination, deletes)` of one refspec `[+]<src>[:<dst>]`: `dst`, else `src`, as
+    the branch it names (`HEAD`/`@` are `branch`, None when that is unknown;
+    `refs/heads/` stripped). An empty `src` deletes `dst`."""
+    spec = refspec[len(GIT_REFSPEC_FORCE_PREFIX):] if refspec.startswith(
+        GIT_REFSPEC_FORCE_PREFIX) else refspec
+    source, separator, destination = spec.partition(GIT_REFSPEC_SEPARATOR)
+    if separator and not source:
+        return branch_name(destination, branch), True
+    return branch_name(destination or source, branch), False
+
+
+def push_goes_elsewhere(rest, branch):
+    """True when `git push <rest>` would push or delete anything but `branch`: a flag that
+    pushes every branch, ref or tag, or deletes; or a refspec whose destination is another
+    ref, or a deletion. No refspec at all — `git push`, `git push origin` — is not judged
+    here."""
+    refspecs, wholesale = push_reading(rest)
+    if wholesale:
+        return True
+    for refspec in refspecs:
+        destination, deletes = refspec_destination(refspec, branch)
+        if deletes or destination != branch:
             return True
     return False
+
+
+def push_reaches_protected(rest, branch=None):
+    """True when `git push <rest>` names GIT_PROTECTED_BRANCH as a destination — pushed to
+    or deleted. `branch` is the current branch when it is known (the cloud): then `HEAD`/`@`
+    and a push with no refspec resolve to it. Locally it is None, and only the words count."""
+    refspecs, _ = push_reading(rest)
+    if not refspecs:
+        return branch == GIT_PROTECTED_BRANCH
+    return any(refspec_destination(refspec, branch)[0] == GIT_PROTECTED_BRANCH
+               for refspec in refspecs)
+
+
+def names_protected_push(args):
+    """True when these subcommand tokens are a push to GIT_PROTECTED_BRANCH, read from the
+    words alone — the both-profile entry, decided with no git probe. Never raises."""
+    if not args or GIT_HOOK_ONLY_RULE(args[0]) != PUSH_TO_PROTECTED:
+        return False
+    try:
+        return push_reaches_protected(args[1:])
+    except Exception:  # a reading that fails is today's answer, never a crash
+        return False
+
+
+def cloud_refuses(words, args, cwd):
+    """True when, in the cloud, this git command is one of the table's cloud-only shapes
+    for the branch its checkout is on. The current branch is read only here — for a
+    switch, a checkout or a push — and a branch that cannot be read refuses nothing."""
+    rule = GIT_CLOUD_ONLY_RULE(args[0]) if args else None
+    if rule is None:
+        return False
+    location = git_location(words, cwd)
+    _, branch = checkout_state(location)
+    if branch is None:
+        return False
+    rest = args[1:]
+    if rule == CLOUD_PUSH_ELSEWHERE:
+        # ... and, the both-profile entry resolved: a push whose target is the protected
+        # branch because it is the current one (`git push` on `main`).
+        return push_goes_elsewhere(rest, branch) or push_reaches_protected(rest, branch)
+    if rule == CLOUD_SWITCH_AWAY:
+        if args[0] == GIT_SWITCH:
+            return switch_leaves(rest, branch)
+        return checkout_leaves(rest, branch, location)
+    return False
+
+
+def repo_shape(root):
+    """`(tool prefix, self arg, features dir)` for the repo `root` is: agentTooling's own
+    checkout when this file's agentTooling directory IS the root, a consuming repo
+    otherwise (session-start.sh's TOOL_PREFIX, SELF_ARG and FEATURES_LABEL)."""
+    tooling = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    real_root = os.path.realpath(root) if root else None
+    if real_root and tooling == real_root:
+        return SELF_TOOL_PREFIX, SELF_ARG, SELF_FEATURES_DIR
+    vendored = VENDORED_DIR_DEFAULT
+    if real_root and tooling.startswith(real_root + os.sep):
+        vendored = os.path.relpath(tooling, real_root)
+    return TOOL_PREFIX_TEMPLATE % vendored, "", CONSUMER_FEATURES_DIR
+
+
+def manifest_first_branch(path, slug):
+    """The fence's `branches[0]`, or the slug when it names none — plan-runner-roots.sh's
+    manifest_branch, read in Python."""
+    fence, last, inside = [], None, False
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            if MANIFEST_FENCE_OPEN_RE.match(line):
+                fence, inside = [], True
+            elif MANIFEST_FENCE_CLOSE_RE.match(line):
+                if inside:
+                    last = "".join(fence)
+                inside = False
+            elif inside:
+                fence.append(line)
+    try:
+        branches = json.loads(last).get(MANIFEST_BRANCHES_FIELD) if last else None
+    except (ValueError, AttributeError):
+        branches = None
+    if isinstance(branches, list) and branches and isinstance(branches[0], str):
+        return branches[0]
+    return slug
+
+
+def started_feature(toplevel, features_dir, branch):
+    """`(slug, manifest path)` of the tracked feature whose manifest names `branch` as
+    branches[0], or `(None, None)` — session-start.sh's started_feature."""
+    pattern = "%s/*/%s" % (features_dir, MANIFEST_NAME)
+    hits = git_probe(toplevel, *(GIT_PROBE_GREP + (branch, "--", pattern))) or []
+    for rel in hits:
+        parts = rel.split("/")
+        if len(parts) != len(features_dir.split("/")) + 2:
+            continue
+        slug = parts[-2]
+        try:
+            if manifest_first_branch(os.path.join(toplevel, rel), slug) == branch:
+                return slug, rel
+        except (OSError, UnicodeDecodeError):
+            continue
+    return None, None
+
+
+def cloud_git_deny_reason(words, cwd):
+    """The cloud reason for refusing `words`: the branch, and the started feature and its
+    close when one exists, or the start to run here. Never raises — what cannot be read
+    is left out, and the reason is still a cloud one."""
+    branch_text, feature_text = BRANCH_UNKNOWN, ""
+    try:
+        root = project_root()
+        prefix, self_arg, features_dir = repo_shape(root)
+        fields = {"prefix": prefix, "self_arg": self_arg}
+        feature_text = GIT_CLOUD_UNSTARTED_TEMPLATE % fields
+        toplevel, branch = checkout_state(git_location(words, cwd))
+        if branch:
+            branch_text = BRANCH_QUOTE % branch
+            slug, manifest = started_feature(toplevel, features_dir, branch)
+            if slug:
+                feature_text = GIT_CLOUD_STARTED_TEMPLATE % dict(fields, slug=slug,
+                                                                 manifest=manifest)
+    except Exception:  # a reason is owed either way; it just names less
+        pass
+    return GIT_CLOUD_DENY_REASON_TEMPLATE % {"branch": branch_text,
+                                            "feature": feature_text}
+
+
+def git_denial(command, cwd):
+    """The git deny's reason when the line carries a git command to refuse, else None.
+    Locally: the ref-moving shapes, with GIT_DENY_REASON, as before, and a push naming
+    `main`, with GIT_PUSH_PROTECTED_DENY_REASON — no git probe on either. In the cloud: the
+    same shapes and the table's cloud-only ones, with the cloud reason."""
+    commands = git_commands(command)
+    if not commands:
+        return None
+    mutating = [words for words, args in commands if git_mutates(args)]
+    protected = [words for words, args in commands if names_protected_push(args)]
+    if not profile_is_cloud():
+        if mutating:
+            return GIT_DENY_REASON
+        return GIT_PUSH_PROTECTED_DENY_REASON if protected else None
+    if mutating or protected:
+        return cloud_git_deny_reason((mutating or protected)[0], cwd)
+    for words, args in commands:
+        try:
+            refused = cloud_refuses(words, args, cwd)
+        except Exception:  # a reading that fails is today's answer, never a deny
+            refused = False
+        if refused:
+            return cloud_git_deny_reason(words, cwd)
+    return None
 
 
 def assigned_names(command):
@@ -2418,21 +2894,23 @@ def main():
     # wrong wherever it runs — and each names a mechanical fix for a command this
     # analysis CAN read, so a specific reason beats the general one below. A command that
     # gets one of them is a command the model spelled readably, which is what the
-    # escalation counter is counting, so each clears it.
-    for judge, reason in ((chains_chdir, DENY_REASON),
-                          (mutates_git_refs, GIT_DENY_REASON),
-                          (uses_own_assignment, ASSIGN_DENY_REASON)):
+    # escalation counter is counting, so each clears it. The git deny's reason is chosen
+    # by profile, and under `cloud` it also covers the table's cloud-only shapes
+    # (`git_denial`); each judge answers its reason, or None.
+    cwd = payload.get("cwd")
+    for judge in (lambda: DENY_REASON if chains_chdir(command) else None,
+                  lambda: git_denial(command, cwd),
+                  lambda: ASSIGN_DENY_REASON if uses_own_assignment(command) else None):
         try:
-            fires = judge(command)
+            reason = judge()
         except Exception:  # an analysis failure is never a deny
-            fires = False
-        if fires:
+            reason = None
+        if reason:
             clear_attempts(state)
             emit(DECISION_DENY, reason)
             return
 
     root = project_root()
-    cwd = payload.get("cwd")
     # Without a known starting directory inside the root, a relative path in the
     # command could resolve anywhere, so nothing is approved. The verdict is still
     # taken: a command nothing can read is unreadable wherever it runs.
