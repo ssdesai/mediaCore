@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -uo pipefail
-# template-version: 1
+# template-version: 2
 
 # This is what `sync-plans.sh --check` compares a seeded copy against to report drift.
-# Bump it whenever the body below changes in a way seeded copies must merge by hand.
+# Bump it whenever ANY line of this template changes, comments included —
+# agentTooling/self/tests/template-versions.sh refuses an unbumped edit. Version 2 changed
+# only this header (session-start.sh runs this script; it is no longer the hook itself):
+# a seeded copy merges it by taking the new header and this version line, and a copy that
+# already carries that header changes this line alone.
 #
 # The once-per-container step for a Claude Code cloud container
 # (agentTooling/self/DESIGN-2026-10-05-cloud-execution.md §7): start what this repo's gate
@@ -11,15 +15,19 @@ set -uo pipefail
 # A red base gate in the cloud means this file is unfinished — finishing it is a feature
 # in this repo, not an exception in the gate.
 #
-# Run by the `SessionStart` hook agentTooling/sync-plans.sh wires into
-# .claude/settings.json (agentTooling/hooks/wire-settings.py), on EVERY session start —
-# and a session starts again on resume and after compaction, so every step below must be
-# idempotent: start a server only when it is not up, create a role only when it is
-# missing. Its stdout reaches the session's context, so print one line per thing done.
+# Run by agentTooling/session-start.sh — the `SessionStart` hook agentTooling/sync-plans.sh
+# wires into .claude/settings.json (agentTooling/hooks/wire-settings.py) — after it prints
+# the session's orientation, in the cloud profile only, on EVERY session start. A session
+# starts again on resume and after compaction, so every step below must be idempotent:
+# start a server only when it is not up, create a role only when it is missing. Its
+# stdout reaches the session's context, so print one line per thing done. What every repo
+# needs at session start lives in session-start.sh and ships with the subtree; only what
+# THIS repo needs goes here.
 #
-# It is an ADAPTER (design §1), and the guard is its own: outside the cloud profile it
-# exits 0 at once, doing nothing, so the same settings file serves a laptop and a
-# container. It asks agentTooling/env-profile.sh — the one place the profile is decided —
+# It is an ADAPTER (design §1), and keeps a guard of its own though its caller already
+# decided the profile: outside the cloud profile it exits 0 at once, so running it by hand,
+# or from a settings file wired before session-start.sh existed, is still a no-op on a
+# laptop. It asks agentTooling/env-profile.sh — the one place the profile is decided —
 # through its functions, never the variables behind them; with no detector beside it,
 # nothing can be decided and nothing is done.
 #
