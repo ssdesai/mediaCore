@@ -1,6 +1,6 @@
 {
   "slug": "tooling-backlog-2026-09-06",
-  "generated_at": "2026-09-09T22:37:00.511575+00:00",
+  "generated_at": "2026-10-13T00:32:57.798789+00:00",
   "cost": {
     "method": "direct",
     "planning": 0.0,
@@ -34,6 +34,7 @@
           "humanNetworkMap/error-surface-completion",
           "humanNetworkMap/mediacore-0-3-0",
           "humanNetworkMap/validation-and-fetch-error-surface",
+          "mediacore/track-artist-field",
           "musicMap/integration-test-database",
           "musicMap/mediacore-0-3-0",
           "musicMap/ruff-format-gate",
@@ -82,6 +83,20 @@
     "direct_build_s": 20001.0,
     "gate_s": 121.0
   },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 31.60413379166667,
+      "build_min": 231.08333333333334,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 3.7493055,
+      "review_min": 7.2552666666666665,
+      "review_plan": "87-review-opus",
+      "verdict": null,
+      "escalations_file": null
+    }
+  ],
   "planning_cost_split": {
     "subagents": 27.24894575,
     "sessions": 4.355188041666668

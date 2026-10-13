@@ -220,8 +220,10 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   tree, the pass commits `S: review round 1` carrying that edit, stamps a `plan_end` with
   `verdict=clean`, `head=` the sha of that very commit and `round=1`, writes exactly one
   `plan_end` and one `pass_end` (the held stamp is flushed once, and the EXIT trap adds
-  none), opens no PR, pushes nothing, adds no cost commit, leaves `timing.jsonl` as the
-  ONLY dirty path, and names `feature-close.sh --self S` as the next step.
+  none), opens no PR, pushes nothing, adds no cost commit, commits the stamps on their own
+  as `S: review stamps` touching `timing.jsonl` alone so the round ends on a clean tree
+  (V1h–V1i, `../features/rates-haiku-live-warning/`), and names
+  `feature-close.sh --self S` as the next step.
   **T3**: a brief that merely mentions the marker mid-line runs; its feature has
   no session, so the CLOSE's capture refuses — the close exits non-zero with the
   `feature-capture.sh --self <slug>` re-run command, the PR is open all the same, no merge
@@ -258,8 +260,9 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   feature's branch.
   **X1**, the close's refusals, each asserted to come before any `pr create`: from the
   primary (not on the feature's branch), on a feature no review has finished (naming
-  `run-review.sh`), and after a commit whose subject is not the harness's own follows the
-  judged head (naming its short sha). **X4** is the fourth, and the one that used to be the
+  `run-review.sh`), after a commit whose subject is not the harness's own follows the
+  judged head (naming its short sha), and after a commit under the `S: review stamps`
+  subject that touches more than `timing.jsonl` (X1f, naming its sha). **X4** is the fourth, and the one that used to be the
   capture's alone: an untracked `NOTES.md.tmp` inside the feature directory is not a cost
   record, so the close names that path, the forge stub's log is empty (not merely free of
   `pr create` — nothing was called at all), the refusal says nothing was written and no PR
@@ -363,8 +366,9 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   session claimed by branch with its `cwd`, `to` stamped, nothing committed or pushed.
   **C3a2**: the residue also carries `refresh_rates.py --check`'s result against
   `fixtures/pricing/litellm-sample.json` (`RATES_CHECK_SOURCE`), which differs from the
-  seeded history — a `rates` line naming `claude-opus-5-5` and a `WARN` naming
-  `refresh_rates.py` — while the capture still exits 0. **C3a3**: and exactly one
+  seeded history with a moved price — a `rates` line naming `claude-opus-5-5` and a
+  `WARN` naming `refresh_rates.py` — while the capture still exits 0. (A diff of only new
+  models prints a `note` instead; its exit code is asserted by `rates-history.sh` H11.) **C3a3**: and exactly one
   `tiers` line, in one of the two summary wordings `refresh_rates.py --tiers` ends on.
   **C4**: with the sandbox's own `analysis/rates_history.json` rewritten to an ancient
   `checked` (restored immediately after), a capture warns in its residue that the
@@ -1879,6 +1883,15 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   against a refreshed history it exits 0 and writes nothing, `checked` included; a missing
   `--source` exits `FETCH_FAILED_EXIT` naming the path, and so does a write-mode run, which
   writes nothing. **H9**: `--history <path>` writes that file and leaves the default alone.
+  **H10**, `--only` (`self/features/rates-haiku-live-warning/`): naming Mythos preview by
+  a dated alias, and Sonnet 5, exits 0, appends exactly H3d's Mythos entry, leaves every
+  other model alone and prints `held` lines for Opus 5.5 and Sonnet 4.6, prints `no change
+  for claude-sonnet-5`, sets `checked` to today; beside `--check` it is argparse's 2.
+  **H11**: `NEW_ONLY_EXIT` is above 2 and not `FETCH_FAILED_EXIT`; H8's `--check` ends on
+  "3 model(s) differ from litellm: 2 price change(s), 1 new; …"; against the refreshed
+  history with Mythos preview dropped it exits `NEW_ONLY_EXIT` and ends on the
+  priced-live summary; and `feature-capture.sh`'s hand-mirrored `RATES_CHANGED_RC` and
+  `RATES_NEW_ONLY_RC` equal `CHANGES_EXIT` and `NEW_ONLY_EXIT`.
   **T1–T8b**, `--tiers` (`self/features/rates-tier-check/`), over a sandbox corpus at
   `<sandbox>/self/features/` — a `planning.json` naming `claude-sonnet-4-5-20250929` and
   `claude-haiku-4-5`, a `usage.json` naming `claude-sonnet-4-5`: exit 1; Sonnet 4.5's line
@@ -1934,8 +1947,8 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   their `# template-version: <N>` line (3, 6, 2 in that order — `pr.sh` is at 6, the
   merge request through `forge.sh auto-merge`, past the 4 whose `--merge-request` entry
   point `feature-close.sh` needs; `gate.sh` 3 and `worktree-setup.sh` 2 source
-  `plans/environment.sh`, and the gate resumes), `environment.sh` and `cloud-setup.sh`
-  in-sync at 1 (1l–1m), the first seeded without the executable bit and the second with
+  `plans/environment.sh`, and the gate resumes), `environment.sh` in-sync at 1 and
+  `cloud-setup.sh` at 2 (1l–1m), the first seeded without the executable bit and the second with
   it (1n), and one SessionStart entry naming `cloud-setup.sh` that a second sync does not
   double (1o–1p) — and only
   `PROJECT_FACTS.md` unfilled, exit 1, `needs attention: 1 item(s)`; that the seeded
@@ -2042,19 +2055,101 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   label (`window bounds carry a zone and to follows from`) and on `run-batch.sh` writing
   the inferred slug through the `FEATURE_SLUG_OUT` handshake.
 - `template-versions.sh` — the odd one out: it reads the checked-in tree rather than
-  standing up a sandbox, and calls no runner. For each of the six repo-owned templates
+  standing up a sandbox, and calls no runner. `bash self/tests/template-versions.sh
+  [<templates dir>]` — the directory defaults to `templates/plans`, and
+  `template-version-bump.sh` hands it edited copies. For each of the six repo-owned templates
   (`templates/plans/{gate,pr,worktree-setup,open-session,environment,cloud-setup}.sh` —
   the last two the environment adapters of execution-profiles) it asserts that the
   `# template-version: N` line matches the version recorded in
   `templates/plans/TEMPLATE_VERSIONS` (rows `<file> <version> <sha256>`) and that the
-  file's content hash matches the one recorded beside it — sha256 over the file with
-  comment-only and blank lines stripped, so a comment edit is free and any change to the
-  code is not. A body edited without a bump FAILs, naming the file and saying to bump
-  `template-version` and re-record the hash. Blocking in `../gate.sh` because such an edit
+  file's content hash matches the one recorded beside it — sha256 over the **whole file
+  except its `# template-version:` line, comments included**, so no edit is free. (It used
+  to strip comment-only and blank lines; that is how PR 85 reworded `cloud-setup.sh`'s
+  header at version 1 — `../features/cloud-pull-fixes/`.) An edit without a bump FAILs,
+  naming the file and saying to bump `template-version` first and then re-record the hash.
+  The table alone cannot tell a bump from a re-record, so each template is also compared
+  with the **base branch's copy at the branch's fork point** — `git show
+  <merge-base of HEAD and origin/main>:templates/plans/<file>` — so only what THIS branch
+  changed is judged: a branch that never touched templates passes however far main has
+  moved, and nobody is pushed to bump a stale copy (which would roll main's newer template
+  back on merge). Only when the merge base cannot be computed (a shallow clone without the
+  shared history) does it fall back to the base tip, where a stale branch can still trip on
+  a newer main bump; the lower-version message then says to merge the base rather than bump.
+  The base is `origin/main`, the local `main` if `origin/main` is absent (as
+  `run-review.sh`'s `review_diff_base` does); neither resolving FAILs with the message
+  `git fetch origin main`. The base's hash is **recomputed from its file by the current
+  rule**, never read from the base's table, so a change of hashing rule reads as no edit.
+  The same version with different content FAILs ("re-recording the hash is not a bump"), a
+  lower version FAILs ("never goes backwards"), a template with no base copy is new and
+  passes, and a removed one has no row left to check. `TEMPLATE_BASE_REPO` (default: this
+  checkout), `TEMPLATE_BASE_REF` (default `origin/main`) and `TEMPLATE_BRANCH_REPO` (the
+  checkout whose HEAD is the branch; default this checkout) override the base for
+  `template-version-bump.sh`'s fixture. Blocking in `../gate.sh` because such an edit
   reports `in-sync` in every consuming repo while their seeded copies are stale, which
-  `sync-check.sh` assertion 8 cannot see (it only compares `templates/plans/X` and
-  `self/X` to each other). Depends on the three templates carrying a `template-version`
-  line and on `TEMPLATE_VERSIONS` being kept in step with them by hand.
+  `sync-check.sh` assertion 8 cannot see (it only compares `templates/plans/X` and `self/X`
+  to each other). Depends on the six templates carrying a `template-version` line, on
+  `TEMPLATE_VERSIONS` being re-recorded, by the command in its own header, at every bump,
+  and on `origin/main` (or a local `main`) existing in the checkout.
+- `template-version-bump.sh` — the check above, seen to fail (`../features/cloud-pull-fixes/`,
+  defect B). Reads the real tree for B1 (it passes) and B2 (`cloud-setup.sh` is at 2, the
+  table says 2, and its header names `session-start.sh` as its runner), then runs
+  `template-versions.sh` over a copy of `templates/plans` in a `mktemp -d`: a comment-only
+  edit unbumped FAILs naming the file (B3, PR 85's case), a body edit unbumped FAILs (B4),
+  a bump without re-recording the table FAILs (B5), and a bump re-recorded with the hash
+  command **read out of `TEMPLATE_VERSIONS`' own header** passes (B6 — the documented
+  recipe is the tested one). B7 seeds a consumer with the real `sync-plans.sh`,
+  `templates/`, `hooks/` and `env-profile.sh`, sets its `plans/cloud-setup.sh` back to 1,
+  and asserts `--check` prints `DRIFT plans/cloud-setup.sh (template-version 1 < 2; …)`,
+  and that setting the line to 2 — the whole hand-merge for a copy already carrying the
+  new header — makes it `in-sync`. B8–B14 tie the hash to the version against a fixture repo
+  standing in for `origin/main` (one commit holding the real templates, on a branch not named
+  `main`): an unchanged tree passes (B8); **a hash re-recorded at an unchanged version FAILs,
+  naming the file** (B9, round 2's finding); a bump with a new hash passes (B10); a version
+  below the base's FAILs (B11); a template the base lacks is new and passes (B12); an
+  unavailable base FAILs naming `git fetch origin main` (B13); and B9 and the unchanged case
+  hold through a depth-1 clone of the base (B14). B15 compares at the fork point: in a
+  fixture where main bumps `cloud-setup.sh` after the branch forks, a branch that touched no
+  template passes (B15a), one that edited a template without a bump still FAILs (B15b), one
+  that lowers a version FAILs without the "merge" advice (B15c), and with no shared history
+  the tip fallback FAILs a stale copy and says to merge (B15d). B1 runs against the real `origin/main`, so
+  the branch itself is checked. No model, no network.
+- `update-cloud-branch.sh` — `update.sh` on a cloud-started pull feature
+  (`../features/cloud-pull-fixes/`, defect A), where the branch is the session's
+  `claude/…` and the manifest sits at `plans/features/<slug>/README.md`. A bare upstream
+  holding the real `update.sh` **and `plan-runner-roots.sh`** beside a stub
+  `sync-plans.sh`, and a consumer that `git subtree add`s it — no worktree, the container
+  is the checkout. Asserts, each exit 1 and nothing pulled: a branch no manifest names
+  still refuses naming `plans/features/<branch>/README.md` (U1); a branch two tracked
+  manifests name as `branches[0]` refuses naming both slugs (U2); an untracked manifest
+  naming the branch is the not-started refusal, not the dirty-tree one (U3); `main` is
+  refused even with a tracked manifest naming `main` (U4). Then, on a `claude/…` branch
+  exactly one committed manifest names (U5): exit 0, the upstream file lands, the `pull`
+  line names the branch and the slug, the `split` line is the upstream head, the stub sync
+  ran, the branch moved and stayed checked out, `main` unmoved, `refs/heads` unchanged.
+  Depends on `git subtree`, `jq` (`manifest_branch`), and `plan-runner-roots.sh`'s
+  `started_features_on`. No model, no network.
+- `claimant-case.sh` — one feature named in two repo-name spellings is one claimant
+  (`../features/cloud-pull-fixes/`, defect C: a cloud clone's lowercase origin named
+  `musicmap/<slug>` what laptop records call `musicMap/<slug>`). `claims-ledger.sh`'s
+  scaffolding — `analysis/*.py` in a throwaway `agentTooling` with a `.git` directory, a
+  redirected `$HOME` — with two hand-written closed manifests and frozen records and a
+  hand-written ledger whose claims spell the repo `musicmap` and whose `seen` holds only
+  one of the two slugs. Asserts `--annotate-frozen` rewrites a record holding both
+  spellings to the one `musicMap/feat-x` and prints its slug (C1), turns a kept unseen
+  `musicMap/feat-y` plus the ledger's `musicmap/feat-y` into one `musicMap/feat-y` (C2),
+  and that a second run prints nothing and leaves both records and the ledger
+  byte-identical (C3); `report.compute_shared_sessions` unions `also_claimed_by` and
+  `share_basis` to one mention (C4); `check_brief_headers` is quiet for
+  `agenttooling/one` against `agentTooling` and warns for another repo (C5);
+  `--list-subagents --unclaimed --for agenttooling/one` lists a delegate briefed
+  `feature: agentTooling/one` (C6, transcript from `fixtures/transcripts/build-transcript.sh`);
+  `plan-runner-roots.sh`'s `feature_repo_name` gives `musicMap` for a `musicmap/`
+  directory whose origin is `git@github.com:ssdesai/musicMap.git`, the directory name
+  with no origin, and `agentTooling` under `SELF_MODE=1`, equal to
+  `capture_planning.repo_display_name(roots.SELF_CORPUS_IDENTITY)` (C7); and that
+  `feature-start.sh` and `feature-capture.sh` set `REPO_NAME` from it (C8, read as text —
+  driving a start would need a fixture whose directory differs from its origin, which
+  `cloud-start.sh`'s does not). No model, no network.
 - `direct-timing.sh` — copies `plan-runner-roots.sh`, the top-level `stamp-timing.sh` and
   `analysis/{pricing,roots,transcript,report}.py` into a throwaway checkout and
   synthesizes a `self/features/` corpus of hand-written manifests, `planning.json` files
@@ -2379,7 +2474,10 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   reads the process environment. M7: sourcing `env-profile.sh` makes exactly one `python3`
   call (a logging `python3` first on `PATH`), to that module. M8: with no module beside a
   copy of `env-profile.sh`, the profile is empty, a warning names `env_profile.py`, and
-  `profile_check` refuses. L1–L2, on a
+  `profile_check` refuses. M9: the same undetected path sourced under `set -euo pipefail`
+  — once with no `python3` on `PATH` (only `dirname`), once with no module — carries on
+  to the warning and the refusal instead of exiting silently on the first `read`'s EOF
+  (`self/features/env-profile-set-e/`). L1–L2, on a
   throwaway repo with a bare origin: the local checkout is `<primary>/.worktrees/<slug>` on
   branch `<slug>` and `create_checkout` makes exactly that worktree; the cloud checkout is
   the primary, the branch the `--branch` value or the current branch off the base, none on

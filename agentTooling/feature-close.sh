@@ -57,6 +57,10 @@ REFUSED_RC=1
 # a change nobody reviewed, and a fix after the review is a new round.
 COST_COMMIT_SUFFIX=": cost records"
 PR_COMMIT_SUFFIX=": PR"
+# run-review.sh's commit of the round's own stamps (its STAMPS_COMMIT_SUFFIX), accepted
+# only when it touches the feature's timing.jsonl and nothing else: the subject alone
+# would admit an unreviewed change written under it.
+STAMPS_COMMIT_SUFFIX=": review stamps"
 # The version of pr.sh that has the --merge-request entry point. An older seeded copy is
 # told about once and the request is skipped; sync-plans.sh --check reports the drift.
 PR_MERGE_REQUEST_FLAG="--merge-request"
@@ -151,9 +155,13 @@ fi
 
 # The tree being closed must be the tree that was judged. A commit after the stamped head
 # is allowed only when it is one of the harness's own — the previous run's cost records,
-# or this script's commit of the stamps the review pass left behind. Anything else is a
+# the review runner's commit of its round's stamps (timing.jsonl alone), or this script's
+# commit of any stamps the review pass left behind. Anything else is a
 # change no review has read, and it is a new round rather than a footnote on this one.
 HEAD_SHA="$(git -C "$CHECKOUT" rev-parse HEAD 2>/dev/null)"
+# The path labels both this check (FEATURE_REL, for the stamps commit) and the stray
+# check below read.
+stray_labels "$FEATURE_SLUG" "$CHECKOUT"
 if [[ -z "$JUDGED_HEAD" ]]; then
   refuse "the latest review ($REVIEW_PLAN) recorded no head — its verdict cannot be tied to a tree, so re-run '$SCRIPT_DIR/$REVIEW_RUNNER_NAME ${SELF_FLAG[@]+"${SELF_FLAG[@]} "}$FEATURE_SLUG' to judge this one"
 fi
@@ -167,6 +175,9 @@ if [[ "$JUDGED_HEAD" != "$HEAD_SHA" ]]; then
     subject="${line#* }"
     case "$subject" in
       "$FEATURE_SLUG$COST_COMMIT_SUFFIX"|"$FEATURE_SLUG$PR_COMMIT_SUFFIX") continue ;;
+      "$FEATURE_SLUG$STAMPS_COMMIT_SUFFIX")
+        [[ "$(git -C "$CHECKOUT" show --name-only --format= "$sha" 2>/dev/null)" == "$FEATURE_REL/timing.jsonl" ]] && continue
+        ;;
     esac
     refuse "$(git -C "$CHECKOUT" rev-parse --short "$sha") '$subject' landed after the review judged this feature, and no review has read it — that is round $((ROUND + 1)), not a footnote on round $ROUND: queue the next review brief and run '$SCRIPT_DIR/$REVIEW_RUNNER_NAME ${SELF_FLAG[@]+"${SELF_FLAG[@]} "}$FEATURE_SLUG' again"
   done <<<"$(git -C "$CHECKOUT" log --format='%H %s' "$JUDGED_HEAD..HEAD" 2>/dev/null)"
@@ -176,8 +187,8 @@ fi
 # rather than after it — which is the whole reason it is here. It is the CAPTURE's reader,
 # from plan-runner-roots.sh: exactly the paths step 3 would refuse, refused now, so a
 # half-written file inside the feature directory cannot pass here and be refused after the
-# PR is open. No sibling slug is admitted, because this script annotates nothing.
-stray_labels "$FEATURE_SLUG" "$CHECKOUT"
+# PR is open. No sibling slug is admitted, because this script annotates nothing. Its
+# labels were set above, before the head check.
 # The `if !` guards the assignment's own exit status, which is stray_paths' return code:
 # refuses on STRAY_UNJUDGED_RC (a label stray_labels should have set is missing) AND on
 # any other way the command substitution's subshell can die (plan-runner-roots.sh) — the
@@ -217,9 +228,11 @@ TIMING_ROUND="$ROUND"
 
 # ── 2. The PR ─────────────────────────────────────────────────────────────────
 # The pass's own closing stamps — the plan_end the verdict rides and pass_end — are
-# written by the review runner AFTER its commit, so they are still dirty here. Committing
-# them now is what keeps pr.sh's own fallback commit the no-op it is meant to be, and
-# keeps its old subject out of a history the next close run has to read.
+# written by the review runner AFTER its pass commit, and it commits them itself as
+# `S: review stamps`; they are dirty here only when that commit could not be made (a
+# git failure, or a review from before it did). Committing them now is what keeps
+# pr.sh's own fallback commit the no-op it is meant to be, and keeps its old subject out
+# of a history the next close run has to read.
 if [[ -n "$(git -C "$CHECKOUT" status --porcelain)" ]]; then
   if git -C "$CHECKOUT" add -A && git -C "$CHECKOUT" commit -q -m "$FEATURE_SLUG$PR_COMMIT_SUFFIX"; then
     echo "  commit    $(git -C "$CHECKOUT" rev-parse --short HEAD) '$FEATURE_SLUG$PR_COMMIT_SUFFIX' — the review pass's closing stamps"

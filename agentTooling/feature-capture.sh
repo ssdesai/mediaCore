@@ -108,10 +108,13 @@ ON_BRANCH_EVIDENCE_ARGS=(--ignore-to)
 # far enough that a delegate spawned before the weekend is still named, near enough that
 # the listing stays a list of things to act on rather than the corpus's whole history.
 RESIDUE_LOOKBACK_DAYS=7
-# refresh_rates.py --check's exit code when LiteLLM's rates differ from the history
-# (CHANGES_EXIT there; bash cannot import it). Its other codes need no word from here:
-# 0 is "no changes", and a fetch failure prints its own one-line reason.
+# refresh_rates.py --check's exit codes when LiteLLM's rates differ from the history
+# (CHANGES_EXIT and NEW_ONLY_EXIT there; bash cannot import them): a recorded price moved,
+# or every difference is a model the history lacks, which pricing.py already prices live.
+# Its other codes need no word from here: 0 is "no changes", and a fetch failure prints
+# its own one-line reason.
 RATES_CHANGED_RC=1
+RATES_NEW_ONLY_RC=4
 COST_COMMIT_SUFFIX=": cost records"
 # The subject feature-start.sh gives a feature's first commit (LIFECYCLE.md → step 2):
 # with both branch refs gone, the only thing left in history saying it was started here.
@@ -146,13 +149,15 @@ done
 # ── Where ─────────────────────────────────────────────────────────────────────
 # CHECKOUT is the working tree this copy lives in — the feature's worktree before the
 # merge, the primary after it — and PRIMARY the checkout its common git dir belongs to,
-# whose name is the <repo> a delegate's brief carries. Every git call names CHECKOUT with
-# -C: nothing here depends on the caller's cwd.
+# whose origin names the <repo> a delegate's brief carries (feature_repo_name,
+# plan-runner-roots.sh — the rule feature-start.sh prints the header with; `agentTooling`
+# under --self; the capture compares it case-insensitively). Every git call names CHECKOUT
+# with -C: nothing here depends on the caller's cwd.
 CHECKOUT="$(git -C "$REPO_DIR" rev-parse --show-toplevel 2>/dev/null)" || refuse "$REPO_DIR is not inside a git repository"
 COMMON_GIT_DIR="$(git -C "$CHECKOUT" rev-parse --git-common-dir 2>/dev/null)" || refuse "cannot resolve the common git dir of $CHECKOUT"
 case "$COMMON_GIT_DIR" in /*) ;; *) COMMON_GIT_DIR="$CHECKOUT/$COMMON_GIT_DIR" ;; esac
 PRIMARY="$(cd "$(dirname "$COMMON_GIT_DIR")" && pwd -P)" || refuse "cannot resolve the primary checkout of $CHECKOUT"
-REPO_NAME="$(basename "$PRIMARY")"
+REPO_NAME="$(feature_repo_name "$PRIMARY")"
 FEATURE_DIR="$FEATURES_DIR/$SLUG"
 # FEATURE_REL, FEATURES_REL and STRAY_SLUG — the labels `git status` prints
 # paths with, and what stray_paths below reads (plan-runner-roots.sh).
@@ -395,7 +400,8 @@ done <<<"$DELEGATES"
 # The rates lines come first because every dollar printed above is tokens times
 # analysis/rates_history.json. `refresh_rates.py --check` prints the history's `checked`
 # date and staleness, then diffs it against LiteLLM's price list and writes nothing: a
-# difference is news, and a network failure is one line. The capture NEVER writes the
+# moved price is a WARN, a model the history lacks only a note (the live fallback prices
+# it already), and a network failure is one line. The capture NEVER writes the
 # history — it ships to every consuming repo through the subtree, so a refresh that
 # finds a change is its own agentTooling self feature. RATES_CHECK_SOURCE, when set, is
 # passed as `--source`: the seam that keeps self/tests off the network.
@@ -411,7 +417,9 @@ while IFS= read -r rates_line; do
   echo "  rates     $rates_line"
 done <<<"$RATES_OUT"
 if (( RATES_RC == RATES_CHANGED_RC )); then
-  echo "  WARN      rates differ from litellm; refresh analysis/rates_history.json with analysis/refresh_rates.py in an agentTooling self feature, never here"
+  echo "  WARN      a recorded price differs from litellm; check it against Anthropic's pricing page — litellm is hand-maintained — then refresh analysis/rates_history.json with analysis/refresh_rates.py in an agentTooling self feature, never here"
+elif (( RATES_RC == RATES_NEW_ONLY_RC )); then
+  echo "  note      only new models differ, and they are priced live from litellm until the history has them — no figure here is wrong; add them with analysis/refresh_rates.py in an agentTooling self feature, never here"
 fi
 # One line, whatever --tiers finds: its last line is the summary (or, on a fetch failure,
 # the one line saying why), and the per-model lines above it are for a human running it

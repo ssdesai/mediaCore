@@ -1,0 +1,150 @@
+{
+  "slug": "cloud-pull-fixes",
+  "captured_at": "2026-10-13T00:32:57.219425+00:00",
+  "manifest_branches": [
+    "claude/cloud-pull-fixes"
+  ],
+  "manifest_subagents": [
+    "a10569083a572fcce",
+    "a7455649f42c68921",
+    "ac26ce457f0a256a9"
+  ],
+  "sessions": [],
+  "subagents": [
+    {
+      "agent_id": "a10569083a572fcce",
+      "parent_session_id": "a82dd454-caeb-5342-8030-389acb9148f6",
+      "date": "2026-10-12",
+      "started_at": "2026-10-12T23:43:22.920000+00:00",
+      "ended_at": "2026-10-12T23:58:42.671000+00:00",
+      "duration_s": 919,
+      "selected_by": "pinned",
+      "cross_repo": true
+    },
+    {
+      "agent_id": "a7455649f42c68921",
+      "parent_session_id": "a82dd454-caeb-5342-8030-389acb9148f6",
+      "date": "2026-10-13",
+      "started_at": "2026-10-13T00:09:10.888000+00:00",
+      "ended_at": "2026-10-13T00:19:25.961000+00:00",
+      "duration_s": 615,
+      "selected_by": "pinned",
+      "cross_repo": true
+    },
+    {
+      "agent_id": "ac26ce457f0a256a9",
+      "parent_session_id": "a82dd454-caeb-5342-8030-389acb9148f6",
+      "date": "2026-10-13",
+      "started_at": "2026-10-13T00:21:33.154000+00:00",
+      "ended_at": "2026-10-13T00:30:52.583000+00:00",
+      "duration_s": 559,
+      "selected_by": "pinned",
+      "cross_repo": true
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "314eeca4-5a86-4476-9485-c287fd9f8184",
+    "841debc2-b6ef-4332-8d8a-fee562751cfc",
+    "995512b0-204a-4adb-b0be-8283575f7901"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "a82dd454-caeb-5342-8030-389acb9148f6",
+      "agent_id": "a10569083a572fcce",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-12",
+      "duration_s": 919,
+      "tokens": {
+        "input": 238,
+        "output": 1638,
+        "cache_read": 27239098,
+        "cache_creation_5m": 322825,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 7.095656600000001,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "a82dd454-caeb-5342-8030-389acb9148f6",
+      "agent_id": "a7455649f42c68921",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-13",
+      "duration_s": 615,
+      "tokens": {
+        "input": 68,
+        "output": 500,
+        "cache_read": 3981038,
+        "cache_creation_5m": 304837,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 1.5634361,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.2,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "a82dd454-caeb-5342-8030-389acb9148f6",
+      "agent_id": "ac26ce457f0a256a9",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-13",
+      "duration_s": 559,
+      "tokens": {
+        "input": 34,
+        "output": 258,
+        "cache_read": 1661662,
+        "cache_creation_5m": 214916,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 0.8722704,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.2,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 0.0,
+    "sidechain": 9.5313631,
+    "subagents": 9.5313631,
+    "total": 9.5313631,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 0,
+    "subagents": 2093,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-02",
+  "warnings": []
+}

@@ -185,12 +185,17 @@ pass; structural ones are escalated.
 **A feature is a sequence of rounds, and the review ends one.** A round is build → gate →
 verify → review. The runner commits what the pass left, as `S: review round N` and only
 when on a branch that is not this feature's base, stamps the round's `plan_end` with
-`verdict=` and `head=` — the sha of that commit, the tree the verdict judged — and stops.
+`verdict=` and `head=` — the sha of that commit, the tree the verdict judged — commits
+those stamps on their own as `S: review stamps` (`timing.jsonl` alone; the stamp names
+the pass commit's sha, so it cannot ride it), and stops. The round therefore ends on a
+clean tree, and a coordinator that pauses before the close leaves nothing dirty.
 It opens no PR and runs no capture: those are step 6, and putting them behind the verdict
 is what stops a rework happening behind a PR body and a frozen record that describe the
 tree before it.
 
-- **Clean** → step 6, which the runner names.
+- **Clean** → step 6, which the runner names. Run it straight away, without asking first:
+  the PR the close opens is the expected outcome of a clean round, and the repository
+  owner has said so as a standing rule. `run-batch.sh` already does exactly this.
 - **Escalated**, or a report whose first line carries no verdict the harness can read
   (which is treated as escalated — fail closed) → **nothing after the review runs.** The
   runner copies the report to `plans/features/S/escalations/<review-stem>.md`; that file
@@ -219,7 +224,8 @@ for a local feature (the post-merge repair path is
 `feature-capture.sh` from the primary, step 7), a feature no review has finished, a latest
 review whose verdict is not clean (naming the escalations file and the round that would
 follow), a `HEAD` that is not the stamped `head` with any commit since carrying a subject
-other than the harness's own (`S: cost records`, `S: PR`), and a worktree holding a dirty
+other than the harness's own (`S: cost records`, `S: PR`, and `S: review stamps` when it
+touches the feature's `timing.jsonl` and nothing else), and a worktree holding a dirty
 path that is not one of the harness's records — **the same reader the capture refuses on**
 (`stray_paths`, `plan-runner-roots.sh`), so a half-written file inside the feature
 directory is named here, before the PR, rather than by the capture after one is open.
@@ -349,12 +355,21 @@ agentTooling PR `N` merged, in each consuming repo `R`:
    pull of several merged PRs at once is named for the newest. Add `--pin` when the
    session running the start will also run the pull (below).
 2. **Pull** — `R/.worktrees/pull-agenttooling-pr<N>/agentTooling/update.sh`, the
-   worktree's copy, by absolute path. It pulls onto the feature's branch and runs the
+   worktree's copy, by absolute path; in a Claude Code cloud container, where the
+   container is the worktree and the start ran on the session's assigned `claude/…`
+   branch, `R/agentTooling/update.sh`. It pulls onto the feature's branch and runs the
    freshly pulled `sync-plans.sh` (`README.md` → "Updating"); it creates no branch, and it
    refuses `main`, a detached HEAD and any branch no start wrote a manifest for, since a
-   pull there is spend no feature counts. Its `split` line is the agentTooling sha
-   pulled. Commit what the sync wrote, and any hand-merge its `DRIFT` lines ask for, on
-   the branch.
+   pull there is spend no feature counts. A branch is a started feature's when
+   `plans/features/<branch>/README.md` exists (local: the branch is the slug) or, failing
+   that, when exactly one tracked manifest's `branches[0]` is the branch (cloud:
+   `plans/features/pull-agenttooling-pr<N>/README.md` naming `claude/…`); two such
+   manifests are refused, naming both. (A copy vendored before `cloud-pull-fixes` has no
+   cloud path and refuses that branch: the one pull that brings it in, from a cloud
+   container, is the same two steps by hand — `git subtree pull --prefix=agentTooling
+   <remote> main --squash`, then `agentTooling/sync-plans.sh`.) Its `pull` line names the branch and the feature;
+   its `split` line is the agentTooling sha pulled. Commit what the sync wrote, and any
+   hand-merge its `DRIFT` lines ask for, on the branch.
 3. **Prose** — the manifest above the fence names the agentTooling PR and the `split`
    sha pulled, the goal is "propagate agentTooling PR `N`", and the plan table has the
    one review row (step 3).
@@ -403,7 +418,8 @@ tracked one on the fast-forward; git overwrites an ignored file there with no mi
 own capture (step 6) or is a repair somebody reaches for with a reason:
 
 - the rate history's age, its diff against LiteLLM (`analysis/refresh_rates.py --check`,
-  which writes nothing), whether any model the corpus uses carries a tiered rate
+  which writes nothing — a moved price is a `WARN`, a model the history lacks only a
+  `note`, since `pricing.py` prices it live already), whether any model the corpus uses carries a tiered rate
   (`refresh_rates.py --tiers`, one line) and the corpus-wide sessions and delegates nobody has claimed are
   printed by `feature-capture.sh`, after its report and before its commit — informational,
   never a refusal;

@@ -112,7 +112,8 @@ code itself — the defects that are still there while every check is green.
   trimmed before the `Verdict:` label is matched — after the plan completes, commits the pass's own output as
   `<slug>: review round N` (only on a branch that is not the feature's base), and stamps
   the round's `plan_end` with `verdict=<clean|escalated|unreadable>` and `head=<sha of
-  that commit>`, then `pass_end`. A first line the harness cannot read is `unreadable` and
+  that commit>`, then `pass_end`, and commits those stamps on their own as
+  `<slug>: review stamps` (`timing.jsonl` alone), so the round ends on a clean tree. A first line the harness cannot read is `unreadable` and
   is treated exactly like `escalated` — **fail closed** — with a line saying the report
   carried no verdict.
 - **It opens no PR and runs no capture.** A runner is a runner. The step that opens the

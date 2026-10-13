@@ -43,8 +43,8 @@ to the machinery is made once and pulled everywhere.
     made (`../agentTooling/LIFECYCLE.md`) — so it pushes the current branch and opens a PR
     from it whose body is the file the close composed (the review's verdict, then the
     Rounds table). Its `git add -A` commit is only ever a **fallback** now: the review pass
-    commits its own output as `<slug>: review round N` and the close commits the stamps
-    that followed, so a current harness leaves a clean tree here. The base is
+    commits its own output as `<slug>: review round N` and then the stamps that followed
+    as `<slug>: review stamps`, so a current harness leaves a clean tree here. The base is
     `FEATURE_BASE`, which `feature-close.sh` exports from the manifest's `base`, else
     `BASE_BRANCH` from the environment, else `main`; a feature stacked on one that has not
     merged therefore targets the feature beneath it and its diff shows only its own work.

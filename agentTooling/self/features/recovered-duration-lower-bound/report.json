@@ -1,6 +1,6 @@
 {
   "slug": "recovered-duration-lower-bound",
-  "generated_at": "2026-09-09T22:37:00.070776+00:00",
+  "generated_at": "2026-10-13T00:32:57.666375+00:00",
   "cost": {
     "method": "direct",
     "planning": 0.0,
@@ -34,6 +34,7 @@
           "humanNetworkMap/error-surface-completion",
           "humanNetworkMap/mediacore-0-3-0",
           "humanNetworkMap/validation-and-fetch-error-surface",
+          "mediacore/track-artist-field",
           "musicMap/integration-test-database",
           "musicMap/mediacore-0-3-0",
           "musicMap/ruff-format-gate",
@@ -82,6 +83,20 @@
     "direct_build_s": 812.0,
     "gate_s": 114.0
   },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 22.35543455982143,
+      "build_min": 87.95,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 3.1853444999999994,
+      "review_min": 6.98775,
+      "review_plan": "88-review-opus",
+      "verdict": null,
+      "escalations_file": null
+    }
+  ],
   "planning_cost_split": {
     "subagents": 18.68614575,
     "sessions": 3.6692888098214276

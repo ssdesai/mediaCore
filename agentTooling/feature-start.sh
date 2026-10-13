@@ -319,7 +319,10 @@ HOOK_LABEL="${GATE_SCRIPT_LABEL%/gate.sh}/worktree-setup.sh"
 # way, so plans/open-session.sh and self/open-session.sh are one rule.
 OPEN_HOOK_LABEL="${GATE_SCRIPT_LABEL%/gate.sh}/open-session.sh"
 WORKTREES_ROOT="$PRIMARY/$WORKTREES_DIR_NAME"
-REPO_NAME="$(basename "$PRIMARY")"
+# The repo half of the brief header the start prints: the origin's repository name, not
+# the directory's — a lowercase cloud clone or a `wt-` scratch tree is still the repo it
+# was cloned from — and `agentTooling` under --self (plan-runner-roots.sh).
+REPO_NAME="$(feature_repo_name "$PRIMARY")"
 # The session that ran this script. Without --pin it is the router and names the routing
 # record; under --pin it is the manifest's pin and names no record — never both.
 ROUTER_SESSION="${SESSION_OPT:-${CLAUDE_CODE_SESSION_ID:-}}"

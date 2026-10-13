@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from pricing import HISTORY_FILENAME, RATES_VERIFIED, is_live, is_rates_stale, live_price_warning
-from roots import add_self_flag, artifact_root, features_root
+from roots import add_self_flag, artifact_root, collapse_feature_mentions, features_root
 # `parse_manifest` is routing.py's: the one copy this module, capture_planning.py and
 # routing.py's pinned-session predicate all read a manifest through.
 from routing import load_records, parse_manifest, routers_of, split_pinned, started_slugs
@@ -968,16 +968,19 @@ def compute_shared_sessions(planning_data):
         # figure that had just been divided, which is a worse failure than the
         # over-count this feature removed: that one announced itself.
         also_claimed_by = list(entry.get("also_claimed_by") or [])
-        seen = set(also_claimed_by)
         for claim in entry.get("share_basis") or []:
             # `source: "self"` is this feature's own claim, always present and never a
             # co-claimant; anything else is another feature the split divided against.
             if claim.get("source") == "self":
                 continue
             feature = claim.get("feature")
-            if feature and feature not in seen:
-                seen.add(feature)
+            if feature:
                 also_claimed_by.append(feature)
+        # One mention per feature whatever the case of its repo half — a cloud capture's
+        # `musicmap/x` and a laptop's `musicMap/x` are one claimant, rendered once in its
+        # mixed-case spelling (roots.collapse_feature_mentions,
+        # self/features/cloud-pull-fixes/), so a record frozen with both prints one.
+        also_claimed_by = collapse_feature_mentions(also_claimed_by)
         if not also_claimed_by:
             continue
         session_id = entry.get("session_id")

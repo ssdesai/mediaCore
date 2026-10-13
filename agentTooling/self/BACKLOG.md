@@ -312,3 +312,34 @@ agentTooling's own, for the harness rather than for a product.
   then a new dated entry for its model appended to the history, then `--recapture` — the
   figure is unchanged; the same with the explicit re-price flag moves it. Raised by the
   human during `review-base-and-cloud-hook` (round 5 recorded it).
+
+- **A cloud capture names a repo in lowercase when nothing else spells it.** A Claude Code
+  cloud container clones from a case-folded origin (`https://github.com/ssdesai/musicmap`),
+  so `repo_display_name` — origin-derived, as it should be — says `musicmap`, and a
+  feature only ever captured in the cloud is `musicmap/<slug>` in every mention. The
+  collapse (`roots.collapse_feature_mentions`) merges it with a laptop's `musicMap/<slug>`
+  wherever both appear, but cannot invent the capitals alone. A real fix needs the true
+  name from somewhere local — e.g. a declared display name in the repo's own
+  `plans/PROJECT_FACTS.md`, or the GitHub API's `full_name`, which the stdlib-only,
+  no-network analysis must not call. Assertion: a capture in a checkout whose origin is
+  `…/musicmap` in a repo that declares `musicMap` writes `musicMap/<slug>`. Raised by
+  `cloud-pull-fixes`.
+
+- **Five templates' headers still say to bump "when the body changes".** Since
+  `cloud-pull-fixes`, `TEMPLATE_VERSIONS` hashes comments too and any edit needs a bump;
+  only `cloud-setup.sh`'s header (bumped to 2 anyway) says so. Rewording the other five
+  (`gate.sh`, `pr.sh`, `worktree-setup.sh`, `open-session.sh`, `environment.sh`) would
+  itself be a bump and a DRIFT line in every consumer for no behaviour, so each is reworded
+  at its next real bump. Assertion: every `templates/plans/*.sh` header says comments
+  count. Raised by `cloud-pull-fixes`.
+
+- **Directory names still label where a transcript ran.** `capture_planning.py
+  --list-subagents`' `cwd` column (`Path(cwd).name`) and similar displays name the launch
+  directory, which in a cloud container is the lowercase clone. They are labels of a place,
+  not a feature's identity, and compare nothing — left as they are. Assertion: none needed
+  unless one of them starts being compared. Raised by `cloud-pull-fixes`.
+
+- **A consuming repo's `plans/worktree-setup.sh` printed ".venv created" on a resumed
+  start although `uv` refused to recreate it.** Repo-owned, not agentTooling's: the seeded
+  skeleton prints nothing of the kind. Noted so the next propagation round tells that repo.
+  Raised during `cloud-pull-fixes`.

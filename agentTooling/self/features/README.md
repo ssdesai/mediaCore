@@ -201,3 +201,12 @@ format".
   a `"$0"` — and passed only because it fell through — use a literal path instead. Built by
   hand (`method: "hand"`) by the session that started it, pinned; plan `01-review-opus` is
   its review.
+- `env-profile-set-e` — `../../env-profile.sh`'s `detect_profile` read the detector's two
+  lines with bare `read`s, so when the detector did not answer (no python3, or no
+  `hooks/env_profile.py`) the first `read`'s EOF ended any sourcing shell under `set -e`
+  silently, before the warning — a consuming repo's `plans/gate.sh` among them, through
+  `plans/environment.sh`. Both reads now tolerate a failed command (`|| true`), and
+  `../tests/env-profile.sh` M9 sources the file under `set -euo pipefail` both ways. Built
+  by hand (`method: "hand"`) by the cloud session that started it, its coordinator on the
+  feature's branch; plan `01-review-opus` is its review. Reported by a consuming repo's
+  agent.

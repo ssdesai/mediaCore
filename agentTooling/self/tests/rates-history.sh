@@ -43,6 +43,14 @@ set -uo pipefail
 #       fetch failure prints its reason and exits `FETCH_FAILED_EXIT`, which is neither of
 #       those nor argparse's 2, and a write-mode refresh that cannot fetch writes nothing.
 #   H9. `--history <path>` writes that file and leaves the default one alone.
+#   H10. `--only <model>` (self/features/rates-haiku-live-warning) appends only the named
+#       models — a dated alias normalized — prints every other difference as `held`, names
+#       a named model with no difference, sets `checked` to today, and is refused beside
+#       `--check`.
+#   H11. `--check` ends on the changed summary and exits 1 when a recorded price moved,
+#       and ends on the priced-live summary and exits `NEW_ONLY_EXIT` (distinct from every
+#       other code) when its only difference is a model the history lacks; feature-capture.sh's
+#       hand-mirrored RATES_CHANGED_RC/RATES_NEW_ONLY_RC equal CHANGES_EXIT/NEW_ONLY_EXIT.
 #   T1-T8. `--tiers` (self/features/rates-tier-check): over a sandbox corpus whose records
 #       name Sonnet 4.5 (a dated alias in `planning.json`, the bare id in a `usage.json`)
 #       and Haiku 4.5, it reports Sonnet 4.5's above-200k rates from the fixture — the
@@ -260,6 +268,15 @@ def cmd_set_checked(args):
         f.write("\n")
 
 
+def cmd_drop_model(args):
+    path, model = args
+    h = load(path)
+    h["models"].pop(model, None)
+    with open(path, "w") as f:
+        json.dump(h, f, indent=2)
+        f.write("\n")
+
+
 def cmd_noise_premise(args):
     sample_path, history_path, model = args
     entry = load(sample_path)[model]
@@ -386,6 +403,7 @@ COMMANDS = {
     "appended_only": cmd_appended_only,
     "field": cmd_field,
     "set_checked": cmd_set_checked,
+    "drop_model": cmd_drop_model,
     "noise_premise": cmd_noise_premise,
     "const": cmd_const,
     "cost_matches_parity": cmd_cost_matches_parity,
@@ -490,6 +508,39 @@ cp "$A9/rates_history.json" "$TMP/default-before.json" 2>/dev/null
 refresh "$A9" --history "$TMP/other.json" --source "$SAMPLE" >/dev/null; rc9=$?
 check "H9. --history writes the named file and leaves the default alone (got $rc9)" \
   '[[ $rc9 -eq 0 ]] && [[ "$(H field "$TMP/other.json" checked)" == "$TODAY" ]] && cmp -s "$TMP/default-before.json" "$A9/rates_history.json"'
+
+# ── H10. --only ──────────────────────────────────────────────────────────────
+A10="$(sandbox only)"
+cp "$A10/rates_history.json" "$TMP/only-before.json" 2>/dev/null
+out10="$(refresh "$A10" --only claude-mythos-preview-20260101 --only claude-sonnet-5 --source "$SAMPLE")"; rc10=$?
+check "H10a. --only exits 0 (got $rc10)" '[[ $rc10 -eq 0 ]]'
+check "H10b. ... appends the named model, a dated alias normalized, exactly as a full refresh would" \
+  '[[ "$(H entries "$A10/rates_history.json" claude-mythos-preview)" == "$myp" ]]'
+check "H10c. ... leaves every other model alone and prints each held one" \
+  '[[ "$(H others_equal "$TMP/only-before.json" "$A10/rates_history.json" claude-mythos-preview)" == "True" ]] && grep -q "^held claude-opus-5-5:" <<<"$out10" && grep -q "^held claude-sonnet-4-6:" <<<"$out10"'
+check "H10d. ... says a named model with no difference has none, and sets checked to today" \
+  'grep -q "^no change for claude-sonnet-5:" <<<"$out10" && [[ "$(H field "$A10/rates_history.json" checked)" == "$TODAY" ]]'
+out10e="$(refresh "$A10" --check --only claude-opus-5-5 --source "$SAMPLE")"; rc10e=$?
+check "H10e. --only with --check is a usage error (got $rc10e)" '[[ $rc10e -eq 2 ]]'
+
+# ── H11. --check tells a new model from a moved price ────────────────────────
+NEW_ONLY="$(H const "$A8" NEW_ONLY_EXIT)"
+check "H11a. NEW_ONLY_EXIT is distinct from 0, 1, 2 and FETCH_FAILED_EXIT (got $NEW_ONLY)" \
+  '[[ "$NEW_ONLY" =~ ^[0-9]+$ && "$NEW_ONLY" -gt 2 && "$NEW_ONLY" != "$FETCH_FAILED" ]]'
+check "H11b. --check with a moved price ends on the changed summary" \
+  '[[ "$(tail -n 1 <<<"$out8")" == "3 model(s) differ from litellm: 2 price change(s), 1 new; "* ]]'
+cp "$TMP/refreshed.json" "$TMP/new-only.json" 2>/dev/null
+H drop_model "$TMP/new-only.json" claude-mythos-preview >/dev/null
+out11="$(refresh "$A8" --check --history "$TMP/new-only.json" --source "$SAMPLE")"; rc11=$?
+check "H11c. --check whose only difference is a model the history lacks exits NEW_ONLY_EXIT (got $rc11)" \
+  '[[ -n "$NEW_ONLY" && "$rc11" == "$NEW_ONLY" ]]'
+check "H11d. ... and ends on the summary saying it is priced live meanwhile" \
+  '[[ "$(tail -n 1 <<<"$out11")" == "1 model(s) in litellm are missing from the history — priced live from litellm meanwhile"* ]]'
+# feature-capture.sh mirrors both codes by hand (bash cannot import them); a drift there
+# stays green everywhere else and silently drops the residue's WARN or note.
+CHANGES="$(H const "$A8" CHANGES_EXIT)"
+check "H11e. feature-capture.sh's RATES_CHANGED_RC and RATES_NEW_ONLY_RC equal CHANGES_EXIT and NEW_ONLY_EXIT" \
+  'grep -qx "RATES_CHANGED_RC=$CHANGES" "$HERE/feature-capture.sh" && grep -qx "RATES_NEW_ONLY_RC=$NEW_ONLY" "$HERE/feature-capture.sh"'
 
 # ── T. --tiers ───────────────────────────────────────────────────────────────
 # A sandbox's corpus is `<sandbox>/self/features` (roots.features_root(True), derived from

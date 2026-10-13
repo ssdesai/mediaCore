@@ -21,6 +21,8 @@ set -uo pipefail
 #   M7. sourcing env-profile.sh makes exactly one python3 call, to that module;
 #   M8. with no module beside it, env-profile.sh leaves the profile empty, says so on
 #       stderr, and profile_check refuses;
+#   M9. the same under `set -euo pipefail`, with no python3 on PATH and with no module:
+#       the sourcing shell carries on to the warning and the refusal, never a silent exit;
 #   L1. the layout, local: feature_checkout is <primary>/.worktrees/<slug> and
 #       feature_branch the slug; create_checkout makes that worktree on that branch;
 #   L2. the layout, cloud: feature_checkout is the primary itself; feature_branch is the
@@ -163,6 +165,28 @@ cp "$DETECTOR" "$NOMOD/env-profile.sh"
 out="$(env -u CLAUDE_CODE_REMOTE -u AGENTTOOLING_PROFILE bash "$TMP/probe.sh" "$NOMOD/env-profile.sh" 'echo "profile=[$(profile_name)]"; if profile_check >/dev/null; then echo passed; else echo refused; fi' 2>&1)"
 check "M8. no module beside env-profile.sh: empty profile, a warning naming it, profile_check refuses (got '$out')" \
   'grep -qF "profile=[]" <<<"$out" && grep -qF "env_profile.py" <<<"$out" && grep -q "refused" <<<"$out" && ! grep -q "passed" <<<"$out"'
+
+# M9. the same undetected path under `set -euo pipefail`, as a consuming repo's gate sources
+# it through plans/environment.sh: the sourcing shell must carry on to the warning and the
+# refusal, never exit silently on the first read's EOF. Twice — with no python3 on PATH
+# (only dirname, which the file's own path needs), and with no module beside it.
+cat > "$TMP/probe-e.sh" <<'PROBE'
+set -euo pipefail
+source "$1"
+echo "profile=[$(profile_name)]"
+if profile_check >/dev/null; then echo passed; else echo refused; fi
+echo reached-end
+PROBE
+BASH_BIN="$(command -v bash)"
+NOPY_BIN="$TMP/no-python-bin"
+mkdir -p "$NOPY_BIN"
+ln -s "$(command -v dirname)" "$NOPY_BIN/dirname"
+out="$(env -u CLAUDE_CODE_REMOTE -u AGENTTOOLING_PROFILE PATH="$NOPY_BIN" "$BASH_BIN" "$TMP/probe-e.sh" "$DETECTOR" 2>&1)"; rc=$?
+check "M9a. set -e, no python3 on PATH: the sourcing shell carries on, warns naming the module, profile_check refuses (got $rc: '$out')" \
+  '[[ $rc -eq 0 ]] && grep -qF "profile=[]" <<<"$out" && grep -qF "env_profile.py" <<<"$out" && grep -q "refused" <<<"$out" && grep -q "reached-end" <<<"$out"'
+out="$(env -u CLAUDE_CODE_REMOTE -u AGENTTOOLING_PROFILE "$BASH_BIN" "$TMP/probe-e.sh" "$NOMOD/env-profile.sh" 2>&1)"; rc=$?
+check "M9b. set -e, no module beside env-profile.sh: likewise (got $rc: '$out')" \
+  '[[ $rc -eq 0 ]] && grep -qF "profile=[]" <<<"$out" && grep -qF "env_profile.py" <<<"$out" && grep -q "refused" <<<"$out" && grep -q "reached-end" <<<"$out"'
 
 # ── L. the checkout layout ────────────────────────────────────────────────────
 REPO="$TMP/layout"

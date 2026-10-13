@@ -1,0 +1,86 @@
+{
+  "slug": "pull-agenttooling-pr89",
+  "captured_at": "2026-10-13T21:38:26.845172+00:00",
+  "manifest_branches": [
+    "claude/sharp-newton-9fbqfd"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "06093b39-11ec-5734-8b7d-ba1bc683d340",
+      "git_branch": "claude/sharp-newton-9fbqfd",
+      "selected_by": "pinned",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-10-13",
+      "started_at": "2026-10-13T21:25:25.105000+00:00",
+      "ended_at": "2026-10-13T21:38:19.663000+00:00",
+      "duration_s": 256,
+      "share_basis": [
+        {
+          "feature": "mediacore/pull-agenttooling-pr89",
+          "from": "2026-10-13T21:36:00Z",
+          "to": "2026-10-13T21:38:08Z",
+          "source": "self"
+        }
+      ],
+      "session_cost_usd": 3.2888182,
+      "session_duration_s": 774,
+      "unclaimed_usd": 1.412036,
+      "unclaimed_duration_s": 518
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "14d220c1-e70e-48ab-84bf-fad1a02d3605"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "06093b39-11ec-5734-8b7d-ba1bc683d340",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-10-13",
+      "duration_s": 774,
+      "tokens": {
+        "input": 78,
+        "output": 16002,
+        "cache_read": 5917231,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 46623
+      },
+      "cost_usd": 1.8767821999999998,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 1.8767821999999998,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 1.8767821999999998,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 256,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "session 06093b39-11ec-5734-8b7d-ba1bc683d340 may span the window boundary (window 2026-10-13T21:36:00+00:00..2026-10-13T21:38:08+00:00 UTC, session ends 2026-10-13T21:38:19.663000+00:00); $0.1262 and 11s of it fall at or after `to`, not counted here (the session is pinned and this feature is its only claimant, so it is cut to the window: what lies past `to` is the unclaimed remainder)",
+    "session 06093b39-11ec-5734-8b7d-ba1bc683d340 is pinned and claimed by this feature alone, so it is cut to the window: this feature's part is $1.8768 of the session's own $3.2888",
+    "session 06093b39-11ec-5734-8b7d-ba1bc683d340 has $1.4120 (519s) unclaimed by any feature, of which $1.2858 (507s) is the opening stretch \u2014 further before the earliest claimant's `from` than that claimant's own window is long \u2014 and $0.1262 (12s) is the rest. For the head, pin the session to the feature that planning belongs to, or move the earliest claimant's `from` back over it: manifest.py [--self] pull-agenttooling-pr89 set-window-from 2026-10-13T21:25:25.105000Z --session 06093b39-11ec-5734-8b7d-ba1bc683d340. For the rest, widen a claimant's `to` bound, or pin the session to the feature it belongs to, to have it counted"
+  ]
+}
