@@ -1,0 +1,158 @@
+{
+  "slug": "rates-haiku-live-warning",
+  "generated_at": "2026-10-13T18:54:29.215716+00:00",
+  "cost": {
+    "method": "hand",
+    "planning": 0.0,
+    "implementer": 7.6176252,
+    "build": 7.6176252,
+    "verify": 0.0,
+    "review": 1.8437580000000002,
+    "total": 9.4613832,
+    "planning_pct": 0.0,
+    "build_pct": 80.51280704918494,
+    "verify_pct": 0.0,
+    "review_pct": 19.487192950815057,
+    "cost_per_plan": 4.7306916,
+    "cost_per_file": 1.89227664,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "hand",
+    "planning_sessions_s": 4415,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 4415,
+    "build_s": 4415.0,
+    "verify_s": 0.0,
+    "review_s": 195.187,
+    "executor_s": 4610.187,
+    "total_s": 4610.187,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-10-13T18:10:25+00:00",
+      "last_at": "2026-10-13T18:54:28+00:00",
+      "batch_span_s": 2643.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 202.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 202.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-10-13T18:54:28+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/89"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 7.6176252,
+      "build_min": 73.58333333333333,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.6594551999999999,
+      "review_min": 1.32555,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.1843028000000002,
+      "review_min": 1.9275666666666667,
+      "review_plan": "02-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 7.6176252
+  },
+  "cold_start_tax_tokens": 130047,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 2,
+      "total_turns": 46,
+      "total_cost_usd": 1.8437580000000002,
+      "total_duration_s": 195.187,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 4,
+      "files_edited": 3,
+      "churn_ratio": 1.3333333333333333
+    },
+    {
+      "plan": "02-review-opus",
+      "edit_count": 4,
+      "files_edited": 3,
+      "churn_ratio": 1.3333333333333333
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 69,
+      "loc_changed": 70
+    },
+    {
+      "plan": "02-review-opus",
+      "plan_md_lines": 67,
+      "loc_changed": 85
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md",
+        "self/tests/README.md",
+        "self/tests/rates-history.sh"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-opus",
+      "edited_not_listed": [
+        "README.md",
+        "self/PROJECT_FACTS.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": [],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and this feature stamped no `checkpoint` event \u2014 nothing divides it by round, so all of it sits in round 1"
+    }
+  ],
+  "profile": "cloud",
+  "gate": "green"
+}
