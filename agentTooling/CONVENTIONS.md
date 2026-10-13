@@ -144,6 +144,14 @@ a move reaches the human's prompt.
 Write each file once. A file authored in one call and then patched three times costs four
 approvals to reach one result — compose the final content, then write it.
 
+## Closing a feature
+
+After a feature's review comes back `Verdict: clean`, run `feature-close.sh` (with
+`--self` for an agentTooling self feature) straight away, without asking first. The PR it
+opens is the expected outcome of a clean round, and the repository owner has authorized it
+as a standing rule (`LIFECYCLE.md` → step 5). An escalated verdict is a new round, never a
+close.
+
 ## READMEs
 
 Each folder has a `README.md` describing its contents.

@@ -290,8 +290,11 @@ shell_scripts=(
   self/tests/check-plans.sh
   self/tests/sync-check.sh
   self/tests/propagation-pull.sh
+  self/tests/update-cloud-branch.sh
   self/tests/audit-fixes.sh
   self/tests/template-versions.sh
+  self/tests/template-version-bump.sh
+  self/tests/claimant-case.sh
   self/tests/open-session.sh
   self/tests/allow-repo-commands.sh
   self/tests/hook-quote-oracle.sh
@@ -373,11 +376,23 @@ record "sync check self-test" bash self/tests/sync-check.sh
 # on a started feature's branch, in its worktree, and nothing in the permission policy
 # denies the merge it performs (LIFECYCLE.md -> "Propagate").
 record "propagation pull self-test" bash self/tests/propagation-pull.sh
+# The same pull from a cloud container, where the branch is the session's and not the slug:
+# exactly one tracked manifest naming it pulls, none or several refuse
+# (self/features/cloud-pull-fixes/, defect A).
+record "update cloud branch self-test" bash self/tests/update-cloud-branch.sh
 record "audit fixes self-test" bash self/tests/audit-fixes.sh
 # Reads the checked-in templates rather than driving a runner, but blocking for the same
-# reason as the rest: a template body edited without a version bump reports `in-sync` in
-# every consuming repo while their seeded copies are stale (self/tests/README.md).
+# reason as the rest: a template edited without a version bump — a comment counts — reports
+# `in-sync` in every consuming repo while their seeded copies are stale
+# (self/tests/README.md; self/features/cloud-pull-fixes/, defect B). The second drives the
+# first over edited copies, so the check is seen to fail, and a stale consumer to DRIFT.
 record "template versions self-test" bash self/tests/template-versions.sh
+record "template version bump self-test" bash self/tests/template-version-bump.sh
+# One feature named in two repo-name spellings is one claimant: the frozen-record refresh,
+# the report's union, the brief-header check and --for compare the repo half
+# case-insensitively, and an unchanged corpus is still written nothing
+# (self/features/cloud-pull-fixes/, defect C).
+record "claimant case self-test" bash self/tests/claimant-case.sh
 # The session opener's BODY, with osascript and claude stubbed on PATH: the worktree path
 # reaches the session intact through both escaping layers. feature-lifecycle.sh S5 reads
 # the same two files as text; this one runs them, which is the only way a quoting bug in

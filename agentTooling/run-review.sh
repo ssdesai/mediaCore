@@ -24,7 +24,7 @@ set -uo pipefail
 # This pass ends a ROUND and nothing more (self/DESIGN-2026-09-17-close-and-review-rounds.md
 # §2–§3). It reads the verdict from the report's first line, commits its own output as
 # `<slug>: review round N`, stamps that round's plan_end with the verdict and the head it
-# judged, and names what comes next: feature-close.sh on a clean round, or the rework
+# judged, commits those stamps as `<slug>: review stamps`, and names what comes next: feature-close.sh on a clean round, or the rework
 # brief it has just written to <features>/<slug>/escalations/<review-stem>.md. It opens no
 # PR and runs no capture — those belong to the close, which refuses any tree a clean review
 # has not judged, so a rework cannot happen behind a PR body describing the tree before it.
@@ -52,6 +52,12 @@ CLOSE_SCRIPT="$SCRIPT_DIR/$CLOSE_SCRIPT_NAME"
 # round's commit distinguishable from the next's; pr.sh's own fallback commit keeps its
 # older subject and, now that this runner always commits first, is only ever a no-op.
 PASS_COMMIT_ROUND_PREFIX=": review round "
+# The subject the round's stamps are committed under, one commit after the pass's: the
+# stamp names the pass commit's sha, so it cannot ride that commit. feature-close.sh accepts
+# it after the stamped head like its own subjects, so a clean round leaves a clean tree and
+# a coordinator may pause before the close with nothing dirty
+# (self/features/rates-haiku-live-warning/NOTES.md, round 2).
+STAMPS_COMMIT_SUFFIX=": review stamps"
 # The base a feature whose manifest names none was cut from (pr.sh's FALLBACK_BASE). Only
 # the commit decision below uses it: on the base branch itself there is nothing to commit
 # to, and pr.sh's own refusal says so.
@@ -248,6 +254,25 @@ commit_pass_output() {
   echo "=== committed the pass as '$subject' on $branch ==="
 }
 
+# commit_stamps <branch> <base> <subject> — commit the feature's timing.jsonl alone, after
+# the stamps are written. Same guards and the same advisory stance as commit_pass_output;
+# only the one file is staged, so nothing the pass did not write is swept in with it.
+commit_stamps() {
+  local branch="$1" base="$2" subject="$3"
+  local timing="$FEATURES_DIR/$FEATURE_SLUG/timing.jsonl"
+  if [[ -z "$branch" || "$branch" == "HEAD" || "$branch" == "$base" ]]; then
+    return 0
+  fi
+  if [[ -z "$(git -C "$REPO_DIR" status --porcelain -- "$timing")" ]]; then
+    return 0
+  fi
+  if git -C "$REPO_DIR" add -- "$timing" && git -C "$REPO_DIR" commit -q -m "$subject" -- "$timing"; then
+    echo "=== committed the round's stamps as '$subject' ==="
+  else
+    echo "=== could not commit the round's stamps — timing.jsonl is left uncommitted, and the close commits it ==="
+  fi
+}
+
 if (( record_verdict )); then
   # The round this pass belongs to, fixed by run_all at pass_start, and the plan whose
   # plan_end is still held (plan-runner-lib.sh): the one that wrote the report.
@@ -287,17 +312,19 @@ if (( record_verdict )); then
   # The branch this feature was cut from, recorded by feature-start.sh: on it there is
   # nothing for this pass to commit to. Read here, once, so nothing else parses markdown.
   feature_base="$(manifest_field "$FEATURES_DIR/$FEATURE_SLUG/README.md" base)"
+  current_branch="$(git -C "$REPO_DIR" branch --show-current 2>/dev/null)"
   echo ""
   echo "=== committing the pass's output ==="
-  commit_pass_output "$(git -C "$REPO_DIR" branch --show-current 2>/dev/null)" \
-    "${feature_base:-$FALLBACK_BASE}" "$pass_subject"
+  commit_pass_output "$current_branch" "${feature_base:-$FALLBACK_BASE}" "$pass_subject"
 
   # The stamps, after the commit: `head` is the sha of the tree this verdict judged, which
   # is what feature-close.sh refuses to close anything but. pass_end is written here
   # rather than left to the EXIT trap so the two land together, one line after the other.
+  # Then they are committed on their own, so the round ends on a clean tree.
   stamp_head="$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null)"
   flush_plan_end verdict="$verdict" head="$stamp_head"
   stamp_pass_end
+  commit_stamps "$current_branch" "${feature_base:-$FALLBACK_BASE}" "$FEATURE_SLUG$STAMPS_COMMIT_SUFFIX"
 
   echo ""
   if [[ "$verdict" == "$VERDICT_CLEAN" ]]; then

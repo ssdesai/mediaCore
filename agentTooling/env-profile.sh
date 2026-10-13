@@ -80,11 +80,14 @@ PROFILE_UNDETECTED_DECIDER="undetected"
 # detect_profile — the module's answer into AGENTTOOLING_PROFILE (exported) and
 # PROFILE_DECIDED_BY. Run once below, when this file is sourced: one python3 call, its
 # two lines read through a process substitution so this shell keeps what it reads.
+# Each read tolerates its own failure: when the detector does not answer, `read` hits EOF
+# and returns 1, which under a caller's `set -e` (plans/gate.sh sources this through
+# plans/environment.sh) would end that shell silently, before the warning below.
 detect_profile() {
   local decided="" decider=""
   {
-    IFS= read -r decided
-    IFS= read -r decider
+    IFS= read -r decided || true
+    IFS= read -r decider || true
   } < <(python3 -B "$PROFILE_DETECTOR" 2>/dev/null)
   if [[ -z "$decided" ]]; then
     echo "env-profile.sh: the profile detector $PROFILE_DETECTOR did not answer (is python3 installed, and is hooks/env_profile.py beside this file?) — no profile is decided" >&2

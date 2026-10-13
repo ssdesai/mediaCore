@@ -1,13 +1,17 @@
 # Recorded content hash per repo-owned template, checked by self/tests/template-versions.sh.
 # Format: <file> <template-version> <sha256>
-# The hash is of the file with comment-only and blank lines stripped:
-#   grep -v '^[[:space:]]*#' <file> | grep -v '^[[:space:]]*$' | shasum -a 256
-# so a comment or doc edit never forces a bump, while any change to the code does.
-# Editing a template's body: bump its `# template-version:` line, then re-record the
-# hash here with the command above. See ../README.md.
-gate.sh 3 afcb81a255f254dc43eec4907edd5444641ee5a7c24d9213e5084e8970f2f5ca
-pr.sh 6 7027b5d453660f1c9a25a6be70bb1c5be2432466bbc2909e98f568b5b12b31bc
-worktree-setup.sh 2 a0e19aa47de8ea3f93832e489f573e93250ec49cff541d75bd65cadd511044e8
-open-session.sh 4 d77fd47383a368ccf101218f61ce6dc0e8047f41647f8cf3f4c98491437e5dec
-environment.sh 1 a8fcac36b00d6e93ac6649b91daf903da76921c8e9db07abe50ad07030e21313
-cloud-setup.sh 1 310ba1cbdd707538e0d2152316805ed4f3da1f8e9ce09155b40b37f2ec53a597
+# The hash is of the whole file except its version line — comments included:
+#   grep -v '^# template-version:' <file> | shasum -a 256
+# so NO edit is free: a seeded script's comments are the consumer's documentation of how
+# it is run, and a reworded comment left at the old version reports `in-sync` in every
+# consumer forever (self/features/cloud-pull-fixes/NOTES.md). After any edit to a
+# template: FIRST bump its `# template-version:` line, THEN re-record its row here with the
+# command above. Re-recording a hash without bumping the version fails the check: it
+# compares each template with the base branch's copy (origin/main) and refuses the same
+# version with different content, or a lower version. See ../README.md.
+gate.sh 3 934ffe0769d01495b8884b4d9274732e05d47daa0f513fec3c9c269521088ed4
+pr.sh 6 57a5b94a10a0b7d80acfc5a083e69d41c9c2ad88ebaadb874378dfbb2557cd6f
+worktree-setup.sh 2 3c789ea3826664ca3c0e8c9b9cba154dd15c97a3add743e4a22c9b8736957c82
+open-session.sh 4 7772b8f2a7708a3e787286965f15f3aad543450d77f7d920c62c698c4026abfe
+environment.sh 1 793001127bb07db9d057cf9ba8b132b3460ea6dfa45038ae1f86a0a94837db41
+cloud-setup.sh 2 dfda34a68d11db0f61161ba82595627ccdde0f561f3ecf10579fd9ed82fbaa21

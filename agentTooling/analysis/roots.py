@@ -52,6 +52,42 @@ GIT_ENTRY = ".git"
 GITDIR_PREFIX = "gitdir:"
 COMMONDIR_FILE = "commondir"
 
+# A feature MENTION is the display string `<repo_name>/<slug>` a record's
+# `also_claimed_by` and `share_basis[].feature` carry. Its repo half is a display name,
+# and two captures of one repo can spell it differently by case: a Claude Code cloud
+# container clones from a lowercase origin URL (`https://github.com/ssdesai/musicmap`), so
+# its captures write `musicmap/<slug>` where a laptop's wrote `musicMap/<slug>`
+# (self/features/cloud-pull-fixes/, defect C). GitHub repo names are case-insensitive, so
+# the two are one feature. The slug half is compared exactly — slugs are lowercase by rule.
+FEATURE_MENTION_SEPARATOR = "/"
+
+
+def feature_mention_key(mention):
+    """What two mentions are compared by: `(repo_name.lower(), slug)`. A mention with no
+    separator is its own key, lowercased, so it can never merge with a real one."""
+    repo_name, sep, slug = str(mention).rpartition(FEATURE_MENTION_SEPARATOR)
+    if not sep:
+        return (str(mention).lower(), None)
+    return (repo_name.lower(), slug)
+
+
+def preferred_mention(spellings):
+    """The one spelling to keep among mentions that differ only in repo-name case: any
+    spelling that is not all lowercase beats one that is — case is only ever LOST (a
+    lowercase clone, a case-folding tool), never invented — and ties go to the smallest
+    string, so the answer depends on the set and never on the order it was read in."""
+    return min(spellings, key=lambda s: (s == s.lower(), s))
+
+
+def collapse_feature_mentions(mentions):
+    """`mentions` with every group that differs only in repo-name case collapsed to its
+    `preferred_mention`, sorted. Deterministic in the SET of spellings, so a refresh that
+    runs it twice over the same inputs writes the same list both times."""
+    groups = {}
+    for mention in mentions:
+        groups.setdefault(feature_mention_key(mention), set()).add(mention)
+    return sorted(preferred_mention(spellings) for spellings in groups.values())
+
 
 def add_self_flag(parser):
     """Register --self, worded identically across the three scripts."""

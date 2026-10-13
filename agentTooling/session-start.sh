@@ -38,10 +38,11 @@ set -uo pipefail
 #     variable (self/profile-confinement.sh).
 #
 # Depends on: env-profile.sh (profile_is_cloud, profile_describe) and plan-runner-roots.sh
-# (resolve_roots — REPO_DIR, FEATURES_DIR, FEATURES_LABEL, SELF_ARG — and manifest_branch,
-# the one reader of a feature's branch). A feature "is started on this branch" exactly
-# when a TRACKED manifest's `branches[0]` is the branch — the same reading
-# feature-start.sh's cloud one-feature refusal makes.
+# (resolve_roots — REPO_DIR, FEATURES_DIR, FEATURES_LABEL, SELF_ARG — and
+# started_features_on over manifest_branch, the one reader of a feature's branch). A
+# feature "is started on this branch" exactly when a TRACKED manifest's `branches[0]` is
+# the branch — the same reading feature-start.sh's cloud one-feature refusal makes, and
+# update.sh's cloud fallback.
 
 # Every line this prints starts with it
 LINE_PREFIX="agentTooling  "
@@ -79,20 +80,11 @@ fi
 
 BRANCH="$(git -C "$REPO_DIR" branch --show-current 2>/dev/null)"
 
-# started_feature <branch> — the slug whose tracked manifest names <branch> as its
-# branches[0], or nothing. git grep narrows the manifests to those that mention the branch
-# at all, so a corpus of hundreds costs one search; manifest_branch then decides.
+# started_feature <branch> — the first slug whose tracked manifest names <branch> as its
+# branches[0], or nothing: plan-runner-roots.sh's started_features_on, the one reader
+# update.sh's cloud fallback uses too.
 started_feature() {
-  local branch="$1" rel slug
-  [[ -n "$branch" ]] || return 0
-  while IFS= read -r rel; do
-    slug="${rel#"$FEATURES_LABEL"/}"; slug="${slug%/"$MANIFEST_NAME"}"
-    [[ "$slug" != */* ]] || continue
-    if [[ "$(manifest_branch "$REPO_DIR/$rel" "$slug")" == "$branch" ]]; then
-      echo "$slug"
-      return 0
-    fi
-  done < <(git -C "$REPO_DIR" grep -l -F -e "$branch" -- "$FEATURES_LABEL/*/$MANIFEST_NAME" 2>/dev/null)
+  started_features_on "$REPO_DIR" "$FEATURES_LABEL" "$1" | head -n 1
 }
 
 say "profile $(profile_describe); branch ${BRANCH:-(detached HEAD)}"

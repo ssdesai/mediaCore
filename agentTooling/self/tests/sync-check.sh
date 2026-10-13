@@ -16,7 +16,7 @@ set -uo pipefail
 # the --check contract: a fresh seed reports the five generated stubs, the three
 # repo-owned scripts in-sync (template-version 3, 6, 2 in that order — gate.sh 3 and
 # worktree-setup.sh 2 source plans/environment.sh, and the gate resumes, since
-# execution-profiles), environment.sh and cloud-setup.sh in-sync at 1 (the first not
+# execution-profiles), environment.sh in-sync at 1 and cloud-setup.sh at 2 (the first not
 # executable, since it is sourced), one SessionStart entry for session-start.sh that a second
 # sync does not double, and the hook wiring it just wrote in-sync, with only
 # PROJECT_FACTS.md unfilled, rc 1, "needs attention: 1 item(s)"; the seeded BACKLOG.md
@@ -146,7 +146,7 @@ check "1f. gate.sh, pr.sh, worktree-setup.sh lines appear in that order" \
 # once-per-container step a SessionStart hook runs — executable), both repo-owned and
 # versioned like the scripts above.
 check "1l. environment.sh in-sync (template-version 1)" 'grep -qF "  in-sync    plans/environment.sh (template-version 1)" <<<"$out"'
-check "1m. cloud-setup.sh in-sync (template-version 1)" 'grep -qF "  in-sync    plans/cloud-setup.sh (template-version 1)" <<<"$out"'
+check "1m. cloud-setup.sh in-sync (template-version 2)" 'grep -qF "  in-sync    plans/cloud-setup.sh (template-version 2)" <<<"$out"'
 check "1n. environment.sh is seeded not executable, cloud-setup.sh executable" \
   '[[ -f "$CONSUMER/plans/environment.sh" && ! -x "$CONSUMER/plans/environment.sh" && -x "$CONSUMER/plans/cloud-setup.sh" ]]'
 session_entries() { python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); print(sum(1 for e in (s.get("hooks") or {}).get("SessionStart") or [] for h in e.get("hooks") or [] if "session-start.sh" in h.get("command", "")))' "$1" 2>/dev/null; }

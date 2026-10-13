@@ -1,6 +1,6 @@
 # recovered-duration-lower-bound — cost and waste report
 
-Generated 2026-09-09T22:37:00.070776+00:00.
+Generated 2026-10-13T00:32:57.666375+00:00.
 
 ## Cost
 
@@ -12,7 +12,7 @@ Generated 2026-09-09T22:37:00.070776+00:00.
 | review | $3.1853 | 12.5% |
 | **total** | **$25.5408** | 100.0% |
 
-Sessions this feature shares: `ed088063-7aea-498e-84b1-7503d4bd88e1` (this feature's share $3.6693 of $70.4968), also claimed by agentTooling/tooling-backlog-2026-09-06, humanNetworkMap/delete-error-surface, humanNetworkMap/error-surface-completion, humanNetworkMap/mediacore-0-3-0, humanNetworkMap/validation-and-fetch-error-surface, musicMap/integration-test-database, musicMap/mediacore-0-3-0, musicMap/ruff-format-gate, vinylCatalogue/backlog-assertions-2026-09, vinylCatalogue/bundle-track-artist, vinylCatalogue/fold-duplicated-rows, vinylCatalogue/keyed-promotion-pairing, vinylCatalogue/show-selected-and-refetch-flake, vinylCatalogue/staged-commit-journal. The shares of all claimants sum to the session's own cost, so summing these features' totals now counts it once, not once per feature.
+Sessions this feature shares: `ed088063-7aea-498e-84b1-7503d4bd88e1` (this feature's share $3.6693 of $70.4968), also claimed by agentTooling/tooling-backlog-2026-09-06, humanNetworkMap/delete-error-surface, humanNetworkMap/error-surface-completion, humanNetworkMap/mediacore-0-3-0, humanNetworkMap/validation-and-fetch-error-surface, mediacore/track-artist-field, musicMap/integration-test-database, musicMap/mediacore-0-3-0, musicMap/ruff-format-gate, vinylCatalogue/backlog-assertions-2026-09, vinylCatalogue/bundle-track-artist, vinylCatalogue/fold-duplicated-rows, vinylCatalogue/keyed-promotion-pairing, vinylCatalogue/show-selected-and-refetch-flake, vinylCatalogue/staged-commit-journal. The shares of all claimants sum to the session's own cost, so summing these features' totals now counts it once, not once per feature.
 
 Built direct (`AGENT_DIRECT.md`): build is the implementer's transcript(s), $22.3554, read from `planning.json`; there are no build plans, and the coordinator's minutes on the brief are not separated from it.
 
@@ -35,6 +35,14 @@ The implementer's minutes are its transcript span — its working time, since a 
 
 Wall clock, as the runner saw it: **210.8 min** from 2026-09-07T16:18:18+00:00 to 2026-09-07T19:49:07+00:00, PR opened 2026-09-07T19:30:08+00:00.
 Passes: review 7.1. Gates: 0.0 min over 0 run(s). Plans as timed by the runner: 7.0 min over 2 run(s).
+
+## Rounds
+
+| round | build usd | build min | verify usd | verify min | review usd | review min | review plan | verdict | escalation brief |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | $22.3554 | 88.0 | $0.0000 | 0.0 | $3.1853 | 7.0 | 88-review-opus | — | — |
+
+A round is build → gate → verify → review, ending in that review's verdict (`agentTooling/LIFECYCLE.md`). Dollars and minutes are the same figures the Cost and Time tables carry, partitioned by the `round` each stamp in `timing.jsonl` records; a stamp written before rounds existed is round 1. The verdict is the review plan's own `plan_end` stamp, and an escalated round links the brief the rework was written from.
 
 ## Cold-start tax
 
@@ -74,4 +82,4 @@ not computed: streams unavailable
 
 ---
 
-Rates last verified 2026-09-04 (fresh as of report generation). This footnote is display-only and does not affect any figure above.
+Rates from `analysis/rates_history.json`, last checked 2026-10-02 (fresh as of report generation). This footnote is display-only and does not affect any figure above.

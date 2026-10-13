@@ -72,8 +72,9 @@ from pricing import (
     live_price_warning,
 )
 from roots import (
-    SELF_CORPUS_IDENTITY, add_self_flag, all_features_roots, checkout_of, features_root,
-    session_root, worktree_primary,
+    SELF_CORPUS_IDENTITY, add_self_flag, all_features_roots, checkout_of,
+    collapse_feature_mentions, feature_mention_key, features_root, session_root,
+    worktree_primary,
 )
 # One-way, and it has to stay that way: `routing` imports nothing from here (it locates a
 # transcript by globbing the project directories, as `recover_attempts.py` does), so the
@@ -982,14 +983,30 @@ def parse_feature_ref(text):
     return (match.group(1), match.group(2)) if match else None
 
 
+def same_feature_ref(left, right):
+    """Whether two `(repo, slug)` pairs — a brief header's, a `--for` argument's, a
+    manifest's — name the same feature: the repo half compared case-insensitively, the
+    slug exactly (`roots.feature_mention_key`). A lowercase cloud clone briefs
+    `musicmap/<slug>` for the feature a laptop calls `musicMap/<slug>`, and an agentTooling
+    container `agenttooling/<slug>` for the self corpus's `agentTooling/<slug>`; neither is a
+    different feature. None never matches."""
+    if not left or not right:
+        return False
+    return (
+        feature_mention_key(f"{left[0]}/{left[1]}")
+        == feature_mention_key(f"{right[0]}/{right[1]}")
+    )
+
+
 def check_brief_headers(agent_briefs, repo_name, slug):
     """Warn for each pinned subagent whose brief names a different feature than the
     manifest pinning it — the pin is the human's word, the brief is the coordinator's,
-    and when they disagree one of them is wrong."""
+    and when they disagree one of them is wrong. Compared by `same_feature_ref`, so a
+    brief whose repo half differs only in case is not a disagreement."""
     warnings = []
     for agent_id in sorted(agent_briefs):
         named = agent_briefs[agent_id]
-        if named and named != (repo_name, slug):
+        if named and not same_feature_ref(named, (repo_name, slug)):
             warnings.append(
                 f"pinned subagent {agent_id!r} was briefed for feature "
                 f"'{named[0]}/{named[1]}', not '{repo_name}/{slug}' — one of the pin "
@@ -1084,14 +1101,18 @@ def other_session_claimants(session_claims, session_id, repo, slug):
     that ran seven features is claimed by all seven and priced in full by each, because
     the transcript cannot say which feature a message served and a split by count would
     be a number nobody measured. What it can say is that the figure is not this feature's
-    alone, which is what this annotation is for."""
+    alone, which is what this annotation is for.
+
+    Collapsed by `roots.collapse_feature_mentions`: two claims of one feature whose
+    `repo_name`s differ only in case (a cloud capture's `musicmap`, a laptop's `musicMap`)
+    are one mention, never two."""
     others = []
     for claim in session_claims.get(session_id) or []:
         if claim_key(claim.get("repo"), claim.get("slug")) == claim_key(repo, slug):
             continue
         name = claim.get("repo_name") or claim.get("repo")
         others.append(f"{name}/{claim.get('slug')}")
-    return sorted(set(others))
+    return collapse_feature_mentions(set(others))
 
 
 def _iso_or_none(moment):
@@ -1259,7 +1280,13 @@ def annotate_frozen_record(output_path, record, session_claims, repo, slug, seen
     read that way deleted 11 sibling mentions at one close. So a mention whose claimant is
     unseen is KEPT, and `(slug, session_id, mention)` is appended to `unchecked` (when a
     list is passed) for the caller to say so on stderr. `seen` of None reads as nothing
-    seen, which is the safe default."""
+    seen, which is the safe default.
+
+    **One mention per feature, whatever the case of its repo half**
+    (`roots.collapse_feature_mentions`, self/features/cloud-pull-fixes/). A kept mention is
+    compared with the ledger's by `feature_mention_key`, and the union is collapsed, so a
+    record already holding `musicMap/x` and `musicmap/x` comes out with one — the
+    mixed-case spelling — and the next refresh over it writes nothing."""
     seen = seen or {}
     changed = False
     annotated = []
@@ -1269,13 +1296,20 @@ def annotate_frozen_record(output_path, record, session_claims, repo, slug, seen
             other_session_claimants(session_claims, session_id, repo, slug)
             if session_id else []
         )
+        other_keys = {feature_mention_key(mention) for mention in others}
         kept = sorted(
             mention for mention in (entry.get("also_claimed_by") or [])
-            if mention not in others and not claimant_seen(seen, mention)
+            if feature_mention_key(mention) not in other_keys and not claimant_seen(seen, mention)
         )
         if unchecked is not None:
             unchecked.extend((slug, session_id, mention) for mention in kept)
-        others = sorted(set(others) | set(kept))
+        # A spelling the record already holds competes with the ledger's for the same
+        # feature, so a mixed-case laptop spelling survives a lowercase cloud claim.
+        held = {
+            mention for mention in (entry.get("also_claimed_by") or [])
+            if feature_mention_key(mention) in other_keys
+        }
+        others = collapse_feature_mentions(set(others) | set(kept) | held)
         if others:
             annotated.append(session_id)
             if entry.get("also_claimed_by") != others:
@@ -1319,7 +1353,7 @@ def check_provisional_drift(slug, record, claimant_windows):
     lines = []
     said = set()
     for session_id, feature, provisional_to in frozen_provisional_claims(record):
-        claimant = claimant_windows.get(feature)
+        claimant = claimant_windows.get(feature_mention_key(feature))
         if claimant is None or claimant["open"]:
             continue
         stamped = claimant["window"]["to"]
@@ -1392,8 +1426,10 @@ def annotate_corpus(features_dir, except_slug=None):
     # The windows as the manifests stand NOW, across both corpora — no `sessions_dir`, so
     # nothing is bounded and no transcript is opened: this is the "what has been stamped
     # since" half of the drift check, and the frozen record is the other.
+    # Keyed by `feature_mention_key`, so a `share_basis` frozen on a laptop as `musicMap/x`
+    # finds the claimant this checkout names `musicmap/x`.
     claimant_windows = {
-        f"{entry['repo_name']}/{entry['slug']}": entry
+        feature_mention_key(f"{entry['repo_name']}/{entry['slug']}"): entry
         for entry in build_claimant_index(all_features_roots())
     }
     changed_slugs = []
@@ -1809,7 +1845,8 @@ def list_subagents(
 
     `only_feature`, a `(repo, slug)` pair (`--for`, which the caller pairs with
     `unclaimed`), keeps only the rows whose brief names exactly that feature, compared
-    as the pair `brief_feature_of` returns. It exists because `feature-capture.sh`'s
+    as the pair `brief_feature_of` returns by `same_feature_ref` (the repo half
+    case-insensitively). It exists because `feature-capture.sh`'s
     unclaimed-delegate warning reads this list: matching text in the printed table instead
     both over-fired on `<slug>-two` and under-fired on a `<repo>/<slug>` too long for
     the pin column. For the same caller, the agent-id column is never truncated. A
@@ -1881,7 +1918,7 @@ def list_subagents(
                     models.append(model)
                 cwd = next((line.get("cwd") for line in lines if line.get("cwd")), "")
                 named = brief_feature_of(lines)
-                if only_feature is not None and named != only_feature:
+                if only_feature is not None and not same_feature_ref(named, only_feature):
                     continue
                 rows.append(
                     (

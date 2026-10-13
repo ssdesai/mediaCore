@@ -399,6 +399,64 @@ manifest_branch() {
   echo "${branch:-$slug}"
 }
 
+# How a manifest is named inside a feature directory (session-start.sh's and update.sh's
+# MANIFEST_NAME, the same string)
+STARTED_MANIFEST_NAME="README.md"
+
+# started_features_on <repo-dir> <features-label> <branch> — the slug of every TRACKED
+# manifest under <repo-dir>/<features-label>/<slug>/README.md whose branch
+# (manifest_branch) is <branch>, one per line, sorted; nothing for an empty branch. The
+# one answer to "which feature is started on this branch", for session-start.sh's
+# orientation and update.sh's cloud fallback (self/features/cloud-pull-fixes/): in a cloud
+# container the branch is the session's `claude/…` one, so the slug cannot be derived
+# from it. `git grep` narrows the manifests to those that mention the branch at all, so a
+# corpus of hundreds costs one search; manifest_branch then decides. Tracked only: an
+# untracked manifest is a start nobody committed, which is not a started feature.
+#   while IFS= read -r slug; do …; done < <(started_features_on "$REPO_DIR" "$FEATURES_LABEL" "$branch")
+started_features_on() {
+  local repo_dir="$1" label="$2" branch="$3" rel slug
+  [[ -n "$branch" ]] || return 0
+  while IFS= read -r rel; do
+    slug="${rel#"$label"/}"; slug="${slug%/"$STARTED_MANIFEST_NAME"}"
+    [[ "$slug" != */* ]] || continue
+    if [[ "$(manifest_branch "$repo_dir/$rel" "$slug")" == "$branch" ]]; then
+      echo "$slug"
+    fi
+  done < <(git -C "$repo_dir" grep -l -F -e "$branch" -- "$label/*/$STARTED_MANIFEST_NAME" 2>/dev/null | sort)
+}
+
+# ── The repo's display name ───────────────────────────────────────────────────
+# What the repo half of `feature: <repo>/<slug>` says. agentTooling's own corpus is
+# declared, not derived: this is repo_display_name(roots.SELF_CORPUS_IDENTITY) in
+# analysis/capture_planning.py, and a vendored copy's checkout is the consumer's, whose
+# name would be wrong (self/tests/claimant-case.sh C7c holds the two equal).
+SELF_REPO_DISPLAY_NAME="agentTooling"
+GIT_REMOTE_SUFFIX=".git"
+
+# feature_repo_name <checkout> — the repo half of a brief's `feature: <repo>/<slug>` line,
+# by the same rule as analysis/capture_planning.py's repo_display_name: the last path
+# segment of the checkout's `origin` URL without `.git` (`git@host:o/musicMap.git` and
+# `https://host/o/musicMap` are both `musicMap`), else the checkout's directory name;
+# `agentTooling` under SELF_MODE=1. The directory alone is wrong for a clone whose
+# directory differs from the repo (a lowercase cloud clone, a `wt-` scratch tree). The
+# capture compares the repo half case-insensitively (self/features/cloud-pull-fixes/), so
+# a clone whose ORIGIN is lowercase still matches.
+feature_repo_name() {
+  local checkout="$1" url tail
+  if (( ${SELF_MODE:-0} )); then
+    echo "$SELF_REPO_DISPLAY_NAME"
+    return 0
+  fi
+  url="$(git -C "$checkout" remote get-url origin 2>/dev/null)"
+  url="${url%/}"
+  tail="${url##*/}"; tail="${tail##*:}"; tail="${tail%"$GIT_REMOTE_SUFFIX"}"
+  if [[ -n "$tail" ]]; then
+    echo "$tail"
+  else
+    basename "$checkout"
+  fi
+}
+
 # Append one wall-clock event to the feature's timing.jsonl. A plan's own duration is in
 # its usage.json, but everything between plans is invisible from inside an executor:
 # the gates, the parallelism a batch got, the stretch from first plan to PR. This is

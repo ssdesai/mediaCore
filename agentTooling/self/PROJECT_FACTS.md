@@ -87,7 +87,8 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
   derives the branch from the slug — the only way out, and what `run-batch.sh --self`
   calls on a clean round. It refuses unless the latest completed review's `plan_end` carries
   `verdict=clean` and `HEAD` is the `head` that stamp names (or that sha followed only by
-  `<slug>: cost records` / `<slug>: PR`), then: `self/pr.sh` (through `./forge.sh`, `gh
+  `<slug>: cost records` / `<slug>: PR`, or `<slug>: review stamps` touching the feature's
+  `timing.jsonl` alone), then: `self/pr.sh` (through `./forge.sh`, `gh
   api` REST — never `gh pr` or `gh auth status`) → the `pr_opened` stamp →
   `./feature-capture.sh` → `self/pr.sh --merge-request`, in that order. Under `self/pr.sh`
   the merge is never requested (`AUTO_MERGE=0`). See `../LIFECYCLE.md` → step 6.

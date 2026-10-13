@@ -87,9 +87,10 @@ set -uo pipefail
 #   N1. a feature no routing record names captures without a word about routing;
 #   V1. a clean review pass records its verdict and stops: the pass is committed as
 #       `S: review round 1` carrying its own fix, `plan_end` carries verdict=clean,
-#       head=HEAD and round=1, there is exactly one plan_end and one pass_end, no PR is
-#       opened, nothing is pushed, no capture runs, the only dirty path left is the
-#       pass's own closing stamps, and the output names the close as the next step;
+#       head=that pass commit and round=1, there is exactly one plan_end and one pass_end,
+#       no PR is opened, nothing is pushed, no capture runs, the stamps are committed on
+#       their own as `S: review stamps` (timing.jsonl alone) so the tree is clean, and the
+#       output names the close as the next step;
 #   T3. a brief that merely MENTIONS the marker mid-line is not a stub and runs; the
 #       CLOSE after it finds no session to capture, and that failure is advisory to the
 #       PR but not to the merge — the refusal is printed with the re-run command, the PR
@@ -117,8 +118,9 @@ set -uo pipefail
 #       --delete-branch`; a forge that cannot find the PR is a warning, exit 0, no merge;
 #   X1. the close refuses every tree no clean review judged: from the primary, on a
 #       feature with no completed review (naming run-review.sh), and after a commit whose
-#       subject is not the harness's own follows the judged head (naming its sha) — each
-#       before any PR is opened;
+#       subject is not the harness's own follows the judged head (naming its sha), and
+#       after a commit under the stamps subject that touches more than timing.jsonl —
+#       each before any PR is opened;
 #   V2. an escalated review: `plan_end` carries verdict=escalated, the report becomes the
 #       rework brief at escalations/<stem>.md byte for byte and rides the pass commit, no
 #       PR and no capture, the output names the file and the next round's steps, and the
@@ -1130,17 +1132,19 @@ out="$(review "$WT" "$SLUG")"; rc=$?
 check "V1a. a real brief runs clean (got $rc)" '[[ $rc -eq 0 && -e "$CLAUDE_CALLED_OUT" ]]'
 check "V1b. no branch was created — S is the head" '[[ "$(branches)" == "$before" ]] && ! git -C "$AT" show-ref --quiet "refs/heads/review/$SLUG"'
 check "V1c. the pass is committed as 'S: review round 1', carrying the pass's own fix" \
-  '[[ "$(git -C "$WT" log -1 --format=%s)" == "$SLUG: review round 1" ]] && git -C "$WT" show --name-only --format= HEAD | grep -qx "fixed-by-review.txt"'
-check "V1d. plan_end carries verdict=clean and head=HEAD (got $(plan_end_field "$FD" "$V1_STEM" verdict) $(plan_end_field "$FD" "$V1_STEM" head))" \
-  '[[ "$(plan_end_field "$FD" "$V1_STEM" verdict)" == "clean" && "$(plan_end_field "$FD" "$V1_STEM" head)" == "$(git -C "$WT" rev-parse HEAD)" ]]'
+  '[[ "$(git -C "$WT" log -1 --skip=1 --format=%s)" == "$SLUG: review round 1" ]] && git -C "$WT" show --name-only --format= HEAD~1 | grep -qx "fixed-by-review.txt"'
+check "V1d. plan_end carries verdict=clean and head=the pass commit (got $(plan_end_field "$FD" "$V1_STEM" verdict) $(plan_end_field "$FD" "$V1_STEM" head))" \
+  '[[ "$(plan_end_field "$FD" "$V1_STEM" verdict)" == "clean" && "$(plan_end_field "$FD" "$V1_STEM" head)" == "$(git -C "$WT" rev-parse HEAD~1)" ]]'
 check "V1e. ... and round 1 (got $(plan_end_field "$FD" "$V1_STEM" round))" \
   '[[ "$(plan_end_field "$FD" "$V1_STEM" round)" == "1" ]]'
 check "V1f. no PR was opened, nothing was pushed and no cost commit followed" \
-  '! grep -q "pr create" "$GH_LOG" && [[ "$(git -C "$ORIGIN" rev-parse "refs/heads/$SLUG")" == "$origin_before" && "$(git -C "$WT" log -1 --format=%s)" == "$SLUG: review round 1" ]]'
+  '! grep -q "pr create" "$GH_LOG" && [[ "$(git -C "$ORIGIN" rev-parse "refs/heads/$SLUG")" == "$origin_before" && "$(git -C "$WT" log -1 --format=%s)" == "$SLUG: review stamps" ]]'
 check "V1g. the output names the close as the next step, and no PR" \
   'grep -q "feature-close.sh --self $SLUG" <<<"$out" && ! grep -q "opening PR" <<<"$out"'
-check "V1h. the only path left dirty is the pass's own closing stamps (got: $(dirty_names "$WT" | tr "\n" " "))" \
-  '[[ "$(dirty_names "$WT")" == "self/features/$SLUG/timing.jsonl" ]]'
+check "V1h. the round ends on a clean tree (got: $(dirty_names "$WT" | tr "\n" " "))" \
+  '[[ -z "$(dirty_names "$WT")" ]]'
+check "V1i. ... its stamps committed as 'S: review stamps', touching timing.jsonl alone" \
+  '[[ "$(git -C "$WT" log -1 --format=%s)" == "$SLUG: review stamps" && "$(git -C "$WT" show --name-only --format= HEAD)" == "self/features/$SLUG/timing.jsonl" ]]'
 TAIL="$(python3 -c "
 import json, sys
 events = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
@@ -1196,7 +1200,7 @@ out="$(review "$GWT" lifecycle-nogh)"; rc=$?
 check "T4a. the review pass exits 0 and made no forge call of its own (got $rc)" \
   '[[ $rc -eq 0 && -e "$CLAUDE_CALLED_OUT" ]] && [[ ! -s "$GH_LOG" ]]'
 check "T4b. the runner committed the pass itself, as round 1" \
-  '[[ "$(git -C "$GWT" log -1 --format=%s)" == "lifecycle-nogh: review round 1" ]] && git -C "$GWT" show --name-only --format= HEAD | grep -qx "fixed-by-review.txt"'
+  '[[ "$(git -C "$GWT" log -1 --skip=1 --format=%s)" == "lifecycle-nogh: review round 1" ]] && git -C "$GWT" show --name-only --format= HEAD~1 | grep -qx "fixed-by-review.txt"'
 : > "$GH_ARGV_LOG"
 outg="$(GH_API_RC=1 close "$GWT" lifecycle-nogh)"; rcg=$?
 check "T4c. the close over a forge that refused exits 0 (got $rcg)" '[[ $rcg -eq 0 ]]'
@@ -1348,6 +1352,15 @@ outx="$(close "$WT" "$SLUG")"; rcx=$?
 check "X1d. a commit with a non-harness subject after the judged head is refused, naming its sha (got $rcx)" \
   '[[ $rcx -ne 0 ]] && grep -q "$fixed_sha" <<<"$outx"'
 check "X1e. ... before any PR is opened" '! grep -q "pr create" "$GH_LOG"'
+# The stamps subject is admitted only for a commit of timing.jsonl alone: written over any
+# other change, it is a change no review has read.
+echo "a change disguised as the round's stamps" > "$WT/disguised.txt"
+git -C "$WT" add -A
+git -C "$WT" commit -q -m "$SLUG: review stamps"
+disguised_sha="$(git -C "$WT" rev-parse --short HEAD)"
+outx="$(close "$WT" "$SLUG")"; rcx=$?
+check "X1f. a 'S: review stamps' commit touching more than timing.jsonl is refused, naming its sha (got $rcx)" \
+  '[[ $rcx -ne 0 ]] && grep -q "$disguised_sha" <<<"$outx" && ! grep -q "pr create" "$GH_LOG"'
 
 # ── V2. an escalated review is a round that stops ─────────────────────────────
 # Nothing after the review runs: the report becomes the rework brief in the same
@@ -1366,7 +1379,7 @@ check "V2b. plan_end carries verdict=escalated and round 1 (got $(plan_end_field
 check "V2c. the report is the rework brief at escalations/<stem>.md, byte for byte" \
   'cmp -s "$EWT/self/review-report.md" "$EFD/escalations/$ESTEM.md"'
 check "V2d. ... and it rides the pass commit, 'lifecycle-escalated: review round 1'" \
-  '[[ "$(git -C "$EWT" log -1 --format=%s)" == "lifecycle-escalated: review round 1" ]] && git -C "$EWT" show --name-only --format= HEAD | grep -qx "self/features/lifecycle-escalated/escalations/$ESTEM.md"'
+  '[[ "$(git -C "$EWT" log -1 --skip=1 --format=%s)" == "lifecycle-escalated: review round 1" ]] && git -C "$EWT" show --name-only --format= HEAD~1 | grep -qx "self/features/lifecycle-escalated/escalations/$ESTEM.md"'
 check "V2e. no PR, no capture, nothing pushed" \
   '! grep -q "pr create" "$GH_LOG" && [[ ! -e "$EFD/planning.json" ]] && ! git -C "$ORIGIN" show-ref --quiet "refs/heads/lifecycle-escalated"'
 check "V2f. the output names the brief's path and that a rework is a new round" \
@@ -1423,7 +1436,7 @@ outr2="$(review "$RWT" lifecycle-rounds)"
 check "RDc. the second round's plan_end carries verdict=clean and round 2 (got $(plan_end_field "$RFD" "$RSTEM2" verdict) $(plan_end_field "$RFD" "$RSTEM2" round))" \
   '[[ "$(plan_end_field "$RFD" "$RSTEM2" verdict)" == "clean" && "$(plan_end_field "$RFD" "$RSTEM2" round)" == "2" ]]'
 check "RDd. ... and its pass commit is 'lifecycle-rounds: review round 2'" \
-  '[[ "$(git -C "$RWT" log -1 --format=%s)" == "lifecycle-rounds: review round 2" ]]'
+  '[[ "$(git -C "$RWT" log -1 --skip=1 --format=%s)" == "lifecycle-rounds: review round 2" ]]'
 outr3="$(PR_AUTO_MERGE=1 close "$RWT" lifecycle-rounds)"; rcr3=$?
 check "RDe. the close after a clean second round exits 0 (got $rcr3)" '[[ $rcr3 -eq 0 ]]'
 check "RDf. ... opening the PR and committing the records on the branch" \
@@ -1549,7 +1562,7 @@ check "RCa. a review capped after its report exits non-zero (got $rcc)" '[[ $rcc
 check "RCb. ... filed to review/failed/, with round 1's plan still the only one complete" \
   '[[ -f "$CPFD/review/failed/$CPSTEM2.md" && -f "$CPFD/review/complete/$CPSTEM1.md" ]] && [[ "$(ls "$CPFD/review/complete"/[0-9]*.md | grep -vc "progress")" == "1" ]]'
 check "RCc. ... stamping verdict=clean, round=2 and the head it judged (got $(plan_end_field "$CPFD" "$CPSTEM2" verdict) round $(plan_end_field "$CPFD" "$CPSTEM2" round))" \
-  '[[ "$(plan_end_field "$CPFD" "$CPSTEM2" verdict)" == "clean" && "$(plan_end_field "$CPFD" "$CPSTEM2" round)" == "2" && "$(plan_end_field "$CPFD" "$CPSTEM2" head)" == "$(git -C "$CPWT" rev-parse HEAD)" ]]'
+  '[[ "$(plan_end_field "$CPFD" "$CPSTEM2" verdict)" == "clean" && "$(plan_end_field "$CPFD" "$CPSTEM2" round)" == "2" && "$(plan_end_field "$CPFD" "$CPSTEM2" head)" == "$(git -C "$CPWT" rev-parse HEAD~1)" ]]'
 outc2="$(close "$CPWT" lifecycle-capped)"; rcc2=$?
 check "RCd. the close over that round exits 0 (got $rcc2)" '[[ $rcc2 -eq 0 ]]'
 check "RCe. ... naming round 2 in its banner, not the completed count of 1" \

@@ -237,7 +237,8 @@ coordinator's own gate run is green.
 
 A direct build is **round 1**, and the review's verdict is what ends it. The runner
 commits its own output (`<slug>: review round N`), stamps that round's verdict and the sha
-it judged, and stops — it opens no PR and captures nothing:
+it judged, commits the stamps (`<slug>: review stamps`), and stops — it opens no PR and
+captures nothing:
 
 - **Clean** → `./agentTooling/feature-close.sh <slug>`, from the worktree, on the branch,
   which the runner prints. It opens the PR with the verdict as its body and the Rounds

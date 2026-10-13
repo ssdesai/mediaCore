@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Refresh `rates_history.json` from LiteLLM's public price list.
 
-    python3 analysis/refresh_rates.py [--check | --tiers] [--source <path or url>] [--history <path>]
+    python3 analysis/refresh_rates.py [--check | --tiers] [--only <model> ...] [--source <path or url>] [--history <path>]
 
 Reads the entries of LiteLLM's `model_prices_and_context_window.json` whose
 `litellm_provider` is "anthropic" and whose key starts with "claude-", normalizes each
@@ -22,9 +22,18 @@ Rulings (self/features/litellm-pricing/NOTES.md):
 - an upstream entry missing any of the five rates is skipped and named.
 
 `--check` fetches and diffs, prints each model that would change, writes nothing, and
-exits CHANGES_EXIT with changes and NO_CHANGES_EXIT without. A fetch failure prints the
+exits CHANGES_EXIT when some model the history holds changed price, NEW_ONLY_EXIT when
+every difference is a model the history lacks — one `pricing.py`'s live fallback already
+prices from this same list, so the gap costs no dollars, only a refresh — and
+NO_CHANGES_EXIT without. Its last line says which (`summary`). A fetch failure prints the
 reason and exits FETCH_FAILED_EXIT, in both modes, having written nothing. Either mode
 first prints the history's `checked` date and whether it is stale.
+
+`--only <model>` (repeatable; a dated alias is normalized) restricts the write mode to
+those models: every other difference is printed as `held` and left out, and `checked`
+still becomes today. It is how a refresh takes a new model while declining a figure that
+disagrees with Anthropic's own pricing page — LiteLLM's list is hand-maintained and an
+appended entry can never be taken back (self/features/rates-haiku-live-warning/NOTES.md).
 
 `--tiers` writes nothing either. It lists the models the corpus's cost records name
 (`planning.json` and `usage.json` under both features roots), and for each prints whether
@@ -92,10 +101,20 @@ TIER_UNBUILT_NOTE = "tiered pricing is unbuilt, see self/BACKLOG.md"
 LITELLM_SOURCE = "litellm"
 
 # Exit codes. 2 is argparse's usage error, so a fetch failure is 3. `--tiers` reuses the
-# pair: 0 when no corpus model carries a tier, 1 when one does.
+# pair: 0 when no corpus model carries a tier, 1 when one does. NEW_ONLY_EXIT is
+# `--check`'s alone: every difference is a model the history lacks.
 NO_CHANGES_EXIT = 0
 CHANGES_EXIT = 1
 FETCH_FAILED_EXIT = 3
+NEW_ONLY_EXIT = 4
+
+# `--check`'s last line, the one feature-capture.sh's residue reads the verdict beside.
+REFRESH_HINT = "analysis/refresh_rates.py in an agentTooling self feature"
+NEW_ONLY_SUMMARY = ("{n} model(s) in litellm are missing from the history — priced live from "
+                    "litellm meanwhile (pricing.py); add them with " + REFRESH_HINT)
+CHANGED_SUMMARY = ("{n} model(s) differ from litellm: {changed} price change(s), {new} new; "
+                   "check each changed figure against Anthropic's pricing page, then refresh "
+                   "with " + REFRESH_HINT)
 NO_TIERS_EXIT = NO_CHANGES_EXIT
 TIERS_FOUND_EXIT = CHANGES_EXIT
 
@@ -206,6 +225,17 @@ def describe(model: str, entry: dict, latest: dict | None) -> str:
     return f"{model}: {moved} from {entry['from']}"
 
 
+def summary(changes: list[tuple[str, dict, dict | None]]) -> tuple[str, int]:
+    """(`--check`'s last line, its exit code) for a non-empty change list: a model with no
+    history entry is priced live already, so a list of only those is NEW_ONLY_EXIT; any
+    model whose recorded price moved makes it CHANGES_EXIT."""
+    new = sum(1 for _, _, latest in changes if latest is None)
+    changed = len(changes) - new
+    if not changed:
+        return NEW_ONLY_SUMMARY.format(n=new), NEW_ONLY_EXIT
+    return CHANGED_SUMMARY.format(n=len(changes), changed=changed, new=new), CHANGES_EXIT
+
+
 def serialize(history: dict) -> str:
     """The history's on-disk form: one entry per line, so a diff shows one line per price."""
     lines = ["{"]
@@ -270,7 +300,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="a URL or path to read LiteLLM's price list from (default: LITELLM_PRICES_URL)")
     parser.add_argument("--history", type=Path, default=pricing.HISTORY_PATH,
                         help="the rate history to read and append to (default: rates_history.json beside pricing.py)")
+    parser.add_argument("--only", action="append", metavar="MODEL",
+                        help="append only this model's change (repeatable); every other "
+                             "difference is printed as held and left out")
     args = parser.parse_args(argv)
+    if args.only and (args.check or args.tiers):
+        parser.error("--only restricts the write mode; --check and --tiers write nothing")
 
     if args.tiers:
         return run_tiers(args.source)
@@ -289,15 +324,23 @@ def main(argv: list[str] | None = None) -> int:
     for line in skipped:
         print(f"skipped (incomplete) {line}")
     changes = plan_changes(history, upstream, today)
+    if args.only:
+        only = {pricing.normalize_model_id(m) for m in args.only}
+        for model, entry, latest in changes:
+            if model not in only:
+                print(f"held {describe(model, entry, latest)}")
+        for model in sorted(only - {model for model, _, _ in changes}):
+            print(f"no change for {model}: litellm agrees with the history, or lacks it")
+        changes = [change for change in changes if change[0] in only]
     verb = "would change" if args.check else "appended"
     for model, entry, latest in changes:
         print(f"{verb} {describe(model, entry, latest)}")
 
     if args.check:
         if changes:
-            print(f"{len(changes)} model(s) differ from litellm; refresh with "
-                  "analysis/refresh_rates.py in an agentTooling self feature")
-            return CHANGES_EXIT
+            line, code = summary(changes)
+            print(line)
+            return code
         print("no changes against litellm")
         return NO_CHANGES_EXIT
 

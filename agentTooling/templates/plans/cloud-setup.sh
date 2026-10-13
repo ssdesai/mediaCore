@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 set -uo pipefail
-# template-version: 1
+# template-version: 2
 
 # This is what `sync-plans.sh --check` compares a seeded copy against to report drift.
-# Bump it whenever the body below changes in a way seeded copies must merge by hand.
+# Bump it whenever ANY line of this template changes, comments included —
+# agentTooling/self/tests/template-versions.sh refuses an unbumped edit. Version 2 changed
+# only this header (session-start.sh runs this script; it is no longer the hook itself):
+# a seeded copy merges it by taking the new header and this version line, and a copy that
+# already carries that header changes this line alone.
 #
 # The once-per-container step for a Claude Code cloud container
 # (agentTooling/self/DESIGN-2026-10-05-cloud-execution.md §7): start what this repo's gate

@@ -1,0 +1,56 @@
+{
+  "plan": "01-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "9a1604d1-12fd-4028-b07c-1b16435026eb",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 19,
+  "duration_ms": 79533,
+  "total_cost_usd": 0.6594551999999999,
+  "usage": {
+    "input_tokens": 28,
+    "cache_creation_input_tokens": 47871,
+    "cache_read_input_tokens": 786276,
+    "output_tokens": 5956
+  },
+  "model_usage": {
+    "claude-opus-5-5": {
+      "inputTokens": 28,
+      "outputTokens": 5956,
+      "cacheReadInputTokens": 786276,
+      "cacheCreationInputTokens": 47871,
+      "webSearchRequests": 0,
+      "costUSD": 0.6594551999999999,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 1291,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 13,
+    "Edit": 3,
+    "Read": 1,
+    "Write": 1
+  },
+  "files_edited": [
+    "self/review-report.md",
+    "self/tests/README.md",
+    "self/tests/rates-history.sh"
+  ],
+  "edit_count": 4,
+  "attempts": [
+    {
+      "session_id": "9a1604d1-12fd-4028-b07c-1b16435026eb",
+      "outcome": "complete",
+      "total_cost_usd": 0.6594551999999999,
+      "num_turns": 19,
+      "duration_ms": 79533
+    }
+  ]
+}

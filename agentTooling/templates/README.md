@@ -85,7 +85,9 @@ every new feature worktree and stops the start if it exits non-zero
 when present, so an `npm install` there already sees the browser path.
 
 `environment.sh` and `cloud-setup.sh` are the two **environment adapters** of
-`../self/DESIGN-2026-10-05-cloud-execution.md` §7, both at `template-version: 1`, both
+`../self/DESIGN-2026-10-05-cloud-execution.md` §7, at `template-version: 1` and `2` (a
+header-only bump: `../session-start.sh` runs it — `../README.md` → "Adopting cloud-setup.sh
+version 2"), both
 asking `../env-profile.sh` — the one place the profile is decided — through its functions
 and never spelling its variables:
 
@@ -144,18 +146,26 @@ that block. Repos that seeded any of the six before its current version merge th
 change by hand — see `../README.md` → "Updating".
 
 The six seeded scripts carry a `# template-version: N` line. `sync-plans.sh --check`
-compares a seeded copy's line against the template's and reports `DRIFT` when it is behind.
-Bump the template's number whenever the body below `REPO-SPECIFIC` changes in a way
-seeded copies must merge by hand, and say what changed in the README's "Adopting …"
-section for it.
+compares a seeded copy's line against the template's — exact equality, printed as
+`DRIFT … (template-version <copy> < <template>; …)` — and reports `DRIFT` when they
+differ. Bump the template's number whenever **anything** in it changes, comments
+included, and say what changed in the README's "Adopting …" section for it; a
+comment-only bump's hand-merge is the new comment and the version line.
 
 `plans/TEMPLATE_VERSIONS` keeps that number honest: it records, per template, the version
-and a sha256 of the file with comment-only and blank lines stripped, and
+and a sha256 of the whole file except its `# template-version:` line, and
 `../self/tests/template-versions.sh` (blocking in `../self/gate.sh`) fails when the file
-and the table disagree — so a body edit without a bump goes red here instead of reporting
-`in-sync` in every consumer. A comment or documentation edit changes no hash; after any
-other edit, bump the version line and re-record the hash with the command in the table's
-own header.
+and the table disagree — so an edit without a bump goes red here instead of reporting
+`in-sync` in every consumer. Comments count: the hash used to strip them, and that is how
+PR 85 reworded `cloud-setup.sh`'s header at version 1 and left every consumer's stale copy
+`in-sync` (`../self/features/cloud-pull-fixes/NOTES.md`). After any edit, bump the version
+line **first**, then re-record the hash with the command in the table's own header — the
+check also compares each template with `origin/main`'s copy (the base tip only, so a
+depth-1 fetch serves) and fails the same version with different content, so re-recording
+a hash alone is not a bump, and a version never goes backwards;
+`../self/tests/template-version-bump.sh` runs it over edited copies to show it failing.
+Five of the six templates' own headers still say to bump "when the body changes" — each is
+reworded at its next real bump (`../self/BACKLOG.md`).
 
 `PROJECT_FACTS.md` is the opposite: it exists to hold what is specific to one
 codebase. `sync-plans.sh` creates it if missing and never touches it again.

@@ -1,0 +1,21 @@
+{
+  "captured_at": "2026-10-13T00:32:55Z",
+  "cost_usd": 12.869694,
+  "duration_s": 20386,
+  "ended_at": "2026-10-13T00:32:55Z",
+  "features_started": [
+    {
+      "at": "2026-10-12T18:55:45Z",
+      "slug": "pull-agenttooling-pr86"
+    },
+    {
+      "at": "2026-10-12T23:35:19Z",
+      "slug": "cloud-pull-fixes"
+    }
+  ],
+  "git_branch": "HEAD",
+  "launched_in": "/home/user",
+  "model": "claude-opus-5-5",
+  "session_id": "a82dd454-caeb-5342-8030-389acb9148f6",
+  "started_at": "2026-10-12T18:53:08Z"
+}

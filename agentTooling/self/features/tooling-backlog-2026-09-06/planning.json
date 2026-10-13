@@ -25,6 +25,7 @@
         "humanNetworkMap/error-surface-completion",
         "humanNetworkMap/mediacore-0-3-0",
         "humanNetworkMap/validation-and-fetch-error-surface",
+        "mediacore/track-artist-field",
         "musicMap/integration-test-database",
         "musicMap/mediacore-0-3-0",
         "musicMap/ruff-format-gate",

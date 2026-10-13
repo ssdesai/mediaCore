@@ -1,0 +1,57 @@
+{
+  "plan": "01-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "841debc2-b6ef-4332-8d8a-fee562751cfc",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 38,
+  "duration_ms": 153458,
+  "total_cost_usd": 1.6924944000000002,
+  "usage": {
+    "input_tokens": 58,
+    "cache_creation_input_tokens": 103295,
+    "cache_read_input_tokens": 2815312,
+    "output_tokens": 15142
+  },
+  "model_usage": {
+    "claude-opus-5-5": {
+      "inputTokens": 58,
+      "outputTokens": 15142,
+      "cacheReadInputTokens": 2815312,
+      "cacheCreationInputTokens": 103295,
+      "webSearchRequests": 0,
+      "costUSD": 1.6924944000000002,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 6842,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 23,
+    "Edit": 2,
+    "Read": 10,
+    "Write": 2
+  },
+  "files_edited": [
+    "/tmp/plan-capture.jqyTK1/scratch/tv.sh",
+    "LIFECYCLE.md",
+    "self/review-report.md",
+    "update.sh"
+  ],
+  "edit_count": 4,
+  "attempts": [
+    {
+      "session_id": "841debc2-b6ef-4332-8d8a-fee562751cfc",
+      "outcome": "complete",
+      "total_cost_usd": 1.6924944000000002,
+      "num_turns": 38,
+      "duration_ms": 153458
+    }
+  ]
+}
