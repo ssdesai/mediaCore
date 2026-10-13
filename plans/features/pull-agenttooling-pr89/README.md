@@ -1,39 +1,39 @@
-# <Feature title>
+# Pull agentTooling PR 89
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+Propagate agentTooling PR 89 ("rates-haiku-live-warning") into this repo. The pull also
+carries PR 87 ("cloud-pull-fixes") and PR 88 ("env-profile-set-e"): `git subtree pull
+--squash` of agentTooling `b88137c..75eb0fb`, split sha
+`75eb0fb2c3548743a35bb128bb6a1d550582b08b` (squash commit `b4ca9e2`, merged by
+`5b053c7`). Together they give `update.sh` a cloud path (a `claude/…` branch exactly one
+tracked manifest names), make every template edit a version bump (`cloud-setup.sh` to 2),
+keep `env-profile.sh` safe under `set -e`, and turn a Haiku model priced live into a
+warning rather than a failure in the rate refresh.
+
+Run in a Claude Code cloud container on the session's assigned branch,
+`claude/sharp-newton-9fbqfd`, rather than a `.worktrees/<slug>` worktree. The session
+was launched in agentTooling's own checkout and coordinates the same pull in
+humanNetworkMap, vinylCatalogue and musicMap, so it is pinned (`--pin`) rather than
+claimed by branch. The vendored `update.sh` predates `cloud-pull-fixes` and has no cloud
+path, so this one pull is the two steps by hand, as `LIFECYCLE.md` → "Propagate" says:
+`git subtree pull --prefix=agentTooling … main --squash`, then the freshly pulled
+`sync-plans.sh`. The next pull can use `update.sh` itself.
+
+`sync-plans.sh` wrote `plans/README.md` (sync-owned) and reported one `DRIFT`:
+`plans/cloud-setup.sh` at template-version 1 < 2. Version 2 is a header-only bump; this
+copy still had the pre-PR-85 header, so the hand-merge took the template's header and
+version line above the `REPO-SPECIFIC` line and kept this repo's body below it unchanged.
+`sync-plans.sh --check` is clean afterwards. The start's base gate was green.
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Reviews the agentTooling prefix diff, the sync's writes and the `cloud-setup.sh` header merge. |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- `plans/cloud-setup.sh` below its `REPO-SPECIFIC` line and `plans/environment.sh` are
+  untouched; only the header comment and version line of the former changed.
 
 ## Machine-readable
 
