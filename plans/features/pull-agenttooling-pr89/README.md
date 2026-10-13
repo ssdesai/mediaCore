@@ -46,7 +46,7 @@ version line above the `REPO-SPECIFIC` line and kept this repo's body below it u
   "base": "main",
   "profile": "cloud",
   "gate": "green",
-  "session_window": {"from": "2026-10-13T21:36:00Z", "to": null},
+  "session_window": {"from": "2026-10-13T21:36:00Z", "to": "2026-10-13T21:38:08Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": ["06093b39-11ec-5734-8b7d-ba1bc683d340"],
