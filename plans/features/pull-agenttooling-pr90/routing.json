@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-10-26T15:28:26Z",
+  "cost_usd": 0.396691,
+  "duration_s": 19,
+  "ended_at": "2026-10-26T15:28:26Z",
+  "features_started": [
+    {
+      "at": "2026-10-26T15:28:26Z",
+      "slug": "pull-agenttooling-pr90"
+    }
+  ],
+  "git_branch": "main",
+  "launched_in": "/home/user/mediaCore",
+  "model": "claude-opus-5-5",
+  "session_id": "6bbf117c-b0b4-5526-81e3-6d18caaa2c0b",
+  "started_at": "2026-10-26T15:28:06Z"
+}
