@@ -37,7 +37,7 @@ the vendored copy already carries `cloud-pull-fixes` (PR 87). The freshly pulled
   "base": "main",
   "profile": "cloud",
   "gate": "green",
-  "session_window": {"from": "2026-10-26T15:28:51Z", "to": null},
+  "session_window": {"from": "2026-10-26T15:28:51Z", "to": "2026-10-26T15:31:26Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": ["6bbf117c-b0b4-5526-81e3-6d18caaa2c0b"],
