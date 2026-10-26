@@ -4,7 +4,7 @@ Propagate agentTooling PR 90 ("rates-sonnet-5-5-cache-read") into this repo:
 `git subtree pull --squash` of agentTooling `75eb0fb..31d57e7`, split sha
 `31d57e73a837879d1db23484ad0619660bcef254` (squash commit `c17f4af`, merged by
 `bfed543`). It corrects the `claude-sonnet-5-5` cache-read rate in
-`analysis/rates_history.json` to 0.1 of input, so `refresh_rates.py --check` stops
+`analysis/rates_history.json` to $0.10 per MTok (0.05× its $2 input) from `2026-10-13`, so `refresh_rates.py --check` stops
 warning about it, and documents it in `analysis/README.md`.
 
 Run in a Claude Code cloud container: the container is the worktree, and the start cut
