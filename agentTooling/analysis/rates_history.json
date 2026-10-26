@@ -61,7 +61,8 @@
       {"from": "0000-01-01", "input": 10, "output": 50, "cache_read": 1, "cache_creation_5m": 12.5, "cache_creation_1h": 20, "source": "litellm"}
     ],
     "claude-sonnet-5-5": [
-      {"from": "0000-01-01", "input": 2, "output": 10, "cache_read": 0.2, "cache_creation_5m": 2.5, "cache_creation_1h": 4, "source": "litellm"}
+      {"from": "0000-01-01", "input": 2, "output": 10, "cache_read": 0.2, "cache_creation_5m": 2.5, "cache_creation_1h": 4, "source": "litellm"},
+      {"from": "2026-10-13", "input": 2, "output": 10, "cache_read": 0.1, "cache_creation_5m": 2.5, "cache_creation_1h": 4, "source": "litellm"}
     ],
     "claude-haiku-5-5": [
       {"from": "0000-01-01", "input": 0.1, "output": 0.5, "cache_read": 0.01, "cache_creation_5m": 0.125, "cache_creation_1h": 0.2, "source": "litellm"}

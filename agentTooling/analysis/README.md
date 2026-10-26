@@ -92,7 +92,9 @@ fetch failed and says why. The capture's residue prints a `WARN` for 1 and a `no
 `STALENESS_THRESHOLD_DAYS` old. **To refresh**, start an agentTooling self feature and
 run `python3 analysis/refresh_rates.py` there: it appends a dated `litellm` entry for
 each change and sets `checked`, and the diff is one line per changed price. **Check a
-moved price against Anthropic's pricing page first** — LiteLLM's list is hand-maintained
+moved price against Anthropic's pricing page first** — the live page
+(`platform.claude.com/docs/en/about-claude/pricing`), never a cached or remembered copy of
+it, which is how Sonnet 5.5's correct cache read was once held as wrong — LiteLLM's list is hand-maintained
 and an appended entry is permanent; to take some changes and decline others, name the
 ones to take with `--only <model>` (repeatable) and the rest print as `held`. **Never refresh in a consuming repo** — the history ships through the
 subtree, and a local edit is overwritten by the next pull or conflicts with it. A rate
@@ -128,6 +130,14 @@ inferred from observed billing ratios across this repo's own corpus (every sonne
 2026-07-30 to 2026-08-21 billed 1.5x what the 2/10 rate computes, 2026-08-22 billed 1.0x),
 not read off a published price list, and `checked` does not vouch for it — confirm it
 against Anthropic's published rates at the next look.
+
+**Unconfirmed: `claude-sonnet-5-5`'s cache read before `2026-10-13`.** Anthropic's live
+pricing page prices Sonnet 5.5 cache hits at 0.05× input, $0.10, and the history takes that
+from `2026-10-13` (`self/features/rates-sonnet-5-5-cache-read/`). The `0000-01-01` entry
+it follows says $0.20 and is left as written, append-only, so a Sonnet 5.5 session dated
+earlier still prices its cache reads at twice the published rate. Nobody has established
+whether $0.20 was ever the billed rate; if it never was, those records are high by half
+their Sonnet 5.5 cache-read dollars.
 
 **Owed work: planning.json price correction** — every `planning.json` frozen before 2026-08-22 was priced with the intro tier applied retroactively and is therefore roughly 33% low. Correcting them means a full refresh (`capture_planning.py --all --recapture`) and committing the diff — and it is now only possible for features whose transcripts still exist, which is the whole argument for doing it promptly. This batch has not done so; see the feature manifest.
 
