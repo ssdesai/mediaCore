@@ -1,39 +1,30 @@
-# <Feature title>
+# Pull agentTooling PR 90
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+Propagate agentTooling PR 90 ("rates-sonnet-5-5-cache-read") into this repo:
+`git subtree pull --squash` of agentTooling `75eb0fb..31d57e7`, split sha
+`31d57e73a837879d1db23484ad0619660bcef254` (squash commit `c17f4af`, merged by
+`bfed543`). It corrects the `claude-sonnet-5-5` cache-read rate in
+`analysis/rates_history.json` to 0.1 of input, so `refresh_rates.py --check` stops
+warning about it, and documents it in `analysis/README.md`.
+
+Run in a Claude Code cloud container: the container is the worktree, and the start cut
+the branch `pullAgenttoolingPr90` off `origin/main` (the session had no assigned branch
+yet). The session was launched on `main`, before the branch existed, so it is pinned in
+`sessions` per `LIFECYCLE.md` → "Propagate" step 4. The pull used `update.sh` itself:
+the vendored copy already carries `cloud-pull-fixes` (PR 87). The freshly pulled
+`sync-plans.sh` wrote nothing and reported no `DRIFT`, so nothing was hand-merged.
+`sync-plans.sh --check` is clean afterwards, and the gate is green.
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Reviews the agentTooling prefix diff and confirms the sync wrote nothing. |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- No repo-owned `plans/` script or `.claude/settings.json` changed; the sync reported
+  every one `in-sync` at its current template version.
 
 ## Machine-readable
 
