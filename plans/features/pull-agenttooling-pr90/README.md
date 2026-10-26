@@ -49,7 +49,7 @@ Delete this section when the batch has a single level.
   "session_window": {"from": "2026-10-26T15:28:51Z", "to": null},
   "exclude_sessions": [],
   "exclude_subagents": [],
-  "sessions": [],
+  "sessions": ["6bbf117c-b0b4-5526-81e3-6d18caaa2c0b"],
   "subagents": []
 }
 ```
