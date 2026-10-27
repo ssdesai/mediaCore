@@ -1,6 +1,10 @@
 # Plans
 
-_Generated from `agentTooling/templates/` by `agentTooling/sync-plans.sh`. Edit the template, not this file._
+_Generated from `agentTooling/templates/` by `agentTooling/sync-plans.sh`, and
+**overwritten on every pull** — never edit it. It holds the rules shared by every repo
+that vendors agentTooling. This repo's own `plans/` entries, exceptions and elaborations
+go in the repo-owned `PROJECT_FACTS.md` → "This repo's `plans/` contents"; not here, where
+the next sync drops them, and not in the template, which ships to every repo._
 
 This repo's plan corpus for the delegated-execution workflow, plus the facts plans
 need about this codebase. The runners and the workflow documentation are **not**
@@ -18,7 +22,9 @@ to the machinery is made once and pulled everywhere.
   features `../agentTooling/harness/` builds, and the experiment directories it appends
   `results.jsonl` to. See `../agentTooling/harness/EXPERIMENTS.md` → "Running one" and
   `../agentTooling/harness/README.md`. Absent until the repo runs one.
-- `PROJECT_FACTS.md` — repo-specific facts every plan must pin. Read this before authoring.
+- `PROJECT_FACTS.md` — repo-specific facts every plan must pin, and this repo's own
+  entries for this folder (anything here that is not listed in this file). Read this
+  before authoring. *Seeded once and never overwritten.*
 - `BACKLOG.md` — escalations and decisions left open by finished batches, one entry per
   item phrased as the assertion that would catch it. Deferrals go here, not in a
   NOTES.md. *Seeded once by `sync-plans.sh` and never overwritten* — same treatment as

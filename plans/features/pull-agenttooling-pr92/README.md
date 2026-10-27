@@ -1,39 +1,41 @@
-# <Feature title>
+# Pull agentTooling PR 92
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+Propagate agentTooling PR 92 ("cloud-wave-sessions", the newest of PRs 91–94, all merged)
+into this repo: `git subtree pull --squash` of agentTooling `31d57e7..2848739`, split sha
+`284873927e9d65154bc69694196488cea8a93342` (squash commit `d189479`, merged by `08fcba2`).
+The range carries #91 `cloud-branch-window-from` (every cloud start's session is the
+coordinator, `--branch` included — no routing record, no pin, `from` at its first
+instant), #93 `generated-readme-repo-owned` (the generated `plans/` stubs say they are
+overwritten on every pull and point at `PROJECT_FACTS.md` → "This repo's `plans/`
+contents"; `sync-plans.sh` tells a hand edit from a template change and prints what it
+drops), #94 `propagate-agenttooling-access` (the `add_repo` step a cloud pull needs,
+documented, and `update.sh`'s `remedy` line) and #92 `cloud-wave-sessions` (the
+cloud-session coordinator shape in `ORCHESTRATION.md`).
+
+Run in a Claude Code cloud container on the session's assigned branch
+`claude/pull-agenttooling-pr92`, which `feature-start.sh --branch` cut off `origin/main`.
+The vendored copy that ran the start predated #91, so it classified this session (launched
+on `main`) as a router and its Next lines asked for the pin; the session is pinned in
+`sessions` as they said, and that start's `routing.json` stays as the record of what
+happened. The pull was `update.sh` itself. The freshly pulled `sync-plans.sh` rewrote the
+four generated stubs (`plans/README.md`, `interactive/README.md`, `features/README.md`,
+`features/TEMPLATE.md`) as `synced` — template changed upstream, no `EDITED`, `OVERWROTE`
+or `DRIFT` line, nothing dropped — and the new "This repo's `plans/` contents" section was
+appended to `plans/PROJECT_FACTS.md` by hand, per `README.md` → "Adopting the repo-owned
+plans/ contents". `sync-plans.sh --check` is clean afterwards, and the gate is green.
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Reviews the agentTooling prefix diff, the synced stubs and the new `PROJECT_FACTS.md` section. |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- No repo-owned `plans/` script or `.claude/settings.json` changed; the sync reported
+  every one `in-sync` at its current template version.
+- No entry was moved out of the generated stubs into `PROJECT_FACTS.md`: this repo's
+  stubs matched a vendored template version exactly, so the sync had nothing to drop.
 
 ## Machine-readable
 
