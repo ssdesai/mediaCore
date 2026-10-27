@@ -76,14 +76,17 @@ from the manifest's `base`, so a stacked feature targets the one beneath it with
 waiting for a merge. Version 4 added its **second entry point**, `pr.sh --merge-request
 <slug>`: the close calls it after the cost record has been committed and pushed, and it is
 the only place `PR_AUTO_MERGE` is read, so nothing can ask a forge to merge a branch whose
-record is not on it yet. The skeleton is at `template-version: 6`. Version 5 handed the
+record is not on it yet. The skeleton is at `template-version: 7`. Version 5 handed the
 GitHub part of the open path to `../forge.sh` — `pr-find`, else `pr-open`, over `gh api`
 REST — found through `FORGE_SCRIPT`, which `../feature-close.sh` exports, or
 `./agentTooling/forge.sh` from the repo root when run by hand; version 6 sends the merge
 request there too — `pr-find` for the open PR's url, then `forge.sh auto-merge <url>`,
 which asks `gh pr merge --auto --merge` on a laptop and the proxy's `ccr/auto_merge` REST
 route in a Claude Code cloud container (`../env-profile.sh` decides which; no adapter, no
-PR found or a refusal is a warning and exit 0, as before). It has no `gh auth status`
+PR found or a refusal is a warning and exit 0, as before); version 7 rewrites the body of
+a PR an earlier round's close opened, through `forge.sh pr-edit`, instead of only saying
+"already open" — a refused refresh exits non-zero (`../README.md` → "Adopting pr.sh
+version 7"). It has no `gh auth status`
 probe: the only `skip` (exit 0) left is a repo with no forge CLI at all, and a forge that
 refuses is a non-zero exit. A repo on another forge replaces the `forge.sh` calls with its
 own CLI (`../README.md` → "Adopting the forge adapter"). `worktree-setup.sh` is a no-op skeleton whose comments list the common steps —

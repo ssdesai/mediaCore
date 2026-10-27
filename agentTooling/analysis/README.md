@@ -162,7 +162,7 @@ python3 agentTooling/analysis/recover_attempts.py --for <slug>    # one feature,
 
 `report.py` reads only what is already on disk, so re-run it for whatever changed — it is the capture step that has to be careful, not this one.
 
-**A full refresh is `--all --recapture`, the heaviest repair here.** It re-derives every `planning.json` from transcripts, so reach for it with a reason — a pricing correction, a manifest fix — and read the diff before committing. On a corpus older than transcript retention it does two different things: where a *priced* session is gone, `check_frozen_cost` refuses that feature, leaves it untouched, and the run carries on (exiting non-zero at the end) — `--carry-lost` instead keeps those entries verbatim (each marked `carried_from`, the file gaining a top-level `carried_from`) and adds what the scan reaches, which is how a subagent pin is added to a feature whose own sessions have expired; where only a *runner* session is gone, the feature re-captures **successfully** with fewer `excluded_session_ids` than before, which is a silent metadata loss no guard catches. Both are reasons the default is to skip.
+**A full refresh is `--all --recapture`, the heaviest repair here.** It re-derives every `planning.json` from transcripts, so reach for it with a reason — a pricing correction, a manifest fix — and read the diff before committing. On a corpus older than transcript retention it does two different things: where a *priced* session is gone, the capture **merges** — it keeps that entry from the committed record, marked `carried_from` with the date it was originally captured (the file gaining a top-level `carried_from`, the earliest such date), adds what the scan reaches, and prints one `WARN` naming the carried rows; which is also how a subagent pin is added to a feature whose own sessions have expired, and `--force` is the only thing that drops them; where only a *runner* session is gone, the feature re-captures with fewer `excluded_session_ids` than before, which is a silent metadata loss no guard catches. Both are reasons the default is to skip.
 
 Each command takes `--self` in the same position to operate on agentTooling's own corpus instead:
 
@@ -1097,27 +1097,53 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `$0.00` if the refusal rested on it. A session that carries the branch but was launched
   somewhere the feature cannot claim from is the *launched somewhere else* cause above,
   not evidence against it.
-  **The one script here that can destroy data, and the only one that refuses a write.**
-  `check_frozen_cost` compares the sessions the prior `planning.json` priced against the
-  ones **this scan could reach**: a prior session that is neither reachable nor in
-  `excluded_ids` is unreproducible, so the run prints what it is protecting and exits 1
-  rather than overwriting. `--force` overrides. Reachability is recorded during the walk,
-  at the point `repo_match` proves the transcript is usable from this checkout, which is
-  what keeps ordinary work quiet — a session dropped by narrowing a `session_window`
-  (what settling a `check_branch_overlap` warning does) stays reachable and re-captures
-  cleanly. Absent this guard, the documented per-feature loop above is a data-loss
-  cadence: one run over humanNetworkMap zeroed 11 features, `add-component-tests` from
-  $151.58 to $0.00.
+  **The one script here that could destroy data, and how it no longer can: every
+  capture merges into the committed record.** `check_frozen_cost` compares the sessions
+  and subagents the prior `planning.json` priced against the ones **this scan could
+  reach**: a prior row that is neither reachable nor in `excluded_ids` is unreproducible,
+  and the capture keeps it from the committed record (`carry_lost_entries`) — marked
+  `carried_from` with the `captured_at` of the capture that originally priced it, a row
+  carried twice keeping its first stamp — while every reachable row is re-priced from its
+  transcript. One `WARN` names the carried rows and the capture dates they chain, the
+  record gains a top-level `carried_from` (the earliest stamp), and `report.py` says so
+  in one line. `--force` is the only thing that drops them: it throws the record away
+  and rebuilds from what this scan reaches. This used to be a **refusal** — exit 1, the
+  record untouched, `--carry-lost` the hand remedy — and that was the right rule on a
+  laptop, where every round runs on one machine and an unreachable transcript meant it
+  had aged out or the capture was running from the wrong checkout; absent it, the
+  documented per-feature loop above was a data-loss cadence: one run over
+  humanNetworkMap zeroed 11 features, `add-component-tests` from $151.58 to $0.00. In a
+  Claude Code cloud container the unreachable transcript is the **normal** case from
+  round 2 on — each round runs in a new container, and the previous round's cost
+  survives only as the rows its close committed to the branch — so the refusal fired at
+  every multi-round cloud close and each close needed a hand `--carry-lost` (the
+  `propagate-agenttooling-access` notes, ruling 9). The merge is safe in both places
+  because it never drops a row it cannot see: what one scan reaches it re-prices (and a
+  deliberate deselection may lower it), what it cannot it keeps, and only an explicit
+  `--force` discards. `--carry-lost` is kept as a
+  deprecated no-op alias (still implying `--recapture`).
+  Reachability is recorded during the walk, at the point `repo_match` proves the
+  transcript is usable from this checkout, which is what keeps ordinary work carrying
+  nothing — a session dropped by narrowing a `session_window` (what settling a
+  `check_branch_overlap` warning does) stays reachable and is **dropped**, not carried,
+  so a manifest correction still takes effect; and a session a `usage.json` has since
+  claimed as runner cost is dropped too, its dollars being in that sidecar. The merge
+  keeps only what cannot be seen.
   **Reachability, not file existence** — the distinction is load-bearing, and getting it
-  wrong let the guard fail open on the very case it was written for. Asking whether a
-  file named `<session_id>.jsonl` exists anywhere under `~/.claude/projects/` is a wider
+  wrong let the old guard fail open on the very case it was written for. Asking whether
+  a file named `<session_id>.jsonl` exists anywhere under `~/.claude/projects/` is a wider
   question than whether this scan can use it: planning that ran from a git worktree
   leaves transcripts in that worktree's own project directory, whose name contains the
   repo's fragment (so the scan walks it) but whose `cwd` is the worktree (so `repo_match`
   fails, permanently, from this checkout). A filename glob finds that file and vouches
   for a session the scan can never select again — which re-zeroed two features on
-  musicMap with exit 0 and no `--force`.
-  Asserted by `self/tests/capture-guard.sh`.
+  musicMap with exit 0 and no `--force`; under the merge the same mistake would drop the
+  row instead of carrying it.
+  Asserted by `self/tests/capture-guard.sh` (the merge replacing the refusal, phases 3, 8
+  and 13), `self/tests/subagent-capture.sh` (phases 5 and 15, for delegates and for a
+  pin added to a feature whose sessions have expired) and `self/tests/capture-merge.sh`
+  (the provenance rules: first stamp kept, earliest at the top, deselected and
+  reclassified rows dropped, `--force`, the report line, the alias).
 - `report.py` — **the plain single-feature mode refuses a feature nothing has captured
   yet.** `report.py <slug>` (no `--all`, no `--rounds-md`) reads `planning.json`
   unconditionally, so calling it between a feature's start and its close (or its capture,
@@ -1646,12 +1672,12 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   spans, with the same caveat, and is written only when some attempt has one.
   Sidecars written before attempt-tracking landed have no `attempts` key at all, so
   consumers read the top-level `session_id` as well.
-- `planning.json` — `{ slug, captured_at, manifest_branches[], sessions[{session_id,
-  git_branch,selected_by,cwd,date,started_at,ended_at,duration_s,also_claimed_by[]?,
+- `planning.json` — `{ slug, captured_at, carried_from?, manifest_branches[], sessions[{session_id,
+  git_branch,selected_by,cwd,date,started_at,ended_at,duration_s,carried_from?,also_claimed_by[]?,
   share_basis[]?,session_cost_usd?,session_duration_s?,unclaimed_usd?,
   unclaimed_duration_s?}],
   subagents[{agent_id,
-  parent_session_id,date,started_at,ended_at,duration_s,selected_by,cross_repo}],
+  parent_session_id,date,started_at,ended_at,duration_s,selected_by,cross_repo,carried_from?}],
   open_claimants[],
   excluded_session_ids[], excluded_agent_ids[], yielded_agent_ids[{agent_id,to}],
   priced[{session_id,agent_id,model,is_sidechain,date,
@@ -1722,6 +1748,15 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   this checkout at all, and it is `null` only for an entry carried forward from a
   capture that predates the field. `subagents[]` carries its own `selected_by`,
   `"parent"` or `"pinned"`, and no `cwd` — a delegate inherits its parent's.
+  **`carried_from`, on a session, a subagent or a `priced[]` row, is the `captured_at` of
+  the capture that ORIGINALLY priced it**: the row was kept from the committed record
+  because this scan could not reach its transcript (the capture's entry above, "merges
+  into the committed record"), and a row carried through several captures keeps its
+  first stamp, so the date is provenance rather than the last time it was copied. The
+  top-level `carried_from` is the **earliest** of the rows' stamps — the date the oldest
+  part of the figure was measured — present only when some row is carried, so a record
+  every row of which this scan re-priced has no such key anywhere. `report.py` turns the
+  rows into its one `carried` line (its entry below).
 - `report.json` — `{ slug, generated_at, cost{method,planning,implementer,build,verify,review,total,
   planning_pct,build_pct,verify_pct,review_pct,cost_per_plan,cost_per_file,total_is_partial,
   missing_usage_plans[],unpriced_plans[{plan,queue,reason,recovery}],
@@ -1746,11 +1781,18 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   loc_changed | "not computed: streams unavailable"}], re_hunting[{target,tool,plans[]}] | "not computed: streams
   unavailable", plan_drift[{plan,edited_not_listed[],listed_not_edited[]}],
   edit_overlap[{file,earlier_plan,later_plan,overlap_chars}] | "not computed: streams
-  unavailable", warnings[], profile?, gate? }` — a feature's cost roll-up and waste tripwires, written
+  unavailable", warnings[], profile?, gate?, carried{rows,captured_at[]}? }` — a feature's cost roll-up and waste tripwires, written
   by `report.py`. `profile` is the manifest fence's `profile` (`local` or `cloud`, where
   the start ran) and `gate` its `gate` (`green` or `skipped`), each present only when the
   fence has it, so a feature started before the key reports byte-identically; `report.md`
-  shows them as `Profile: …` and `Gate: …` lines under Generated. Every figure comes from a `usage.json` or `planning.json` already on
+  shows them as `Profile: …` and `Gate: …` lines under Generated. `carried` is present
+  only when `planning.json` holds rows marked `carried_from` (sessions, subagents or
+  `priced[]` rows this capture could not re-price and kept from the committed record):
+  `rows` counts the session and subagent entries so marked and `captured_at[]` is the
+  sorted set of their stamps, and `report.md` and the run's stdout each carry one line
+  under the Cost table saying how many rows were carried from which capture date(s) — so
+  a reader sees the planning figure is a chain across captures (across containers, in the
+  cloud) rather than one scan's measurement. Every figure comes from a `usage.json` or `planning.json` already on
   disk — summed or divided, never repriced. The three stream-derived values
   (`loc_changed`, `re_hunting`, `edit_overlap`) are the exception. They come from
   `.stream.jsonl` while it exists and are carried from this same file once it does not,

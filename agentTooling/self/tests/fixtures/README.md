@@ -62,13 +62,18 @@ the verdict each must get, which nothing can synthesize — the commands are the
   consuming repo's seeded `plans/pr.sh` is until it hand-merges the forge adapter, so
   `../feature-lifecycle.sh` X6 drives a close through it (opened with `gh pr create`, url
   stamped, merge still requested) and `../sync-check.sh` 4f–4g checks `--check` reports it
-  as `4 < 6` drift (it was `4 < 5` until execution-profiles). Never edit it; it stands for
+  as `4 < 7` drift (it was `4 < 5` until execution-profiles, `4 < 6` until pr-body-refresh). Never edit it; it stands for
   code that has moved on.
 - `pr-v5.sh` — `templates/plans/pr.sh` exactly as it stood at `template-version: 5`: the
   forge adapter's open path, and a merge request that still ran `gh pr merge <branch>
   --auto` itself — GraphQL, refused in a cloud container — frozen when execution-profiles
   moved the template to 6 (`forge.sh auto-merge`). `../sync-check.sh` 4h checks `--check`
-  reports it as `5 < 6` drift. Never edit it.
+  reports it as `5 < 7` drift (it was `5 < 6` until pr-body-refresh). Never edit it.
+- `pr-v6.sh` — `templates/plans/pr.sh` exactly as it stood at `template-version: 6`: its
+  already-open path printed `already open: <url>` and exited without reading the body
+  file, so a re-closed PR kept round 1's body — frozen when pr-body-refresh moved the
+  template to 7 (`forge.sh pr-edit`). `../sync-check.sh` 4i checks `--check` reports it as
+  `6 < 7` drift. Never edit it.
 
 - `transcripts/build-transcript.sh` — `transcript_line MESSAGE_ID MODEL TIMESTAMP INPUT
   OUTPUT CACHE_READ CACHE_5M CACHE_1H [IS_SIDECHAIN]` prints one `assistant`-line session

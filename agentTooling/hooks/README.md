@@ -327,6 +327,20 @@ variable:
   `self/features`), otherwise a consuming repo (`./agentTooling/`, `plans/features`). It
   never mentions `.worktrees/` or the primary checkout. When the branch cannot be read it
   says "this session's assigned branch" instead; the reason never fails to be emitted.
+- **cloud, off the feature's branch**: `GIT_CLOUD_OFF_BRANCH_TEMPLATE`
+  (`self/features/cloud-off-branch-remedy/`). A container the platform restarted comes back
+  cloned on `main`, so the template above would offer "commit on `main`, push only `main`"
+  — the forbidden action — as the remedy. When the checkout is on
+  `policy.GIT_PROTECTED_BRANCH` or detached and a refused `git switch`/`git checkout`
+  names (`switch_target_names`: positionals before `--`, and a `-b`/`-c` value) a branch
+  that a manifest records as `branches[0]` (`off_branch_target`: the name as written, a
+  remote-tracking `origin/<x>` as `<x>`, read with `started_feature` over the checkout's
+  tracked manifests and then over the target commit's own tree, where feature-start.sh
+  committed the manifest), the reason is this one instead: the container is off
+  `<target>` (feature `<slug>`, its manifest), a cloud session cannot switch to it, and the
+  remedy is a fresh session launched on `<target>` or the human checking it out here; it
+  never says to commit or push the base. The refusal itself is unchanged — no carve-out
+  allows that switch. The extra probes run only on that refused path.
 
 And in the cloud, **two more shapes** are denied with that reason — `policy.py`'s
 cloud-only entries, which are hook-only (no prefix can express them, so the settings file
@@ -1304,7 +1318,9 @@ and `GIT_PROBE_*` constants, `GIT_LOCATION_FLAG`, `GIT_PROBE_TIMEOUT_SECONDS`, t
 `SELF_FEATURES_DIR`, `CONSUMER_FEATURES_DIR`, `VENDORED_DIR_DEFAULT`,
 `TOOL_PREFIX_TEMPLATE`), and the cloud reason (`GIT_CLOUD_DENY_REASON_TEMPLATE`,
 `GIT_CLOUD_STARTED_TEMPLATE`, `GIT_CLOUD_UNSTARTED_TEMPLATE`, `BRANCH_QUOTE`,
-`BRANCH_UNKNOWN`); a new cloud-only shape is an entry in `policy.GIT_CLOUD_ONLY`, a branch
+`BRANCH_UNKNOWN`), and the off-branch reason (`GIT_CLOUD_OFF_BRANCH_TEMPLATE`,
+`OFF_BRANCH_DETACHED`, `GIT_REMOTE_REF_PREFIX`, `GIT_REMOTE_SEPARATOR`,
+`GIT_TREE_PATH_SEPARATOR`, `GIT_SHOW`, `GIT_PROBE_REMOTE_REFS`); a new cloud-only shape is an entry in `policy.GIT_CLOUD_ONLY`, a branch
 in `cloud_refuses`, and a row in `self/tests/hook-cloud-profile.sh`'s table with its local
 and its cloud answer. The opaque deny is `OPAQUE_REWRITE_ATTEMPTS`,
 `HEREDOC_LITERAL_PROGRAMS`, `INTERPRETER_CODE_LETTER`, `EVAL_PROGRAM`,

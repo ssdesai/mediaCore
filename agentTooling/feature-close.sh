@@ -30,9 +30,12 @@ set -uo pipefail
 #      Rounds table analysis/report.py renders (--rounds-md; absent or failing, the body
 #      is the report alone and one line says so). Then the repo-owned pr.sh, with
 #      FEATURE_BASE and FORGE_SCRIPT exported — which pushes and opens (from
-#      template-version 5 through forge.sh, `gh api` REST only), or says already open, or
-#      skips where there is no forge CLI at all, and exits non-zero when the forge refused
-#      — and the `pr_opened` stamp with its rc and url.
+#      template-version 5 through forge.sh, `gh api` REST only), or, finding the PR an
+#      earlier round's close opened, replaces its body with this one (from
+#      template-version 7, forge.sh pr-edit; older copies only said "already open" and
+#      left round 1's body), or skips where there is no forge CLI at all, and exits
+#      non-zero when the forge refused — the refresh included, in which case the PR IS
+#      open and pr.sh printed its url — and the `pr_opened` stamp with its rc and url.
 #   3. CAPTURE. feature-capture.sh, which stamps `session_window.to`, captures, reports,
 #      commits `<slug>: cost records` on the branch (the `pr_opened` stamp rides that
 #      commit) and pushes. Advisory as it is everywhere: a refusal is printed with the
@@ -45,8 +48,8 @@ set -uo pipefail
 #      record.
 #   5. Print the PR url and that merging it is the last step.
 #
-# Re-runnable: a second run finds the PR already open and the capture replacing its own
-# record, and ends at the same place.
+# Re-runnable: a second run finds the PR already open — pr.sh at 7 rewrites its body from
+# this run's report — and the capture replacing its own record, and ends at the same place.
 #
 # Exit codes: 2 usage; 1 a refusal, or a capture that refused (the PR is open, the record
 # is not committed, and the merge was not requested).
@@ -70,6 +73,10 @@ CAPTURE_SCRIPT_NAME="feature-capture.sh"
 CLOSE_SCRIPT_NAME="feature-close.sh"
 # The forge adapter (forge.sh, beside this script), exported to pr.sh as FORGE_SCRIPT.
 FORGE_SCRIPT_NAME="forge.sh"
+# Where pr.sh's stdout carries the PR url: lines beginning `  pr ` (every template version
+# prints it there), and the url itself on such a line.
+PR_URL_LINE_RE='^  pr '
+PR_URL_RE='https?://[^[:space:]]+'
 REVIEW_RUNNER_NAME="run-review.sh"
 REPORT_PY_ROUNDS_FLAG="--rounds-md"
 # routing.py's entry point that names a router which built this feature unpinned. It
@@ -278,9 +285,16 @@ else
   pr_log="$(mktemp "${TMPDIR:-/tmp}/feature-close-pr.XXXXXX")"
   "$PR_SCRIPT" "$FEATURE_SLUG" "$PR_BODY" | tee "$pr_log"
   PR_RC=${PIPESTATUS[0]}
-  PR_URL="$(grep -oE 'https?://[^[:space:]]+' "$pr_log" | tail -1)"
+  # Only from pr.sh's own `  pr ` lines (its stdout contract): it runs `git push … 2>&1`,
+  # and a refused push names the remote's url, which in a cloud container is an http
+  # proxy url — read from anywhere, that would be stamped and reported as an open PR.
+  PR_URL="$(grep -E "$PR_URL_LINE_RE" "$pr_log" | grep -oE "$PR_URL_RE" | tail -1)"
   rm -f "$pr_log"
-  if (( PR_RC != 0 )); then
+  # A non-zero rc with a url is a PR that IS open — a template-version 7 pr.sh whose body
+  # refresh was refused — so "open it by hand" would be wrong advice there.
+  if (( PR_RC != 0 )) && [[ -n "$PR_URL" ]]; then
+    echo "  warn      $PR_LABEL exited $PR_RC with the PR open at $PR_URL — its body may still describe an earlier round: replace it by hand with this round's review report; the capture below still runs"
+  elif (( PR_RC != 0 )); then
     echo "  warn      $PR_LABEL exited $PR_RC — open the PR by hand; the capture below still runs, the record being the feature's and not the PR's"
   fi
 fi

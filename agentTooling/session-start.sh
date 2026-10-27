@@ -22,6 +22,9 @@ set -uo pipefail
 #      the start runs HERE, on this branch, and creates or pushes no other: a session told
 #      to stay on its assigned branch is already running the standard flow, and must not
 #      read LIFECYCLE.md's local layout as a conflict (it did — the reason this exists).
+#      On the base or a detached HEAD in the cloud it adds the restart case: a session
+#      continuing a feature started on another branch is in a container the platform
+#      restarted on the base, and a fresh session on that branch is the fix.
 #   2. THE REPO'S SETUP, cloud only: the consuming repo's seeded `plans/cloud-setup.sh`,
 #      when there is one — services a fresh container lacks (Postgres, a role). Its exit
 #      code is this script's, so a failed setup is not hidden behind the orientation. A
@@ -72,6 +75,10 @@ else
   DOC_PREFIX="agentTooling/"
 fi
 START_CMD="${TOOL_PREFIX}feature-start.sh ${SELF_ARG}<slug>"
+# The cloud restart case (self/features/cloud-off-branch-remedy/): a reclaimed container
+# comes back cloned on the base, not on the feature's branch. One fixed line, no manifest
+# scan — naming every started branch would cost a manifest read per feature on every start.
+CONTINUING_LINE="if you are continuing a feature already started on another branch, this container is not on it: the platform restarted it on $BASE_BRANCH. A fresh session launched on that branch is the fix — never check it out, and never commit or push $BASE_BRANCH yourself (${DOC_PREFIX}$LIFECYCLE_DOC)"
 
 if ! profile_check >/dev/null; then
   say "$(profile_check) — feature-start.sh will refuse until it is fixed"
@@ -95,6 +102,7 @@ if [[ -n "$STARTED" ]]; then
 elif profile_is_cloud; then
   if [[ -z "$BRANCH" || "$BRANCH" == "$BASE_BRANCH" ]]; then
     say "this container is one feature's checkout. Start it with $START_CMD --branch <name>: the start cuts <name> off origin/$BASE_BRANCH — never create a branch yourself (${DOC_PREFIX}$LIFECYCLE_DOC)"
+    say "$CONTINUING_LINE"
   else
     say "this container is one feature's checkout, on '$BRANCH'. Start it with $START_CMD, run here: the feature's branch IS '$BRANCH' — no worktree, and no other branch created or pushed. Do not check out $BASE_BRANCH or make a branch per slug; that is the local layout (${DOC_PREFIX}$LIFECYCLE_DOC)"
   fi

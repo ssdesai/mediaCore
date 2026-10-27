@@ -247,8 +247,8 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   asking for `--merge` and never `--squash` (the prune and the post-merge capture both
   decide "merged" by ancestry, which a squash merge never gives) and opens no PR of its
   own, `--merge-request` with it unset exits 0 saying nothing was requested, `self/pr.sh`
-  makes no call even with it set, and both copies read `template-version 6` (the merge
-  request through `forge.sh auto-merge`, at or past the 4 the merge request needs).
+  makes no call even with it set, and both copies read `template-version 7` (the body
+  refreshed through `forge.sh pr-edit`, at or past the 4 the merge request needs).
   **P3**, that merge request per profile (`../features/execution-profiles/`): under
   `AGENTTOOLING_PROFILE=cloud` it exits 0 and logs exactly one `ccr auto_merge
   repos/<o>/<r>/pulls/1/ccr/auto_merge merge_method=merge` (the stub `gh` logs the PUT that
@@ -287,7 +287,16 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   rides that commit, **the origin head recorded at the `pr merge` call is already the cost
   commit**, there is exactly one merge request, and the last lines name the PR and the
   merge. **X3**: a second close run exits 0, finds the PR already open and opens no second
-  one, and ends with one record, the cost commit on top and a clean worktree.
+  one, and ends with one record, the cost commit on top and a clean worktree; it rewrites
+  the open PR's body with exactly one PATCH (X3d, which the stub `gh` logs as `pr edit
+  <n>`); and a third close whose PATCH alone is refused (`GH_PATCH_RC`) still exits 0,
+  warning that the PR at its url is open with a stale body — never "open the PR by hand" —
+  and stamps `pr_opened` rc 1 with that url (X3e–X3f); and a close whose `pr.sh` push is
+  refused by a `git` wrapper ahead on `PATH` (`git push …` with no `-C` only, so the
+  capture's push goes through), printing `error: failed to push some refs to '<https
+  remote>'`, says "open the PR by hand", never "with the PR open at", and stamps
+  `pr_opened` rc 1 with no url — the close reads a url only from `pr.sh`'s `  pr ` lines
+  (X3g–X3h).
   **X5** is the consuming repo that never hand-merged the version-4 edits: a fixture
   `pr.sh` built from the real template with its `# template-version:` line rewritten to 3,
   committed on the branch, drives the close's skip branch — it names 3 and the 4 it needs,
@@ -803,12 +812,15 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
 - `capture-guard.sh` — copies `analysis/{pricing,roots,transcript,capture_planning}.py` into
   a throwaway checkout, synthesizes one feature manifest and, under a redirected `$HOME`,
   the `~/.claude/projects/*/<session_id>.jsonl` transcripts capture selects on, and asserts
-  `capture_planning.py`'s frozen-cost guard: a re-capture whose priced session has lost its
-  transcript is refused (non-zero exit, `planning.json` byte-identical, the session id and
-  the preserved dollar figure both named), `--force` overrides it, and the three safe cases
-  stay quiet — transcript still present, a session dropped by a `session_window` edit while
-  its transcript survives, and a session now claimed by a `usage.json` as runner cost. Also
-  covers that a zero-cost prior capture needs no `--force`. Resolves its `mktemp -d` through
+  `capture_planning.py`'s merge into the committed record (once the frozen-cost
+  **refusal**; `../features/capture-merges-committed-record/`): a re-capture whose priced
+  session has lost its transcript writes, exit 0, keeping the row marked `carried_from`
+  with the prior capture's stamp, the dollar figure preserved and the session named in
+  one WARN, never `REFUSING`; `--force` rebuilds from what the scan reaches, zeroing it;
+  and the three cases that carry nothing — transcript still present, a session dropped by
+  a `session_window` edit while its transcript survives, and a session now claimed by a
+  `usage.json` as runner cost — are asserted to carry nothing. Also covers that a
+  zero-cost prior capture needs no `--force`. Resolves its `mktemp -d` through
   `pwd -P` because `roots.py` resolves `AGENT_TOOLING_DIR` with `Path.resolve()`: on macOS
   the unresolved `/var/...` fixture path matches no transcript, and every assertion would
   then pass or fail vacuously against an empty scan. Uses `session_line` from
@@ -816,7 +828,7 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   Also pins the two failures found after the guard first shipped: a transcript moved
   into an **orphaned worktree's** project directory (name still contains the repo's
   fragment, so the scan walks it; `cwd` is the worktree, so `repo_match` fails forever)
-  must be treated as lost and refused — the filename-glob version vouched for it and
+  must be treated as lost and carried — the filename-glob version vouched for it and
   re-zeroed the feature with exit 0 — and a declared branch matching no transcript must
   be warned about, the failure that silently held five features at `$0.00`.
   Covers the **already-captured skip** in the same file, since it is the guard in front
@@ -824,12 +836,12 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `planning.json` byte-identical and naming `--recapture`, skips the same way when the
   transcripts are gone (quiet, not a refusal — the cadence crosses a corpus of expired
   features every week), yields to `--recapture` and to `--force`, and under `--all`
-  captures only the feature that had none. It also pins that `--all --recapture`
-  does not abort on a refusal: the feature after the refusing one is still captured and
-  the run exits non-zero at the end. The helpers say which is which — `capture` is the
-  raw invocation, `recapture` adds the flag, and every frozen-cost phase goes through
-  `recapture` because those assertions are about what the scan does, not about whether
-  it runs.
+  captures only the feature that had none. It also pins that `--all --recapture` over a
+  corpus with an expired transcript carries that feature's row and exits 0 with nothing
+  refused, the features after it still captured. The helpers say which is which —
+  `capture` is the raw invocation, `recapture` adds the flag, and every merge phase goes
+  through `recapture` because those assertions are about what the scan does, not about
+  whether it runs.
   Its last phase pins `check_empty_window`, the sibling of the unmatched-branch warning:
   a window with `from == to` — and its inverted twin, `from > to` — is warned about even
   though the branch matches and the transcripts are present, while an open-ended window
@@ -849,6 +861,32 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `planning.json`. It is the shape of every repo that has ever run a batch, so were the
   serialized (repo-wide) `excluded_session_ids` the set behind the refusal instead of
   `excluded_on_branch`, a branch typo would read as an evidenced $0.00 everywhere. Phase 18: `--all` skips a feature whose `session_window.to` is still null as in flight and writes nothing, while naming the slug still captures it — a corpus-wide run must not freeze a feature `feature-capture.sh` has not captured.
+- `capture-merge.sh` — `capture-guard.sh`'s scaffolding plus a copy of `report.py`,
+  asserting the provenance rules of the merge into the committed record
+  (`../features/capture-merges-committed-record/`) over three rounds' coordinators, each
+  "in a container of its own" (its transcript removed before the next capture): **A** a
+  plain `--recapture` with an unreachable priced session writes, exit 0, nothing saying
+  `REFUSING` or `--carry-lost`, the lost row kept with `carried_from` = the capture that
+  priced it, the reachable row unstamped, the total the sum of both, the top-level
+  `carried_from` set and one WARN naming the id (in `warnings[]` too); **B** a row carried
+  once keeps its FIRST stamp through later captures — never re-stamped with a later
+  `captured_at`, the regression `carry_lost_entries` used to have — a row lost later is
+  stamped with the last capture that priced it from its transcript, the top-level field
+  is the earliest stamp, and the WARN names both rows and both dates; **C** the merge
+  keeps only what cannot be seen — a reachable session deselected by a narrowed window is
+  dropped and one a `usage.json` reclassified as runner cost is dropped though its
+  transcript is gone, the other carried rows intact; **D** `--force` rebuilds from what
+  the scan reaches alone, no carried row, no top-level key, the carried dollars gone;
+  **E** `report.py` prints one `carried` line on stdout and in `report.md` with the row
+  count and the capture dates, `report.json` holding `carried{rows, captured_at[]}`, and
+  a record with no carried row prints none and has no key; **F** `--carry-lost` is still
+  accepted as a no-op alias and its help text says it is deprecated; **G** (round 2) a
+  carried PINNED session keeps `selected_by: pinned` on its row and in its claim in the
+  session-claims ledger under the fake `$HOME`, beside a re-priced branch session's
+  `branch` claim — the old fallback ledgered every carried session as `branch` — and
+  **A7** reads the same ledger for phase A's branch-selected carried row. RED until the
+  merge landed; A7 and G RED until the carried row's `selected_by` reached
+  `session_selected_by`.
 - `subagent-capture.sh` — same scaffolding as `capture-guard.sh`, plus the
   `<session_id>/subagents/agent-<id>.jsonl` files beside the parent transcripts (built with
   `subagent_line` / `subagent_prompt_line` from `fixtures/transcripts/build-transcript.sh`).
@@ -858,9 +896,15 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   is not; a subagent under a parent on `main` — the coordinator case, where the child
   inherits the parent's `gitBranch` and can never be branch-matched — is unpriced until
   the manifest pins its id, then priced as `"pinned"` while the parent stays out of
-  `sessions[]`; a pin matching nothing is warned about by id; the frozen-cost guard
-  refuses a re-capture whose subagents directory is gone, naming `agent-<id>`, and
-  `--force` still overrides; `--list-subagents` prints every reachable subagent with its
+  `sessions[]`; a pin matching nothing is warned about by id; the merge covers delegates —
+  a re-capture whose subagents directory is gone writes, carrying the delegate's row with
+  its `carried_from` stamp and the total unchanged, one WARN naming it as `agent-<id>`,
+  the ledger still naming this feature for it as `parent`-selected (5c2), and `--force`
+  rebuilds without it (phase 5), and a pin is added to a feature whose own sessions have
+  expired by a plain recapture, the expired session carried beside the new pin and
+  claimed in the ledger's `sessions` section as `branch`-selected (phase 15, which used
+  to need `--carry-lost`; the `claim`/`session_claims` ledger readers are defined with
+  the helpers for that reason); `--list-subagents` prints every reachable subagent with its
   opening prompt and parent, and `--since` drops earlier ones; a subagent of a runner
   session (parent claimed by a `usage.json`) is not priced even when pinned, and the pin
   is reported unmatched; two manifests pinning one id are warned about, naming the
@@ -1643,7 +1687,18 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   cloud, neither variable is local, and `AGENTTOOLING_PROFILE=local` wins. X: under a
   logging `git` stub first on `PATH`, no case runs git locally (nor on **M**), a local push
   to `main` is refused and runs none (X4), a cloud read or non-git command runs none, and
-  a cloud `git switch main` does (the stub is live). Depends on the
+  a cloud `git switch main` does (the stub is live). O: the off-branch remedy
+  (`../features/cloud-off-branch-remedy/`) — clones of the origin on `main`, **OB** with
+  the manifest only on the feature's branch and **OM** with it tracked on `main` too:
+  `git checkout`/`git switch` to the branch, `origin/<branch>`, `--detach origin/<branch>`
+  and `checkout -b <branch> origin/<branch>` are refused with the off-branch reason (the
+  branch, the slug, a fresh session, the human; never "push only `main`" or "Commit on
+  `main`"), locally they still prompt, a branch no manifest names keeps the existing
+  reason, the feature's own branch is unchanged, and on a detached clone **OD** the
+  `-b` shape names "a detached HEAD" while a plain checkout stays unrefused. X5 pins the
+  probe count of a refused cloud non-switch (`git push origin x`: two head reads and the
+  reason's one manifest grep; `git reset --hard`: one and one), so the off-branch block
+  never costs another command a git call. Depends on the
   manifest fence's `branches[0]` and on the hook finding its repo shape from its own path.
   No model, no network.
 - `hook-wiring.sh` — thirty throwaway repos, one per starting state of
@@ -1944,8 +1999,8 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `$TMP/consumer` holding copies of the three under `agentTooling/`; it asserts the
   `sync-plans.sh --check` contract: a fresh seed reports the five generated stubs and
   the three repo-owned scripts (`gate.sh`, `pr.sh`, `worktree-setup.sh`) in-sync with
-  their `# template-version: <N>` line (3, 6, 2 in that order — `pr.sh` is at 6, the
-  merge request through `forge.sh auto-merge`, past the 4 whose `--merge-request` entry
+  their `# template-version: <N>` line (3, 7, 2 in that order — `pr.sh` is at 7, the
+  body refresh through `forge.sh pr-edit`, past the 4 whose `--merge-request` entry
   point `feature-close.sh` needs; `gate.sh` 3 and `worktree-setup.sh` 2 source
   `plans/environment.sh`, and the gate resumes), `environment.sh` in-sync at 1 and
   `cloud-setup.sh` at 2 (1l–1m), the first seeded without the executable bit and the second with
@@ -1963,9 +2018,10 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   repo-owned script stripped of its `template-version` line is reported `DRIFT` by both
   `--check` and the plain sync (which still keeps the file), and so is a `pr.sh` still
   at 4 — `fixtures/pr-v4.sh`, every consuming repo's copy until it hand-merges the forge
-  adapter — as `template-version 4 < 6` pointing at the hand-merge (4f–4g), and so is one
+  adapter — as `template-version 4 < 7` pointing at the hand-merge (4f–4g), and so is one
   at 5 — `fixtures/pr-v5.sh`, the template as it stood before its merge request went
-  through `forge.sh` — as `5 < 6` (4h); a body-only
+  through `forge.sh` — as `5 < 7` (4h), and one at 6 — `fixtures/pr-v6.sh`, whose
+  already-open path left a re-closed PR's body at round 1's — as `6 < 7` (4i); a body-only
   edit below a script's `REPO-SPECIFIC` marker is not drift; a deleted repo-owned script is reported
   `missing` and the plain sync recreates it; a `BACKLOG.md` carrying the repo's own
   entry survives a plain sync byte-identical as `kept` and is not drift, while a deleted
@@ -2589,7 +2645,9 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `AGENTTOOLING_PROFILE` and `CLAUDE_CODE_REMOTE` cleared. Asserts C1–C6 (cloud: on an
   assigned branch the profile line and `feature-start.sh <slug>` run here with no other
   branch and not `main`; the stub run once, rc 0; a failing stub's code is the hook's,
-  after the orientation; on `main`, `--branch <name>`; a tracked manifest whose
+  after the orientation; on `main`, `--branch <name>`, then the restart line — continuing
+  a feature started on another branch, a fresh session on it, never push `main` — also on
+  a detached HEAD and never on an assigned branch (C4b–C4d); a tracked manifest whose
   `branches[0]` is this branch names that feature and its close and offers no start,
   while one that only mentions the branch in prose is not it; no stub, one line naming
   `sync-plans.sh` and rc 0), L1–L3 (local: the primary's start and worktree on `main`
@@ -2616,6 +2674,28 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   and the prompt falls back to `main...HEAD`, saying there is no `origin/main`. N1: no
   remote at all, the same fallback. Depends on the prompt spelling the base as
   ``git diff <ref>...HEAD`` and on the manifest fence's `base`. No model, no network.
+- `pr-body-refresh.sh` — the PR body refresh (`self/features/pr-body-refresh/`): every
+  round's close runs `pr.sh <slug> <body-file>`, and from template-version 7 a PR an
+  earlier round opened has its body rewritten. **Part R** runs both copies
+  (`self/pr.sh`, `templates/plans/pr.sh`) from a throwaway repo with a bare origin,
+  `FORGE_SCRIPT` naming a stub forge that logs each verb and the bytes of each body file
+  (`$FORGE_LOG`, `$FORGE_BODY_OUT`), and a stub `gh` on `PATH` only so the no-forge-CLI
+  skip does not fire. R1: already open (`STUB_OPEN_URL`), exit 0, `pr-edit <url> <the
+  body file given>` with the report's bytes, `already open, body refreshed: <url>`, no
+  `pr-open`. R2: no report, the refresh still runs with the fallback body. R3: a refused
+  `pr-edit` (`STUB_EDIT_RC`) exits 1 with a `fail` line naming `pr-edit`, no refreshed
+  line, no `pr-open`, and the url on a `  pr      already open, body NOT refreshed:` line
+  (R3d) — the one kind of line the close reads a url from. R4: nothing open, unchanged — `pr-open` with the body file,
+  `pr-edit` never, the new url printed. **Part E** runs `forge.sh pr-edit` itself, copied
+  with `env-profile.sh` and `hooks/env_profile.py` to the root of a checkout whose origin
+  is `https://github.com/<o>/<r>.git`, against a stub `gh` logging its argv
+  (`$GH_ARGV_LOG`), under each profile: E1 one `api -X PATCH repos/<o>/<r>/pulls/<n>`, the
+  body's quotes, `$(…)` and backticks unexpanded, the url printed, and the same call under
+  both profiles; E2 a url with no number and E3 a missing body file exit 1 with no `gh`
+  call; E4 a failed call (`GH_RC`) exits 1 naming PATCH and the endpoint; E5 no
+  `html_url` (`GH_NO_URL`) exits 1; E6 too few arguments exit 2; E7 no `gh pr`, `gh auth
+  status` or GraphQL. The whole-close view of the same path is `feature-lifecycle.sh`
+  X3d–X3f. No model, no network.
 - `gate-resume.sh` — the resumable gate (`self/DESIGN-2026-10-05-cloud-execution.md` §8):
   a gate killed with its container re-runs only what had not finished. Run against **both**
   gates that carry it — `templates/plans/gate.sh` and `self/gate.sh` — each copied into a

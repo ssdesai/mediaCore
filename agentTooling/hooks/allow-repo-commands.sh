@@ -422,6 +422,34 @@ GIT_CLOUD_UNSTARTED_TEMPLATE = (
     "`%(prefix)sfeature-start.sh %(self_arg)s<slug>` — it makes no worktree and no other "
     "branch; `%(prefix)sfeature-close.sh %(self_arg)s<slug>` is the way out, after a clean "
     "review and before the merge.")
+# The off-branch case (self/features/cloud-off-branch-remedy/): a container the platform
+# restarted after reclaiming it comes back cloned on `main`, not on the feature's branch,
+# while the feature's committed manifest still names that branch. A switch to it is still
+# refused — the cloud never switches away, and no carve-out lets this one through (the
+# fence's NOTES.md says why) — but the cloud reason above would offer "commit on `main`,
+# push only `main`" as the remedy, the forbidden action. When the checkout is on
+# GIT_PROTECTED_BRANCH or detached and the switch names a branch a tracked manifest records
+# as `branches[0]`, this reason is printed instead; it never tells the agent to commit or
+# push the base. `%(here)s` is the current branch quoted, or OFF_BRANCH_DETACHED.
+GIT_REMOTE_REF_PREFIX = "refs/remotes/"
+GIT_REMOTE_SEPARATOR = "/"
+# The manifest normally lives on the feature's branch, not on `main`, so besides the
+# checkout's tracked manifests the commit the switch would land on is searched too:
+# `git grep <tree>` prints `<tree>:<path>`, and `git show <tree>:<path>` reads it.
+GIT_TREE_PATH_SEPARATOR = ":"
+GIT_SHOW = "show"
+GIT_PROBE_REMOTE_REFS = ("for-each-ref", "--format=%(refname)", "refs/remotes")
+OFF_BRANCH_DETACHED = "a detached HEAD"
+GIT_CLOUD_OFF_BRANCH_TEMPLATE = (
+    "allow-repo-commands: this git command switches this container to `%(target)s`, and a "
+    "Claude Code cloud session never switches branches (LIFECYCLE.md § The three rules, "
+    "rule 2). `%(target)s` is feature '%(slug)s''s branch (%(manifest)s, written by "
+    "feature-start.sh), and this container is OFF it, on %(here)s: a container the "
+    "platform reclaimed and restarted comes back cloned on `%(protected)s`, not on the "
+    "feature's branch. The session cannot fix that itself. The remedy is a fresh session "
+    "launched on `%(target)s`, or the human checking `%(target)s` out in this container. "
+    "Do not commit or push here, and do not start a feature on `%(protected)s`: stop, and "
+    "say that this container is off its feature's branch `%(target)s`.")
 
 # ── The run-time-value deny ───────────────────────────────────────────────────
 # The generalisation of the chained `cd`: what blocks the reads fence is a path decided at
@@ -1248,17 +1276,22 @@ def repo_shape(root):
 def manifest_first_branch(path, slug):
     """The fence's `branches[0]`, or the slug when it names none — plan-runner-roots.sh's
     manifest_branch, read in Python."""
-    fence, last, inside = [], None, False
     with open(path, encoding="utf-8") as handle:
-        for line in handle:
-            if MANIFEST_FENCE_OPEN_RE.match(line):
-                fence, inside = [], True
-            elif MANIFEST_FENCE_CLOSE_RE.match(line):
-                if inside:
-                    last = "".join(fence)
-                inside = False
-            elif inside:
-                fence.append(line)
+        return manifest_lines_first_branch(handle, slug)
+
+
+def manifest_lines_first_branch(lines, slug):
+    """manifest_first_branch over a manifest's lines, wherever they were read from."""
+    fence, last, inside = [], None, False
+    for line in lines:
+        if MANIFEST_FENCE_OPEN_RE.match(line):
+            fence, inside = [], True
+        elif MANIFEST_FENCE_CLOSE_RE.match(line):
+            if inside:
+                last = "".join(fence)
+            inside = False
+        elif inside:
+            fence.append(line if line.endswith("\n") else line + "\n")
     try:
         branches = json.loads(last).get(MANIFEST_BRANCHES_FIELD) if last else None
     except (ValueError, AttributeError):
@@ -1268,29 +1301,128 @@ def manifest_first_branch(path, slug):
     return slug
 
 
-def started_feature(toplevel, features_dir, branch):
+def started_feature(toplevel, features_dir, branch, tree=None):
     """`(slug, manifest path)` of the tracked feature whose manifest names `branch` as
-    branches[0], or `(None, None)` — session-start.sh's started_feature."""
+    branches[0], or `(None, None)` — session-start.sh's started_feature. With `tree` (a
+    commit-ish), the manifests committed in that tree are read instead of the checkout's:
+    the off-branch case, where the manifest lives on the feature's branch, not on `main`."""
     pattern = "%s/*/%s" % (features_dir, MANIFEST_NAME)
-    hits = git_probe(toplevel, *(GIT_PROBE_GREP + (branch, "--", pattern))) or []
-    for rel in hits:
+    where = (tree,) if tree else ()
+    hits = git_probe(toplevel, *(GIT_PROBE_GREP + (branch,) + where + ("--", pattern))) or []
+    tree_prefix = tree + GIT_TREE_PATH_SEPARATOR if tree else ""
+    for hit in hits:
+        if not hit.startswith(tree_prefix):
+            continue
+        rel = hit[len(tree_prefix):]
         parts = rel.split("/")
         if len(parts) != len(features_dir.split("/")) + 2:
             continue
         slug = parts[-2]
         try:
-            if manifest_first_branch(os.path.join(toplevel, rel), slug) == branch:
+            if tree:
+                lines = git_probe(toplevel, GIT_SHOW, tree + GIT_TREE_PATH_SEPARATOR + rel)
+                found = manifest_lines_first_branch(lines or [], slug) if lines else None
+            else:
+                found = manifest_first_branch(os.path.join(toplevel, rel), slug)
+            if found == branch:
                 return slug, rel
         except (OSError, UnicodeDecodeError):
             continue
     return None, None
 
 
-def cloud_git_deny_reason(words, cwd):
+def switch_target_names(args):
+    """Every branch name a `git switch`/`git checkout` names — its positionals before `--`
+    and the value of a branch-creating flag (`-b x`, `-c=x`) — `refs/heads/` stripped;
+    empty for any other subcommand. Read from the words alone."""
+    if not args or args[0] not in (GIT_SWITCH, GIT_CHECKOUT):
+        return []
+    value_flags = GIT_SWITCH_VALUE_FLAGS | GIT_CHECKOUT_VALUE_FLAGS
+    names, skip = [], False
+    for token in args[1:]:
+        if token == GIT_PATHSPEC_SEPARATOR:
+            break
+        if skip:
+            names.append(token)
+            skip = False
+            continue
+        if token.startswith(FLAG_PREFIX):
+            name, separator, value = token.partition(FLAG_VALUE_SEP)
+            if name in value_flags:
+                if separator:
+                    names.append(value)
+                else:
+                    skip = True
+            continue
+        names.append(token)
+    return [branch_name(name, None) for name in names if name]
+
+
+def off_branch_target(toplevel, features_dir, args, branch):
+    """`(target, slug, manifest)` when this switch names a branch some tracked manifest
+    records as `branches[0]` — the name as written, or a remote-tracking spelling
+    (`origin/x`, which git knows as refs/remotes/origin/x) as its short name `x` — and
+    that branch is not the current one; else None."""
+    remote_refs = None
+    for name in switch_target_names(args):
+        # The commit the switch would land on, whose own tree holds the feature's manifest
+        tree = name if git_probe(
+            toplevel, *(GIT_PROBE_COMMIT + (name + GIT_COMMIT_PEEL,))) is not None else None
+        candidates = [name]
+        if GIT_REMOTE_SEPARATOR in name and git_probe(
+                toplevel, *(GIT_PROBE_COMMIT + (GIT_REMOTE_REF_PREFIX + name,))) is not None:
+            candidates.append(name.split(GIT_REMOTE_SEPARATOR, 1)[1])
+        if tree is None:
+            # `git checkout x` with only `origin/x`: git would create `x` from it
+            if remote_refs is None:
+                remote_refs = git_probe(toplevel, *GIT_PROBE_REMOTE_REFS) or []
+            suffix = GIT_REMOTE_SEPARATOR + name
+            tree = next((ref for ref in remote_refs if ref.endswith(suffix)
+                         and ref[len(GIT_REMOTE_REF_PREFIX):].count(GIT_REMOTE_SEPARATOR)
+                         == name.count(GIT_REMOTE_SEPARATOR) + 1), None)
+        for candidate in candidates:
+            if candidate == branch:
+                continue
+            for where in (None, tree) if tree else (None,):
+                slug, manifest = started_feature(toplevel, features_dir, candidate, where)
+                if slug:
+                    return candidate, slug, manifest
+    return None
+
+
+def cloud_off_branch_reason(args, toplevel, branch, features_dir):
+    """GIT_CLOUD_OFF_BRANCH_TEMPLATE filled, when the checkout is on GIT_PROTECTED_BRANCH
+    or detached and `args` switches to a started feature's branch; else None."""
+    if branch is not None and branch != GIT_PROTECTED_BRANCH:
+        return None
+    if not toplevel:
+        return None
+    found = off_branch_target(toplevel, features_dir, args, branch)
+    if not found:
+        return None
+    target, slug, manifest = found
+    here = BRANCH_QUOTE % branch if branch else OFF_BRANCH_DETACHED
+    return GIT_CLOUD_OFF_BRANCH_TEMPLATE % {"target": target, "slug": slug,
+                                            "manifest": manifest, "here": here,
+                                            "protected": GIT_PROTECTED_BRANCH}
+
+
+def cloud_git_deny_reason(words, cwd, args=None):
     """The cloud reason for refusing `words`: the branch, and the started feature and its
-    close when one exists, or the start to run here. Never raises — what cannot be read
-    is left out, and the reason is still a cloud one."""
+    close when one exists, or the start to run here — or, when `args` switches a checkout
+    on `main` or detached to a started feature's branch, the off-branch reason. Never
+    raises — what cannot be read is left out, and the reason is still a cloud one."""
     branch_text, feature_text = BRANCH_UNKNOWN, ""
+    try:
+        # Only a switch/checkout naming a branch is probed: every other refusal pays nothing
+        if switch_target_names(args):
+            _, _, features_dir = repo_shape(project_root())
+            toplevel, branch = checkout_state(git_location(words, cwd))
+            off_branch = cloud_off_branch_reason(args, toplevel, branch, features_dir)
+            if off_branch:
+                return off_branch
+    except Exception:  # the ordinary cloud reason, below, is owed either way
+        pass
     try:
         root = project_root()
         prefix, self_arg, features_dir = repo_shape(root)
@@ -1317,21 +1449,22 @@ def git_denial(command, cwd):
     commands = git_commands(command)
     if not commands:
         return None
-    mutating = [words for words, args in commands if git_mutates(args)]
-    protected = [words for words, args in commands if names_protected_push(args)]
+    mutating = [(words, args) for words, args in commands if git_mutates(args)]
+    protected = [(words, args) for words, args in commands if names_protected_push(args)]
     if not profile_is_cloud():
         if mutating:
             return GIT_DENY_REASON
         return GIT_PUSH_PROTECTED_DENY_REASON if protected else None
     if mutating or protected:
-        return cloud_git_deny_reason((mutating or protected)[0], cwd)
+        words, args = (mutating or protected)[0]
+        return cloud_git_deny_reason(words, cwd, args)
     for words, args in commands:
         try:
             refused = cloud_refuses(words, args, cwd)
         except Exception:  # a reading that fails is today's answer, never a deny
             refused = False
         if refused:
-            return cloud_git_deny_reason(words, cwd)
+            return cloud_git_deny_reason(words, cwd, args)
     return None
 
 

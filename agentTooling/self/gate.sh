@@ -265,6 +265,7 @@ shell_scripts=(
   self/tests/tiered-gates.sh
   self/tests/cost-recovery.sh
   self/tests/capture-guard.sh
+  self/tests/capture-merge.sh
   self/tests/timestamps-are-utc.sh
   self/tests/subagent-capture.sh
   self/tests/claims-ledger.sh
@@ -312,6 +313,7 @@ shell_scripts=(
   self/tests/session-start.sh
   self/tests/gate-resume.sh
   self/tests/review-base.sh
+  self/tests/pr-body-refresh.sh
   run-escalation-plan.sh
   templates/plans/gate.sh
   templates/plans/pr.sh
@@ -347,6 +349,10 @@ record "level sentinel self-test" bash self/tests/level-sentinel.sh
 record "tiered gates self-test" bash self/tests/tiered-gates.sh
 record "cost recovery self-test" bash self/tests/cost-recovery.sh
 record "capture guard self-test" bash self/tests/capture-guard.sh
+# The merge into the committed planning.json (self/features/capture-merges-committed-
+# record/): rows a capture cannot reach are carried with their original stamp, never
+# refused — the rule every multi-round cloud close depends on.
+record "capture merge self-test" bash self/tests/capture-merge.sh
 record "timestamps are utc self-test" bash self/tests/timestamps-are-utc.sh
 record "subagent capture self-test" bash self/tests/subagent-capture.sh
 record "claims ledger self-test" bash self/tests/claims-ledger.sh
@@ -457,6 +463,10 @@ record "gate resume self-test" bash self/tests/gate-resume.sh
 # <base> — a feature that merged a newer origin/main mid-way shows only its own commits,
 # under both profiles alike (self/features/review-base-and-cloud-hook/, Part B).
 record "review base self-test" bash self/tests/review-base.sh
+# Every round's close re-runs pr.sh, and a PR an earlier round opened has its body
+# replaced with the current review's (forge.sh pr-edit, pr.sh template-version 7) — both
+# copies against a stub forge, and the PATCH itself (self/features/pr-body-refresh/).
+record "pr body refresh self-test" bash self/tests/pr-body-refresh.sh
 
 echo "=== gate: profile confinement ==="
 # Only the detector (hooks/env_profile.py and env-profile.sh), the adapters and their tests

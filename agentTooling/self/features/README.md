@@ -210,3 +210,11 @@ format".
   by hand (`method: "hand"`) by the cloud session that started it, its coordinator on the
   feature's branch; plan `01-review-opus` is its review. Reported by a consuming repo's
   agent.
+- `pr-body-refresh` — `pr.sh`'s already-open path printed `already open` and exited
+  without reading the body file, so a feature's round-1 review report stayed on its PR
+  through every later round's close (PRs #92 and #94). `../../forge.sh` gains
+  `pr-edit <pr-url> <body-file>` (`PATCH /repos/{o}/{r}/pulls/{n}`), both `pr.sh` copies
+  move to `template-version: 7` and call it on every re-close, and `../../feature-close.sh`
+  no longer says "open the PR by hand" when `pr.sh` failed with a PR open. Built by hand
+  (`method: "hand"`) by the cloud session that started it; plan `01-review-opus` is its
+  review. It adds `../tests/pr-body-refresh.sh` and `../tests/fixtures/pr-v6.sh`.

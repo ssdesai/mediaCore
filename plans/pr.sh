@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -uo pipefail
-# template-version: 6
+# template-version: 7
 
 # This is what `sync-plans.sh --check` compares a seeded copy against to report drift.
 # Bump it whenever the body below the marker changes in a way seeded copies must
@@ -17,7 +17,8 @@ set -uo pipefail
 # this script is small enough to satisfy from any of them.
 #
 # For GitHub this copy does the git part itself — commit, push — and hands the forge part
-# to agentTooling/forge.sh (`pr-find`, then `pr-open`; on the merge request `pr-find`,
+# to agentTooling/forge.sh (`pr-find`, then `pr-open`, or `pr-edit` to refresh the body
+# of the PR an earlier round opened; on the merge request `pr-find`,
 # then `auto-merge`). forge.sh opens over `gh api` REST, the one path that works both on a
 # laptop and in a Claude Code cloud container, whose proxy refuses GraphQL (`gh pr …`)
 # and fails `gh auth status`, and asks for the merge the way each of the two allows. A
@@ -32,11 +33,15 @@ set -uo pipefail
 #     argv[2]            path to the PR body (may not exist; treat as optional)
 #     cwd                repo root
 #     FORGE_SCRIPT       env: the forge adapter's path, exported by feature-close.sh
-#     exit 0             PR opened, already open, or deliberately skipped — and skipped
-#                        ONLY where there is no forge CLI at all: a forge that is there
-#                        and refused is a failure, never a skip
+#     exit 0             PR opened, already open with its body refreshed from argv[2],
+#                        or deliberately skipped — and skipped ONLY where there is no
+#                        forge CLI at all: a forge that is there and refused (the
+#                        refresh included) is a failure, never a skip
 #     exit non-zero      something went wrong and the human should look
-#     stdout             human-readable; print the PR URL if you have one
+#     stdout             human-readable; print the PR URL, when a PR is open, on a line
+#                        beginning `  pr ` — the only lines feature-close.sh reads a url
+#                        from, so a git or forge message naming the remote's url is
+#                        never taken for a PR
 #
 #   MERGE REQUEST
 #     argv[1]            --merge-request
@@ -197,10 +202,6 @@ if ! existing="$("$FORGE" pr-find "$current_branch")"; then
   echo "  fail  $FORGE pr-find $current_branch failed — no PR opened"
   exit 1
 fi
-if [[ -n "$existing" ]]; then
-  echo "  pr      already open: $existing"
-  exit 0
-fi
 
 # The review pass's own findings are the PR body — that is the thing a human is being
 # asked to approve, and re-summarizing it here would be a second, drifting account of
@@ -210,6 +211,21 @@ if [[ -z "$REPORT" || ! -f "$REPORT" ]]; then
   body_file="$(mktemp "${TMPDIR:-/tmp}/$FALLBACK_BODY_TEMPLATE")" || exit 1
   trap 'rm -f "$body_file"' EXIT
   echo "Built, verified and reviewed by the agentTooling batch for \`$SLUG\`. No review report was written." > "$body_file"
+fi
+
+# Already open: a previous round's close opened it. The body is the CURRENT review's
+# report, so it is written again on every re-close — round 1 setting it and every later
+# round leaving it stale is what this replaced (self/features/pr-body-refresh/). A
+# refresh that changes nothing costs one API call. A refusal is a failure: the PR would
+# go on describing a tree the reviewers are no longer looking at.
+if [[ -n "$existing" ]]; then
+  if ! "$FORGE" pr-edit "$existing" "$body_file" >/dev/null; then
+    echo "  pr      already open, body NOT refreshed: $existing"
+    echo "  fail  $FORGE pr-edit failed — the PR is open but its body still describes an earlier round"
+    exit 1
+  fi
+  echo "  pr      already open, body refreshed: $existing"
+  exit 0
 fi
 
 if ! url="$("$FORGE" pr-open "$current_branch" "$BASE_BRANCH" "$SLUG" "$body_file")"; then

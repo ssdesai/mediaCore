@@ -590,7 +590,15 @@ because it was a checklist. From `cost-capture-collisions` on, every feature goe
 
 - **Persisting transcripts beyond the container.** The close captures and freezes the
   figures onto the branch before the container goes. A session that never closes is
-  lost, as it is in the unclaimed residue today.
+  lost, as it is in the unclaimed residue today. The committed `planning.json` is
+  therefore the **baseline** every later container's capture merges into
+  (`self/features/capture-merges-committed-record/`): a round-2 close reaches only its
+  own container's transcripts, keeps round 1's rows from the record on the branch, each
+  marked `carried_from` with the date it was captured, and the figure is a chain across
+  containers that `report.py` says so about in one line. The old refusal on an
+  unreachable priced row (`check_frozen_cost`, with a hand `--carry-lost` as the remedy)
+  was a laptop rule — there an unreachable transcript meant it had aged out or the
+  capture ran from the wrong checkout — and refused at every multi-round cloud close.
 - **The harness calling MCP.** It cannot, and `forge.sh` makes it unnecessary.
 - **Several features per cloud session.** Ruled out by the push rule. Use one session
   per feature. A coordinator that runs a wave spawns those sessions itself, each with its

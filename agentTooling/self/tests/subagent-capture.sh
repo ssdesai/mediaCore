@@ -27,9 +27,11 @@ set -uo pipefail
 #      priced until the manifest pins its id — then it is, as "pinned", while the
 #      parent itself stays unpriced and out of `sessions[]`;
 #   4. a pinned id no transcript carries is warned about by id;
-#   5. the frozen-cost guard covers subagents: with the subagents directory gone, a
-#      re-capture refuses, names `agent-<id>`, and leaves planning.json byte-identical;
-#      --force still overrides;
+#   5. the merge into the committed record covers subagents: with the subagents
+#      directory gone, a re-capture writes, carrying the delegate's row — the total
+#      unchanged, the row marked `carried_from`, one WARN naming it as `agent-<id>`,
+#      the ledger still naming this feature for it as parent-selected — and --force
+#      rebuilds without it;
 #   6. --list-subagents prints each reachable subagent with its opening prompt, and
 #      --since drops the ones that started earlier;
 #   7. a subagent of a runner session (its parent claimed by a usage.json) is not
@@ -158,6 +160,19 @@ list_subs() { HOME="$FAKE_HOME" python3 "$AT/analysis/capture_planning.py" --sel
 
 field() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2]))" "$PLANNING" "$1"; }
 total_of() { field "d['cost_usd']['total']"; }
+
+LEDGER="$FAKE_HOME/.claude/subagent-claims.json"
+# The self corpus's identity is declared (roots.SELF_CORPUS_IDENTITY) and its
+# repo_display_name is `agentTooling`, which is what this fixture's copy is called.
+REPO_NAME="$(basename "$AT")"
+# The ledger has two sections — `subagents` (one claimant per id) and `sessions` (a list,
+# since a coordinator spans features); `claim` reads the first by name rather than
+# tolerating the legacy flat shape, so a regression to it fails here, and `session_claims`
+# reads the second as the sorted (repo_name, slug, selected_by) triples for one session.
+# claims-ledger.sh owns the assertion that such a file still LOADS. Defined here, before
+# phase 5, because the merge's carried rows are asserted to reach the ledger there.
+claim() { python3 -c "import json,sys; d=json.load(open(sys.argv[1]))['subagents']; c=d.get(sys.argv[2]); print(c and (c['repo_name'], c['slug'], c['selected_by']))" "$LEDGER" "$1"; }
+session_claims() { python3 -c "import json,sys; d=json.load(open(sys.argv[1]))['sessions']; print(sorted((c['repo_name'], c['slug'], c['selected_by']) for c in d.get(sys.argv[2]) or []))" "$LEDGER" "$1"; }
 near()  { python3 -c "import sys; sys.exit(0 if abs(float(sys.argv[1]) - float(sys.argv[2])) < 1e-9 else 1)" "$1" "$2"; }
 gt()    { python3 -c "import sys; sys.exit(0 if float(sys.argv[1]) > float(sys.argv[2]) else 1)" "$1" "$2"; }
 
@@ -213,20 +228,29 @@ check "4b. the pin that did match is not" \
 write_manifest "[\"$AGENT_3\"]"
 capture > /dev/null
 
-# ── 5. the frozen-cost guard covers subagents ─────────────────────────────────
+# ── 5. the merge covers subagents ─────────────────────────────────────────────
 cp "$PLANNING" "$TMP/planning.before.json"
+prior_stamp5="$(field "d['captured_at']")"
 mv "$PROJECTS/$SESSION_P/subagents" "$TMP/stash-subagents"
 capture > "$TMP/out5.txt"
 rc5=$?
-check "5. re-capture with the subagents directory gone is refused" "[ $rc5 -ne 0 ]"
-check "5b. planning.json is left byte-identical" "cmp -s '$TMP/planning.before.json' '$PLANNING'"
-check "5c. the refusal names the lost subagent as agent-<id>" "grep -q 'agent-$AGENT_1' '$TMP/out5.txt'"
+check "5. re-capture with the subagents directory gone writes, carrying the delegate" \
+  "[ $rc5 -eq 0 ] && near '$(total_of)' '$pinned_total'"
+check "5b. the carried delegate is stamped with the capture that priced it" \
+  "[ \"\$(field \"[(s['agent_id'], s.get('carried_from')) for s in d['subagents'] if s['agent_id']=='$AGENT_1']\")\" = \"[('$AGENT_1', '$prior_stamp5')]\" ]"
+check "5c. one WARN names the lost subagent as agent-<id>, and nothing refuses" \
+  "grep 'carried' '$TMP/out5.txt' | grep -q 'agent-$AGENT_1' && ! grep -q 'REFUSING' '$TMP/out5.txt'"
+# A carried delegate is as claimed as any other: the ledger still names this feature for
+# it, with the `selected_by` its carried row holds, so no other feature can pin it.
+check "5c2. the carried delegate is still claimed by this feature in the ledger, as parent-selected" \
+  "[ \"$(claim $AGENT_1)\" = \"('$REPO_NAME', '$SLUG', 'parent')\" ]"
 capture --force > /dev/null
 rc5f=$?
-check "5d. --force overrides it" "[ $rc5f -eq 0 ] && ! near '$(total_of)' '$pinned_total'"
+check "5d. --force rebuilds without it" "[ $rc5f -eq 0 ] && ! near '$(total_of)' '$pinned_total'"
 mv "$TMP/stash-subagents" "$PROJECTS/$SESSION_P/subagents"
 capture > /dev/null
-check "5e. restored, the figure comes back" "near '$(total_of)' '$pinned_total'"
+check "5e. restored, the figure comes back, nothing carried" \
+  "near '$(total_of)' '$pinned_total' && [ \"\$(field \"[s for s in d['subagents'] if s.get('carried_from')]\")\" = '[]' ]"
 
 # ── 6. --list-subagents is the discovery step ─────────────────────────────────
 list_subs > "$TMP/out6.txt"
@@ -313,15 +337,7 @@ check "10f. --list-subagents omits it; --everywhere shows it with the parent's c
 write_manifest "[\"$AGENT_3\"]"
 
 # ── 11. the claims ledger records every priced subagent ───────────────────────
-LEDGER="$FAKE_HOME/.claude/subagent-claims.json"
-# The self corpus's identity is declared (roots.SELF_CORPUS_IDENTITY) and its
-# repo_display_name is `agentTooling`, which is what this fixture's copy is called.
-REPO_NAME="$(basename "$AT")"
-# The ledger has two sections — `subagents` (one claimant per id) and `sessions` (a list,
-# since a coordinator spans features); this reads the first by name rather than tolerating
-# the legacy flat shape, so a regression to it fails here. claims-ledger.sh owns the
-# assertion that such a file still LOADS.
-claim() { python3 -c "import json,sys; d=json.load(open(sys.argv[1]))['subagents']; c=d.get(sys.argv[2]); print(c and (c['repo_name'], c['slug'], c['selected_by']))" "$LEDGER" "$1"; }
+# `LEDGER`, `REPO_NAME` and `claim` are defined with the helpers above.
 capture > /dev/null   # manifest pins AGENT_3 only; AGENT_5 was pinned in phase 10
 check "11. the ledger names the feature for a parent-selected subagent" \
   "[ \"$(claim $AGENT_1)\" = \"('$REPO_NAME', '$SLUG', 'parent')\" ]"
@@ -420,7 +436,10 @@ list_subs > "$TMP/out14.txt"
 check "14c. --list-subagents shows it once" "[ \"$(grep -c "$AGENT_3" "$TMP/out14.txt")\" = 1 ]"
 rm "$PROJECTS/$SESSION_P/subagents/agent-$AGENT_3.jsonl"
 
-# ── 15. --carry-lost adds a pin to a feature whose sessions have expired ──────
+# ── 15. a pin is added to a feature whose sessions have expired by merging ────
+# No flag: the committed record is the baseline, and a plain recapture keeps the expired
+# session's row and adds the pin (`--carry-lost`, the old remedy, is a no-op alias now —
+# capture-merge.sh F pins that).
 SESSION_X="xxxxxxxx-0000-0000-0000-000000000005"
 AGENT_8="a8888888888888888"
 write_parent "$SESSION_X" "$BRANCH" "2026-07-02T12:00:00.000Z" 5000
@@ -437,26 +456,30 @@ json.dump(d, open(sys.argv[1], "w"))
 PY
 rm "$PROJECTS/$SESSION_X.jsonl"
 capture > "$TMP/out15.txt"; rc15=$?
-check "15. a priced session whose transcript is gone still refuses a plain recapture" \
-  "[ $rc15 -ne 0 ] && grep -q 'REFUSING' '$TMP/out15.txt' && grep -q 'carry-lost' '$TMP/out15.txt'"
+check "15. a priced session whose transcript is gone is carried by a plain recapture" \
+  "[ $rc15 -eq 0 ] && ! grep -q 'REFUSING' '$TMP/out15.txt' && grep 'carried' '$TMP/out15.txt' | grep -q '$SESSION_X' && near '$(total_of)' '$frozen'"
 write_subagent "$SESSION_M" "$AGENT_8" "main" "2026-07-03T11:00:00.000Z" 8000 "Late pin on a frozen feature"
 write_manifest "[\"$AGENT_3\", \"$AGENT_8\"]"
-capture --carry-lost > "$TMP/out15b.txt"; rc15b=$?
+capture > "$TMP/out15b.txt"; rc15b=$?
 a8="$(field "sum(p['cost_usd'] for p in d['priced'] if p['agent_id']=='$AGENT_8')")"
-check "15b. --carry-lost writes: frozen figure plus the new pin, exactly" \
+check "15b. the next recapture writes: committed figure plus the new pin, exactly" \
   "[ $rc15b -eq 0 ] && near '$(total_of)' \"\$(python3 -c 'print($frozen + $a8)')\""
 check "15c. the lost session is carried, marked with the capture it came from" \
   "[ \"\$(field \"[s['session_id'] for s in d['sessions'] if s.get('carried_from')]\")\" = \"['$SESSION_X']\" ] && [ \"\$(field \"d['carried_from'] is not None\")\" = True ]"
 check "15d. the new pin is priced and claimed beside it" \
   "[ \"$(claim $AGENT_8)\" = \"('$REPO_NAME', '$SLUG', 'pinned')\" ]"
 check "15e. and the run says what it carried" "grep -q 'carried forward' '$TMP/out15b.txt'"
+# The carried SESSION reaches the session-claims ledger too, under this feature and with
+# the `selected_by` of its carried row (branch-selected here; capture-merge.sh G pins one).
+check "15f. the carried session is claimed by this feature in the ledger, as branch-selected" \
+  "[ \"$(session_claims $SESSION_X)\" = \"[('$REPO_NAME', '$SLUG', 'branch')]\" ]"
 write_manifest "[\"$AGENT_3\"]"
 
 # ── 16. exclude_subagents: a selected parent disowns a child another feature pins ─
 # AGENT_1 is parent-selected under SESSION_P (phase 1). The coordinator case: the
 # coordinator's manifest owns the session, the arm's manifest pins the architect.
 write_manifest "[\"$AGENT_3\"]" "[]" "[\"$AGENT_1\"]"
-capture --carry-lost > "$TMP/out16.txt"
+capture > "$TMP/out16.txt"
 check "16. an excluded subagent is not claimed by the parent route" \
   "[ \"\$(field \"'$AGENT_1' in [s['agent_id'] for s in d['subagents']]\")\" = False ]"
 check "16b. and is recorded as excluded" \
@@ -464,7 +487,7 @@ check "16b. and is recorded as excluded" \
 check "16c. the parent's own cost is still counted" "gt '$(field "d['cost_usd']['main']")' 0"
 check "16d. and the id leaves the ledger, free for the other feature to pin" "[ \"$(claim $AGENT_1)\" = None ]"
 write_manifest "[\"$AGENT_3\", \"$AGENT_1\"]" "[]" "[\"$AGENT_1\"]"
-capture --carry-lost > "$TMP/out16b.txt"
+capture > "$TMP/out16b.txt"
 check "16e. pinned and excluded at once warns, and the pin wins" \
   "grep -q \"both pinned and in exclude_subagents\" '$TMP/out16b.txt' && [ \"\$(field \"'$AGENT_1' in [s['agent_id'] for s in d['subagents']]\")\" = True ]"
 write_manifest "[\"$AGENT_3\"]"

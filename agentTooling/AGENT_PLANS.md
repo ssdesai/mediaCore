@@ -285,7 +285,8 @@ The manifest ends with a machine-readable fence:
   with each one's cost and brief; `--unclaimed` is the ones no feature has claimed
   yet. Claims are ledgered per machine, and one transcript claimed by two features
   refuses the second capture. Pinning onto a feature whose own sessions have expired
-  needs `--carry-lost`, which keeps the frozen entries and adds the pin.
+  just works: the capture merges into the committed record, keeping the entries it
+  cannot reach (each marked `carried_from`) and adding the pin.
 - `exclude_subagents` — optional, and legacy. The opposite of a pin: delegates of a
   selected session that another feature owns. A delegate another feature pins now yields
   to it on its own (`planning.json`'s `yielded_agent_ids`), so new manifests leave this

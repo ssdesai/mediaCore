@@ -110,8 +110,8 @@ set -uo pipefail
 #       `gh pr merge --auto`, asking for `--merge` and never `--squash` (both the prune
 #       and the post-merge capture decide "merged" by ancestry, which a squash never
 #       gives) and opens no PR of its own; unset, it exits 0 saying nothing was
-#       requested; self/pr.sh never calls it; and both copies read template-version 6, the
-#       merge request through forge.sh auto-merge, which keeps the merge request (>= 4);
+#       requested; self/pr.sh never calls it; and both copies read template-version 7, the
+#       body refreshed through forge.sh pr-edit, which keeps the merge request (>= 4);
 #   P3. that merge request names the PR pr-find found and asks forge.sh per profile:
 #       under cloud exactly one PUT …/pulls/<n>/ccr/auto_merge with merge_method=merge and
 #       no `gh pr` / `gh auth status`; under local `gh pr merge <url> --auto --merge
@@ -137,7 +137,11 @@ set -uo pipefail
 #       the cost commit — the PR_AUTO_MERGE race, closed by ordering — exactly one merge
 #       request, and a closing line naming the PR;
 #   X3. a second close run ends at the same place: exit 0, the PR already open and no
-#       second one, one record, the cost commit on top and a clean worktree;
+#       second one, one record, the cost commit on top and a clean worktree; X3d its body
+#       refreshed by one PATCH; X3e–X3f a refused refresh warns naming the open PR, not
+#       "open it by hand", and stamps rc 1 with the url; X3g–X3h a refused push whose
+#       message names an https remote is NOT taken for an open PR — the close reads a url
+#       only from pr.sh's `  pr ` lines — so it says "open the PR by hand" and stamps no url;
 #   X4. the close refuses exactly what the capture would, and before the PR: an untracked
 #       NOTES.md.tmp inside the feature directory is not a cost record, so the close names
 #       it, makes no forge call at all, and exits 0 again once it is gone;
@@ -322,7 +326,8 @@ STUB
 #   GH_LOG       the forge EVENTS the older checks read: a `gh pr …` call is logged as
 #                its argv, exactly as before, and a REST call (`gh api`, forge.sh's only
 #                kind) as the `pr` verb it amounts to — `pr view <head>` for the GET of
-#                open pulls, `pr create --base <b> --head <h> --title <t>` for the POST.
+#                open pulls, `pr create --base <b> --head <h> --title <t>` for the POST,
+#                `pr edit <n>` for the PATCH of an open PR's body.
 #                So "a PR was created against base B" reads the same whichever spelling
 #                of the forge made it.
 #
@@ -384,6 +389,18 @@ if [[ "${1:-}" == "api" ]]; then
       # GH_API_NO_URL: a 2xx whose body carries no html_url (F4d).
       if [[ -n "${GH_API_NO_URL:-}" ]]; then exit 0; fi
       echo "$STUB_PR_URL" > "$(pr_marker "$head")"
+      echo "$STUB_PR_URL"; exit 0 ;;
+    # forge.sh pr-edit (pr.sh v7, the already-open path): logged as the event it amounts
+    # to, with the body it was sent written to GH_BODY_OUT like the POST's (X3, CB).
+    # GH_PATCH_RC fails this call alone, so the PR is found open and only the refresh is
+    # refused (X3e).
+    "PATCH repos/"*"/pulls/"*)
+      if [[ "${GH_PATCH_RC:-0}" != "0" ]]; then
+        echo "gh: stubbed REST failure (HTTP 502) on $method $path" >&2
+        exit "$GH_PATCH_RC"
+      fi
+      echo "pr edit ${path##*/}" >> "${GH_LOG:?}"
+      if [[ -n "${GH_BODY_OUT:-}" ]]; then printf '%s' "$body" > "$GH_BODY_OUT"; fi
       echo "$STUB_PR_URL"; exit 0 ;;
     # The cloud proxy's auto-merge route (forge.sh auto-merge under the cloud profile):
     # logged as the event it amounts to, with the method it asked for (P3).
@@ -1291,8 +1308,8 @@ check "P2c. --merge-request with PR_AUTO_MERGE unset exits 0, saying nothing was
   FEATURE_BASE=other PR_AUTO_MERGE=1 ./self/pr.sh --merge-request lifecycle-based >/dev/null 2>&1
 )
 check "P2d. self/pr.sh never calls it, even with PR_AUTO_MERGE=1" '! grep -qE "$AUTO_MERGE_CALL_RE" "$GH_LOG"'
-check "P2e. both copies carry template-version 6 — the merge request through forge.sh auto-merge, at or past the 4 the close's merge request needs" \
-  '[[ "$(sed -n "s/^# template-version:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$HERE/templates/plans/pr.sh" | head -1)" == "6" ]] && [[ "$(sed -n "s/^# template-version:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$HERE/self/pr.sh" | head -1)" == "6" ]]'
+check "P2e. both copies carry template-version 7 — the body refreshed through forge.sh pr-edit, at or past the 4 the close's merge request needs" \
+  '[[ "$(sed -n "s/^# template-version:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$HERE/templates/plans/pr.sh" | head -1)" == "7" ]] && [[ "$(sed -n "s/^# template-version:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$HERE/self/pr.sh" | head -1)" == "7" ]]'
 
 # ── P3. the merge request goes through forge.sh, which asks per profile ──────
 # (self/DESIGN-2026-10-05-cloud-execution.md §5.) Local: P2b2 above is `gh pr merge
@@ -1484,6 +1501,37 @@ check "X3b. ... finding the PR already open, and opening no second one" \
   'grep -qi "already open" <<<"$outx3" && [[ "$(grep -c "pr create" "$GH_LOG")" == "1" ]]'
 check "X3c. ... with one record, the cost commit still on top and the worktree clean" \
   '[[ "$(git -C "$XWT" log -1 --format=%s)" == "lifecycle-closed: cost records" && -f "$XFD/planning.json" && -z "$(git -C "$XWT" status --porcelain)" ]]'
+check "X3d. ... and refreshing the open PR's body with one PATCH (pr.sh v7, self/features/pr-body-refresh/)" \
+  'grep -q "body refreshed" <<<"$outx3" && [[ "$(grep -c "^pr edit 1$" "$GH_LOG")" == "1" ]]'
+# The refresh refused: pr.sh exits 1 with the PR open, so the close must not say "open the
+# PR by hand" — it names the open PR and the stale body — and the stamp keeps the url.
+outx3e="$(GH_PATCH_RC=1 close "$XWT" lifecycle-closed)"; rcx3e=$?
+check "X3e. a refused refresh: the close still exits 0, warning that the PR at its url is open with a stale body (got $rcx3e)" \
+  '[[ $rcx3e -eq 0 ]] && grep -q "with the PR open at https://example.invalid/pr/1" <<<"$outx3e" && ! grep -q "open the PR by hand" <<<"$outx3e"'
+check "X3f. ... and pr_opened carries rc 1 with that url (got rc '$(last_event_field "$XFD" pr_opened rc)' url '$(last_event_field "$XFD" pr_opened url)')" \
+  '[[ "$(last_event_field "$XFD" pr_opened rc)" == "1" && "$(last_event_field "$XFD" pr_opened url)" == "https://example.invalid/pr/1" ]]'
+# A refused push names the REMOTE's url (a cloud container's origin is an http proxy url),
+# and pr.sh runs `git push … 2>&1`: the close must read a PR url only from pr.sh's `  pr `
+# lines, never take the remote for an open PR. A `git` wrapper ahead on PATH for this one
+# close refuses pr.sh's push alone (`git push -q -u origin …`, no `-C`), the way git does;
+# the capture's `git -C <checkout> push` goes through, so the close still exits 0.
+X3G_REMOTE_URL="https://example.invalid/proxy/git/lifecycle-owner/agentTooling"
+REAL_GIT="$(command -v git)"
+mkdir -p "$TMP/gitfail"
+cat > "$TMP/gitfail/git" <<STUB
+#!/usr/bin/env bash
+if [[ "\${1:-}" == "push" ]]; then
+  echo "error: failed to push some refs to '$X3G_REMOTE_URL'" >&2
+  exit 1
+fi
+exec "$REAL_GIT" "\$@"
+STUB
+chmod +x "$TMP/gitfail/git"
+outx3g="$(PATH="$TMP/gitfail:$PATH" close "$XWT" lifecycle-closed)"; rcx3g=$?
+check "X3g. a refused push whose message names an https remote: the close says to open the PR by hand, not that it is open (got $rcx3g)" \
+  '[[ $rcx3g -eq 0 ]] && grep -qF "$X3G_REMOTE_URL" <<<"$outx3g" && grep -q "open the PR by hand" <<<"$outx3g" && ! grep -q "with the PR open at" <<<"$outx3g"'
+check "X3h. ... and pr_opened carries rc 1 with no url (got url '$(last_event_field "$XFD" pr_opened url)')" \
+  '[[ "$(last_event_field "$XFD" pr_opened rc)" == "1" && -z "$(last_event_field "$XFD" pr_opened url)" ]]'
 
 # ── X4. the close refuses exactly what the capture would ─────────────────────
 # One stray reader (self/features/lifecycle-records-and-numbering/README.md, slice A): the

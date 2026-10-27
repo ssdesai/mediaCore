@@ -42,6 +42,12 @@ set -uo pipefail
 #   F. the fallbacks — a detached HEAD, a directory that is no repo, and an invalid
 #      AGENTTOOLING_PROFILE all give today's answers (prompt), and the always-denied
 #      shapes — a push to `main` among them — still deny; the hook never exits non-zero;
+#   O. the off-branch remedy — clones of origin on `main` (OB: the manifest only on the
+#      feature's branch; OM: tracked on `main` too): `git checkout`/`git switch` to the
+#      feature's branch, its `origin/` spelling, `--detach origin/…` and `checkout -b … origin/…`
+#      are refused with the off-branch reason (the branch, the slug, a fresh session or the
+#      human), never "push only `main`"; locally they still prompt; a branch no manifest
+#      names keeps the existing reason, and on the feature's own branch nothing changes;
 #   P. detection through the hook — CLAUDE_CODE_REMOTE=true with no override is cloud;
 #   X. no subprocess off the cloud path — under a logging `git` stub, no case runs git
 #      locally (a push to `main` included, denied from its words alone), and in the cloud
@@ -407,6 +413,60 @@ for cmd in ("git push --repo", "git push --repo=", "git push origin --repo",
         check("F4. %s, a malformed push %r never crashes the hook (got %s)"
               % (profile, cmd, got), got in (P, D), detail)
 
+# ── O. the off-branch remedy (self/features/cloud-off-branch-remedy/) ─────────
+# A reclaimed container comes back cloned on `main`. OB is that clone, the manifest only
+# on the feature's branch (where feature-start.sh commits it); OM is the same with the
+# manifest tracked on `main` too. A switch to the feature's branch stays refused, but the
+# reason is the off-branch one: never "push only `main`", and the fresh-session remedy.
+def clone_on_main(path):
+    sh(REAL_GIT, "clone", "-q", "--branch", BASE, ORIGIN, path)
+    git(path, "config", "user.email", "test@example.invalid")
+    git(path, "config", "user.name", "hook cloud profile test")
+    return os.path.join(path, "agentTooling", "hooks", HOOK_NAME)
+
+
+OB = os.path.join(TMP, "off-branch")
+HOOK_OB = clone_on_main(OB)
+OM = os.path.join(TMP, "off-branch-main-manifest")
+HOOK_OM = clone_on_main(OM)
+os.makedirs(os.path.join(OM, "plans", "features", SLUG))
+shutil.copy2(os.path.join(C, "plans", "features", SLUG, "README.md"),
+             os.path.join(OM, "plans", "features", SLUG, "README.md"))
+commit_all(OM, SLUG + ": manifest on main")
+OFF_WORDS = ("`%s`" % BR, "'%s'" % SLUG, "fresh session", "human", "off its feature's branch",
+             "LIFECYCLE", "rule 2")
+OFF_NEVER = ("push only `main`", "Commit on `main`", ".worktrees")
+for root, hook, label in ((OB, HOOK_OB, "manifest only on the branch"),
+                          (OM, HOOK_OM, "manifest tracked on main")):
+    for cmd in ("git checkout " + BR, "git switch " + BR, "git checkout origin/" + BR,
+                "git switch --detach origin/" + BR, "git checkout -b %s origin/%s" % (BR, BR)):
+        words_check("O1. cloud, on `main`, %s: `%s` is refused with the off-branch reason"
+                    % (label, cmd), cmd, OFF_WORDS, OFF_NEVER, hook=hook, root=root,
+                    profile=CLOUD)
+    got, _ = call("git checkout " + BR, hook=hook, root=root, profile=LOCAL)
+    check("O2. local, %s: `git checkout %s` still prompts (got %s)" % (label, BR, got),
+          got == P)
+words_check("O3. cloud, on `main`: a branch no manifest names keeps the existing reason",
+            "git switch " + REMOTE_ONLY, ("Commit on `main`", "LIFECYCLE", "rule 2"),
+            ("fresh session",), hook=HOOK_OB, root=OB, profile=CLOUD)
+words_check("O4. cloud, on the feature's own branch: the reason is unchanged",
+            "git checkout " + REMOTE_ONLY, CLOUD_WORDS, CLOUD_NEVER + ("fresh session",),
+            profile=CLOUD)
+OD = os.path.join(TMP, "off-branch-detached")
+HOOK_OD = clone_on_main(OD)
+git(OD, "checkout", "-q", "--detach")
+words_check("O6. cloud, detached HEAD: `git checkout -b %s origin/%s` gets the off-branch "
+            "reason, naming a detached HEAD" % (BR, BR),
+            "git checkout -b %s origin/%s" % (BR, BR), OFF_WORDS + ("a detached HEAD",),
+            OFF_NEVER, hook=HOOK_OD, root=OD, profile=CLOUD)
+got, _ = call("git checkout " + BR, hook=HOOK_OD, root=OD, profile=CLOUD)
+check("O7. ... while a plain checkout there keeps today's answer, unrefused (got %s)" % got,
+      got == P)
+_, off_reason = call("git switch " + BR, hook=HOOK_OB, root=OB, profile=CLOUD)
+check("O5. the off-branch reason never says to commit or push on `main`",
+      off_reason and "push only" not in off_reason and "Commit on" not in off_reason,
+      off_reason)
+
 # ── P. detection through the hook ─────────────────────────────────────────────
 got, _ = call("git switch main", remote="true")
 check("P1. CLAUDE_CODE_REMOTE=true with no override is cloud: `git switch main` refused "
@@ -446,6 +506,16 @@ calls = git_calls_for(["ls", "cat README.md", "git status", "git log --oneline -
                        "git diff HEAD --stat", "echo hi", "python3 -c 'print(1)'"], CLOUD)
 check("X2. in the cloud, reads and non-git commands run no git (got %d call(s))"
       % len(calls), not calls, calls[:5])
+# A refused cloud command that is not a switch/checkout never reaches the off-branch
+# block: the head is read as often as before it existed — by the rule (cloud_refuses)
+# when the shape is cloud-only, and once by the reason.
+PROBE_HEAD = "rev-parse --show-toplevel"
+for cmd, want_heads in (("git push origin x", 2), ("git reset --hard", 1)):
+    calls = git_calls_for([cmd], CLOUD)
+    heads = sum(PROBE_HEAD in c for c in calls)
+    check("X5. a refused cloud `%s` reads the head %d time(s), plus the reason's one manifest grep (got %d "
+          "call(s), %d head read(s))" % (cmd, want_heads, len(calls), heads),
+          heads == want_heads and len(calls) == want_heads + 1, calls)
 calls = git_calls_for(["git switch main"], CLOUD)
 check("X3. the stub is live: a cloud `git switch main` does ask git (got %d call(s))"
       % len(calls), bool(calls))

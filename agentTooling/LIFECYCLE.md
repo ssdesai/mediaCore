@@ -140,6 +140,14 @@ capture matches a session by any line's branch and selects it by its first insta
 (`self/features/cloud-branch-window-from`). The prune runs as everywhere and finds nothing; `--open` runs
 `open-session.sh`, which says the session is already in the checkout.
 
+**A restarted container is off its feature's branch.** When the platform reclaims an idle
+session's container and a new message wakes it, the session comes back in a NEW container
+cloned on `main`, while the feature's branch and its committed manifest are still on
+origin. That session cannot switch to the branch: the cloud refusal still holds, and the
+hook's reason says the container is off `<branch>` and names the remedy — a fresh session
+launched on `<branch>`, or the human checking it out in this container — never "commit on
+`main`" (`session-start.sh` prints the same on `main`; `self/features/cloud-off-branch-remedy/`).
+
 `--base` is for a feature stacked on one that has not merged; `--no-gate`, `--pin` (the
 opt-in for the rare case where the starting session really is this feature's coordinator)
 and `--session <id>` are for the cases that need them, and `--no-pin` is still accepted
@@ -259,12 +267,16 @@ Then, in exactly this order — **the order is the point**:
    `analysis/report.py --rounds-md` renders. `plans/pr.sh` pushes the branch and opens the
    PR against the manifest's `base` — from template-version 5 through
    `agentTooling/forge.sh` (`pr-find`, else `pr-open`, over `gh api` REST), whose path the
-   close exports as `FORGE_SCRIPT` — or says it is already open, or skips where there is
-   no forge CLI at all. A forge that is there and refuses is a non-zero exit, never a
-   skip.
-2. **`pr_opened`**, stamped with that call's rc and url. `rc=0` with no url is now only a
-   deliberate skip — no `pr.sh` seeded, or no forge CLI installed — never a forge that
-   was there and refused.
+   close exports as `FORGE_SCRIPT` — or, finding it already open, **rewrites its body**
+   (`forge.sh pr-edit`, from template-version 7), or skips where there is no forge CLI at
+   all. The body is set on every close, not once: a round-2 close leaves the PR carrying
+   round 2's report, where a copy at 6 left round 1's. A forge that is there and refuses
+   is a non-zero exit, never a skip — the refresh included, when the PR is open and only
+   its body is stale, which the close's warning says instead of "open the PR by hand".
+2. **`pr_opened`**, stamped with that call's rc and url — the url read only from
+   `pr.sh`'s lines beginning `  pr `, never from a git message that names the remote.
+   `rc=0` with no url is now only a deliberate skip — no `pr.sh` seeded, or no forge CLI
+   installed — never a forge that was there and refused.
 3. **Capture** — `feature-capture.sh` below, which commits the cost records on the branch (the
    `pr_opened` stamp rides that commit) and pushes. Advisory towards the PR: a refusal is
    printed with the command that re-runs it.
@@ -274,8 +286,8 @@ Then, in exactly this order — **the order is the point**:
    so; a seeded `pr.sh` older than `template-version: 4` has no such entry point, and the
    close says that once and skips it.
 
-Re-runnable: a second run finds the PR already open and the capture replacing its own
-record, and ends at the same place.
+Re-runnable: a second run finds the PR already open, rewrites its body from the current
+report, and the capture replaces its own record, and ends at the same place.
 
     <worktree>/agentTooling/feature-capture.sh [--self] <slug> [--no-push]
 
@@ -296,7 +308,8 @@ refuses rolls its stamp and recovered sidecars back, so the run can be repeated.
 second run replaces the first**: scope that grows
 before the merge is another round — the rework, a re-review brief queued in
 `review/incomplete/` with its stem added to `plans`, `run-review.sh` again, and the close
-again, which pushes to the PR already open — and the capture that round ends with
+again, which pushes to the PR already open and rewrites its body with that round's
+report — and the capture that round ends with
 rewrites the record.
 
 **`to` is stamped from evidence, and before the capture, and until the merge it is
@@ -405,7 +418,9 @@ agentTooling PR `N` merged, in each consuming repo `R`:
      worktree copy's absolute path;
    - a **cloud child session**, for a round run by a coordinator in a Claude Code cloud
      container (`ORCHESTRATION.md` → "Cloud sessions") — created with `create_session`
-     and `outcome_branch: claude/pull-agenttooling-pr<N>`, its brief self-contained. The
+     and `outcome_branch: claude/pull-agenttooling-pr<N>`, and an explicit `model` — a
+     pull's shape is decided, so `sonnet`, and `opus` only when it needs judgment, never
+     the parent's tier by default (`ORCHESTRATION.md` → "Cloud sessions") — its brief self-contained. The
      child runs steps 1 to 6 in its own container with
      `--branch claude/pull-agenttooling-pr<N>`, and is that feature's coordinator, with no
      pin. The parent is the router: it pins nothing in the child's repo, checks
@@ -450,7 +465,7 @@ own capture (step 6) or is a repair somebody reaches for with a reason:
 - the recovery of attempts the CLI never priced runs at capture, scoped to that feature,
   while its transcripts still exist;
 - what is left — `backfill_usage.py`, a corpus-wide `recover_attempts.py`,
-  `capture_planning.py --all`, `--recapture`, `--carry-lost` — is in
+  `capture_planning.py --all`, `--recapture` — is in
   `analysis/README.md` → "Repair tools", each with the one reason you would run it.
 
 ## The three rules

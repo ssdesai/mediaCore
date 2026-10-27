@@ -40,9 +40,16 @@ set -uo pipefail
 #        (`recover_attempts.py --for <slug>`) — reported, never fatal;
 #     4. captures (`capture_planning.py <slug>`, with --recapture once a record exists on
 #        the branch, since that record is provisional too) and reports (`report.py`), and
-#        prints what planning.json claims. A capture that refuses rolls the stamp and the
-#        recovered sidecars back, byte for byte, from a snapshot taken before either was
-#        written, so the refusal can be acted on and the run repeated;
+#        prints what planning.json claims. A record already on the branch is the BASELINE
+#        the capture merges into: a row whose transcript this checkout cannot reach — an
+#        earlier round's container, in the cloud, where each round runs in a new one and
+#        only the committed record survives it — is kept, marked `carried_from`, and one
+#        WARN names it; nothing refuses over it, and no hand step follows. The refusals
+#        left are a capture that matched nothing (a wrong branch, sessions launched
+#        elsewhere) and a delegate another feature already claims. A capture that refuses
+#        rolls the stamp and the recovered sidecars back, byte for byte, from a snapshot
+#        taken before either was written, so the refusal can be acted on and the run
+#        repeated;
 #     5. refreshes `sessions[].also_claimed_by` on every OTHER already-captured record in
 #        this corpus from the claims ledger (`capture_planning.py --annotate-frozen`,
 #        which opens no transcript and moves no figure) and re-reports each one it
