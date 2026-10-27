@@ -49,7 +49,8 @@ set -uo pipefail
 #   5. Print the PR url and that merging it is the last step.
 #
 # Re-runnable: a second run finds the PR already open — pr.sh at 7 rewrites its body from
-# this run's report — and the capture replacing its own record, and ends at the same place.
+# this run's report — and the capture merging into its record, carrying forward the rows it
+# cannot reach, and ends at the same place.
 #
 # Exit codes: 2 usage; 1 a refusal, or a capture that refused (the PR is open, the record
 # is not committed, and the merge was not requested).

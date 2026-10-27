@@ -1193,8 +1193,11 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   parse, or one that already said so — the value is `STREAMS_UNAVAILABLE` (`not
   computed: streams unavailable`), as before. A stream that exists is always computed
   fresh. When some plans have streams and some do not, the two sections are computed from
-  the ones that exist and warn about the rest, unchanged. That is a live feature missing
-  a stream, not a pruned one. Nothing marks a carried value, since a mark would itself
+  the ones that exist and warn about the rest — unless `planning.json` holds rows marked
+  `carried_from` (`compute_carried`), when the missing streams are an earlier round's
+  container's and the warning is dropped, the Cost table's one `carried` line already
+  saying the figure is a chain. A record with no carried row still warns: that is a live
+  feature missing a stream, not a pruned one. Nothing marks a carried value, since a mark would itself
   be a diff on every re-render. This is what keeps `feature-capture.sh`'s annotate step,
   which re-renders every frozen record whose `also_claimed_by` it changed, and a
   `--recapture` from the primary from writing `not computed` over a frozen report and

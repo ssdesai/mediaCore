@@ -287,7 +287,8 @@ Then, in exactly this order — **the order is the point**:
    close says that once and skips it.
 
 Re-runnable: a second run finds the PR already open, rewrites its body from the current
-report, and the capture replaces its own record, and ends at the same place.
+report, and the capture merges into its record, carrying forward the rows it cannot reach,
+and ends at the same place.
 
     <worktree>/agentTooling/feature-capture.sh [--self] <slug> [--no-push]
 
@@ -396,6 +397,35 @@ agentTooling PR `N` merged, in each consuming repo `R`:
    after git's error when such a fetch fails under the cloud profile. Its `pull` line names the branch and the feature;
    its `split` line is the agentTooling sha pulled. Commit what the sync wrote, and any
    hand-merge its `DRIFT` lines ask for, on the branch.
+
+   **The trailer chain.** Before it pulls, `update.sh` prints a `chain` line: the base
+   `git subtree pull --squash` will merge from is the newest commit reachable from `HEAD`
+   whose message carries `git-subtree-dir: agentTooling` and a `git-subtree-split:`, and
+   a forge **squash-merge** of a propagation PR keeps that commit only as text copied into
+   its body — one body without the text (on 2026-10-27, mediaCore's hand-resolved pr92)
+   leaves the base pulls behind the vendored tree, and every later pull conflicts on files
+   upstream changed since, with no local edit anywhere. `broken` means exactly that, and
+   `update.sh` repairs it before pulling: it **re-anchors** the base at the upstream
+   commit whose tree `agentTooling/` already is (an `anchor` line, one no-change merge
+   commit), so a repo left broken by any earlier round is repaired by its next pull with
+   no step by hand. `fragile` is a squash-merging repo whose pulls still work from the
+   copied text; `edited`, local edits under the prefix, re-anchored only by hand with
+   `--base <sha>`. `update.sh --check` prints the same line, writes nothing, and exits 1
+   on `broken` or `none`; a round runs it in each repo before the pull when it wants to know.
+
+   **When the pull conflicts**, `update.sh` exits 1 with the merge still in progress and
+   prints `conflict` (the files) and `resolve` lines. With no local edits under
+   `agentTooling/` — the case `edited` would have named — take upstream's whole tree:
+   `git rm -r -q -- agentTooling`, `git read-tree --prefix=agentTooling/ -u MERGE_HEAD`,
+   `git commit`, then `agentTooling/sync-plans.sh`. (A per-file `git checkout --theirs`
+   fails on a file upstream deleted, and a `git add` after it commits conflict markers.)
+   Commit **that merge**: its second parent is the squash
+   commit carrying the trailers. Never `git merge --abort` and copy files across in a
+   fresh commit. The merge commit itself carries no trailer even on a clean pull; that is
+   normal, not the defect. **One-time:** the pull that first brings the chain check in
+   runs the repo's older `update.sh`, which has none, so in a repo already `broken` that
+   one pull may still conflict; resolve it exactly this way, and every pull after it is
+   checked and repaired by itself.
 3. **Prose** — the manifest above the fence names the agentTooling PR and the `split`
    sha pulled, the goal is "propagate agentTooling PR `N`", and the plan table has the
    one review row (step 3).
@@ -433,7 +463,11 @@ agentTooling PR `N` merged, in each consuming repo `R`:
    repo-owned script found after the merge.
 6. **Close** — `feature-close.sh pull-agenttooling-pr<N>` from the worktree (step 6),
    which captures the pull's cost on the branch and opens the PR.
-7. **Merge** — by the human (step 7).
+7. **Merge** — by the human (step 7), **with a merge commit, never "Squash and merge"**:
+   a squash-merge drops the squash commit that names the next pull's base, so the chain
+   then rests on whatever text the squash body kept (step 2 → "The trailer chain").
+   `forge.sh auto-merge` already asks for a merge commit; this is for a merge made by hand
+   in the forge's UI.
 
 After a round done this way, `feature-capture.sh`'s residue lists none of the round's
 sessions or delegates, and each consuming repo's `report.py pull-agenttooling-pr<N>`

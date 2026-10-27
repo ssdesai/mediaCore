@@ -281,6 +281,7 @@ shell_scripts=(
   self/tests/batch-sigpipe.sh
   self/tests/report-footnotes.sh
   self/tests/report-rounds.sh
+  self/tests/report-carried-streams.sh
   self/tests/feature-lifecycle.sh
   self/tests/verdict-readers.sh
   self/tests/routing-record.sh
@@ -293,6 +294,7 @@ shell_scripts=(
   self/tests/generated-hand-edit.sh
   self/tests/propagation-pull.sh
   self/tests/update-cloud-branch.sh
+  self/tests/subtree-chain.sh
   self/tests/audit-fixes.sh
   self/tests/template-versions.sh
   self/tests/template-version-bump.sh
@@ -368,6 +370,7 @@ record "usage limit kill self-test" bash self/tests/usage-limit-kill.sh
 record "batch sigpipe self-test" bash self/tests/batch-sigpipe.sh
 record "report footnotes self-test" bash self/tests/report-footnotes.sh
 record "report rounds self-test" bash self/tests/report-rounds.sh
+record "report carried streams self-test" bash self/tests/report-carried-streams.sh
 record "feature lifecycle self-test" bash self/tests/feature-lifecycle.sh
 # The round readers the close and the batch branch on, called directly: the first line
 # rule and the numeric stem order are invisible from a whole-lifecycle run.
@@ -391,6 +394,10 @@ record "propagation pull self-test" bash self/tests/propagation-pull.sh
 # exactly one tracked manifest naming it pulls, none or several refuse
 # (self/features/cloud-pull-fixes/, defect A).
 record "update cloud branch self-test" bash self/tests/update-cloud-branch.sh
+# A forge squash-merge of a propagation PR can drop the subtree trailers the next pull's
+# base is found by: update.sh --check reports the broken chain, and update.sh re-anchors
+# it so the pull is clean (self/features/subtree-pull-keeps-base/).
+record "subtree chain self-test" bash self/tests/subtree-chain.sh
 record "audit fixes self-test" bash self/tests/audit-fixes.sh
 # Reads the checked-in templates rather than driving a runner, but blocking for the same
 # reason as the rest: a template edited without a version bump — a comment counts — reports
