@@ -121,17 +121,23 @@ where it is running — it prints one `profile` line naming `local` or `cloud` a
 decided it, and records it in the fence's `profile` — and under `cloud` it changes only
 the layout: no `.worktrees/S`, the primary itself is the checkout, on the session's
 assigned branch (`--branch <name>`, or the branch the session is on when that is not the
-base — on the base with neither it refuses, naming the flag; a new `--branch` is cut off
+base — on the base or a detached HEAD with neither it refuses, naming the flag and the
+conventional `--branch claude/<slug>` (`ORCHESTRATION.md` → "Cloud sessions"); a new `--branch` is cut off
 `origin/<base>` by the start, never by an agent). Before writing anything it refuses a
 second feature in the container (one branch, one feature), a branch carrying commits not
 on `origin/<base>`, and a dirty tree; "the primary is on `main`" becomes "the checkout
 contains `origin/<base>`", with the same fast-forward and exit 3 when it is strictly
 behind. A refused cloud start leaves a lock in `.git/`; re-running it resumes at the setup
-hook and deletes nothing, so a fix made by hand survives. The session that started on the
-feature's branch is the **coordinator**, not a router: no routing record, no pin, and the
+hook and deletes nothing, so a fix made by hand survives. The session that runs a cloud
+start is the **coordinator**, not a router: no routing record, no pin, and the
 window's `from` is its own first transcript instant, so the capture selects it by branch
 with no hand step (one warning, naming `manifest.py set-window-from`, when its transcript
-cannot be read). The prune runs as everywhere and finds nothing; `--open` runs
+cannot be read). That holds whether it started on the feature's branch or had none and
+cut it with `--branch` from the base or a detached HEAD: a container holds one feature, so
+its session routes to no other, and its opening stretch — the transcript lines before the
+branch existed, which carry the base's `gitBranch` — is claimed with the rest, since the
+capture matches a session by any line's branch and selects it by its first instant
+(`self/features/cloud-branch-window-from`). The prune runs as everywhere and finds nothing; `--open` runs
 `open-session.sh`, which says the session is already in the checkout.
 
 `--base` is for a feature stacked on one that has not merged; `--no-gate`, `--pin` (the
@@ -367,7 +373,14 @@ agentTooling PR `N` merged, in each consuming repo `R`:
    manifests are refused, naming both. (A copy vendored before `cloud-pull-fixes` has no
    cloud path and refuses that branch: the one pull that brings it in, from a cloud
    container, is the same two steps by hand — `git subtree pull --prefix=agentTooling
-   <remote> main --squash`, then `agentTooling/sync-plans.sh`.) Its `pull` line names the branch and the feature;
+   <remote> main --squash`, then `agentTooling/sync-plans.sh`.) **In a cloud container,
+   attach agentTooling to the session before the pull**: the session's git proxy serves
+   only the repositories attached to it, so a session opened on `R` alone fails the
+   subtree fetch from `https://github.com/ssdesai/agentTooling` to authenticate (`could
+   not read Username`). Run the `add_repo` tool (claude-code-remote MCP) for
+   `ssdesai/agentTooling` with read access, then the pull; on 2026-10-26 three of four
+   cloud pulls of PR 90 rediscovered this. `update.sh` says so itself — one `remedy` line
+   after git's error when such a fetch fails under the cloud profile. Its `pull` line names the branch and the feature;
    its `split` line is the agentTooling sha pulled. Commit what the sync wrote, and any
    hand-merge its `DRIFT` lines ask for, on the branch.
 3. **Prose** — the manifest above the fence names the agentTooling PR and the `split`
@@ -389,7 +402,15 @@ agentTooling PR `N` merged, in each consuming repo `R`:
      `feature: <repo>/pull-agenttooling-pr<N>`, and the coordinator pins it in that repo
      with `analysis/manifest.py pull-agenttooling-pr<N> pin-subagent <id>` as it spawns
      it. The coordinator is the router, unpinned, and runs each review and close by the
-     worktree copy's absolute path.
+     worktree copy's absolute path;
+   - a **cloud child session**, for a round run by a coordinator in a Claude Code cloud
+     container (`ORCHESTRATION.md` → "Cloud sessions") — created with `create_session`
+     and `outcome_branch: claude/pull-agenttooling-pr<N>`, its brief self-contained. The
+     child runs steps 1 to 6 in its own container with
+     `--branch claude/pull-agenttooling-pr<N>`, and is that feature's coordinator, with no
+     pin. The parent is the router: it pins nothing in the child's repo, checks
+     on the child with `get_session` and `list_events`, and archives it once its PR is
+     open.
 5. **Review** — yes, every pull: write the brief (what was pulled, that the prefix diff
    is the upstream range and nothing else, that `sync-plans.sh --check` is clean and the
    gate green) and run `run-review.sh` (step 5). The close refuses without a clean one,

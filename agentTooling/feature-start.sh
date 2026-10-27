@@ -20,8 +20,9 @@ set -uo pipefail
 # (design §2, §3), where a Claude Code container IS the worktree, differs only here:
 #
 #   - the checkout is R itself, on the session's assigned branch: `--branch <name>`, else
-#     the branch R is on when that is not the base. On the base with neither, the start
-#     refuses naming the flag; `--branch` names a NEW branch, which this script cuts off
+#     the branch R is on when that is not the base. On the base or a detached HEAD with
+#     neither, the start refuses naming the flag and the conventional name,
+#     `--branch claude/<slug>`; `--branch` names a NEW branch, which this script cuts off
 #     origin/<base> with `git checkout -b` (agents never do — LIFECYCLE.md rule 2), and an
 #     existing branch that is not checked out is refused. Locally `--branch` is refused:
 #     the branch is the slug;
@@ -47,8 +48,12 @@ set -uo pipefail
 #
 # **Router or coordinator is derived, not configured** (design §3, in both profiles). The
 # session running the start is the feature's COORDINATOR when the branch R was on when
-# the start began — before any `checkout -b` — is the feature's branch: in the cloud,
-# every session started on its assigned branch. Then no routing record is written and
+# the start began — before any `checkout -b` — is the feature's branch, and in the cloud
+# ALWAYS: a session on its assigned branch, and equally one that cut its branch with
+# `--branch` from the base or a detached HEAD, since a container holds one feature and its
+# session can route to no other (self/features/cloud-branch-window-from; its transcript's
+# lines before the branch existed carry the base's gitBranch, and the capture still
+# selects it — a session matches by any line's branch, and is selected by its start). Then no routing record is written and
 # nothing is pinned, and `from` is that session's FIRST transcript instant
 # (`manifest.py session-start`), truncated to the millisecond — never later than the
 # session's first line, and the exact instant `set-window-from` accepts (issue #82;
@@ -213,8 +218,9 @@ START_LOCK_PID_KEY="pid"
 START_LOCK_STARTED_KEY="started"
 START_LOCK_REFUSED_KEY="refused"
 # The cloud lock's extra lines (header, the cloud layout): which start it is, on which
-# branch, and the branch it was launched on — what a resumed start is router or
-# coordinator by. The local lock carries none of them and is byte-identical to before.
+# branch, and the branch it was launched on — what a resumed start's routing line names
+# (every cloud session is the coordinator, self/features/cloud-branch-window-from). The
+# local lock carries none of them and is byte-identical to before.
 START_LOCK_SLUG_KEY="slug"
 START_LOCK_BRANCH_KEY="branch"
 START_LOCK_LAUNCHED_KEY="launched_on"
@@ -223,6 +229,11 @@ START_LOCK_LAUNCHED_KEY="launched_on"
 START_SUBJECT_SUFFIX=": start"
 # How many dirty paths the cloud's dirty-tree refusal names.
 DIRTY_PATHS_NAMED=3
+# The conventional cloud branch for slug S: `claude/S`, what a parent session assigns its
+# child with `outcome_branch` (ORCHESTRATION.md → "Cloud sessions"). The refusal on the
+# base or a detached HEAD names it, so a session with no branch assigned picks this name
+# rather than improvising one.
+CLOUD_BRANCH_PREFIX="claude/"
 # The fence's `gate` key (self/DESIGN-2026-10-05-cloud-execution.md §7; manifest.py's
 # KNOWN_GATE_RECORDS): the base gate ran here and was green, or no gate ran at all.
 GATE_RECORD_GREEN="green"
@@ -455,8 +466,9 @@ if profile_is_cloud; then
     FEATURE_BRANCH="$lock_branch"
     LAUNCH_BRANCH="${lock_launched:-$lock_branch}"
   else
+    if [[ -n "$LAUNCH_BRANCH" ]]; then on_what="'$LAUNCH_BRANCH', the base"; else on_what="a detached HEAD"; fi
     FEATURE_BRANCH="$(feature_branch "$SLUG")" \
-      || refuse "in the cloud the feature runs on the session's assigned branch, and $PRIMARY is on '${LAUNCH_BRANCH:-a detached HEAD}', the base — name the branch with --branch <name> (the start creates it off origin/$BASE)"
+      || refuse "in the cloud the feature runs on the session's assigned branch, and $PRIMARY is on $on_what — pass the branch this session was assigned with --branch <name>, or with none assigned, the convention: --branch $CLOUD_BRANCH_PREFIX$SLUG (the start creates it off origin/$BASE)"
     git check-ref-format --branch "$FEATURE_BRANCH" >/dev/null 2>&1 \
       || refuse "'$FEATURE_BRANCH' is not a valid branch name"
     if [[ "$FEATURE_BRANCH" != "$LAUNCH_BRANCH" ]] \
@@ -731,7 +743,8 @@ else
     echo "  branch    $FEATURE_BRANCH off $START_POINT"
   fi
   # The lock (header): written whole, a resumed start's included, so it names THIS pid;
-  # launched_on is what a later resume reads router or coordinator from.
+  # launched_on is what a later resume reads the launch branch from (the routing line
+  # names it; router or coordinator no longer depends on it in the cloud).
   if ! printf '%s=%s\n%s=%s\n%s=%s\n%s=%s\n%s=%s\n' \
       "$START_LOCK_PID_KEY" "$$" "$START_LOCK_STARTED_KEY" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
       "$START_LOCK_SLUG_KEY" "$SLUG" "$START_LOCK_BRANCH_KEY" "$FEATURE_BRANCH" \
@@ -779,9 +792,12 @@ fi
 NOW="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 SESSION=""
 if (( PIN )); then SESSION="$ROUTER_SESSION"; fi
-# Router or coordinator (header): launched on the feature's own branch is the coordinator.
+# Router or coordinator (header): launched on the feature's own branch is the coordinator,
+# and so is every cloud session — a container holds one feature, so a session there that
+# cut its branch with --branch from the base or a detached HEAD still opens no other.
 COORDINATOR=0
 if [[ -n "$LAUNCH_BRANCH" && "$LAUNCH_BRANCH" == "$FEATURE_BRANCH" ]]; then COORDINATOR=1; fi
+if profile_is_cloud; then COORDINATOR=1; fi
 # The window's `from`: the clock, unless this session is the coordinator — then its own
 # first transcript instant, since the capture's branch route selects a session by its
 # start and this one began before the feature existed (header; manifest.py
@@ -878,10 +894,12 @@ echo "  review    ${FEATURE_DIR#"$WORKTREE"/}/review/incomplete/$STEM.md  (stub 
 # the link. analysis/routing.py's `split_pinned` skips any such record already on disk.
 #
 # **Nor for the coordinator** (header; design §3): a session launched on the feature's own
-# branch — every cloud session on its assigned branch — is claimed by that branch under
-# LIFECYCLE.md rule 1, with no pin and nothing to route.
+# branch, and every cloud session — on its assigned branch or one it cut with --branch —
+# is claimed by that branch under LIFECYCLE.md rule 1, with no pin and nothing to route.
 if (( PIN )); then
   echo "  routing   none (--pin: session ${SESSION:-(none)} is this feature's, never also a router)"
+elif (( COORDINATOR )) && [[ "$LAUNCH_BRANCH" != "$FEATURE_BRANCH" ]]; then
+  echo "  routing   none (this session cut $FEATURE_BRANCH from ${LAUNCH_BRANCH:-a detached HEAD}, and a container holds one feature: it is the feature's coordinator, claimed by that branch from its first instant with no pin)"
 elif (( COORDINATOR )); then
   echo "  routing   none (this session was launched on $FEATURE_BRANCH, the feature's branch: it is the feature's coordinator, claimed by that branch with no pin)"
 elif [[ -n "$ROUTER_SESSION" ]]; then
@@ -927,13 +945,9 @@ echo "  1. Replace $TODO_MARKER in review/incomplete/$STEM.md with the review br
 # in (LIFECYCLE.md, rule 1), so a coordinator launched in the worktree is claimed by
 # branch $SLUG and needs no pin — and this session, which started the feature, stays a
 # router with no claim on it.
-if profile_is_cloud && (( COORDINATOR )); then
+if profile_is_cloud; then
   echo "  2. Coordinate from this session: it is on $FEATURE_BRANCH, the feature's branch, so it is"
   echo "     the coordinator, claimed by that branch with no pin."
-elif profile_is_cloud; then
-  echo "  2. This session was launched on ${LAUNCH_BRANCH:-a detached HEAD}, not $FEATURE_BRANCH, so it is this feature's"
-  echo "     router. A container has no other session to coordinate from: if this one builds the"
-  echo "     feature, pin it — python3 $WT_AT/analysis/manifest.py ${SELF_FLAG[@]+"${SELF_FLAG[@]} "}$SLUG pin-session ${ROUTER_SESSION:-<id>}"
 elif (( OPEN )); then
   echo "  2. Coordinate in the session --open just launched, in $WORKTREE."
 else

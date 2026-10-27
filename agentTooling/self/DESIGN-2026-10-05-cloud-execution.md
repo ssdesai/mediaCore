@@ -28,7 +28,11 @@ A cloud session differs in five ways:
 3. It is one session from first message to PR.
 4. Its `~/.claude` is new with each container.
 5. Its `gh` reaches GitHub only through a proxy that injects credentials and refuses
-   GraphQL.
+   GraphQL. Its `git` goes through a proxy too, which serves only the repositories
+   attached to the session — so a propagation pull's `git subtree` fetch of agentTooling
+   from a consuming repo's session fails to authenticate until `ssdesai/agentTooling` is
+   attached with `add_repo` (added 2026-10-26, `features/propagate-agenttooling-access/`;
+   `LIFECYCLE.md` → "Propagate" step 2).
 
 Nothing in the harness detects which world it is in: no script reads
 `CLAUDE_CODE_REMOTE`, `uname` or any CI variable.
@@ -509,7 +513,16 @@ verdict:
   - **A cloud session that starts with `--branch` from the base is a router** by the §3
     rule, and in a container it is also the only session there is — so if it builds, it
     must pin itself; the start's "Next" lines say so. The ordinary cloud start, on the
-    assigned branch, never meets this.
+    assigned branch, never meets this. **Superseded** by `features/cloud-branch-window-from`
+    (2026-10-26): the pin was then cut to a window stamped at the clock, leaving the
+    session's opening stretch unclaimed, so every cloud start's session is now the
+    coordinator — `from` at its first instant, no routing record, no pin.
+    **Observed 2026-10-26 (`cloud-wave-sessions`):** a child session created by
+    `create_session` with an `outcome_branch` is *not* left on that branch. Its clone
+    opened on a detached HEAD at `main`. So a child of a wave meets this case every time:
+    it starts with `--branch <outcome_branch>`, and is the coordinator all the same. The
+    start's refusal on the base or a detached HEAD now names `--branch claude/<slug>`.
+    The parent's side of it is `ORCHESTRATION.md` → "Cloud sessions".
 
 - **`self-cloud-bootstrap`'s findings** (`self/features/self-cloud-bootstrap/`, rulings in
   its `NOTES.md`). A fresh agentTooling session is wired by the repo alone, with nothing
@@ -580,7 +593,9 @@ because it was a checklist. From `cost-capture-collisions` on, every feature goe
   lost, as it is in the unclaimed residue today.
 - **The harness calling MCP.** It cannot, and `forge.sh` makes it unnecessary.
 - **Several features per cloud session.** Ruled out by the push rule. Use one session
-  per feature.
+  per feature. A coordinator that runs a wave spawns those sessions itself, each with its
+  branch assigned, and each child is its own feature's coordinator — no pin, no routing
+  record (`ORCHESTRATION.md` → "Cloud sessions").
 - **Fixing consuming repos' own scripts and tests.** Each repo's cloud setup is its own
   feature, using the seeded files.
 - **A per-feature budget.** Unchanged ruling.

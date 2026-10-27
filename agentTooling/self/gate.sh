@@ -289,6 +289,7 @@ shell_scripts=(
   self/tests/recover-duration.sh
   self/tests/check-plans.sh
   self/tests/sync-check.sh
+  self/tests/generated-hand-edit.sh
   self/tests/propagation-pull.sh
   self/tests/update-cloud-branch.sh
   self/tests/audit-fixes.sh
@@ -372,6 +373,10 @@ record "recover at close self-test" bash self/tests/recover-at-close.sh
 record "recover duration self-test" bash self/tests/recover-duration.sh
 record "check plans self-test" bash self/tests/check-plans.sh
 record "sync check self-test" bash self/tests/sync-check.sh
+# A generated stub that differs from its template is a hand edit or an upstream change,
+# told apart by the repo's own history of the vendored templates; a hand edit's dropped
+# lines are printed, never overwritten silently (self/features/generated-readme-repo-owned/).
+record "generated hand edit self-test" bash self/tests/generated-hand-edit.sh
 # A propagation pull is its own hand feature in the consuming repo: update.sh pulls only
 # on a started feature's branch, in its worktree, and nothing in the permission policy
 # denies the merge it performs (LIFECYCLE.md -> "Propagate").

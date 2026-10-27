@@ -1,6 +1,8 @@
 # Interactive plans
 
-_Generated from `agentTooling/templates/` by `agentTooling/sync-plans.sh`. Edit the template, not this file._
+_Generated from `agentTooling/templates/` by `agentTooling/sync-plans.sh`, and
+**overwritten on every pull** — never edit it. This repo's runbooks here are listed in
+the repo-owned `../PROJECT_FACTS.md` → "This repo's `plans/` contents"._
 
 Standing runbooks — bash-heavy steps that need a human in the loop and that outlive any
 one feature (first-run setup, recurring migrations). Run by hand; no runner touches this

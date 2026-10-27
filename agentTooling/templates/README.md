@@ -26,7 +26,16 @@ the six repo-owned scripts, described under `template-version` below.
 The five stubs are repo-agnostic on purpose: each describes its folder and points at
 `agentTooling/RUNNER.md` for the execution model, so that model is documented once
 rather than restated (and drifted) per repo. That is also why overwriting them is
-safe — they hold nothing a repo could have customized.
+safe — they hold nothing a repo could have customized — and each one's header says so,
+naming the repo-owned `PROJECT_FACTS.md` as where a repo's own entries for its folder go.
+A stub a repo edited anyway is caught rather than silently overwritten: `../sync-plans.sh`
+matches each stub that differs from its template against every version of that template
+the repo has committed (`stub_origin`, `../self/features/generated-readme-repo-owned/NOTES.md`).
+A match is an upstream change (`STALE`, then `synced … (template changed upstream)`); no
+match is a hand edit — `EDITED` under `--check`, `OVERWROTE` on the write path, each an
+item needing attention with the lines the overwrite drops printed beneath it; and with no
+history to ask (no git, a shallow clone) the stub is reported like an edit, never assumed
+to be upstream.
 
 `.gitignore` is generated rather than an install instruction because nothing detects a
 missed instruction: a repo that skipped the hand-written gitignore step committed a
@@ -168,7 +177,13 @@ Five of the six templates' own headers still say to bump "when the body changes"
 reworded at its next real bump (`../self/BACKLOG.md`).
 
 `PROJECT_FACTS.md` is the opposite: it exists to hold what is specific to one
-codebase. `sync-plans.sh` creates it if missing and never touches it again.
+codebase. `sync-plans.sh` creates it if missing and never touches it again. Its last
+section, "This repo's `plans/` contents", is the repo-owned home the generated READMEs'
+headers point at: the entries, exceptions and elaborations a repo would otherwise write
+into a generated stub. Being seeded once, it reaches a repo that already has the file only
+by hand (`../README.md` → "Adopting the repo-owned plans/ contents"). It carries no
+`template-version` line and is not in `TEMPLATE_VERSIONS`: it is a list of prompts a repo
+replaces, so any filled copy would read as drift.
 
 `BACKLOG.md` is seeded the same way and for the same reason — a repo writes its own
 entries into it — with one difference in how `--check` reports it: an *empty* backlog is
@@ -179,7 +194,12 @@ added by hand and a sync overwrote (`../AGENT_PLANS.md` → "The feature manifes
 `../AGENT_DIRECT.md` → "The procedure" step 4 both say what belongs in it).
 
 Anything added here that a repo would need to customize belongs in `PROJECT_FACTS.md`
-instead, or the sync will destroy it.
+instead, or the sync will destroy it. This file is never copied to a consumer, so the same
+rule reaches them twice over: in each generated stub's header, and in
+`../CONVENTIONS.md` → "Generated READMEs", which is what stops an agent keeping READMEs
+current from listing a new `plans/` entry in the generated file. humanNetworkMap lost
+lines that way on the PR-89 and PR-90 pulls (a hand-added `taxonomy-migration/` entry
+among them) before `sync-plans.sh` printed what it dropped.
 
 `experiment/CHECKLIST.md` is different: not synced anywhere. Copy it by hand into
 `plans/experiments/<slug>/` when running the A/B `../harness/EXPERIMENTS.md` describes.

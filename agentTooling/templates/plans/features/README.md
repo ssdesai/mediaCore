@@ -1,6 +1,8 @@
 # Feature plan trees
 
-_Generated from `agentTooling/templates/` by `agentTooling/sync-plans.sh`. Edit the template, not this file._
+_Generated from `agentTooling/templates/` by `agentTooling/sync-plans.sh`, and
+**overwritten on every pull** — never edit it. This repo's own notes on this folder go in
+the repo-owned `../PROJECT_FACTS.md` → "This repo's `plans/` contents"._
 
 Every feature this repo works on gets one directory here, named by its slug:
 

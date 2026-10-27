@@ -56,7 +56,62 @@ Two, and the number of features decides which.
   feature's close as its builder, and the refusal names the line that tripped it.
   A propagation round is this shape too: one `pull-agenttooling-pr<N>` hand feature per
   consuming repo, a delegate per pull, each pinned in its own repo (`LIFECYCLE.md` →
-  "Propagate").
+  "Propagate"). A pull run from a Claude Code cloud session needs `ssdesai/agentTooling`
+  attached to that session (`add_repo`) before `update.sh` can fetch it (step 2 there).
+  When the coordinator runs in a Claude Code cloud container and the features are in
+  other repos, the delegates are **cloud sessions**, not subagents — see "Cloud sessions"
+  below.
+
+### Cloud sessions
+
+A coordinator in a Claude Code cloud container that runs a wave across repos — a
+propagation round, or several self features at once — spawns one **child session** per
+feature with the claude-code-remote MCP's `create_session`, not a local subagent: a
+container holds one feature and pushes one branch
+(`self/DESIGN-2026-10-05-cloud-execution.md` §2, §12), so a feature in another repo, or a
+second feature in this one, needs a container of its own.
+
+- **Assign each child its branch up front, with `outcome_branch`.** The convention is
+  `claude/pull-agenttooling-pr<N>` for a propagation and `claude/<slug>` for a self feature
+  — `claude/<slug>` either way, since a propagation's slug is `pull-agenttooling-pr<N>`.
+  A child created without one has no branch to start on and improvises: on 2026-10-26,
+  propagating agentTooling PR 90 into four repos with no `outcome_branch`, two children
+  (one on a detached HEAD, one on `main`) cut `claude/pull-agenttooling-pr90` with
+  `--branch`, one invented `pullAgenttoolingPr90`, and one sat on `main` until the
+  coordinator sent it a name. `feature-start.sh`'s cloud refusal on the base or a detached
+  HEAD now names `--branch claude/<slug>`, so a child that is missing one picks the
+  conventional name, but the assignment is what makes it certain.
+- **The brief is self-contained.** The child starts with nothing but its prompt, and it
+  has no coordinator in its container to ask. The brief names the repo, the slug, the
+  `--method` (`hand` for a propagation; a self feature's by step 1), the start command
+  with `--branch <the outcome_branch>`, the review, and the standing close-on-clean rule:
+  on `Verdict: clean`, run `feature-close.sh` straight away; on `escalated`, run the rework
+  round. Name the assigned branch and say to create or push no other. Ask for the PR link
+  or the exact blocker as the child's last line.
+- **The child is its feature's coordinator, on that branch.** It runs the start, the
+  build, the review and the close itself, in its own container. The parent pins nothing in
+  the child's repo and writes no routing record there: the child's transcript lives in its
+  own container, and its close captures it on its own branch. `outcome_branch` names the
+  branch the child pushes, but the clone is not left on it: this feature's own session,
+  created on 2026-10-26 with `outcome_branch: claude/cloud-wave-sessions`, opened on a
+  detached HEAD. So the brief always passes `--branch <outcome_branch>`. That is harmless
+  when the checkout is already on the branch, and when it is not, the start cuts the
+  branch and the child is the feature's coordinator all the same — `from` at its first
+  transcript instant, no pin, no routing record — since a container holds one feature
+  (`self/features/cloud-branch-window-from`; design §3). Nothing in the child's "Next"
+  lines asks for a pin, and the child runs none.
+- **The parent is a router.** Its spend is routing overhead: it opens several features and
+  belongs to none of them. It is never pinned in a child's manifest, and it builds nothing
+  in any child's repo.
+- **The parent checks on children with `get_session` and `list_events`, never by polling.**
+  No sleep loop, and no `send_later` per child per minute. Where it is enabled, a child
+  whose turn fails wakes the parent with a child-session event; a child that finishes
+  cleanly does not, and its `status_bucket` tells the two apart (`failed` against a
+  plain idle `status`). For the rest, one
+  `send_later` check-in a little past the expected end of the round, then `get_session`
+  for each child's state and `list_events` (filtered with `kinds`) for its last reply.
+  Once a child's PR is open, and its last line has given the link, `archive_session` it:
+  the PR now carries the work, and an idle child holds a container.
 
 **A session launched on the feature's branch is its coordinator, wherever it runs**
 (`self/DESIGN-2026-10-05-cloud-execution.md` §3). Router or coordinator is derived from
@@ -66,7 +121,9 @@ record; on the feature's own branch it is the coordinator, claimed by that branc
 `LIFECYCLE.md` rule 1 with no pin and no routing record, and the start opens the
 feature's window at that session's first transcript instant so the capture selects it.
 In a Claude Code cloud container that is every session: the container is the worktree,
-and the session starts the feature on its assigned branch.
+and the session starts the feature on its assigned branch — or, given none, cuts it with
+`--branch` from `main` or a detached HEAD, and is the coordinator all the same, since a
+container holds one feature (`self/features/cloud-branch-window-from`).
 
 ## Why
 

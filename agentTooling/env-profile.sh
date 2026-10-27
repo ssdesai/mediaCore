@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # The profile detector and the checkout-layout adapter
 # (self/DESIGN-2026-10-05-cloud-execution.md §1, §2). Sourced, never executed, by
-# feature-start.sh and forge.sh — the two that need to know — beside plan-runner-roots.sh.
+# feature-start.sh and forge.sh — the two that need to know — beside plan-runner-roots.sh,
+# and by update.sh only after a failed pull, for its cloud `remedy` line
+# (self/features/propagate-agenttooling-access/).
 #
 # **The lifecycle never asks where it is running.** Every difference between a laptop and
 # a Claude Code cloud container lives here and in a few adapters with fixed interfaces

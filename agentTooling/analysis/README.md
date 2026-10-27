@@ -1568,9 +1568,14 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   §7), under the same rules: absent means "not recorded", and `check-plans.sh` accepts it
   with no check of its own (self/features/execution-profiles/NOTES.md ruling 10). `branches[0]`
   is the slug locally and the session's assigned branch in a cloud container, and
-  `session_window.from` is the start's clock — or, when the session that ran the start was
-  launched on the feature's branch (its coordinator), that session's first transcript
-  instant truncated to the millisecond (`session-start`) — every reader of a bound parses
+  `session_window.from` is the start's clock — or, when the session that ran the start is
+  the feature's coordinator (launched on the feature's branch, or any cloud start, one that
+  cut its branch with `--branch` from the base or a detached HEAD included:
+  self/features/cloud-branch-window-from), that session's first transcript instant
+  truncated to the millisecond (`session-start`). The capture claims that session's lines
+  from before the branch existed, which carry the base's `gitBranch`, with the rest:
+  `capture_planning.py` matches a session by any line's branch and selects it by its first
+  instant. Every reader of a bound parses
   it as an instant, so a fractional `from` orders correctly against a whole-second `to`.
   `method` is `"plans"` (or absent),
   `"direct"`, or `"hand"` — the last two say the transcripts in `planning.json` are the

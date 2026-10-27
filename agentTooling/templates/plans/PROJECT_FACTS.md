@@ -43,3 +43,15 @@ Build plans have no bash — these belong in verify plans and interactive plans.
 ## Conventions and gotchas
 
 - Naming or structural rules the edits assume but the file list doesn't show.
+
+## This repo's `plans/` contents
+
+The generated `plans/README.md`, `features/README.md` and `interactive/README.md` hold
+the rules every repo shares and are overwritten on every pull, so this repo's own entries
+for those folders live here. Keep this section even when it is empty.
+
+- Anything in `plans/` the generated `README.md` does not list — a migration's working
+  directory, a repo-specific script, a standing runbook in `interactive/` — one line
+  each: what it is and who reads it.
+- Any exception to, or elaboration of, a rule the generated READMEs state, and why this
+  repo needs it.
