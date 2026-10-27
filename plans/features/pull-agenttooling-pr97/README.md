@@ -27,7 +27,7 @@ Propagates agentTooling `main` (#95 capture-merges-committed-record, #96 pr-body
   "base": "main",
   "profile": "cloud",
   "gate": "green",
-  "session_window": {"from": "2026-10-27T20:23:50.091Z", "to": null},
+  "session_window": {"from": "2026-10-27T20:23:50.091Z", "to": "2026-10-27T20:26:42Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],
