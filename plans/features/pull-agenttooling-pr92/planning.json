@@ -1,0 +1,86 @@
+{
+  "slug": "pull-agenttooling-pr92",
+  "captured_at": "2026-10-27T02:50:03.440553+00:00",
+  "manifest_branches": [
+    "claude/pull-agenttooling-pr92"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "3669a7be-1875-5248-9ef6-c0a3dc552f07",
+      "git_branch": "claude/pull-agenttooling-pr92",
+      "selected_by": "pinned",
+      "cwd": "/home/user/mediaCore",
+      "date": "2026-10-27",
+      "started_at": "2026-10-27T02:44:42.930000+00:00",
+      "ended_at": "2026-10-27T02:49:56.413000+00:00",
+      "duration_s": 303,
+      "share_basis": [
+        {
+          "feature": "mediaCore/pull-agenttooling-pr92",
+          "from": "2026-10-27T02:45:37Z",
+          "to": "2026-10-27T02:49:46Z",
+          "source": "self"
+        }
+      ],
+      "session_cost_usd": 3.0965175,
+      "session_duration_s": 313,
+      "unclaimed_usd": 0.075062,
+      "unclaimed_duration_s": 10
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "b7be8b1c-fb78-480b-b825-d2df0559efe0"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "3669a7be-1875-5248-9ef6-c0a3dc552f07",
+      "agent_id": null,
+      "model": "claude-fable-5-1",
+      "is_sidechain": false,
+      "date": "2026-10-27",
+      "duration_s": 313,
+      "tokens": {
+        "input": 518,
+        "output": 13561,
+        "cache_read": 2054822,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 91226
+      },
+      "cost_usd": 3.0214555,
+      "rates_applied": {
+        "model": "claude-fable-5-1",
+        "input": 10,
+        "output": 50,
+        "cache_read": 0.25,
+        "cache_creation_5m": 12.5,
+        "cache_creation_1h": 20,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 3.0214555,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 3.0214555,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 303,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "session 3669a7be-1875-5248-9ef6-c0a3dc552f07 may span the window boundary (window 2026-10-27T02:45:37+00:00..2026-10-27T02:49:46+00:00 UTC, session ends 2026-10-27T02:49:56.413000+00:00); $0.0751 and 10s of it fall at or after `to`, not counted here (the session is pinned and this feature is its only claimant, so it is cut to the window: what lies past `to` is the unclaimed remainder)",
+    "session 3669a7be-1875-5248-9ef6-c0a3dc552f07 is pinned and claimed by this feature alone, so it is cut to the window: this feature's part is $3.0215 of the session's own $3.0965",
+    "session 3669a7be-1875-5248-9ef6-c0a3dc552f07 has $0.0751 (10s) unclaimed by any feature \u2014 widen a claimant's `to` bound, or pin the session to the feature it belongs to, to have it counted"
+  ]
+}

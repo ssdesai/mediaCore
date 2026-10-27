@@ -48,7 +48,7 @@ plans/ contents". `sync-plans.sh --check` is clean afterwards, and the gate is g
   "base": "main",
   "profile": "cloud",
   "gate": "green",
-  "session_window": {"from": "2026-10-27T02:45:37Z", "to": null},
+  "session_window": {"from": "2026-10-27T02:45:37Z", "to": "2026-10-27T02:49:46Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": ["3669a7be-1875-5248-9ef6-c0a3dc552f07"],
