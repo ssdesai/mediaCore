@@ -10,7 +10,7 @@
 # compares each template with the base branch's copy (origin/main) and refuses the same
 # version with different content, or a lower version. See ../README.md.
 gate.sh 3 934ffe0769d01495b8884b4d9274732e05d47daa0f513fec3c9c269521088ed4
-pr.sh 6 57a5b94a10a0b7d80acfc5a083e69d41c9c2ad88ebaadb874378dfbb2557cd6f
+pr.sh 7 2ff6101396aae771f5f4607b04d7d261144894da118c55e6e26f5a33dbdb9e76
 worktree-setup.sh 2 3c789ea3826664ca3c0e8c9b9cba154dd15c97a3add743e4a22c9b8736957c82
 open-session.sh 4 7772b8f2a7708a3e787286965f15f3aad543450d77f7d920c62c698c4026abfe
 environment.sh 1 793001127bb07db9d057cf9ba8b132b3460ea6dfa45038ae1f86a0a94837db41

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-# Self-test for capture_planning.py's two write guards — the frozen-cost refusal and the
-# already-captured skip. Run by self/gate.sh, or by hand: bash self/tests/capture-guard.sh
+# Self-test for capture_planning.py's two guards over a committed record — the merge of
+# unreachable rows (once a refusal) and the already-captured skip. Run by self/gate.sh,
+# or by hand: bash self/tests/capture-guard.sh
 #
 # Builds a throwaway agentTooling checkout under mktemp -d — copies of
 # `analysis/{pricing,roots,transcript,capture_planning}.py` — plus a synthesized
@@ -10,44 +11,52 @@ set -uo pipefail
 # `~/.claude/projects/*/<session_id>.jsonl` transcripts capture reads. No model, no
 # network; runs in a few seconds.
 #
-# What it guards. `planning.json` is a *frozen* record: it is the only surviving
+# What it guards. `planning.json` is a *committed* record: it is the only surviving
 # account of a feature's planning cost once the session transcripts under
-# ~/.claude/projects/ age out of retention. capture_planning.py rebuilds that file from
+# ~/.claude/projects/ age out of retention — or, in a Claude Code cloud container, once
+# the container that held them is gone. capture_planning.py rebuilds that file from
 # those transcripts, so re-running it on a feature whose transcripts have expired finds
-# nothing and writes $0.00 over a real recorded figure. That is not hypothetical — it
-# zeroed 11 features in humanNetworkMap ($151.58 -> $0.00 on add-component-tests among
-# them) in one documented cadence run before the guard existed.
+# nothing and, if it wrote what it found, would write $0.00 over a real recorded figure.
+# That is not hypothetical — it zeroed 11 features in humanNetworkMap ($151.58 -> $0.00
+# on add-component-tests among them) in one documented cadence run before any guard
+# existed.
 #
-# The rule under test: refuse the write when a session the prior capture priced is
-# absent from the new scan AND has no transcript left on disk. Transcript-still-present
-# is the discriminator that keeps the guard from firing on ordinary work — a session
-# dropped by a manifest edit is reproducible and therefore safe, while a session whose
-# transcript is gone is unrecoverable and therefore protected.
+# The rule under test: a session the prior capture priced that is absent from the new
+# scan AND has no reachable transcript is CARRIED — kept from the committed record,
+# marked `carried_from` — rather than dropped, and the figure never falls. It used to
+# be refused instead, with `--carry-lost` as the hand remedy; that was a laptop rule, and
+# it refused at every multi-round cloud close (self/features/capture-merges-committed-
+# record/, whose own test, capture-merge.sh, pins the merge's provenance rules).
+# Transcript-still-reachable is the discriminator that keeps the merge from carrying
+# ordinary work — a session dropped by a manifest edit is reachable and therefore
+# dropped, while a session whose transcript is gone is unrecoverable and therefore kept.
 #
 # The second rule, in front of it: a feature that already has a `captured_at` is not
-# re-captured at all unless asked. The refusal above protects the figure that would be
+# re-captured at all unless asked. The merge above protects the figure that would be
 # destroyed; the skip protects everything else in the file — `excluded_session_ids` a
 # later scan can no longer see, `rates_source`, `captured_at` itself — none of which the
-# refusal looks at, since a re-capture that finds every priced session still reachable is
+# merge looks at, since a re-capture that finds every priced session still reachable is
 # a legitimate write that can still silently drop metadata. It also makes the cadence
 # cheap: a skipped feature is never scanned.
 #
 # Asserts, in order:
 #   1. a first capture, with no prior planning.json, writes a non-zero cost;
 #   2. re-capturing while the transcript still exists rewrites the file normally —
-#      the guard does not block ordinary re-capture;
-#   3. re-capturing after the transcript is gone REFUSES: exit non-zero, planning.json
-#      byte-identical to before, and the prior figure named on stdout;
-#   4. --force overwrites that same refusal, zeroing the total (the escape hatch works);
-#   5. a session dropped by a session_window edit, transcript still present, does NOT
-#      trip the guard — that is a deliberate manifest change, and it is exactly what
-#      fixing an overlapping-window warning does;
+#      nothing is carried on an ordinary re-capture;
+#   3. re-capturing after the transcript is gone WRITES, carrying the row: exit 0, the
+#      prior figure kept, the row marked `carried_from` with the prior capture's stamp,
+#      and the session named on stdout in one WARN — never a refusal;
+#   4. --force rebuilds from what the scan reaches, zeroing the total (the escape hatch
+#      from the merge works);
+#   5. a session dropped by a session_window edit, transcript still present, is NOT
+#      carried — that is a deliberate manifest change, and it is exactly what fixing an
+#      overlapping-window warning does;
 #   6. a session that is gone from disk but now excluded (claimed by a usage.json as a
-#      runner session) does NOT trip the guard — reclassified, not lost;
+#      runner session) is NOT carried — reclassified, not lost;
 #   7. a prior capture whose total is 0.0 is overwritable without --force — there is no
-#      frozen figure to protect;
+#      figure to carry;
 #   8. a transcript the scan can no longer reach (an orphaned worktree's) is treated as
-#      lost, not as merely deselected;
+#      lost — carried — not as merely deselected;
 #   9. a declared branch that matches no transcript is warned about;
 #  10. a second run over an already-captured feature SKIPS: exit 0, planning.json byte-
 #      identical (captured_at included), and the message names --recapture. It skips
@@ -56,8 +65,9 @@ set -uo pipefail
 #  11. --recapture rewrites it, and --force implies --recapture (forcing a write past
 #      the frozen-cost guard cannot also be silently skipped by the one in front of it);
 #  12. --all walks every feature, capturing the uncaptured and skipping the rest;
-#  13. --all --recapture — the full refresh — does not abort on a refusal: the remaining
-#      features are still captured, and the run exits non-zero at the end;
+#  13. --all --recapture — the full refresh — over a corpus with an expired transcript
+#      carries that feature's row and exits 0: the remaining features are still
+#      captured, and nothing refuses;
 #  14. an empty session_window (from == to, or from > to) is warned about, while an
 #      open-ended one and a real interval written across two zone formats are not;
 #  15. the naming rule, for the LEGACY layout: a session launched in the sibling worktree
@@ -78,9 +88,10 @@ set -uo pipefail
 #      presence of excluded sessions in the repo, or a branch typo would read as an
 #      evidenced $0.00 in every repo that has ever run a batch.
 #
-# Assertions 3-7 were RED until the guard landed in analysis/capture_planning.py; 10-13
-# were RED until the skip did; 14 until check_empty_window did. A run against a script
-# missing any of them is expected to FAIL them, not to crash.
+# Assertions 3-7 were RED until the guard landed in analysis/capture_planning.py, and 3,
+# 8 and 13 RED again until the refusal became the merge; 10-13 were RED until the skip
+# did; 14 until check_empty_window did. A run against a script missing any of them is
+# expected to FAIL them, not to crash.
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP="$(mktemp -d)"
@@ -184,23 +195,24 @@ check "2. re-capture with transcript present is allowed" "[ $rc2 -eq 0 ]"
 check "2b. re-capture with transcript present preserves the total" \
   "python3 -c \"import sys; sys.exit(0 if abs(float('$(total_of "$PLANNING")') - float('$first_total')) < 1e-9 else 1)\""
 
-# ── 3. transcript aged out — the destructive case ─────────────────────────────
+# ── 3. transcript aged out — the case that used to destroy the figure ─────────
 cp "$PLANNING" "$TMP/planning.before.json"
+prior_stamp3="$(python3 -c "import json;print(json.load(open('$TMP/planning.before.json'))['captured_at'])")"
 rm "$PROJECTS/$SESSION_A.jsonl"
 recapture > "$TMP/out3.txt"
 rc3=$?
-check "3. re-capture after the transcript is gone exits non-zero" "[ $rc3 -ne 0 ]"
-check "3b. planning.json is left byte-identical" \
-  "cmp -s '$TMP/planning.before.json' '$PLANNING'"
-check "3c. the refusal names the session it is protecting" \
-  "grep -q '$SESSION_A' '$TMP/out3.txt'"
-check "3d. the refusal names the dollar figure at risk" \
-  "grep -qi 'refus\|would overwrite\|--force' '$TMP/out3.txt'"
+check "3. re-capture after the transcript is gone writes (exit 0), carrying the row" "[ $rc3 -eq 0 ]"
+check "3b. the prior figure survives in the merged record" \
+  "python3 -c \"import sys; sys.exit(0 if abs(float('$(total_of "$PLANNING")') - float('$first_total')) < 1e-9 else 1)\""
+check "3c. the carried row is stamped with the capture that priced it" \
+  "[ \"\$(python3 -c \"import json;print([s.get('carried_from') for s in json.load(open('$PLANNING'))['sessions']])\")\" = \"['$prior_stamp3']\" ]"
+check "3d. one WARN names the session, and nothing refuses" \
+  "grep 'carried' '$TMP/out3.txt' | grep -q '$SESSION_A' && ! grep -qi 'REFUSING' '$TMP/out3.txt'"
 
-# ── 4. --force is the escape hatch ────────────────────────────────────────────
+# ── 4. --force is the escape hatch from the merge ─────────────────────────────
 capture --force > "$TMP/out4.txt"
 rc4=$?
-check "4. --force overwrites the frozen capture" "[ $rc4 -eq 0 ]"
+check "4. --force rebuilds from what the scan reaches" "[ $rc4 -eq 0 ]"
 check "4b. --force actually zeroed the total" \
   "python3 -c \"import sys; sys.exit(0 if float('$(total_of "$PLANNING")') == 0.0 else 1)\""
 
@@ -219,6 +231,8 @@ rc5=$?
 check "5. a window edit dropping a live session is allowed" "[ $rc5 -eq 0 ]"
 check "5b. the narrowed window really did drop a session" \
   "python3 -c \"import sys; sys.exit(0 if float('$(total_of "$PLANNING")') < float('$two_total') else 1)\""
+check "5c. and the deselected session was not carried" \
+  "! grep -q '$SESSION_B' '$PLANNING' && ! grep -q 'carried' '$TMP/out5.txt'"
 
 # ── 6. gone from disk but reclassified as a runner session ────────────────────
 # B's transcript disappears, but a usage.json now claims it — its cost is accounted
@@ -234,6 +248,8 @@ printf '{"plan":"01-x","attempts":[{"session_id":"%s","outcome":"complete","tota
 recapture > "$TMP/out6.txt"
 rc6=$?
 check "6. a vanished session now claimed by a usage.json is allowed" "[ $rc6 -eq 0 ]"
+check "6b. and it is dropped, not carried" \
+  "! grep -q '$SESSION_B' '$PLANNING' && ! grep -q 'carried' '$TMP/out6.txt'"
 rm -rf "$FEATURE_DIR/auto"
 
 # ── 7. nothing to protect when the prior total is zero ────────────────────────
@@ -254,6 +270,8 @@ check "7b. overwriting a zero-cost capture needs no --force" "[ $rc7 -eq 0 ]"
 # cwd is the worktree, so repo_match fails and the session can never be selected from
 # this checkout again. A guard that asks only "does a file with this id exist somewhere"
 # finds it and vouches for it, and the overwrite proceeds to $0.00, exit 0, no --force.
+# Under the merge the same mistake would drop the row instead of carrying it, so the
+# assertion is the same: the figure survives.
 write_manifest
 rm -f "$PROJECTS"/*.jsonl
 write_transcript "$SESSION_A" "2026-07-01T10:00:00.000Z" 5000
@@ -273,9 +291,10 @@ rm -f "$PROJECTS/$SESSION_A.jsonl"
 cp "$PLANNING" "$TMP/planning.before8.json"
 recapture > "$TMP/out8.txt"
 rc8=$?
-check "8b. an unreachable transcript is refused, not silently zeroed" "[ $rc8 -ne 0 ]"
+check "8b. an unreachable transcript is carried, not silently zeroed" \
+  "[ $rc8 -eq 0 ] && grep 'carried' '$TMP/out8.txt' | grep -q '$SESSION_A'"
 check "8c. the priced figure survives" \
-  "cmp -s '$TMP/planning.before8.json' '$PLANNING'"
+  "python3 -c \"import sys; sys.exit(0 if abs(float('$(total_of "$PLANNING")') - float('$reachable_total')) < 1e-9 else 1)\""
 rm -rf "$WT_PROJECTS"
 
 # ── 9. a declared branch that matches no transcript is called out ─────────────
@@ -395,19 +414,21 @@ HOME="$FAKE_HOME" python3 "$AT/analysis/capture_planning.py" --self --all "$SLUG
 rc12e=$?
 check "12e. --all with a slug is rejected rather than half-honoured" "[ $rc12e -ne 0 ]"
 
-# ── 13. the full refresh survives a refusal mid-corpus ────────────────────────
-# --all --recapture over a mature corpus WILL hit the frozen-cost guard — that is the
-# point of the guard. A refusal must not take the rest of the run down with it, or one
-# old feature makes the whole refresh unusable.
+# ── 13. the full refresh over a mature corpus carries, and nothing refuses ────
+# --all --recapture over a mature corpus WILL meet expired transcripts. Each such
+# feature's rows are carried and the run goes on, exit 0: one old feature must not make
+# the whole refresh read as something needing attention.
 rm -f "$PROJECTS/$SESSION_A.jsonl"
 cp "$PLANNING" "$TMP/planning.before13.json"
+before13_total="$(total_of "$TMP/planning.before13.json")"
 cp "$DIR2/planning.json" "$TMP/two.before13.json"
 capture_all --recapture > "$TMP/out13.txt"
 rc13=$?
-check "13. --all --recapture exits non-zero when a feature refuses" "[ $rc13 -ne 0 ]"
-check "13b. the refusing feature's frozen figure survives" \
-  "cmp -s '$TMP/planning.before13.json' '$PLANNING'"
-check "13c. a refusal does not stop the features after it" \
+check "13. --all --recapture exits 0 when a feature's transcript is gone — nothing refuses" \
+  "[ $rc13 -eq 0 ] && ! grep -qi 'REFUSING' '$TMP/out13.txt' && grep -q ', 0 refused' '$TMP/out13.txt'"
+check "13b. that feature's figure survives, its row carried" \
+  "python3 -c \"import sys; sys.exit(0 if abs(float('$(total_of "$PLANNING")') - float('$before13_total')) < 1e-9 else 1)\" && grep -q 'carried_from' '$PLANNING'"
+check "13c. and the features after it are still captured" \
   "! cmp -s '$TMP/two.before13.json' '$DIR2/planning.json'"
 
 # ── 14. an empty session_window is called out ─────────────────────────────────

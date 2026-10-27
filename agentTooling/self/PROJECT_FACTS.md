@@ -14,8 +14,8 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
   `run-batch.sh`, `run-escalation-plan.sh`, `plan-runner-lib.sh`, `plan-runner-roots.sh`,
   `check-plans.sh`, `sync-plans.sh`, `update.sh`, `stamp-timing.sh`, `feature-start.sh`,
   `feature-close.sh`, `feature-capture.sh`, `forge.sh` (the forge adapter `pr.sh`
-  calls: `pr-find`, `pr-open` over `gh api` REST, and `auto-merge`, `reachable` by
-  profile) and `env-profile.sh` (the checkout-layout adapter and the shell's way in to the
+  calls: `pr-find`, `pr-open`, `pr-edit` over `gh api` REST, and `auto-merge`,
+  `reachable` by profile) and `env-profile.sh` (the checkout-layout adapter and the shell's way in to the
   profile detector, sourced: it runs `hooks/env_profile.py` once, the one module that holds
   the rule, which the PreToolUse hook imports in-process. That module and `env-profile.sh`
   are the only places `CLAUDE_CODE_REMOTE` or `AGENTTOOLING_PROFILE` may be read outside

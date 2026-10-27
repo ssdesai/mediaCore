@@ -41,6 +41,17 @@ reports the feature as `annotated` rather than `skipped`, and is how a feature c
 before another feature claimed its coordinator session ever comes to say so.
 `--recapture` rebuilds from transcripts anyway; `--all` walks every feature, skipping any
 whose `session_window.to` is still null — in flight, and `feature-capture.sh`'s to capture.
+
+A rebuild MERGES into the committed record rather than replacing it. Every row this scan
+can reach is re-priced from its transcript; every priced row it cannot reach — the
+previous round's container in a Claude Code cloud feature, an expired transcript on a
+laptop — is kept from the committed `planning.json`, marked `carried_from` with the
+`captured_at` of the capture that originally priced it (a row carried twice keeps its
+first stamp), and one WARN names them. A session deselected on purpose — a narrowed
+`session_window`, a corrected `branches` — is still reachable and is still dropped, and
+one a usage.json has since reclassified as runner cost is dropped too: the merge keeps
+only what cannot be seen. `--force` throws the record away and rebuilds from what this
+scan reaches alone. (`--carry-lost` is the deprecated spelling of the default.)
 `--annotate-frozen` is that refresh on its own, over the whole corpus, printing the slug
 of each record it changed: what `feature-capture.sh` runs after its own capture, so the
 annotation is a step of the capture rather than of a weekly sweep.
@@ -2131,16 +2142,28 @@ def check_unmatched_branches(branches, branches_seen, feature_worktree=""):
 
 
 def check_frozen_cost(output_path, reachable_session_ids, excluded_ids, reachable_agent_ids=()):
-    """Sessions the prior capture priced that this run would silently drop forever.
+    """Sessions and subagents the prior capture priced that this scan cannot reach — the
+    rows the merge below keeps from the committed record (`carry_lost_entries`).
 
-    `planning.json` is a frozen record, and the transcripts it was derived from are on
-    a retention clock. Once they age out, the file is the *only* surviving account of a
-    feature's planning cost — so a re-run that finds nothing does not merely fail to
-    improve the number, it destroys it. That is not hypothetical: one documented cadence
-    run over humanNetworkMap zeroed 11 features at once, $151.58 -> $0.00 on
-    add-component-tests among them, because the cadence in analysis/README.md says to
-    run this per feature and nothing distinguished "no planning happened" from "the
-    evidence expired".
+    `planning.json` is a committed record, and the transcripts it was derived from are
+    on a retention clock — or, in a Claude Code cloud container, gone with the container
+    that captured them. Once they are out of reach, the file is the *only* surviving
+    account of that part of a feature's planning cost — so a re-run that finds nothing
+    and writes what it found does not merely fail to improve the number, it destroys it.
+    That is not hypothetical: one documented cadence run over humanNetworkMap zeroed 11
+    features at once, $151.58 -> $0.00 on add-component-tests among them, because the
+    cadence in analysis/README.md says to run this per feature and nothing distinguished
+    "no planning happened" from "the evidence expired".
+
+    This used to be a guard: a non-empty list refused the write unless `--carry-lost`
+    kept the rows or `--force` discarded them. Keeping them is now the default
+    (`self/features/capture-merges-committed-record/`): the committed record is the
+    baseline every capture merges into, and a merge can never lower the figure to zero,
+    so there is nothing left to refuse over. The refusal was right on a laptop, where
+    every round runs on one machine and an unreachable transcript meant it had aged out
+    or the capture was running from the wrong checkout; in a cloud container it fired
+    at every multi-round close, because each round runs in a new container and the
+    previous round's transcript survives only as the rows this capture committed.
 
     A prior session is treated as lost when both hold:
 
@@ -2159,16 +2182,17 @@ def check_frozen_cost(output_path, reachable_session_ids, excluded_ids, reachabl
     re-zeroed with exit 0 and no `--force`.
 
     `reachable_session_ids` is collected at the point the scan proves it can use a
-    transcript at all, so "recoverable" is by construction "this scan can reach it"
-    rather than a second, looser guess at the same thing. A session deselected by a
-    manifest edit — narrowing a `session_window`, correcting `branches` — stays
-    reachable and the guard stays quiet, which is the case that must not become noisy.
+    transcript at all, so "lost" is by construction "this scan cannot reach it" rather
+    than a second, looser guess at the same thing. A session deselected by a manifest
+    edit — narrowing a `session_window`, correcting `branches` — stays reachable and is
+    dropped, not carried: the merge keeps only what cannot be seen, which is what lets a
+    deliberate deselection still take effect.
 
-    Subagents are guarded the same way: a prior `subagents[]` entry whose transcript this
+    Subagents are listed the same way: a prior `subagents[]` entry whose transcript this
     scan could not reach (`reachable_agent_ids`, collected at the same point of proof as
     the session set) is lost, and is reported as `agent-<id>` so the two kinds read apart.
 
-    Returns (lost_ids, prior_total). An empty list means the write is safe.
+    Returns (lost_ids, prior_total). An empty list means nothing is carried.
     """
     if not output_path.exists():
         return [], 0.0
@@ -2199,11 +2223,22 @@ def check_frozen_cost(output_path, reachable_session_ids, excluded_ids, reachabl
 
 
 def carry_lost_entries(output_path, lost):
-    """The prior capture's rows for the ids `check_frozen_cost` reports lost, each
-    marked `carried_from` with that capture's timestamp — so a re-capture can add what
-    it reaches now (a pin on a feature whose own sessions have expired) without
-    destroying the only surviving account of what it cannot. Returns
-    (captured_at, sessions, subagents, priced)."""
+    """The committed record's rows for the ids `check_frozen_cost` reports lost, each
+    marked `carried_from` with the timestamp of the capture that ORIGINALLY priced it —
+    so a capture adds what it reaches now (the next round's container, a pin on a
+    feature whose own sessions have expired) without destroying the only surviving
+    account of what it cannot.
+
+    A row that already carries `carried_from` keeps it: the stamp is provenance — when
+    the figure was measured — and re-stamping it with each later capture's `captured_at`
+    (what this did before `capture-merges-committed-record`) lost that at the second
+    merge. A row carried for the first time is stamped with the prior record's
+    `captured_at`, the capture that could still reach its transcript.
+
+    Returns (carried_from, sessions, subagents, priced): `carried_from` is the EARLIEST
+    stamp among the carried session and subagent rows — the date the oldest part of the
+    figure was measured, what the record's top-level `carried_from` holds — and None
+    when nothing was carried."""
     prior = json.loads(output_path.read_text())
     stamp = prior.get("captured_at")
     lost_sessions = {i for i in lost if not i.startswith("agent-")}
@@ -2213,7 +2248,8 @@ def carry_lost_entries(output_path, lost):
         entry = dict(entry)
         # Rows written before subagent capture existed carry no agent_id at all.
         entry.setdefault("agent_id", None)
-        entry["carried_from"] = stamp
+        if not entry.get("carried_from"):
+            entry["carried_from"] = stamp
         return entry
 
     sessions = [mark(e) for e in prior.get("sessions") or [] if e.get("session_id") in lost_sessions]
@@ -2223,7 +2259,16 @@ def carry_lost_entries(output_path, lost):
         if (e.get("agent_id") in lost_agents)
         or (not e.get("agent_id") and e.get("session_id") in lost_sessions)
     ]
-    return stamp, sessions, subagents, priced
+    stamps = sorted(
+        e["carried_from"] for e in [*sessions, *subagents] if e.get("carried_from")
+    )
+    return (stamps[0] if stamps else None), sessions, subagents, priced
+
+
+def carried_stamps(entries):
+    """The distinct `carried_from` stamps among `entries`, sorted — what the WARN line
+    names so a reader can see which captures the merged figure chains together."""
+    return sorted({e["carried_from"] for e in entries if e.get("carried_from")})
 
 
 def prior_cross_repo_ids(output_path):
@@ -3088,7 +3133,7 @@ def select_parent(
     return True
 
 
-def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, force, carry_lost=False):
+def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, force):
     """Capture one feature, printing its own result line. Returns one of "captured",
     "annotated", "skipped", "refused" or "conflict" — `main` counts these and picks the
     exit code from them. "annotated" is the frozen-record path below: the record was left
@@ -3816,23 +3861,34 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                 "session to the feature it belongs to, to have it counted"
             )
 
-    lost, prior_total = check_frozen_cost(
+    # The merge. The committed record is the baseline: every row this scan reached is
+    # re-priced above, and every priced row it could not reach — the previous round's
+    # container in the cloud, an expired transcript on a laptop — is kept from the record,
+    # stamped with the capture that originally priced it. A deselected-but-reachable
+    # session and a session a usage.json has since claimed are not in `lost`, so a
+    # manifest correction still takes effect. Only `--force` throws the record away and
+    # rebuilds from what this scan reaches; there is no refusal here any more, because a
+    # merge cannot lower the figure to zero and so has nothing to protect.
+    lost, _prior_total = check_frozen_cost(
         output_path, reachable_session_ids, excluded_ids, reachable_agent_ids
     )
     carried_from = None
-    if lost and carry_lost and not force:
+    if lost and not force:
         carried_from, c_sessions, c_subagents, c_priced = carry_lost_entries(output_path, lost)
         sessions += c_sessions
         subagents += c_subagents
         priced += c_priced
         for entry in c_subagents:
             agent_selected_by[entry["agent_id"]] = entry.get("selected_by", "pinned")
+        for entry in c_sessions:
+            session_selected_by.setdefault(entry["session_id"], entry.get("selected_by", "branch"))
+        stamps = carried_stamps([*c_sessions, *c_subagents])
         warnings.append(
             f"{len(lost)} entr{'y' if len(lost) == 1 else 'ies'} carried forward from the "
-            f"capture of {carried_from}: their transcripts are gone, so the figure is the "
-            f"prior one — {', '.join(lost)}"
+            f"committed planning.json — this scan cannot reach their transcripts, so each "
+            f"keeps the figure of the capture that priced it "
+            f"({', '.join(stamps)}): {', '.join(lost)}. --force rebuilds without them"
         )
-        lost = []
 
     main_cost = sum(
         (p["cost_usd"] for p in priced if not p["is_sidechain"] and p["cost_usd"] is not None),
@@ -3913,27 +3969,11 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
         "rates_source": f"agentTooling/analysis/{HISTORY_FILENAME} checked={RATES_VERIFIED}",
         "warnings": warnings,
     }
+    # The earliest stamp among the carried rows, so the record says on its face how far
+    # back the oldest part of its figure was measured; absent when every row is this
+    # scan's own.
     if carried_from:
         data["carried_from"] = carried_from
-
-    if lost and not force:
-        print(
-            f"{slug}: REFUSING to overwrite planning.json — "
-            f"{len(lost)} priced session(s)/subagent(s) are missing from this scan and their "
-            "transcripts are gone from ~/.claude/projects/, so the frozen figure is "
-            "the only surviving record:"
-        )
-        for session_id in lost:
-            print(f"  {session_id}")
-        print(
-            f"  recorded total ${prior_total:.4f} left untouched. Transcripts expire; "
-            "re-capture a feature only while they still exist. Pass --carry-lost to keep "
-            "these entries and add what this scan reaches (how a pin is added to an old "
-            "feature), or --force to overwrite anyway."
-        )
-        for warning in warnings:
-            print(f"WARN: {warning}")
-        return "refused"
 
     # Three causes for an unmatched zero are indistinguishable from here — a wrong branch
     # name, sessions launched outside this worktree, or aged-out transcripts — so the
@@ -4080,8 +4120,9 @@ def main():
     parser.add_argument(
         "--force",
         action="store_true",
-        help="overwrite planning.json even when doing so would discard a priced "
-        "session whose transcript is gone (see check_frozen_cost)",
+        help="throw the committed planning.json away and rebuild it from what this scan "
+        "reaches alone — dropping the rows it would otherwise carry forward (see "
+        "check_frozen_cost) — and write a $0.00 record where nothing matched",
     )
     parser.add_argument(
         "--list-subagents",
@@ -4120,9 +4161,10 @@ def main():
     parser.add_argument(
         "--carry-lost",
         action="store_true",
-        help="re-capture, keeping the prior entries whose transcripts have expired "
-        "(marked carried_from) and adding what this scan reaches — the way to add a "
-        "subagent pin to a feature whose own sessions are gone. Implies --recapture",
+        help="DEPRECATED, accepted as a no-op alias of the default: every capture now "
+        "merges into the committed planning.json, keeping the prior entries whose "
+        "transcripts it cannot reach (marked carried_from) and adding what this scan "
+        "reaches. Still implies --recapture, as it always did",
     )
     parser.add_argument(
         "--annotate-frozen",
@@ -4234,8 +4276,9 @@ def main():
     # Both corpora: `features_dir` says where to write, but a runner session on a
     # feature's branch may belong to a feature in the other tree.
     both_corpora = all_features_roots()
-    # --force is the stronger ask of the two — it overwrites past the frozen-cost guard —
-    # so it cannot be stopped by the skip that sits in front of that guard.
+    # --force is the stronger ask of the two — it rebuilds past the merge — so it cannot
+    # be stopped by the already-captured skip that sits in front of it. --carry-lost is
+    # the deprecated spelling of the default and keeps implying --recapture.
     recapture = args.recapture or args.force or args.carry_lost
 
     slugs = feature_slugs(features_dir) if args.all_features else [args.slug]
@@ -4269,7 +4312,6 @@ def main():
                 continue
             outcome = capture_feature(
                 slug, features_dir, sessions_dir, both_corpora, recapture, args.force,
-                carry_lost=args.carry_lost,
             )
         except (ValueError, OSError, json.JSONDecodeError) as exc:
             # One unparseable manifest must not end a corpus-wide run — the features

@@ -100,6 +100,21 @@ second feature in this one, needs a container of its own.
   transcript instant, no pin, no routing record — since a container holds one feature
   (`self/features/cloud-branch-window-from`; design §3). Nothing in the child's "Next"
   lines asks for a pin, and the child runs none.
+- **Name each child's model on `create_session`; never inherit the parent's by
+  accident.** The repo's tiering ("Model tiering" below, `AGENT_PLANS.md`) applies to the
+  session itself: the cheapest model that does the job, in the plan-suffix names
+  (`haiku`/`sonnet`/`opus`). A hand-method coordinator whose shape is already decided — a
+  propagation pull, a merge-and-re-close, a doc or script edit — is `sonnet` work; one
+  that needs judgment — a design decision, rework to a conflicting PR's semantics,
+  adversarial reading — is `opus`. The review executor's model is its plan suffix's,
+  whoever coordinates. A parent on a higher tier passes `model` explicitly, so a wave does
+  not inherit that tier by default.
+- **A reclaimed child comes back on `main`.** When an idle child's container is reclaimed,
+  the next message wakes it in a new container cloned on `main`, not on its feature's
+  branch, and it cannot switch there: the hook refuses the switch and says so. The parent
+  does not ask the child to switch; it launches a fresh session on the feature's branch
+  (`create_session` with that branch) and briefs it to continue the feature
+  (`LIFECYCLE.md` → step 2, "A restarted container is off its feature's branch").
 - **The parent is a router.** Its spend is routing overhead: it opens several features and
   belongs to none of them. It is never pinned in a child's manifest, and it builds nothing
   in any child's repo.

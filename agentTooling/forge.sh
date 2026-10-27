@@ -6,23 +6,29 @@ set -uo pipefail
 #   forge.sh pr-find <head>                             the open PR whose head is <head>:
 #                                                       prints its html_url, or nothing
 #   forge.sh pr-open <head> <base> <title> <body-file>  opens one: prints its html_url
+#   forge.sh pr-edit <pr-url> <body-file>               replaces that PR's body with the
+#                                                       file's bytes: prints its html_url
 #   forge.sh auto-merge <pr-url>                        asks the forge to merge that PR
 #                                                       once its checks pass: prints the url
 #   forge.sh reachable                                  whether the forge answers: prints
 #                                                       `reachable <o>/<r>`
 #
 # The one piece of agentTooling that talks to the forge (self/DESIGN-2026-10-05-cloud-
-# execution.md §5). It is called by a repo's `pr.sh` (template-version 6), which keeps its
+# execution.md §5). It is called by a repo's `pr.sh` (template-version 7), which keeps its
 # repo-owned shell — the commit, the push, the "already open" line — and hands the forge
-# part here: `pr-find`, and `pr-open` when that finds nothing; and, on the merge request,
+# part here: `pr-find`, then `pr-open` when that finds nothing and `pr-edit` when it finds
+# the PR a previous round's close opened (a feature is a sequence of rounds and every
+# round's close is the same call, so the body — the review report of the round that
+# closed — is written again each time, never only the first); and, on the merge request,
 # `pr-find` then `auto-merge`. A non-GitHub repo keeps its own forge code in `pr.sh` and
 # never calls this.
 #
 # It is an ADAPTER (design §1): it sources env-profile.sh, and two verbs differ by profile.
-# Find and open share one REST path everywhere:
+# Find, open and edit share one REST path everywhere:
 #
 #   pr-find     GET  /repos/{o}/{r}/pulls?head={o}:{head}&state=open   → .[0].html_url
 #   pr-open     POST /repos/{o}/{r}/pulls  head, base, title, body     → .html_url
+#   pr-edit     PATCH /repos/{o}/{r}/pulls/{n}  body                   → .html_url
 #   auto-merge  local: gh pr merge <url> --auto --merge --delete-branch
 #               cloud: PUT /repos/{o}/{r}/pulls/{n}/ccr/auto_merge  merge_method=merge
 #   reachable   local: gh auth status
@@ -73,6 +79,8 @@ PULL_STATE_OPEN="open"
 # list is empty), and the created PR's url.
 FIND_URL_JQ='.[0].html_url // empty'
 OPEN_URL_JQ='.html_url // empty'
+# pr-edit answers with the PR it edited, read the same way as the one pr-open created.
+EDIT_URL_JQ="$OPEN_URL_JQ"
 # One owner or repository path segment, as GitHub spells them.
 REPO_SEGMENT_RE='^[A-Za-z0-9._-]+$'
 GIT_SUFFIX=".git"
@@ -92,6 +100,7 @@ source "$SCRIPT_DIR/env-profile.sh"
 usage() {
   echo "usage: $FORGE_SCRIPT_NAME pr-find <head>" >&2
   echo "       $FORGE_SCRIPT_NAME pr-open <head> <base> <title> <body-file>" >&2
+  echo "       $FORGE_SCRIPT_NAME pr-edit <pr-url> <body-file>" >&2
   echo "       $FORGE_SCRIPT_NAME auto-merge <pr-url>" >&2
   echo "       $FORGE_SCRIPT_NAME reachable" >&2
   exit "$USAGE_RC"
@@ -131,6 +140,8 @@ case "$VERB" in
     if (( $# != 1 )) || [[ -z "$1" ]]; then usage; fi ;;
   pr-open)
     if (( $# != 4 )) || [[ -z "$1" || -z "$2" || -z "$3" || -z "$4" ]]; then usage; fi ;;
+  pr-edit)
+    if (( $# != 2 )) || [[ -z "$1" || -z "$2" ]]; then usage; fi ;;
   auto-merge)
     if (( $# != 1 )) || [[ -z "$1" ]]; then usage; fi ;;
   reachable)
@@ -176,6 +187,26 @@ case "$VERB" in
       fail "POST $PULLS_ENDPOINT answered with no html_url — treat the PR as not opened, and look on the forge"
     fi
     printf '%s\n' "$OPENED" | head -n 1
+    ;;
+  pr-edit)
+    PR_URL="$1"; BODY_FILE="$2"
+    PR_NUMBER="${PR_URL%/}"
+    PR_NUMBER="${PR_NUMBER##*/}"
+    if [[ ! "$PR_NUMBER" =~ $PR_NUMBER_RE ]]; then
+      fail "$PR_URL does not end in a PR number — nothing was asked of the forge"
+    fi
+    if [[ ! -f "$BODY_FILE" || ! -r "$BODY_FILE" ]]; then
+      fail "no readable body file at $BODY_FILE — nothing was asked of the forge"
+    fi
+    EDIT_ENDPOINT="$PULLS_ENDPOINT/$PR_NUMBER"
+    if ! EDITED="$("$FORGE_CLI" api -X PATCH "$EDIT_ENDPOINT" \
+        -F "body=@$BODY_FILE" --jq "$EDIT_URL_JQ")"; then
+      fail "PATCH $EDIT_ENDPOINT failed — see $FORGE_CLI's message above; the PR body was not changed"
+    fi
+    if [[ -z "$EDITED" ]]; then
+      fail "PATCH $EDIT_ENDPOINT answered with no html_url — treat the body as not refreshed, and look on the forge"
+    fi
+    printf '%s\n' "$EDITED" | head -n 1
     ;;
   auto-merge)
     PR_URL="$1"

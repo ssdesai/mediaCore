@@ -70,6 +70,18 @@ PROFILE_LINE = "Profile: {profile} — where the feature was started (env-profil
 # report.json under the same key, only when the manifest records one.
 GATE_KEY = "gate"
 GATE_LINE = "Gate: {gate} — the base gate at the start (green, or skipped: --no-gate or no gate script)."
+# Rows `planning.json` kept from the committed record because the capture could not reach
+# their transcripts (`capture_planning.carry_lost_entries`, each marked `carried_from`
+# with the capture that originally priced it). Present in report.json and said in one
+# line under the Cost table only when there are any, so a record every row of which the
+# capture re-priced reports byte-identically. The planning figure is then a chain across
+# captures — across containers, in the cloud — rather than one scan's measurement.
+CARRIED_KEY = "carried"
+CARRIED_LINE = (
+    "{rows} planning row{plural} carried from the capture{date_plural} of {dates}: "
+    "the capture could not reach {their} transcript{plural} (an earlier round's container, "
+    "or expired), so the planning figure chains that capture's dollars with this one's."
+)
 
 # Turn-count flags. The first two are model-fit — the plan ran on the wrong model.
 # The third is scope: the model was right, the plan was too big.
@@ -924,6 +936,44 @@ def multi_sidecar_stems(loaded_plans, usage_index):
                 "count": count,
             })
     return stems
+
+
+def compute_carried(planning_data):
+    """`{rows, captured_at[]}` for the session and subagent entries `planning.json` kept
+    from the committed record (each marked `carried_from`), or None when there are none.
+    `rows` counts the entries, not the `priced[]` rows behind them — one session can hold
+    several priced rows, and what the reader needs is how many of the sessions and
+    delegates the figure counts were measured by an earlier capture; `captured_at` is the
+    sorted set of those captures' stamps, which is what says how far back the chain
+    reaches. Read with `.get(…) or []`: every record captured before the merge existed
+    has neither list marked."""
+    entries = [
+        *(planning_data.get("sessions") or []),
+        *(planning_data.get("subagents") or []),
+    ]
+    stamps = sorted({
+        e["carried_from"] for e in entries
+        if isinstance(e, dict) and e.get("carried_from")
+    })
+    rows = sum(1 for e in entries if isinstance(e, dict) and e.get("carried_from"))
+    if not rows:
+        return None
+    return {"rows": rows, "captured_at": stamps}
+
+
+def carried_line(carried):
+    """The one line `report.md` and the run's stdout say about carried rows: how many,
+    and from which capture date(s) — dates alone, since the point is which container's
+    scan measured them, and the full stamps are in `report.json`."""
+    dates = sorted({stamp[:10] for stamp in carried["captured_at"]})
+    rows = carried["rows"]
+    return CARRIED_LINE.format(
+        rows=rows,
+        plural="" if rows == 1 else "s",
+        date_plural="" if len(dates) == 1 else "s",
+        dates=", ".join(dates),
+        their="its" if rows == 1 else "their",
+    )
 
 
 def compute_shared_sessions(planning_data):
@@ -2558,6 +2608,12 @@ def render_report_md(data):
                 f"message served, so nothing is apportioned, and summing these features' "
                 f"totals counts it once per feature."
             )
+    if data.get(CARRIED_KEY):
+        # One line, like the shared-sessions note: the dollars are right, and what the
+        # reader needs to know is that part of the planning row was measured by an
+        # earlier capture whose transcripts this one could not reach.
+        lines.append("")
+        lines.append(carried_line(data[CARRIED_KEY]))
     multi = cost.get("multi_sidecar_stems") or []
     if multi:
         # find_orphan_usage cannot see a same-stem twin — the stem IS in the manifest,
@@ -2918,6 +2974,7 @@ def run_single_feature(repo_dir, features_dir, slug):
     live_models = live_priced_models(planning_data, loaded_plans)
     if live_models:
         warnings.append(live_price_warning(live_models))
+    carried = compute_carried(planning_data)
 
     data = {
         "slug": slug,
@@ -2951,6 +3008,9 @@ def run_single_feature(repo_dir, features_dir, slug):
     gate = manifest.get(GATE_KEY) if isinstance(manifest, dict) else None
     if isinstance(gate, str) and gate:
         data[GATE_KEY] = gate
+    # Only when some row was carried, under the same byte-identical rule.
+    if carried:
+        data[CARRIED_KEY] = carried
 
     # Written only when the body other than `generated_at` has moved, so reading a
     # report never dirties the tree it sits in. Both files are still PRINTED below
@@ -2982,6 +3042,9 @@ def run_single_feature(repo_dir, features_dir, slug):
         f"time {minutes_cell(time['total_s'])} min"
         + (" (partial)" if time["total_is_partial"] else "")
     )
+    # Beside the total it qualifies, before the commit makes the figure permanent.
+    if carried:
+        print(carried_line(carried))
     render_routed_by(features_dir, slug)
     for warning in warnings:
         print(f"WARN: {warning}")

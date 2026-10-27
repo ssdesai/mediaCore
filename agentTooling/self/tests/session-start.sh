@@ -14,7 +14,9 @@ set -uo pipefail
 #   C2. ... then runs the repo's plans/cloud-setup.sh once, and exits 0;
 #   C3. a cloud-setup.sh that fails makes the hook exit with its code, after the
 #       orientation has been printed;
-#   C4. cloud, on main: names `--branch <name>` and that the start cuts it;
+#   C4. cloud, on main: names `--branch <name>` and that the start cuts it, then (C4b) the
+#       restart line — continuing a feature started on another branch, a fresh session on
+#       it is the fix, never push main — also on a detached HEAD (C4c), never on a branch;
 #   C5. cloud, a tracked manifest whose branches[0] is this branch: names the feature and
 #       its close, not a start — and a manifest naming ANOTHER branch, or one that only
 #       mentions this branch outside branches[0], is not this branch's feature;
@@ -105,6 +107,16 @@ git -C "$R" checkout -q "$BASE"
 out="$(hook cloud "$SS")"
 check "C4. on $BASE it names --branch, which the start cuts" \
   'grep -qF "./agentTooling/feature-start.sh <slug> --branch <name>" <<<"$out" && grep -qF "cuts <name> off origin/$BASE" <<<"$out"'
+check "C4b. ... then the restart case: continuing a feature on another branch, a fresh session is the fix, never push $BASE" \
+  'grep -A1 -F "cuts <name> off origin/$BASE" <<<"$out" | tail -n 1 | grep -qF "continuing a feature already started on another branch" && grep -qF "fresh session launched on that branch" <<<"$out" && grep -qF "never commit or push $BASE yourself" <<<"$out"'
+git -C "$R" checkout -q --detach
+out="$(hook cloud "$SS")"
+check "C4c. on a detached HEAD in the cloud the restart line is printed too" \
+  'grep -qF "continuing a feature already started on another branch" <<<"$out"'
+git -C "$R" checkout -q "$ASSIGNED"
+out="$(hook cloud "$SS")"
+check "C4d. on an assigned branch it is not" \
+  '! grep -qF "continuing a feature already started" <<<"$out"'
 
 git -C "$R" checkout -q "$ASSIGNED"
 manifest "$R/plans/features/other-one/README.md" "claude/someone-else"
