@@ -2110,7 +2110,10 @@ def collect_search_targets(stream_path):
     return targets
 
 
-def compute_re_hunting(loaded_plans, warnings, previous):
+def compute_re_hunting(loaded_plans, warnings, previous, streams_carried=False):
+    # `streams_carried`: planning.json holds rows carried from an earlier capture, so this
+    # scan runs in a later container than part of the feature — the streams the plans of
+    # that container wrote are gone by design, and `carried_line` already says so once.
     plans_with_stream = []
     skipped = []
     for stem, _, usage_path in loaded_plans:
@@ -2123,7 +2126,7 @@ def compute_re_hunting(loaded_plans, warnings, previous):
     if not plans_with_stream:
         return carried_section(previous, "re_hunting")
 
-    if skipped:
+    if skipped and not streams_carried:
         warnings.append(
             "re-hunting computed without streams for: " + ", ".join(skipped)
         )
@@ -2210,7 +2213,7 @@ def shared_substring_len(text_a, text_b):
     return 0
 
 
-def compute_edit_overlap(loaded_plans, repo_dir, warnings, previous):
+def compute_edit_overlap(loaded_plans, repo_dir, warnings, previous, streams_carried=False):
     ordered = sorted(loaded_plans, key=lambda p: numeric_prefix(p[0]))
 
     plans_with_stream = []
@@ -2225,7 +2228,7 @@ def compute_edit_overlap(loaded_plans, repo_dir, warnings, previous):
     if not plans_with_stream:
         return carried_section(previous, "edit_overlap")
 
-    if skipped:
+    if skipped and not streams_carried:
         warnings.append(
             "edit overlap computed without streams for: " + ", ".join(skipped)
         )
@@ -2967,14 +2970,16 @@ def run_single_feature(repo_dir, features_dir, slug):
     # Read before either record is rewritten below: it is what the streams said when
     # they existed, and the only source of it once the worktree has been pruned.
     previous = previous_report(feature_dir)
+    carried = compute_carried(planning_data)
     plan_length_vs_loc = compute_plan_length_vs_loc(loaded_plans, warnings, previous)
-    re_hunting = compute_re_hunting(loaded_plans, warnings, previous)
+    re_hunting = compute_re_hunting(loaded_plans, warnings, previous, bool(carried))
     plan_drift = compute_plan_drift(loaded_plans, warnings)
-    edit_overlap = compute_edit_overlap(loaded_plans, repo_dir, warnings, previous)
+    edit_overlap = compute_edit_overlap(
+        loaded_plans, repo_dir, warnings, previous, bool(carried)
+    )
     live_models = live_priced_models(planning_data, loaded_plans)
     if live_models:
         warnings.append(live_price_warning(live_models))
-    carried = compute_carried(planning_data)
 
     data = {
         "slug": slug,

@@ -2219,6 +2219,30 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `-> FETCH_HEAD` line on stderr only (U5h), and no `update-pull.*` left (U5i). Depends on `git subtree`,
   `jq` (`manifest_branch`), `plan-runner-roots.sh`'s `started_features_on`, and git
   resolving a `<scheme>://` URL to `git-remote-<scheme>` on `PATH`. No model, no network.
+- `subtree-chain.sh` — `update.sh`'s trailer-chain check and re-anchor
+  (`../features/subtree-pull-keeps-base/`): a forge squash-merge of a propagation PR keeps
+  the subtree trailers only as text in its body, and a body without them leaves `git
+  subtree`'s base behind the vendored tree. A bare upstream holding the real `update.sh`, a
+  stub `sync-plans.sh` and a one-line doc, and a consumer that `git subtree add`s it (local
+  layout, a manifest per pull branch). Asserts: after a title-only squash-merge onto main, a
+  plain `git subtree pull --squash` of an upstream that changed the same line again
+  conflicts (C1); resolved the old way (`--theirs`, commit, squash-merged by title), the
+  tree is upstream's and `--check` says `chain  broken`, exits 1 and moves nothing (C2);
+  `update.sh` then says `broken`, prints an `anchor` line, pulls with exit 0, lands the line
+  and prints the upstream head on `split` — the anchor a no-change merge whose second parent
+  is a parentless squash commit ending in a `git-subtree-dir` trailer block, the merge's own
+  message carrying no `git-subtree-` line (C3); `--check` is then `intact` (C4); landed by
+  merge commit, the next pull needs no anchor and adds one merge (C5); a squash-merge that
+  kept the bodies is `fragile`, exit 0 (C6); a committed local file under the prefix is
+  `edited`, exit 0, and nothing is re-anchored (C7); local edits against upstream changes —
+  the doc's line, and a file upstream deletes (modify/delete) — exit 1 with `MERGE_HEAD`
+  set, a `conflict` line naming both files and a `resolve` line naming `git read-tree
+  --prefix=… -u MERGE_HEAD`, and resolved with exactly the commands it names the deleted
+  file is gone, `--check` is `intact` and the next pull clean (C8); `--base` outside
+  upstream's history is refused with `HEAD` unmoved, and `--check --base` is a usage error
+  (C9); a PR that re-anchored, squash-merged with GitHub's body (commits oldest first), is
+  `fragile` and the next pull clean with no anchor (C10). Depends on `git subtree`. No model, no
+  network.
 - `claimant-case.sh` — one feature named in two repo-name spellings is one claimant
   (`../features/cloud-pull-fixes/`, defect C: a cloud clone's lowercase origin named
   `musicmap/<slug>` what laptop records call `musicMap/<slug>`). `claims-ledger.sh`'s
@@ -2514,6 +2538,14 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   quoting bug in a path nobody has yet is caught before it bills a session to the wrong
   branch. Depends on `shell_single_quote` and `applescript_escape` by name — the text
   reads in `feature-lifecycle.sh` grep for exactly those call sites.
+- `report-carried-streams.sh` — `report-rounds.sh`'s scaffolding (copies of
+  `analysis/{pricing,litellm_prices,roots,transcript,routing,report}.py`, a synthesized
+  feature of two plan sidecars, one with a `.stream.jsonl` and one without). Asserts
+  `report.py`'s "re-hunting / edit overlap computed without streams" WARNs: silent when
+  `planning.json` holds a row marked `carried_from` (the missing streams belong to an
+  earlier container, and the one `carried` line already says so), and still naming the
+  plan with no stream when no row is carried. Depends on `compute_carried`'s reading of
+  `planning.json`'s `sessions[]`/`subagents[]` `carried_from`.
 - `report-rounds.sh` — `report-footnotes.sh`'s scaffolding with one input added: a
   hand-written `timing.jsonl`. Same throwaway checkout
   (`analysis/{pricing,roots,transcript,routing,report}.py`), same synthesized

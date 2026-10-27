@@ -58,6 +58,12 @@ Two, and the number of features decides which.
   consuming repo, a delegate per pull, each pinned in its own repo (`LIFECYCLE.md` →
   "Propagate"). A pull run from a Claude Code cloud session needs `ssdesai/agentTooling`
   attached to that session (`add_repo`) before `update.sh` can fetch it (step 2 there).
+  A pull that conflicts with no local edits is resolved by taking upstream's whole tree
+  (`git rm -r` the prefix, `git read-tree --prefix=… -u MERGE_HEAD`) and committing the
+  merge in progress, and a `broken` trailer chain is re-anchored by `update.sh` itself — a brief
+  says both, and that the PR is merged with a merge commit (step 2 → "The trailer chain").
+  The pull that first brings the chain check in still runs the older `update.sh`, so in an
+  already-broken repo that one pull may conflict and is resolved the same way.
   When the coordinator runs in a Claude Code cloud container and the features are in
   other repos, the delegates are **cloud sessions**, not subagents — see "Cloud sessions"
   below.
