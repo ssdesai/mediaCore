@@ -1,39 +1,21 @@
-# <Feature title>
+# Pull agentTooling PRs 98–99
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+Propagates agentTooling `main` (#98 capture-record-wording-and-carried-rows, #99
+subtree-pull-keeps-base) into the vendored `agentTooling/` subtree; the pull recorded
+`git-subtree-split` `00d1ff8b51f61712a7d88bcbc11cedaa6dbf2a08`. Built by hand by the
+cloud coordinator.
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Reads the propagation diff against the upstream contracts. |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- The subtree pull did not conflict this time: the old vendored `update.sh` merged
+  cleanly, so no `git rm`/`read-tree` resolution was needed. `update.sh --check` on the
+  newly vendored copy reports the chain `intact`.
 
 ## Machine-readable
 
