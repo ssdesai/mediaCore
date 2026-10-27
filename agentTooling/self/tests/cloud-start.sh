@@ -15,7 +15,9 @@ set -uo pipefail
 #
 # Asserts, in order:
 #   B1. on the base with no --branch the start refuses, naming --branch, and creates
-#       nothing: no branch, no feature directory, no commit;
+#       nothing: no branch, no feature directory, no commit; the refusal names the
+#       conventional branch, `--branch claude/<slug>`;
+#   B2. the same on a detached HEAD, which the refusal calls that and not "the base";
 #   A1. on an assigned branch (`claude/…`, at origin/main) the start uses the primary
 #       itself — no .worktrees/ — stays on that branch, prints the `profile` line naming
 #       AGENTTOOLING_PROFILE, runs the hook in the primary, commits `S: start` there, and
@@ -45,10 +47,14 @@ set -uo pipefail
 #       tree survives the re-run, which resumes at the hook, commits `S: start`, and does
 #       not sweep the fix into that commit;
 #   N1. --branch from the base: the start checks out that new branch off origin/main, and
-#       the session — launched on main — is a router: a routing record is written;
+#       the session — launched on main — is still the feature's coordinator
+#       (self/features/cloud-branch-window-from): no routing record, no pin and no advice
+#       to pin, `from` at its first instant though that line is on main, and a capture
+#       selects it by branch and bills it whole, nothing unclaimed;
 #   N2. ... and a refused --branch start re-run from the branch it made is still the
-#       router (the lock remembers where it was launched);
+#       coordinator, from its first instant;
 #   N3. an existing branch that is not checked out is refused as --branch;
+#   N4. --branch from a detached HEAD (gitBranch "HEAD"): the coordinator, as N1;
 #   U1. a branch strictly behind origin/main with no commits of its own is fast-forwarded,
 #       the run exits 3 with the rerun command and starts nothing; the rerun starts;
 #   O1. --open under the cloud runs open-session.sh, which says the session is already in
@@ -72,6 +78,9 @@ WORKTREES_DIR=".worktrees"
 MODEL="claude-sonnet-5"
 LOCK_NAME="feature-start.lock"
 UPDATED_RC=3
+# The conventional cloud branch prefix the B refusals name (feature-start.sh's
+# CLOUD_BRANCH_PREFIX).
+CLOUD_BRANCH_PREFIX="claude/"
 # How far before the start the coordinator's transcript begins, and the sub-second part
 # its first instant carries, which the window's `from` must keep (the #82 ruling).
 COORDINATOR_HEAD_SECONDS=7200
@@ -152,6 +161,18 @@ transcript() {
   session_line "$2" "$1" "$3" "msg-$2-1" "$MODEL" "$FIRST_INSTANT" 100 3000 0 0 0 > "$dir/$2.jsonl"
   session_line "$2" "$1" "$3" "msg-$2-2" "$MODEL" "$(iso_ago 60).000Z" 100 3000 0 0 0 >> "$dir/$2.jsonl"
 }
+# moved_transcript <checkout> <session> <launch-branch> <feature-branch> — a session
+# launched on <launch-branch> (the base, or "HEAD" when detached) that ran the start with
+# --branch: its first line, COORDINATOR_HEAD_SECONDS before now, carries the launch
+# branch, and its later line the feature's.
+moved_transcript() {
+  local dir first
+  dir="$(project_dir "$1")"; mkdir -p "$dir"
+  first="$(iso_ago "$COORDINATOR_HEAD_SECONDS")"
+  FIRST_INSTANT="$first$FIRST_INSTANT_FRACTION""Z"
+  session_line "$2" "$1" "$3" "msg-$2-1" "$MODEL" "$FIRST_INSTANT" 100 3000 0 0 0 > "$dir/$2.jsonl"
+  session_line "$2" "$1" "$4" "msg-$2-2" "$MODEL" "$(iso_ago 60).000Z" 100 3000 0 0 0 >> "$dir/$2.jsonl"
+}
 # cstart <checkout> [session-id] -- <args> — that checkout's start under the cloud profile.
 cstart() {
   local at="$1" sid="$2"; shift 2
@@ -173,6 +194,18 @@ check "B1a. on $BASE with no --branch the start refuses (got $rc)" '[[ $rc -eq 1
 check "B1b. ... naming the --branch flag" 'grep -qF -- "--branch" <<<"$out"'
 check "B1c. ... and creates nothing: no branch, no feature directory, no commit" \
   '[[ "$(heads "$AT")" == "$heads_before" && "$(git -C "$AT" rev-parse HEAD)" == "$head_before" && ! -e "$AT/self/features/cs-base" ]]'
+check "B1d. ... naming the conventional branch, --branch ${CLOUD_BRANCH_PREFIX}cs-base" 'grep -qF -- "--branch ${CLOUD_BRANCH_PREFIX}cs-base" <<<"$out"'
+
+# ── B2. on a detached HEAD, no --branch ───────────────────────────────────────
+AT="$(container b2)"
+git -C "$AT" checkout -q --detach "origin/$BASE"
+heads_before="$(heads "$AT")"; head_before="$(git -C "$AT" rev-parse HEAD)"
+out="$(cstart "$AT" "" cs-det --no-gate)"; rc=$?
+check "B2a. on a detached HEAD with no --branch the start refuses, saying so (got $rc)" \
+  '[[ $rc -eq 1 ]] && grep -qF "a detached HEAD" <<<"$out" && ! grep -qF "the base" <<<"$out"'
+check "B2b. ... naming the conventional branch, --branch ${CLOUD_BRANCH_PREFIX}cs-det" 'grep -qF -- "--branch ${CLOUD_BRANCH_PREFIX}cs-det" <<<"$out"'
+check "B2c. ... and creates nothing: no branch, no feature directory, no commit" \
+  '[[ "$(heads "$AT")" == "$heads_before" && "$(git -C "$AT" rev-parse HEAD)" == "$head_before" && ! -e "$AT/self/features/cs-det" ]]'
 
 # ── A. a start on the assigned branch: the session is the coordinator ─────────
 AT="$(container a1)"
@@ -298,23 +331,45 @@ check "R3d. ... the hand fix survives, uncommitted, outside the start commit" \
   '[[ "$(cat "$AT/hand-fix.txt" 2>/dev/null)" == "the hand fix" ]] && ! git -C "$AT" show --name-only --format= HEAD | grep -qF "hand-fix.txt"'
 check "R3e. ... and the lock is gone" '[[ ! -e "$AT/.git/$LOCK_NAME" ]]'
 
-# ── N. --branch from the base: a router ───────────────────────────────────────
+# ── N. --branch from the base: still the coordinator ──────────────────────────
+# self/features/cloud-branch-window-from: a container holds one feature, so the session
+# that runs the start there is that feature's coordinator whatever it was launched on.
+# Its transcript opens on the base (or a detached HEAD, "HEAD") and moves to the branch the
+# start cut; the capture must bill it whole, the stretch before the branch included, with
+# no pin and no set-window-from.
 AT="$(container n1)"
 RSID="d0d0d0d0-0000-0000-0000-000000000001"
-out="$(cstart "$AT" "$RSID" cs-named --branch claude/cs-named-n1 --no-gate)"; rc=$?
+NBR="claude/cs-named-n1"
+moved_transcript "$AT" "$RSID" "$BASE" "$NBR"
+out="$(cstart "$AT" "$RSID" cs-named --branch "$NBR" --no-gate)"; rc=$?
 NFD="$AT/self/features/cs-named"
 check "N1a. --branch from $BASE starts, on the new branch off origin/$BASE (got $rc)" \
-  '[[ $rc -eq 0 && "$(git -C "$AT" branch --show-current)" == claude/cs-named-n1 && "$(git -C "$AT" rev-parse HEAD~1)" == "$(git -C "$AT" rev-parse "origin/$BASE")" ]]'
-check "N1b. ... branches [claude/cs-named-n1] in the fence" \
-  '[[ "$(fence "$NFD/README.md" "d[\"branches\"][0]")" == claude/cs-named-n1 ]]'
-check "N1c. ... and the session, launched on $BASE, is a router: a routing record, no pin" \
-  '[[ -f "$NFD/routing.json" && "$(fence "$NFD/README.md" "d[\"sessions\"]")" == "[]" ]]'
+  '[[ $rc -eq 0 && "$(git -C "$AT" branch --show-current)" == "$NBR" && "$(git -C "$AT" rev-parse HEAD~1)" == "$(git -C "$AT" rev-parse "origin/$BASE")" ]]'
+check "N1b. ... branches [$NBR] in the fence" \
+  '[[ "$(fence "$NFD/README.md" "d[\"branches\"][0]")" == "$NBR" ]]'
+check "N1c. ... and the session, launched on $BASE, is the coordinator: no routing record, no pin, no advice to pin" \
+  '[[ ! -e "$NFD/routing.json" && "$(fence "$NFD/README.md" "d[\"sessions\"]")" == "[]" ]] && grep -qi "coordinator" <<<"$out" && ! grep -qF "pin-session" <<<"$out"'
+check "N1d. ... its window opens at its first instant, on $BASE before the branch existed ($FIRST_INSTANT; got $(fence "$NFD/README.md" "d[\"session_window\"][\"from\"]"))" \
+  '[[ "$(fence "$NFD/README.md" "d[\"session_window\"][\"from\"]")" == "$FIRST_INSTANT" ]]'
+outc="$(cd "$TMP" && HOME="$FAKE_HOME" python3 "$AT/analysis/capture_planning.py" --self cs-named 2>&1)"; rcc=$?
+check "N1e. a capture selects it by branch and bills it whole: nothing unclaimed, the head included (got $rcc)" \
+  '[[ $rcc -eq 0 && "$(pj "$NFD/planning.json" "\",\".join(s.get(\"selected_by\", \"\") for s in d[\"sessions\"] if s[\"session_id\"] == \"$RSID\")")" == branch && "$(pj "$NFD/planning.json" "d.get(\"unclaimed_usd\") or 0")" == 0 ]]'
 
 AT="$(container n2)"
-out="$(HOOK_STUB_RC=1 cstart "$AT" "$RSID" cs-later --branch claude/cs-later-n2 --no-gate)"; rc=$?
-out="$(cstart "$AT" "$RSID" cs-later --branch claude/cs-later-n2 --no-gate)"; rc2=$?
-check "N2. a refused --branch start re-run from its branch is still the router (got $rc then $rc2)" \
-  '[[ $rc -eq 1 && $rc2 -eq 0 && -f "$AT/self/features/cs-later/routing.json" ]]'
+RSID2="d0d0d0d0-0000-0000-0000-000000000002"
+moved_transcript "$AT" "$RSID2" "$BASE" "claude/cs-later-n2"
+out="$(HOOK_STUB_RC=1 cstart "$AT" "$RSID2" cs-later --branch claude/cs-later-n2 --no-gate)"; rc=$?
+out="$(cstart "$AT" "$RSID2" cs-later --branch claude/cs-later-n2 --no-gate)"; rc2=$?
+check "N2. a refused --branch start re-run from its branch is still the coordinator, from its first instant (got $rc then $rc2)" \
+  '[[ $rc -eq 1 && $rc2 -eq 0 && ! -e "$AT/self/features/cs-later/routing.json" && "$(fence "$AT/self/features/cs-later/README.md" "d[\"session_window\"][\"from\"]")" == "$FIRST_INSTANT" && "$(fence "$AT/self/features/cs-later/README.md" "d[\"sessions\"]")" == "[]" ]] && ! grep -qF "pin-session" <<<"$out"'
+
+AT="$(container n4)"
+git -C "$AT" checkout -q --detach
+RSID4="d0d0d0d0-0000-0000-0000-000000000004"
+moved_transcript "$AT" "$RSID4" "HEAD" "claude/cs-detached-n4"
+out="$(cstart "$AT" "$RSID4" cs-detached --branch claude/cs-detached-n4 --no-gate)"; rc=$?
+check "N4. --branch from a detached HEAD: the coordinator, from its first instant, no routing record (got $rc)" \
+  '[[ $rc -eq 0 && ! -e "$AT/self/features/cs-detached/routing.json" && "$(fence "$AT/self/features/cs-detached/README.md" "d[\"session_window\"][\"from\"]")" == "$FIRST_INSTANT" && "$(fence "$AT/self/features/cs-detached/README.md" "d[\"sessions\"]")" == "[]" ]] && ! grep -qF "pin-session" <<<"$out"'
 
 AT="$(container n3)"
 git -C "$AT" branch claude/already-there

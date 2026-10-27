@@ -156,6 +156,16 @@ close.
 
 Each folder has a `README.md` describing its contents.
 
+### Generated READMEs
+
+A README whose header says it is generated — written by a sync and overwritten on every
+pull, as a consuming repo's `plans/README.md` is from `agentTooling/templates/` — is
+**never edited**, not even to list a file you just added to its folder: the next sync
+drops the edit. Its folder's repo-specific contents, exceptions and elaborations go in the
+repo-owned file its header names (for `plans/`, `PROJECT_FACTS.md`), and that file is the
+one the rules below have you keep current. Nor is the template edited to carry a
+repo-specific entry: it ships to every repo that vendors it.
+
 ### Navigating the codebase
 
 **REQUIRED sequence — no exceptions:**
@@ -181,7 +191,7 @@ After completing any set of changes, you MUST do the following before considerin
 
 1. List every folder that was touched (files added, removed, or significantly modified).
 2. For each touched folder, read its `README.md` and verify it still accurately describes the folder's contents.
-3. Update any README that is out of date — including field lists, file descriptions, and cross-references to other modules.
+3. Update any README that is out of date — including field lists, file descriptions, and cross-references to other modules. A generated README is updated through the repo-owned file it names ("Generated READMEs" above), never directly.
 4. Also check the parent folder's README if the change affects what that parent describes about the subfolder.
 
 Do not skip this step even for small changes. A new file, a renamed field, or a changed function signature can make a README misleading.

@@ -31,7 +31,14 @@ set -uo pipefail
 #   4. `git subtree pull --prefix=<this dir, relative to the toplevel> <remote> <branch>
 #      --squash`, run from the toplevel, then prints the upstream sha the squash commit
 #      records (`git-subtree-split:`) on a `split` line — what the feature's manifest
-#      prose names as the sha pulled;
+#      prose names as the sha pulled. When the pull fails, its stderr reads as a failed
+#      authentication (AUTH_FAILURE_RE), and env-profile.sh beside this script says the
+#      profile is `cloud`, one `remedy` line follows git's own error: a Claude Code cloud
+#      session's git proxy serves only the repositories attached to the session, so the
+#      remote's GitHub repo must be attached with the `add_repo` tool (claude-code-remote
+#      MCP, read access) and this script run again
+#      (self/features/propagate-agenttooling-access/). No env-profile.sh beside it, or
+#      the `local` profile, and nothing is added;
 #   5. runs the freshly pulled copy of sync-plans.sh, so the stubs and repo-owned
 #      scripts are checked against whatever the pull just changed, and exits with its
 #      status.
@@ -65,9 +72,36 @@ PULL_SLUG_PATTERN="pull-agenttooling-pr<N>"
 SUBTREE_DIR_TRAILER="git-subtree-dir:"
 SUBTREE_SPLIT_TRAILER="git-subtree-split:"
 
+# The cloud remedy (step 4): the profile detector beside this script, and git's ways of
+# saying an https fetch could not authenticate — a cloud container's proxy answers a repo
+# not attached to the session with the first (seen 2026-10-26, three consuming repos).
+PROFILE_LIB="env-profile.sh"
+AUTH_FAILURE_RE="could not read Username|Authentication failed|returned error: 40[13]|Repository not found"
+# owner/repo out of a GitHub remote URL (https or ssh), `.git` dropped
+GITHUB_REPO_RE='github\.com[/:]([^/]+)/([^/]+)$'
+GIT_SUFFIX=".git"
+# The tool a cloud session attaches a repository with, and the access a pull needs
+ATTACH_TOOL="add_repo"
+ATTACH_SERVER="claude-code-remote MCP"
+ATTACH_ACCESS="read"
+
 usage() {
   echo "usage: update.sh [--remote <url>] [--branch <name>]" >&2
   exit "$USAGE_RC"
+}
+
+# cloud_auth_remedy <script dir> <remote> — the one `remedy` line of step 4, printed to
+# stderr only when env-profile.sh beside this script exists and decides `cloud`
+cloud_auth_remedy() {
+  local dir="$1" remote="$2" repo
+  [[ -f "$dir/$PROFILE_LIB" ]] || return 0
+  source "$dir/$PROFILE_LIB"
+  profile_is_cloud || return 0
+  repo="$remote"
+  if [[ "${remote%"$GIT_SUFFIX"}" =~ $GITHUB_REPO_RE ]]; then
+    repo="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+  fi
+  echo "  remedy  the fetch from $remote could not authenticate, and this is a Claude Code cloud session, whose git proxy serves only the repositories attached to the session: attach $repo with the $ATTACH_TOOL tool ($ATTACH_SERVER, $ATTACH_ACCESS access), then run this script again (README.md -> \"Updating\")" >&2
 }
 
 main() {
@@ -138,7 +172,19 @@ main() {
   fi
 
   echo "  pull   $prefix <- $remote $branch  (on $current, feature $feature)"
-  git -C "$toplevel" subtree pull --prefix="$prefix" "$remote" "$branch" --squash || exit "$REFUSED_RC"
+  # git's stderr is shown as it comes and kept, so a failure can be read afterwards
+  local errlog pull_rc
+  errlog="$(mktemp "${TMPDIR:-/tmp}/update-pull.XXXXXX")"
+  { git -C "$toplevel" subtree pull --prefix="$prefix" "$remote" "$branch" --squash 2>&1 1>&3 3>&- \
+      | tee "$errlog" >&2; pull_rc=${PIPESTATUS[0]}; } 3>&1
+  if (( pull_rc != 0 )); then
+    if grep -qE "$AUTH_FAILURE_RE" "$errlog"; then
+      cloud_auth_remedy "$script_dir" "$remote"
+    fi
+    rm -f "$errlog"
+    exit "$REFUSED_RC"
+  fi
+  rm -f "$errlog"
 
   local split
   split="$(git -C "$toplevel" log -n 1 --format=%B --grep="^$SUBTREE_DIR_TRAILER $prefix\$" HEAD \

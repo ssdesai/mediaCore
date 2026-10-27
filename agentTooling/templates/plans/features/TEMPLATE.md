@@ -114,7 +114,8 @@ go wrong quietly:
   `plans/features/<slug>/routing.json` rather than billed to any feature
   (`agentTooling/LIFECYCLE.md` → step 2). The coordinator belongs inside the worktree,
   where rule 1 claims it by branch with no pin at all — and a session that starts the
-  feature already ON its branch, as every Claude Code cloud session does, is that
+  feature already ON its branch, and any session that starts one in a Claude Code cloud
+  container (on its assigned branch, or cutting it with `--branch`), is that
   coordinator: no routing record, no pin, and `from` set to its own first instant. What is left for this field is the
   case it was written for — a session that genuinely worked on this feature from
   somewhere else, typically one that began on `main` before the branch existed; widening

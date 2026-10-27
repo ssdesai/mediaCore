@@ -21,9 +21,24 @@ set -uo pipefail
 #       upstream file lands, the `pull` line names the slug, the `split` line is the
 #       upstream head, the stub sync runs, the branch is unchanged and no branch is made.
 #
-# Builds a bare upstream holding the real update.sh and plan-runner-roots.sh beside a stub
-# sync-plans.sh, and a consumer that `git subtree add`s it. No worktree: the cloud
-# container is the checkout. No model, no network.
+# And the cloud remedy for a fetch the session's git proxy will not serve
+# (self/features/propagate-agenttooling-access/), from the same branch:
+#
+#   U6. the cloud profile, a fetch failing as an unattached repo does: exit 1, git's own
+#       error shown, one `remedy` line naming the owner/repo to attach and `add_repo`;
+#   U7. the same failure under the local profile: exit 1, no `remedy` line;
+#   U8. the cloud profile, a failure that is not about authentication: no `remedy` line.
+#
+# U5 also runs with stdout and stderr apart and a TMPDIR of its own: its `pull`, `split`
+# and sync lines are on stdout and git's fetch line on stderr only (U5h — the tee that
+# keeps the pull's stderr must not swap the two), and update.sh's temporary stderr copy is
+# gone afterwards (U5i); U6 checks the same on the failure path (U6e).
+#
+# Builds a bare upstream holding the real update.sh, plan-runner-roots.sh, env-profile.sh
+# and hooks/env_profile.py beside a stub sync-plans.sh, and a consumer that
+# `git subtree add`s it. No worktree: the cloud container is the checkout. The failing
+# fetch is a remote helper on PATH (`git-remote-<scheme>`) that prints the line a cloud
+# proxy answers with and exits non-zero. No model, no network.
 
 AT="$(cd "$(dirname "$0")/../.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/update-cloud-branch.XXXXXX")"
@@ -47,6 +62,19 @@ UPSTREAM_BRANCH="main"
 # What the stub sync-plans.sh prints, so U5 can see the pulled copy ran
 SYNC_STUB_LINE="sync-plans stub ran"
 REFUSED_RC=1
+
+# U6–U8: a fetch that fails as an unattached repo's does in a cloud container
+AUTH_SCHEME="testauth"
+AUTH_REPO="ssdesai/agentTooling"
+AUTH_REMOTE="$AUTH_SCHEME://github.com/$AUTH_REPO.git"
+AUTH_ERROR="fatal: could not read Username for 'https://github.com': terminal prompts disabled"
+HELPER_FAIL_RC=128
+REMEDY_PREFIX="  remedy  "
+ATTACH_TOOL="add_repo"
+# update.sh's temporary copy of the pull's stderr (U5i, U6e), and the line git fetch
+# writes to stderr on a successful pull (U5h)
+ERRLOG_GLOB="update-pull.*"
+FETCH_LINE="-> FETCH_HEAD"
 
 fails=0
 ok()   { echo "  ok    $1"; }
@@ -77,6 +105,9 @@ git clone -q "$UPSTREAM" "$WORK" 2>/dev/null
 git -C "$WORK" symbolic-ref HEAD "refs/heads/$UPSTREAM_BRANCH"
 cp "$AT/update.sh" "$WORK/update.sh" 2>/dev/null || true
 cp "$AT/plan-runner-roots.sh" "$WORK/plan-runner-roots.sh" 2>/dev/null || true
+cp "$AT/env-profile.sh" "$WORK/env-profile.sh" 2>/dev/null || true
+mkdir -p "$WORK/hooks"
+cp "$AT/hooks/env_profile.py" "$WORK/hooks/env_profile.py" 2>/dev/null || true
 printf '#!/usr/bin/env bash\necho "%s"\nexit 0\n' "$SYNC_STUB_LINE" > "$WORK/sync-plans.sh"
 chmod +x "$WORK/update.sh" "$WORK/sync-plans.sh" 2>/dev/null || true
 gitq -C "$WORK" add -A && gitq -C "$WORK" commit -q -m "upstream: update.sh, roots and a stub sync"
@@ -144,7 +175,14 @@ manifest "$CONSUMER" "$SLUG" "$CLOUD_BRANCH"
 gitq -C "$CONSUMER" add -A && gitq -C "$CONSUMER" commit -q -m "$SLUG: start"
 BRANCHES_BEFORE="$(git -C "$CONSUMER" for-each-ref --format='%(refname)' refs/heads | sort)"
 HEAD_BEFORE="$(git -C "$CONSUMER" rev-parse HEAD)"
-out="$(run_update)"; rc=$?
+# Run with stdout and stderr apart (U5h) and a TMPDIR of its own (U5i)
+U5_TMPDIR="$TMP/u5-tmpdir"
+mkdir -p "$U5_TMPDIR"
+(cd "$TMP" && TMPDIR="$U5_TMPDIR" "$CONSUMER/$PREFIX/update.sh" --remote "$UPSTREAM" \
+  > "$TMP/u5.stdout" 2> "$TMP/u5.stderr"); rc=$?
+out="$(cat "$TMP/u5.stdout" "$TMP/u5.stderr")"
+u5_stdout="$(cat "$TMP/u5.stdout")"
+u5_stderr="$(cat "$TMP/u5.stderr")"
 check "U5a. on $CLOUD_BRANCH, started as $SLUG: exit 0 (got $rc: $out)" '[[ $rc -eq 0 ]]'
 check "U5b. MARKER.txt pulled" '[[ -e "$CONSUMER/$PREFIX/MARKER.txt" ]]'
 check "U5c. the pull line names the branch and the slug" \
@@ -155,6 +193,42 @@ check "U5f. still on $CLOUD_BRANCH, which moved; main unmoved" \
   '[[ "$(git -C "$CONSUMER" branch --show-current)" == "$CLOUD_BRANCH" && "$(git -C "$CONSUMER" rev-parse HEAD)" != "$HEAD_BEFORE" && "$(git -C "$CONSUMER" rev-parse main)" == "$MAIN_BEFORE" ]]'
 check "U5g. no branch was created" \
   '[[ "$(git -C "$CONSUMER" for-each-ref --format="%(refname)" refs/heads | sort)" == "$BRANCHES_BEFORE" ]]'
+check "U5h. pull, split and sync lines on stdout; git's fetch line on stderr only" \
+  'grep -qE "^  pull " <<<"$u5_stdout" && grep -qE "^  split " <<<"$u5_stdout" && grep -qF "$SYNC_STUB_LINE" <<<"$u5_stdout" && grep -qF -e "$FETCH_LINE" <<<"$u5_stderr" && ! grep -qF -e "$FETCH_LINE" <<<"$u5_stdout"'
+check "U5i. no $ERRLOG_GLOB left in TMPDIR on the success path" \
+  '[[ -z "$(find "$U5_TMPDIR" -name "$ERRLOG_GLOB")" ]]'
+
+# ── U6–U8. a fetch the cloud proxy will not serve ────────────────────────────
+HELPER_DIR="$TMP/bin"
+mkdir -p "$HELPER_DIR"
+printf '#!/usr/bin/env bash\necho "%s" >&2\nexit %s\n' "$AUTH_ERROR" "$HELPER_FAIL_RC" \
+  > "$HELPER_DIR/git-remote-$AUTH_SCHEME"
+chmod +x "$HELPER_DIR/git-remote-$AUTH_SCHEME"
+# run_failing <profile> <remote> — update.sh on the cloud branch, the helper on PATH
+run_failing() {
+  (cd "$TMP" && PATH="$HELPER_DIR:$PATH" AGENTTOOLING_PROFILE="$1" \
+    "$CONSUMER/$PREFIX/update.sh" --remote "$2" 2>&1)
+}
+HEAD_BEFORE="$(git -C "$CONSUMER" rev-parse HEAD)"
+
+U6_TMPDIR="$TMP/u6-tmpdir"
+mkdir -p "$U6_TMPDIR"
+out="$(TMPDIR="$U6_TMPDIR" run_failing cloud "$AUTH_REMOTE")"; rc=$?
+check "U6a. cloud, unattached fetch: exit $REFUSED_RC (got $rc)" '[[ $rc -eq $REFUSED_RC ]]'
+check "U6b. git's own error is shown" 'grep -qF "$AUTH_ERROR" <<<"$out"'
+check "U6c. one remedy line, naming $AUTH_REPO and $ATTACH_TOOL" \
+  '[[ "$(grep -c "^$REMEDY_PREFIX" <<<"$out")" -eq 1 ]] && grep "^$REMEDY_PREFIX" <<<"$out" | grep -qF "attach $AUTH_REPO with the $ATTACH_TOOL tool"'
+check "U6d. nothing pulled: HEAD unmoved" '[[ "$(git -C "$CONSUMER" rev-parse HEAD)" == "$HEAD_BEFORE" ]]'
+check "U6e. no $ERRLOG_GLOB left in TMPDIR on the failure path" \
+  '[[ -z "$(find "$U6_TMPDIR" -name "$ERRLOG_GLOB")" ]]'
+
+out="$(run_failing local "$AUTH_REMOTE")"; rc=$?
+check "U7a. local, the same failure: exit $REFUSED_RC (got $rc)" '[[ $rc -eq $REFUSED_RC ]]'
+check "U7b. no remedy line under local" '! grep -q "^$REMEDY_PREFIX" <<<"$out"'
+
+out="$(run_failing cloud "$TMP/no-such-upstream.git")"; rc=$?
+check "U8a. cloud, a missing remote: exit $REFUSED_RC (got $rc)" '[[ $rc -eq $REFUSED_RC ]]'
+check "U8b. no remedy line for a failure that is not authentication" '! grep -q "^$REMEDY_PREFIX" <<<"$out"'
 
 echo
 if (( fails > 0 )); then

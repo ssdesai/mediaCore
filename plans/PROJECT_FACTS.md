@@ -117,3 +117,30 @@ Build plans have no bash — these belong in verify plans and interactive plans.
 - Branches are bare camelCase, no prefix (see `CLAUDE.md`).
 - Nothing vinyl-specific may enter `src/` — `medium="vinyl"` is a *value*, the adapter
   that sets it lives in vinylCatalogue.
+
+## This repo's `plans/` contents
+
+The generated `plans/README.md`, `features/README.md` and `interactive/README.md` hold
+the rules every repo shares and are overwritten on every pull, so this repo's own entries
+for those folders live here. Keep this section even when it is empty.
+
+- `features/` holds only directories the harness wrote: this repo's own features
+  (`release-contract`, `track-artist-field`, `release-original-year`,
+  `bundle-store-direct`, `bundle-store-direct-rework`, `integration-hnm-wording`,
+  `backlog-mirror-cleanup`) and one `pull-agenttooling-*` directory per agentTooling
+  propagation (`../agentTooling/LIFECYCLE.md` → "Propagate"; the first,
+  `pull-agenttooling-2026-09-21`, predates the `pull-agenttooling-pr<N>` naming). The
+  hand-authored files in each are the manifest's prose and the review brief; everything
+  else is written by the start, the review pass or the capture.
+- `interactive/` holds no runbooks: this repo has no first-run setup beyond what
+  `cloud-setup.sh` and `worktree-setup.sh` do.
+- `environment.sh` sets nothing — nothing here differs between a laptop and a cloud
+  container. `cloud-setup.sh` creates `.venv` with the editable `[dev]` install at a cloud
+  session's start, and `worktree-setup.sh` does the same inside each new local worktree.
+- `gate.sh`'s REPO-SPECIFIC checks are the list under "Commands" above: install, ruff, the
+  fixture script (fails if it changes any tracked file), a wheel build asserting the
+  fixture is packaged, then pytest.
+- This section was seeded by hand on the PR-92 pull (`features/pull-agenttooling-pr92/`),
+  per `../agentTooling/README.md` → "Adopting the repo-owned plans/ contents". That sync
+  reported every generated stub `synced` or `unchanged` and dropped no hand-written line,
+  so nothing was carried over from the old stubs.

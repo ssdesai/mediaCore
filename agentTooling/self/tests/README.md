@@ -1956,8 +1956,10 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   the correct steady state for a repo that has closed everything it found, so only its
   absence is an item — and that the generated `plans/README.md` names it, the line
   humanNetworkMap had added by hand and a sync overwrote; filling
-  `PROJECT_FACTS.md` brings it to exit 0 `is in sync`; a stale generated stub is
-  reported `STALE` with `--check` writing nothing, and the plain sync repairs it; a
+  `PROJECT_FACTS.md` brings it to exit 0 `is in sync`; a hand-edited generated stub is
+  reported `EDITED` with the line it would drop and `--check` writing nothing, and the
+  plain sync repairs it as `OVERWROTE` (3a-e; the upstream half of that
+  classification is `generated-hand-edit.sh`); a
   repo-owned script stripped of its `template-version` line is reported `DRIFT` by both
   `--check` and the plain sync (which still keeps the file), and so is a `pr.sh` still
   at 4 — `fixtures/pr-v4.sh`, every consuming repo's copy until it hand-merges the forge
@@ -2013,6 +2015,29 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   fixture (`$TMP/consumer-routing-check`) leaves `plans/routing/<id>.json` in place,
   byte-identical, and writes no `routing.json` (14a-e) — `--check`'s branch never
   calls `migrate_routing`, which sits below it, on the write path only.
+- `generated-hand-edit.sh` — `sync-plans.sh` telling a hand edit of a generated stub from
+  an upstream template change (`../features/generated-readme-repo-owned/`). Each fixture
+  is a throwaway consuming repo holding copies of the real `sync-plans.sh`, `templates/`,
+  `hooks/` and `env-profile.sh` under a prefix, committed, synced and committed again. A
+  stub byte-identical to a template version the repo committed is upstream: `STALE …
+  (an earlier template's copy, unedited; …)`, no dropped lines, and the write path's
+  `synced … (template changed upstream)` at exit 0 — one version behind (1) or three (2).
+  One matching none is a hand edit — humanNetworkMap's `taxonomy-migration/` entry,
+  committed: `EDITED … would drop the 1 line(s) below — move them to
+  plans/PROJECT_FACTS.md first` followed by the line behind `| `, `--check` writing
+  nothing; then `OVERWROTE` with the line, exit 1, `needs attention: 1 item(s)`, the stub
+  equal to the template and `git diff` still holding the line (3). A hand edit on a stale,
+  uncommitted stub prints its own line and never the template's new one (4); a stub in a
+  subdirectory (`features/README.md`) is classified by its own path (5); an edit that only
+  deletes lines is `EDITED`, adds nothing, and the write path restores it at exit 0 (6); a
+  prefix other than `agentTooling` works both ways (7). With no history to ask it says why
+  and reports like an edit, never upstream: no `.git` at all (8, both paths, with the
+  line) and a `--depth 1` clone missing the version the stub came from (9). Last, a real
+  `git subtree add`/`pull --squash` cycle against a bare upstream: the pulled change is
+  `STALE`, unedited — the squash commit's own unprefixed paths are skipped and the merge
+  carries the blob — and a hand edit committed before the next pull is still `EDITED` with
+  its line after it (10). Depends on `sync-plans.sh`'s `STATUS_COL_WIDTH` (11) and
+  `DROPPED_LINE_PREFIX` (`| `), mirrored as constants. No model, no network.
 - `propagation-pull.sh` — a propagation pull as its own feature
   (`../features/propagation-as-feature/`, `../../LIFECYCLE.md` → "Propagate"). A bare
   upstream holding the real `update.sh` and a stub `sync-plans.sh` (it prints one line, so
@@ -2126,8 +2151,18 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   exactly one committed manifest names (U5): exit 0, the upstream file lands, the `pull`
   line names the branch and the slug, the `split` line is the upstream head, the stub sync
   ran, the branch moved and stayed checked out, `main` unmoved, `refs/heads` unchanged.
-  Depends on `git subtree`, `jq` (`manifest_branch`), and `plan-runner-roots.sh`'s
-  `started_features_on`. No model, no network.
+  Then the cloud remedy (`../features/propagate-agenttooling-access/`), the upstream also
+  holding the real `env-profile.sh` and `hooks/env_profile.py`, and the failing fetch a
+  `git-remote-testauth` helper on `PATH` that prints the proxy's `could not read
+  Username` line and exits 128: under `AGENTTOOLING_PROFILE=cloud`, exit 1, git's error
+  shown and exactly one `remedy` line naming `ssdesai/agentTooling` and `add_repo`, `HEAD`
+  unmoved, and no `update-pull.*` temp file left in its own `TMPDIR` (U6, U6e); under
+  `local`, no `remedy` line (U7); under `cloud` with a missing remote path (not an
+  authentication failure), no `remedy` line (U8). U5 runs with stdout and stderr apart
+  and its own `TMPDIR`: the `pull`, `split` and sync lines on stdout and git's
+  `-> FETCH_HEAD` line on stderr only (U5h), and no `update-pull.*` left (U5i). Depends on `git subtree`,
+  `jq` (`manifest_branch`), `plan-runner-roots.sh`'s `started_features_on`, and git
+  resolving a `<scheme>://` URL to `git-remote-<scheme>` on `PATH`. No model, no network.
 - `claimant-case.sh` — one feature named in two repo-name spellings is one claimant
   (`../features/cloud-pull-fixes/`, defect C: a cloud clone's lowercase origin named
   `musicmap/<slug>` what laptop records call `musicMap/<slug>`). `claims-ledger.sh`'s
@@ -2509,7 +2544,8 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `CLAUDE_CODE_REMOTE` cleared and `$HOME` a scratch directory. The assigned branch is cut
   by the test itself (`git checkout -b claude/… origin/main`), as a cloud session finds
   itself on before any start. Asserts B1 (on the base with no `--branch`: refused naming
-  the flag, nothing created), A1–A5 (on the assigned branch: no `.worktrees/`, the hook in
+  the flag and the conventional `--branch claude/<slug>`, nothing created), B2 (the same on
+  a detached HEAD, which the refusal calls that rather than "the base"), A1–A5 (on the assigned branch: no `.worktrees/`, the hook in
   the primary, `S: start` directly on `origin/main`, `branches` that branch, `profile`
   `cloud`, no pin, no routing record and the word "coordinator"; `from` the coordinator's
   transcript's first instant **exactly** — the fixture's first line carries `.500`, which
@@ -2527,10 +2563,14 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   R1–R3 (a foreign commit and a dirty tree refused with the work still there; a start
   whose hook fails leaves the branch and a lock with `refused=`, and its re-run with a hand
   fix in the tree resumes, commits `S: start` without the fix, and removes the lock),
-  N1–N3 (`--branch` from the base cuts the branch off `origin/main` and the session,
-  launched on `main`, is a router with a routing record; a refused `--branch` start re-run
-  from its new branch is still the router, from the lock's `launched_on`; an existing
-  branch not checked out is refused), U1 (a branch behind `origin/main`, the origin moved
+  N1–N4 (`--branch` from the base cuts the branch off `origin/main` and the session,
+  launched on `main`, is still the coordinator — `features/cloud-branch-window-from`: a
+  container holds one feature — with no routing record, no pin and no advice to pin, its
+  `from` at its first instant though that transcript line carries `gitBranch` `main`, and
+  a capture selects it `by branch` and bills it whole with nothing unclaimed; a refused
+  `--branch` start re-run from its new branch is still the coordinator, from that instant;
+  an existing branch not checked out is refused; and N4 the same start from a detached
+  HEAD, its first line on `HEAD`), U1 (a branch behind `origin/main`, the origin moved
   by a second clone, is fast-forwarded with exit 3 and no start; the rerun starts, and
   fast-forwards the clone's stale local `main` to `origin/main` too, so a `main...HEAD`
   diff carries no already-merged commits — the review itself diffs `origin/main`,

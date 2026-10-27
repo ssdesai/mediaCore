@@ -23,7 +23,8 @@ set -uo pipefail
 # is in-sync rather than a second unfilled item, since an empty backlog is a correct
 # steady state, and the generated plans/README.md names it; filling
 # PROJECT_FACTS.md brings it to rc 0 "is in sync"; a stub edited out from under the
-# template reports STALE and --check writes nothing, while the plain sync repairs it;
+# template reports EDITED with the line it would drop and --check writes nothing, while
+# the plain sync repairs it as OVERWROTE;
 # deleting a script's template-version line reports DRIFT (both under --check and the
 # plain sync, which still keeps the file), and so does a pr.sh still at 4 (4 < 6 —
 # fixtures/pr-v4.sh) or at 5 (5 < 6, the merge request through forge.sh auto-merge —
@@ -175,15 +176,19 @@ out="$("$S" --check 2>&1)"; rc=$?
 check "2a. --check rc 0 after filling PROJECT_FACTS.md (got $rc)" '[[ $rc -eq 0 ]]'
 check "2b. last line: in sync" '[[ "$(tail -1 <<<"$out")" == "plans/ and the hook wiring are in sync with agentTooling/." ]]'
 
-# ── 3. a stale generated stub, --check writes nothing, plain sync repairs it ────
+# ── 3. a hand-edited generated stub, --check writes nothing, plain sync repairs it ─
+# The stub matches no template version the fixture committed, so it is a hand edit:
+# EDITED and OVERWROTE, each with the dropped line. The upstream half of the
+# classification is self/tests/generated-hand-edit.sh.
 echo "extra readme line" >> "$CONSUMER/plans/README.md"
 cp "$CONSUMER/plans/README.md" "$TMP/README.md.before"
 out="$("$S" --check 2>&1)"; rc=$?
 check "3a. --check rc 1 after README.md drift (got $rc)" '[[ $rc -eq 1 ]]'
-check "3b. STALE plans/README.md line" 'grep -qF "  STALE      plans/README.md (differs from templates/plans/README.md; run sync-plans.sh)" <<<"$out"'
+check "3b. EDITED plans/README.md line, and the line it would drop" \
+  'grep -qF "  EDITED     plans/README.md (hand-edited; sync-plans.sh would drop the 1 line(s) below" <<<"$out" && grep -qxF "             | extra readme line" <<<"$out"'
 check "3c. --check wrote nothing (README.md unchanged)" 'cmp -s "$CONSUMER/plans/README.md" "$TMP/README.md.before"'
 out2="$("$S" 2>&1)"
-check "3d. plain sync prints synced README.md" 'grep -qF "  synced     plans/README.md" <<<"$out2"'
+check "3d. plain sync prints OVERWROTE README.md" 'grep -qF "  OVERWROTE  plans/README.md (hand-edited; dropped the 1 line(s) below" <<<"$out2"'
 out3="$("$S" --check 2>&1)"; rc3=$?
 check "3e. --check rc 0 again (got $rc3)" '[[ $rc3 -eq 0 ]]'
 

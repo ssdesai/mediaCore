@@ -10,16 +10,23 @@ set -euo pipefail
 # a doc that gets split — silently staleness every copy already sitting in a repo.
 # Copying once solves nothing; syncing keeps one source of truth.
 #
-# Overwriting the generated stubs is safe because they carry no repo-specific content;
-# the eight files that do — PROJECT_FACTS.md, BACKLOG.md, gate.sh, pr.sh,
+# Overwriting the generated stubs is safe because they carry no repo-specific content —
+# provided nobody wrote any into one. A stub that differs from its template is either a
+# template change pulled from upstream, which the overwrite carries in, or a hand edit,
+# which it destroys; the two used to print the same line. Each is now told apart by
+# whether the stub is byte-identical to a template version this repo has vendored
+# (stub_origin below), and a hand edit's dropped lines are printed — `EDITED` under
+# `--check`, `OVERWROTE` on the write path, both items needing attention. A repo's own
+# entries belong in PROJECT_FACTS.md, which the generated README names. The eight files
+# that do carry repo-specific content — PROJECT_FACTS.md, BACKLOG.md, gate.sh, pr.sh,
 # worktree-setup.sh, open-session.sh, environment.sh and cloud-setup.sh — are seeded
 # from the skeleton on first run and never overwritten
 # again. `--check` reports on both halves without writing anything: STALE or missing
 # generated stubs, and repo-owned scripts whose template-version line trails the
 # template's or that are missing (environment.sh and cloud-setup.sh among them, reported
 # `missing` exactly as BACKLOG.md is), plus an unfilled PROJECT_FACTS.md. The write path
-# below is unchanged and ends with that same repo-owned report, since the stubs it just
-# wrote are always in sync.
+# ends with that same repo-owned report, since the stubs it just wrote are always in
+# sync; a hand-edited stub it overwrote is counted in the same total.
 #
 # The write path also runs `analysis/routing.py --migrate`, which empties the old
 # `plans/routing/` into the features its records name and says what it moved for the human
@@ -78,6 +85,16 @@ ROUTING_MODULE="$SCRIPT_DIR/analysis/routing.py"
 # install is redundant rather than wrong.
 GENERATED=(README.md interactive/README.md features/README.md features/TEMPLATE.md .gitignore)
 
+# Where a stub that differs from its template came from (stub_origin). Upstream: it is
+# byte-identical to a template version this repo once vendored, so overwriting it loses
+# nothing. Edited: it matches none, so a hand edit is in it. Unknown: there is no history
+# to ask, so it may be either — reported like an edit, never assumed to be upstream.
+ORIGIN_UPSTREAM="upstream"
+ORIGIN_EDITED="edited"
+ORIGIN_UNKNOWN="unknown"
+# The margin a dropped line is printed behind, under its stub's status line.
+DROPPED_LINE_PREFIX="| "
+
 # The repo-owned scripts: seeded once from the skeleton, then never overwritten again.
 # `open-session.sh` is what `feature-start.sh --open` runs to put a coordinator session
 # inside the new worktree; it is repo-owned because how a session is opened is a
@@ -135,10 +152,82 @@ is_sourced_script() {
   return 1
 }
 
-# check_stubs — one in-sync/STALE/missing line per $GENERATED entry, in order. Returns
-# the count of items that need attention.
+# stub_origin <rel> — where plans/<rel>, which differs from templates/plans/<rel>, came
+# from: $ORIGIN_UPSTREAM when it is byte-identical to a version of that template this
+# repo has committed (any commit in HEAD's history that touched the template's path, or
+# the index), $ORIGIN_EDITED when it matches none, and "$ORIGIN_UNKNOWN:<reason>" when
+# the history cannot answer — no git, this directory not inside the consuming repo's own
+# checkout, no commit yet, or a shallow clone whose missing history might hold the match.
+# The comparison is of blob ids, so it is exact, and it needs no state this script keeps:
+# the vendored templates are already in the repo's history, every `subtree pull` having
+# committed one. Never fails: every git error is an answer.
+stub_origin() {
+  local rel="$1" top_here top_repo prefix tmpl_path blob commit vblob
+  top_here="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)" || top_here=""
+  top_repo="$(git -C "$REPO_DIR" rev-parse --show-toplevel 2>/dev/null)" || top_repo=""
+  if [[ -z "$top_here" || "$top_here" != "$top_repo" ]]; then
+    echo "$ORIGIN_UNKNOWN:no git history of the vendored templates to compare it with"
+    return 0
+  fi
+  if ! git -C "$REPO_DIR" rev-parse -q --verify HEAD >/dev/null 2>&1; then
+    echo "$ORIGIN_UNKNOWN:no commit yet to compare it with"
+    return 0
+  fi
+  prefix="$(git -C "$SCRIPT_DIR" rev-parse --show-prefix 2>/dev/null)" || prefix=""
+  tmpl_path="${prefix}templates/plans/$rel"
+  # --path: hash it under the template's own attributes, as its committed blobs were.
+  blob="$(git -C "$REPO_DIR" hash-object --path="$tmpl_path" -- "$PLANS_DIR/$rel" 2>/dev/null)" || blob=""
+  if [[ -z "$blob" ]]; then
+    echo "$ORIGIN_UNKNOWN:git could not hash it"
+    return 0
+  fi
+  vblob="$(git -C "$REPO_DIR" rev-parse -q --verify ":$tmpl_path" 2>/dev/null)" || vblob=""
+  if [[ "$vblob" == "$blob" ]]; then
+    echo "$ORIGIN_UPSTREAM"
+    return 0
+  fi
+  # A commit on a squashed subtree's own side holds the template at the subtree's root,
+  # not under the prefix; its lookup fails and is skipped, and the merge that brought it
+  # in holds the same blob under the prefix.
+  while IFS= read -r commit; do
+    vblob="$(git -C "$REPO_DIR" rev-parse -q --verify "$commit:$tmpl_path" 2>/dev/null)" || continue
+    if [[ "$vblob" == "$blob" ]]; then
+      echo "$ORIGIN_UPSTREAM"
+      return 0
+    fi
+  done < <(git -C "$REPO_DIR" log --format=%H HEAD -- "$tmpl_path" 2>/dev/null || true)
+  if [[ "$(git -C "$REPO_DIR" rev-parse --is-shallow-repository 2>/dev/null)" == "true" ]]; then
+    echo "$ORIGIN_UNKNOWN:this clone is shallow, and the template version it was synced from may be in the history it lacks"
+    return 0
+  fi
+  echo "$ORIGIN_EDITED"
+}
+
+# dropped_lines <rel> — the lines plans/<rel> holds that templates/plans/<rel> does not,
+# one per line: what overwriting it loses.
+dropped_lines() {
+  diff -- "$TEMPLATE_DIR/$1" "$PLANS_DIR/$1" 2>/dev/null | sed -n 's/^> //p' || true
+}
+
+# print_dropped <lines> — each line behind $DROPPED_LINE_PREFIX, under a status line.
+print_dropped() {
+  local line
+  [[ -n "$1" ]] || return 0
+  while IFS= read -r line; do
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "" "$DROPPED_LINE_PREFIX$line"
+  done <<<"$1"
+}
+
+# count_lines <text> — how many lines it holds, 0 for empty.
+count_lines() {
+  if [[ -z "$1" ]]; then echo 0; else grep -c '' <<<"$1"; fi
+}
+
+# check_stubs — one in-sync/STALE/EDITED/missing line per $GENERATED entry, in order,
+# each EDITED one (and each STALE one whose origin is unknown) followed by the lines a
+# sync would drop. Returns the count of items that need attention.
 check_stubs() {
-  local rel count=0
+  local rel origin dropped n count=0
   for rel in "${GENERATED[@]}"; do
     if [[ ! -f "$PLANS_DIR/$rel" ]]; then
       printf "  %-${STATUS_COL_WIDTH}s%s\n" "missing" "plans/$rel (run sync-plans.sh)"
@@ -146,9 +235,67 @@ check_stubs() {
     elif cmp -s "$TEMPLATE_DIR/$rel" "$PLANS_DIR/$rel"; then
       printf "  %-${STATUS_COL_WIDTH}s%s\n" "in-sync" "plans/$rel"
     else
-      printf "  %-${STATUS_COL_WIDTH}s%s\n" "STALE" "plans/$rel (differs from templates/plans/$rel; run sync-plans.sh)"
+      origin="$(stub_origin "$rel")"
+      dropped="$(dropped_lines "$rel")"
+      n="$(count_lines "$dropped")"
       count=$((count + 1))
+      case "$origin" in
+        "$ORIGIN_UPSTREAM")
+          printf "  %-${STATUS_COL_WIDTH}s%s\n" "STALE" "plans/$rel (an earlier template's copy, unedited; run sync-plans.sh)"
+          ;;
+        "$ORIGIN_EDITED")
+          if (( n == 0 )); then
+            printf "  %-${STATUS_COL_WIDTH}s%s\n" "EDITED" "plans/$rel (hand-edited, adding nothing the template lacks; run sync-plans.sh to restore it)"
+          else
+            printf "  %-${STATUS_COL_WIDTH}s%s\n" "EDITED" "plans/$rel (hand-edited; sync-plans.sh would drop the $n line(s) below — move them to plans/PROJECT_FACTS.md first)"
+          fi
+          ;;
+        *)
+          printf "  %-${STATUS_COL_WIDTH}s%s\n" "STALE" "plans/$rel (differs from templates/plans/$rel; ${origin#*:}, so it may be a hand edit — sync-plans.sh would drop the $n line(s) below)"
+          ;;
+      esac
+      [[ "$origin" == "$ORIGIN_UPSTREAM" ]] || print_dropped "$dropped"
     fi
+  done
+  return "$count"
+}
+
+# sync_stubs — the write path's half of check_stubs: copy each $GENERATED entry over its
+# stub, saying how it differed. A hand edit (or a difference of unknown origin) that
+# drops lines is OVERWROTE, with the lines, and counts as an item: the file is the
+# template again, and those lines exist now only in this output and in git, if they were
+# ever committed. Returns the count of such items.
+sync_stubs() {
+  local rel origin dropped n count=0
+  for rel in "${GENERATED[@]}"; do
+    if [[ -f "$PLANS_DIR/$rel" ]] && cmp -s "$TEMPLATE_DIR/$rel" "$PLANS_DIR/$rel"; then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "unchanged" "plans/$rel"
+      continue
+    fi
+    if [[ ! -f "$PLANS_DIR/$rel" ]]; then
+      cp "$TEMPLATE_DIR/$rel" "$PLANS_DIR/$rel"
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "synced" "plans/$rel"
+      continue
+    fi
+    origin="$(stub_origin "$rel")"
+    dropped="$(dropped_lines "$rel")"
+    n="$(count_lines "$dropped")"
+    cp "$TEMPLATE_DIR/$rel" "$PLANS_DIR/$rel"
+    if [[ "$origin" == "$ORIGIN_UPSTREAM" ]]; then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "synced" "plans/$rel (template changed upstream)"
+      continue
+    fi
+    if (( n == 0 )); then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "synced" "plans/$rel (restored the template's lines; it held none of its own)"
+      continue
+    fi
+    count=$((count + 1))
+    if [[ "$origin" == "$ORIGIN_EDITED" ]]; then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "OVERWROTE" "plans/$rel (hand-edited; dropped the $n line(s) below — they belong in plans/PROJECT_FACTS.md, and git has them only if they were committed)"
+    else
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "OVERWROTE" "plans/$rel (${origin#*:}, so it may have been a hand edit; dropped the $n line(s) below — move any of this repo's own to plans/PROJECT_FACTS.md)"
+    fi
+    print_dropped "$dropped"
   done
   return "$count"
 }
@@ -278,14 +425,8 @@ fi
 
 mkdir -p "$PLANS_DIR/interactive" "$PLANS_DIR/features"
 
-for rel in "${GENERATED[@]}"; do
-  if [[ -f "$PLANS_DIR/$rel" ]] && cmp -s "$TEMPLATE_DIR/$rel" "$PLANS_DIR/$rel"; then
-    printf "  %-${STATUS_COL_WIDTH}s%s\n" "unchanged" "plans/$rel"
-  else
-    cp "$TEMPLATE_DIR/$rel" "$PLANS_DIR/$rel"
-    printf "  %-${STATUS_COL_WIDTH}s%s\n" "synced" "plans/$rel"
-  fi
-done
+stub_rc=0
+sync_stubs || stub_rc=$?
 
 if [[ -f "$PLANS_DIR/PROJECT_FACTS.md" ]]; then
   printf "  %-${STATUS_COL_WIDTH}s%s\n" "kept" "plans/PROJECT_FACTS.md (repo-owned — never overwritten)"
@@ -322,7 +463,7 @@ migrate_routing
 hook_rc=0
 sync_hook --write || hook_rc=$?
 
-count=0
+count="$stub_rc"
 rc=0; check_repo_owned || rc=$?; count=$((count + rc))
 count=$((count + hook_rc))
 finish "$count"
