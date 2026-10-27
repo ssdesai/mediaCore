@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-10-26T17:10:30Z",
+  "cost_usd": 3.052618,
+  "duration_s": 1802,
+  "ended_at": "2026-10-26T17:10:30Z",
+  "features_started": [
+    {
+      "at": "2026-10-26T16:40:39Z",
+      "slug": "propagate-agenttooling-access"
+    }
+  ],
+  "git_branch": "HEAD",
+  "launched_in": "/home/user/agentTooling",
+  "model": "claude-opus-5-5",
+  "session_id": "1d50d2d4-e111-5e84-8b7b-8f020589501f",
+  "started_at": "2026-10-26T16:40:27Z"
+}

@@ -1,0 +1,86 @@
+{
+  "slug": "generated-readme-repo-owned",
+  "captured_at": "2026-10-26T17:09:06.428469+00:00",
+  "manifest_branches": [
+    "claude/generated-readme-repo-owned"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "580818bd-8201-579d-b178-08989f611ac6",
+      "git_branch": "claude/generated-readme-repo-owned",
+      "selected_by": "pinned",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-10-26",
+      "started_at": "2026-10-26T16:40:27.285000+00:00",
+      "ended_at": "2026-10-26T17:08:59.750000+00:00",
+      "duration_s": 1688,
+      "share_basis": [
+        {
+          "feature": "agentTooling/generated-readme-repo-owned",
+          "from": "2026-10-26T16:48:35Z",
+          "to": "2026-10-26T17:08:36Z",
+          "source": "self"
+        }
+      ],
+      "session_cost_usd": 4.0731192,
+      "session_duration_s": 1712,
+      "unclaimed_usd": 0.1485666,
+      "unclaimed_duration_s": 23
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "b44d8588-8e0f-4c67-b695-882fb097b85e"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "580818bd-8201-579d-b178-08989f611ac6",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-10-26",
+      "duration_s": 1712,
+      "tokens": {
+        "input": 122,
+        "output": 48187,
+        "cache_read": 8988543,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 145327
+      },
+      "cost_usd": 3.9245526,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 3.9245526,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 3.9245526,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 1688,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "session 580818bd-8201-579d-b178-08989f611ac6 may span the window boundary (window 2026-10-26T16:48:35+00:00..2026-10-26T17:08:36+00:00 UTC, session ends 2026-10-26T17:08:59.750000+00:00); $0.1486 and 23s of it fall at or after `to`, not counted here (the session is pinned and this feature is its only claimant, so it is cut to the window: what lies past `to` is the unclaimed remainder)",
+    "session 580818bd-8201-579d-b178-08989f611ac6 is pinned and claimed by this feature alone, so it is cut to the window: this feature's part is $3.9246 of the session's own $4.0731",
+    "session 580818bd-8201-579d-b178-08989f611ac6 has $0.1486 (24s) unclaimed by any feature \u2014 widen a claimant's `to` bound, or pin the session to the feature it belongs to, to have it counted"
+  ]
+}
