@@ -28,7 +28,7 @@ cloud coordinator.
   "base": "main",
   "profile": "cloud",
   "gate": "green",
-  "session_window": {"from": "2026-10-27T22:23:39.260Z", "to": null},
+  "session_window": {"from": "2026-10-27T22:23:39.260Z", "to": "2026-10-27T22:26:19Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],
