@@ -1,0 +1,244 @@
+{
+  "slug": "review-base-and-cloud-hook",
+  "captured_at": "2026-10-12T04:49:50.358167+00:00",
+  "manifest_branches": [
+    "claude/review-base-and-cloud-hook"
+  ],
+  "manifest_subagents": [
+    "a0f72a1899b55ab25",
+    "a5ba2ab44faa09b37",
+    "a5eb1b74254377e9a",
+    "ab4c94efd544f7f30"
+  ],
+  "sessions": [
+    {
+      "session_id": "6d29ad64-9174-5123-9df1-cf9f4114e9e9",
+      "git_branch": "claude/review-base-and-cloud-hook",
+      "selected_by": "pinned",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-10-07",
+      "started_at": "2026-10-07T16:37:42.147000+00:00",
+      "ended_at": "2026-10-12T04:49:46.873000+00:00",
+      "duration_s": 389516,
+      "share_basis": [
+        {
+          "feature": "agentTooling/review-base-and-cloud-hook",
+          "from": "2026-10-07T16:44:00Z",
+          "to": "2026-10-12T04:49:39Z",
+          "source": "self"
+        }
+      ],
+      "session_cost_usd": 28.071310399999998,
+      "session_duration_s": 389524,
+      "unclaimed_usd": 0.1638624,
+      "unclaimed_duration_s": 7
+    }
+  ],
+  "subagents": [
+    {
+      "agent_id": "a0f72a1899b55ab25",
+      "parent_session_id": "6d29ad64-9174-5123-9df1-cf9f4114e9e9",
+      "date": "2026-10-08",
+      "started_at": "2026-10-08T00:50:02.658000+00:00",
+      "ended_at": "2026-10-08T17:38:17.618000+00:00",
+      "duration_s": 60494,
+      "selected_by": "pinned",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a5ba2ab44faa09b37",
+      "parent_session_id": "6d29ad64-9174-5123-9df1-cf9f4114e9e9",
+      "date": "2026-10-11",
+      "started_at": "2026-10-11T17:00:27.551000+00:00",
+      "ended_at": "2026-10-11T17:09:47.591000+00:00",
+      "duration_s": 560,
+      "selected_by": "pinned",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a5eb1b74254377e9a",
+      "parent_session_id": "6d29ad64-9174-5123-9df1-cf9f4114e9e9",
+      "date": "2026-10-07",
+      "started_at": "2026-10-07T16:46:15.150000+00:00",
+      "ended_at": "2026-10-07T19:05:27.728000+00:00",
+      "duration_s": 8352,
+      "selected_by": "pinned",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "ab4c94efd544f7f30",
+      "parent_session_id": "6d29ad64-9174-5123-9df1-cf9f4114e9e9",
+      "date": "2026-10-07",
+      "started_at": "2026-10-07T20:42:44.055000+00:00",
+      "ended_at": "2026-10-07T23:28:25.318000+00:00",
+      "duration_s": 9941,
+      "selected_by": "pinned",
+      "cross_repo": false
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "02b1fbde-13bd-467e-91c3-4614214a6791",
+    "2beef3c7-d136-49c4-9f84-f32ab60d2310",
+    "806ac601-d148-4e95-ac93-1809b35e387c",
+    "ac48e023-84c6-4ece-b913-d1c511fba4ad",
+    "e6bf370e-9d67-402f-ba0e-e74df7853fd5"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "6d29ad64-9174-5123-9df1-cf9f4114e9e9",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-10-07",
+      "duration_s": 389524,
+      "tokens": {
+        "input": 373,
+        "output": 74387,
+        "cache_read": 36072720,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 2400459
+      },
+      "cost_usd": 27.907448,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "6d29ad64-9174-5123-9df1-cf9f4114e9e9",
+      "agent_id": "a0f72a1899b55ab25",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-08",
+      "duration_s": 60494,
+      "tokens": {
+        "input": 76,
+        "output": 880,
+        "cache_read": 3300746,
+        "cache_creation_5m": 204514,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 1.7006232000000001,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "6d29ad64-9174-5123-9df1-cf9f4114e9e9",
+      "agent_id": "a5ba2ab44faa09b37",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-11",
+      "duration_s": 560,
+      "tokens": {
+        "input": 146,
+        "output": 994,
+        "cache_read": 8369939,
+        "cache_creation_5m": 159546,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 2.4921818,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "6d29ad64-9174-5123-9df1-cf9f4114e9e9",
+      "agent_id": "a5eb1b74254377e9a",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-07",
+      "duration_s": 8352,
+      "tokens": {
+        "input": 292,
+        "output": 1813,
+        "cache_read": 36773115,
+        "cache_creation_5m": 2246140,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 18.622751,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "6d29ad64-9174-5123-9df1-cf9f4114e9e9",
+      "agent_id": "ab4c94efd544f7f30",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-07",
+      "duration_s": 9941,
+      "tokens": {
+        "input": 78,
+        "output": 864,
+        "cache_read": 4487456,
+        "cache_creation_5m": 469432,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 3.2622432000000003,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 27.907448,
+    "sidechain": 26.0777992,
+    "subagents": 26.0777992,
+    "total": 53.9852472,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 389516,
+    "subagents": 79347,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-02",
+  "warnings": [
+    "session 6d29ad64-9174-5123-9df1-cf9f4114e9e9 may span the window boundary (window 2026-10-07T16:44:00+00:00..2026-10-12T04:49:39+00:00 UTC, session ends 2026-10-12T04:49:46.873000+00:00); $0.1639 and 7s of it fall at or after `to`, not counted here (the session is pinned and this feature is its only claimant, so it is cut to the window: what lies past `to` is the unclaimed remainder)",
+    "session 6d29ad64-9174-5123-9df1-cf9f4114e9e9 is pinned and claimed by this feature alone, so it is cut to the window: this feature's part is $27.9074 of the session's own $28.0713",
+    "session 6d29ad64-9174-5123-9df1-cf9f4114e9e9 has $0.1639 (8s) unclaimed by any feature \u2014 widen a claimant's `to` bound, or pin the session to the feature it belongs to, to have it counted"
+  ]
+}

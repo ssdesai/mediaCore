@@ -1,0 +1,222 @@
+{
+  "slug": "sweep-and-check",
+  "generated_at": "2026-09-04T06:07:47.273211+00:00",
+  "cost": {
+    "method": "plans",
+    "planning": 6.52301175,
+    "implementer": 0.0,
+    "build": 6.837912200000001,
+    "verify": 0.6432382,
+    "review": 3.5468229999999994,
+    "total": 17.55098515,
+    "planning_pct": 37.166071842981424,
+    "build_pct": 38.96027568572127,
+    "verify_pct": 3.664969199748881,
+    "review_pct": 20.208683271548434,
+    "cost_per_plan": 1.5955441045454544,
+    "cost_per_file": 0.650036487037037,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "skipped_plans": [
+      "80-level-scripts-sonnet"
+    ],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": []
+  },
+  "time": {
+    "method": "plans",
+    "planning_sessions_s": 0,
+    "planning_subagents_s": 790,
+    "planning_s": 790,
+    "implementer_s": null,
+    "build_s": 2443.31,
+    "verify_s": 150.219,
+    "review_s": 467.768,
+    "executor_s": 3061.297,
+    "total_s": 3851.297,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-04T04:49:22+00:00",
+      "last_at": "2026-09-04T05:44:52+00:00",
+      "batch_span_s": 3330.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "auto": 2496.0,
+        "verify": 152.0,
+        "review": 475.0
+      },
+      "gates_s": 42.0,
+      "gate_runs": 1,
+      "plans_s": 3075.0,
+      "plan_runs": 10,
+      "pr_opened_at": "2026-09-04T05:44:52+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/29"
+    }
+  },
+  "planning_cost_split": {
+    "subagents": 6.52301175,
+    "sessions": 0.0
+  },
+  "cold_start_tax_tokens": 938749,
+  "model_fit": [
+    {
+      "model": "haiku",
+      "plan_count": 1,
+      "total_turns": 38,
+      "total_cost_usd": 0.5232066000000001,
+      "total_duration_s": 274.628,
+      "flags": [
+        "plan 81-docs-haiku took 38 turns on haiku (> 8, may have needed more judgment than haiku gives)"
+      ]
+    },
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 44,
+      "total_cost_usd": 3.5468229999999994,
+      "total_duration_s": 467.768,
+      "flags": []
+    },
+    {
+      "model": "sonnet",
+      "plan_count": 8,
+      "total_turns": 168,
+      "total_cost_usd": 6.957943800000001,
+      "total_duration_s": 2318.901,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "73-tests-check-plans-sonnet",
+      "edit_count": 4,
+      "files_edited": 3,
+      "churn_ratio": 1.3333333333333333
+    },
+    {
+      "plan": "74-tests-sync-check-sonnet",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "75-tests-sweep-sonnet",
+      "edit_count": 5,
+      "files_edited": 2,
+      "churn_ratio": 2.5
+    },
+    {
+      "plan": "76-check-plans-sonnet",
+      "edit_count": 4,
+      "files_edited": 3,
+      "churn_ratio": 1.3333333333333333
+    },
+    {
+      "plan": "77-sync-check-and-update-sonnet",
+      "edit_count": 9,
+      "files_edited": 9,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "78-sweep-sonnet",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "79-zero-with-evidence-sonnet",
+      "edit_count": 6,
+      "files_edited": 4,
+      "churn_ratio": 1.5
+    },
+    {
+      "plan": "81-docs-haiku",
+      "edit_count": 19,
+      "files_edited": 9,
+      "churn_ratio": 2.111111111111111
+    },
+    {
+      "plan": "83-review-opus",
+      "edit_count": 8,
+      "files_edited": 7,
+      "churn_ratio": 1.1428571428571428
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "73-tests-check-plans-sonnet",
+      "plan_md_lines": 157,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "74-tests-sync-check-sonnet",
+      "plan_md_lines": 130,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "75-tests-sweep-sonnet",
+      "plan_md_lines": 94,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "76-check-plans-sonnet",
+      "plan_md_lines": 119,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "77-sync-check-and-update-sonnet",
+      "plan_md_lines": 132,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "78-sweep-sonnet",
+      "plan_md_lines": 86,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "79-zero-with-evidence-sonnet",
+      "plan_md_lines": 92,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "81-docs-haiku",
+      "plan_md_lines": 133,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "82-verify-sonnet",
+      "plan_md_lines": 37,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "83-review-opus",
+      "plan_md_lines": 36,
+      "loc_changed": "not computed: streams unavailable"
+    }
+  ],
+  "re_hunting": "not computed: streams unavailable",
+  "plan_drift": [
+    {
+      "plan": "83-review-opus",
+      "edited_not_listed": [
+        "README.md",
+        "RUNNER.md",
+        "analysis/README.md",
+        "check-plans.sh",
+        "self/review-report.md",
+        "self/tests/README.md",
+        "self/tests/check-plans.sh"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": "not computed: streams unavailable",
+  "warnings": [
+    "plan 80-level-scripts-sonnet was filed as skipped by the runner (its level gate was green); it never ran, so it has no usage.json by design",
+    "plan 82-verify-sonnet has 0 files_edited; excluded from churn ratio"
+  ]
+}

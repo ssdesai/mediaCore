@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-10-02T04:42:16Z",
+  "cost_usd": 1.941869,
+  "duration_s": 2802,
+  "ended_at": "2026-10-02T04:42:16Z",
+  "features_started": [
+    {
+      "at": "2026-10-02T03:59:50Z",
+      "slug": "live-model-rates"
+    }
+  ],
+  "git_branch": "main",
+  "launched_in": "/Users/sahildesai/dev/agentTooling",
+  "model": "claude-opus-5-5",
+  "session_id": "27b81552-275d-43e8-a128-be68b0393419",
+  "started_at": "2026-10-02T03:55:33Z"
+}

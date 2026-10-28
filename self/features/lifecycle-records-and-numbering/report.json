@@ -1,0 +1,175 @@
+{
+  "slug": "lifecycle-records-and-numbering",
+  "generated_at": "2026-09-18T04:14:40.374594+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 42.516319100000004,
+    "build": 42.516319100000004,
+    "verify": 0.0,
+    "review": 4.173828299999999,
+    "total": 46.6901474,
+    "planning_pct": 0.0,
+    "build_pct": 91.06058016000182,
+    "verify_pct": 0.0,
+    "review_pct": 8.939419839998191,
+    "cost_per_plan": 23.3450737,
+    "cost_per_file": 11.67253685,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 0,
+    "planning_subagents_s": 16801,
+    "planning_s": 0.0,
+    "implementer_s": 16801,
+    "build_s": 16801.0,
+    "verify_s": 0.0,
+    "review_s": 627.123,
+    "executor_s": 17428.123,
+    "total_s": 17428.123,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-17T22:27:04+00:00",
+      "last_at": "2026-09-18T04:14:38+00:00",
+      "batch_span_s": 20854.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 4352.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 4352.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-09-18T04:14:38+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/50"
+    },
+    "tests_s": 416.0,
+    "direct_build_s": 701.0,
+    "gate_s": 1120.0
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 42.516319100000004,
+      "build_min": 280.01666666666665,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 3.1885395,
+      "review_min": 6.976583333333334,
+      "review_plan": "01-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/01-review-opus.md"
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.9852887999999996,
+      "review_min": 3.4754666666666667,
+      "review_plan": "02-review-sonnet",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 42.516319100000004,
+    "sessions": 0.0
+  },
+  "cold_start_tax_tokens": 202989,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 33,
+      "total_cost_usd": 3.1885395,
+      "total_duration_s": 418.595,
+      "flags": []
+    },
+    {
+      "model": "sonnet",
+      "plan_count": 1,
+      "total_turns": 35,
+      "total_cost_usd": 0.9852887999999996,
+      "total_duration_s": 208.528,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 5,
+      "files_edited": 4,
+      "churn_ratio": 1.25
+    },
+    {
+      "plan": "02-review-sonnet",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 106,
+      "loc_changed": 103
+    },
+    {
+      "plan": "02-review-sonnet",
+      "plan_md_lines": 60,
+      "loc_changed": 73
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/Users/sahildesai/dev/agentTooling/.worktrees/lifecycle-records-and-numbering/self/tests/verdict-readers.sh",
+      "tool": "Read",
+      "plans": [
+        "01-review-opus",
+        "02-review-sonnet"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "LIFECYCLE.md",
+        "plan-runner-roots.sh",
+        "self/review-report.md",
+        "self/tests/verdict-readers.sh"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-sonnet",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": [],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and its `checkpoint` stamps span rounds 1, 2 \u2014 one figure cannot be divided between them, so all of it sits in round 1"
+    }
+  ]
+}

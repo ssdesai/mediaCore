@@ -1,0 +1,9 @@
+{"at":"2026-09-06T15:24:03Z","event":"checkpoint","status":"planned"}
+{"at":"2026-09-06T15:29:31Z","event":"checkpoint","status":"tests-written"}
+{"at":"2026-09-06T15:44:59Z","event":"checkpoint","status":"gating"}
+{"at":"2026-09-06T15:47:21Z","event":"checkpoint","status":"committed"}
+{"at":"2026-09-06T15:54:55Z","event":"pass_start","queue":"review"}
+{"at":"2026-09-06T15:54:55Z","event":"plan_start","plan":"86-review-opus","queue":"review"}
+{"at":"2026-09-06T16:05:09Z","event":"plan_end","plan":"86-review-opus","queue":"review","rc":"0"}
+{"at":"2026-09-06T16:05:16Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/32"}
+{"at":"2026-09-06T16:05:16Z","event":"pass_end","queue":"review","reason":"all review plans complete"}

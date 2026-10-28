@@ -1,0 +1,64 @@
+{
+  "plan": "69-verify-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "ab17a74a-0268-424a-bf25-420a62959b45",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 60,
+  "duration_ms": 342665,
+  "total_cost_usd": 1.9882881,
+  "usage": {
+    "input_tokens": 94,
+    "cache_creation_input_tokens": 87417,
+    "cache_read_input_tokens": 3349667,
+    "output_tokens": 30364
+  },
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 3044,
+      "outputTokens": 20,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0031439999999999997,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 94,
+      "outputTokens": 30364,
+      "cacheReadInputTokens": 3349667,
+      "cacheCreationInputTokens": 87417,
+      "webSearchRequests": 0,
+      "costUSD": 1.9851441,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 47,
+    "Edit": 5,
+    "Read": 7
+  },
+  "files_edited": [
+    ".gitignore",
+    "plan-runner-lib.sh",
+    "self/features/_scratch-levels/gatetest/gate.sh"
+  ],
+  "edit_count": 5,
+  "attempts": [
+    {
+      "session_id": "ab17a74a-0268-424a-bf25-420a62959b45",
+      "outcome": "complete",
+      "total_cost_usd": 1.9882881,
+      "num_turns": 60,
+      "duration_ms": 342665
+    }
+  ]
+}

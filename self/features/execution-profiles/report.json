@@ -1,0 +1,163 @@
+{
+  "slug": "execution-profiles",
+  "generated_at": "2026-10-05T21:37:20.260506+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 40.5591041,
+    "build": 40.5591041,
+    "verify": 0.0,
+    "review": 1.9980104000000003,
+    "total": 42.5571145,
+    "planning_pct": 0.0,
+    "build_pct": 95.3051083855791,
+    "verify_pct": 0.0,
+    "review_pct": 4.694891614420898,
+    "cost_per_plan": 21.27855725,
+    "cost_per_file": 42.5571145,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 8983,
+    "planning_subagents_s": 7671,
+    "planning_s": 0.0,
+    "implementer_s": 16654,
+    "build_s": 16654.0,
+    "verify_s": 0.0,
+    "review_s": 168.95600000000002,
+    "executor_s": 16822.956,
+    "total_s": 16822.956,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-10-05T19:18:52+00:00",
+      "last_at": "2026-10-05T21:37:19+00:00",
+      "batch_span_s": 8307.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 173.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 173.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-10-05T21:37:19+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/81"
+    },
+    "tests_s": 408.0,
+    "direct_build_s": 784.0,
+    "gate_s": 10.0
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 40.5591041,
+      "build_min": 277.56666666666666,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.8148356000000003,
+      "review_min": 2.439916666666667,
+      "review_plan": "01-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/01-review-opus.md"
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.18317480000000003,
+      "review_min": 0.37601666666666667,
+      "review_plan": "02-review-sonnet",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 33.2284851,
+    "sessions": 7.330618999999999
+  },
+  "cold_start_tax_tokens": 161014,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 34,
+      "total_cost_usd": 1.8148356000000003,
+      "total_duration_s": 146.395,
+      "flags": []
+    },
+    {
+      "model": "sonnet",
+      "plan_count": 1,
+      "total_turns": 7,
+      "total_cost_usd": 0.18317480000000003,
+      "total_duration_s": 22.561,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "02-review-sonnet",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 144,
+      "loc_changed": 96
+    },
+    {
+      "plan": "02-review-sonnet",
+      "plan_md_lines": 53,
+      "loc_changed": 23
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-sonnet",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": [],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and its `checkpoint` stamps span rounds 1, 2 \u2014 one figure cannot be divided between them, so all of it sits in round 1"
+    }
+  ]
+}

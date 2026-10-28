@@ -1,0 +1,13 @@
+{"at":"2026-10-02T04:07:41Z","event":"checkpoint","status":"planned","round":"1"}
+{"at":"2026-10-02T04:09:37Z","event":"checkpoint","status":"tests-written","round":"1"}
+{"at":"2026-10-02T04:22:13Z","event":"checkpoint","status":"gating","round":"1"}
+{"at":"2026-10-02T04:26:54Z","event":"checkpoint","status":"committed","round":"1"}
+{"at":"2026-10-02T04:28:34Z","event":"pass_start","queue":"review","round":"1"}
+{"at":"2026-10-02T04:28:34Z","event":"plan_start","plan":"01-review-opus","queue":"review","round":"1"}
+{"at":"2026-10-02T04:30:21Z","event":"plan_end","plan":"01-review-opus","queue":"review","rc":"0","verdict":"escalated","head":"00f7e6085e757f417ab5389d9b12a776e3007296","round":"1"}
+{"at":"2026-10-02T04:30:21Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"1"}
+{"at":"2026-10-02T04:37:24Z","event":"pass_start","queue":"review","round":"2"}
+{"at":"2026-10-02T04:37:24Z","event":"plan_start","plan":"02-review-sonnet","queue":"review","round":"2"}
+{"at":"2026-10-02T04:42:05Z","event":"plan_end","plan":"02-review-sonnet","queue":"review","rc":"0","verdict":"clean","head":"82146898777b3030e8e6585719d452271ad6ab00","round":"2"}
+{"at":"2026-10-02T04:42:05Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"2"}
+{"at":"2026-10-02T04:42:23Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/75","round":"2"}

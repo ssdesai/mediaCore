@@ -1,0 +1,67 @@
+{
+  "plan": "62-analysis-self-mode-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "cf366471-e0bc-43a1-829a-403edf009bc3",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 49,
+  "duration_ms": 228337,
+  "total_cost_usd": 1.8021523999999993,
+  "usage": {
+    "input_tokens": 88,
+    "cache_creation_input_tokens": 81832,
+    "cache_read_input_tokens": 3396748,
+    "output_tokens": 19148
+  },
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 4572,
+      "outputTokens": 16,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.004652,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 88,
+      "outputTokens": 19148,
+      "cacheReadInputTokens": 3396748,
+      "cacheCreationInputTokens": 81832,
+      "webSearchRequests": 0,
+      "costUSD": 1.7975003999999997,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Edit": 21,
+    "Grep": 7,
+    "Read": 19,
+    "Write": 1
+  },
+  "files_edited": [
+    "agentTooling/analysis/README.md",
+    "agentTooling/analysis/backfill_usage.py",
+    "agentTooling/analysis/capture_planning.py",
+    "agentTooling/analysis/report.py",
+    "agentTooling/analysis/roots.py"
+  ],
+  "edit_count": 22,
+  "attempts": [
+    {
+      "session_id": "cf366471-e0bc-43a1-829a-403edf009bc3",
+      "outcome": "complete",
+      "total_cost_usd": 1.8021523999999993,
+      "num_turns": 49,
+      "duration_ms": 228337
+    }
+  ]
+}

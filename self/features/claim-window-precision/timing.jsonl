@@ -1,0 +1,15 @@
+{"at":"2026-09-09T14:09:34Z","event":"checkpoint","status":"planned"}
+{"at":"2026-09-09T14:14:57Z","event":"checkpoint","status":"tests-written"}
+{"at":"2026-09-09T14:23:35Z","event":"checkpoint","status":"implementing"}
+{"at":"2026-09-09T14:32:03Z","event":"checkpoint","status":"gating"}
+{"at":"2026-09-09T14:36:38Z","event":"checkpoint","status":"committed"}
+{"at":"2026-09-09T14:40:01Z","event":"pass_start","queue":"review"}
+{"at":"2026-09-09T14:40:01Z","event":"plan_start","plan":"97-review-opus","queue":"review"}
+{"at":"2026-09-09T14:48:25Z","event":"plan_end","plan":"97-review-opus","queue":"review","rc":"0"}
+{"at":"2026-09-09T14:48:32Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/36"}
+{"at":"2026-09-09T14:48:32Z","event":"pass_end","queue":"review","reason":"all review plans complete"}
+{"at":"2026-09-09T14:54:59Z","event":"checkpoint","status":"planned"}
+{"at":"2026-09-09T15:01:55Z","event":"checkpoint","status":"tests-written"}
+{"at":"2026-09-09T15:06:54Z","event":"checkpoint","status":"implementing"}
+{"at":"2026-09-09T15:11:47Z","event":"checkpoint","status":"gating"}
+{"at":"2026-09-09T15:22:15Z","event":"checkpoint","status":"committed"}

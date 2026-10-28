@@ -1,0 +1,10 @@
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/minutes-slug-and-quoting/analysis/report.py
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/minutes-slug-and-quoting/self/tests/report-footnotes.sh
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/minutes-slug-and-quoting/analysis/report.py
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/minutes-slug-and-quoting/analysis/report.py
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/minutes-slug-and-quoting/self/tests/feature-lifecycle.sh
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/minutes-slug-and-quoting/analysis/README.md
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/minutes-slug-and-quoting/self/tests/report-footnotes.sh
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/minutes-slug-and-quoting/self/tests/report-footnotes.sh
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/minutes-slug-and-quoting/self/tests/README.md
+write: /Users/sahildesai/dev/agentTooling/.worktrees/minutes-slug-and-quoting/self/review-report.md

@@ -1,0 +1,58 @@
+{
+  "plan": "01-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "2baf43d0-9419-4a08-8481-eb7fdd488b75",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 18,
+  "duration_ms": 185311,
+  "total_cost_usd": 1.3005045000000002,
+  "usage": {
+    "input_tokens": 30,
+    "cache_creation_input_tokens": 65383,
+    "cache_read_input_tokens": 765349,
+    "output_tokens": 10554
+  },
+  "model_usage": {
+    "claude-opus-5": {
+      "inputTokens": 30,
+      "outputTokens": 10554,
+      "cacheReadInputTokens": 765349,
+      "cacheCreationInputTokens": 65383,
+      "webSearchRequests": 0,
+      "costUSD": 1.3005045000000002,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 5252,
+      "canonicalModel": "claude-opus-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 1,
+  "tool_counts": {
+    "Bash": 6,
+    "Edit": 4,
+    "Grep": 1,
+    "Read": 5,
+    "Write": 1
+  },
+  "files_edited": [
+    "hooks/README.md",
+    "self/review-report.md",
+    "self/tests/README.md",
+    "self/tests/feature-lifecycle.sh"
+  ],
+  "edit_count": 5,
+  "attempts": [
+    {
+      "session_id": "2baf43d0-9419-4a08-8481-eb7fdd488b75",
+      "outcome": "complete",
+      "total_cost_usd": 1.3005045000000002,
+      "num_turns": 18,
+      "duration_ms": 185311
+    }
+  ]
+}

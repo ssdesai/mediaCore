@@ -1,0 +1,4 @@
+write: /Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/report.py
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/README.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/README.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/README.md

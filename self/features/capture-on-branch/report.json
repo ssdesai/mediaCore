@@ -1,0 +1,111 @@
+{
+  "slug": "capture-on-branch",
+  "generated_at": "2026-09-17T15:22:47.394635+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 25.67829675,
+    "build": 25.67829675,
+    "verify": 0.0,
+    "review": 2.8512859999999995,
+    "total": 28.52958275,
+    "planning_pct": 0.0,
+    "build_pct": 90.00586154734422,
+    "verify_pct": 0.0,
+    "review_pct": 9.994138452655777,
+    "cost_per_plan": 28.52958275,
+    "cost_per_file": 4.0756546785714285,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 0,
+    "planning_subagents_s": 2145,
+    "planning_s": 0.0,
+    "implementer_s": 2145,
+    "build_s": 2145.0,
+    "verify_s": 0.0,
+    "review_s": 188.902,
+    "executor_s": 2333.902,
+    "total_s": 2333.902,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-17T14:42:59+00:00",
+      "last_at": "2026-09-17T15:22:46+00:00",
+      "batch_span_s": 2387.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 199.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 191.0,
+      "plan_runs": 1,
+      "pr_opened_at": "2026-09-17T15:22:46+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/45"
+    },
+    "tests_s": 758.0,
+    "direct_build_s": 964.0,
+    "gate_s": 155.0
+  },
+  "planning_cost_split": {
+    "subagents": 25.67829675,
+    "sessions": 0.0
+  },
+  "cold_start_tax_tokens": 108132,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 42,
+      "total_cost_usd": 2.8512859999999995,
+      "total_duration_s": 188.902,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "107-review-opus",
+      "edit_count": 7,
+      "files_edited": 7,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "107-review-opus",
+      "plan_md_lines": 140,
+      "loc_changed": 128
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "107-review-opus",
+      "edited_not_listed": [
+        "README.md",
+        "self/BACKLOG.md",
+        "self/features/capture-on-branch/NOTES.md",
+        "self/pr.sh",
+        "self/review-report.md",
+        "templates/plans/TEMPLATE_VERSIONS",
+        "templates/plans/pr.sh"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": []
+}

@@ -1,0 +1,21 @@
+{
+  "captured_at": "2026-09-21T17:39:27Z",
+  "cost_usd": 3.82108,
+  "duration_s": 2141,
+  "ended_at": "2026-09-21T17:39:27Z",
+  "features_started": [
+    {
+      "at": "2026-09-21T17:12:25Z",
+      "slug": "start-refreshes-main"
+    },
+    {
+      "at": "2026-09-21T17:35:54Z",
+      "slug": "runs"
+    }
+  ],
+  "git_branch": "main",
+  "launched_in": "/Users/sahildesai/dev/agentTooling",
+  "model": "claude-opus-5",
+  "session_id": "6de7afed-1b5b-450b-82f7-7f3bc9a6e675",
+  "started_at": "2026-09-21T17:03:46Z"
+}
