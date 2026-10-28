@@ -1,39 +1,20 @@
-# <Feature title>
+# Pull agentTooling PR 101
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+Propagate agentTooling PR #101 (detached-at-branch-tip-attach: new `attach-branch.sh`,
+hook and `session-start.sh` changes for cloud detached HEADs) into this repo's vendored
+`agentTooling/` subtree. The pulled upstream commit (`git-subtree-split`) is
+`60534226efb80b3b40ff01344b044156e297e8cf`. The chain was `broken` (the previous pull PR
+was squash-merged) and `update.sh` re-anchored it at upstream `125b0d7` before pulling.
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Review that the prefix diff is the upstream range and nothing else, and that sync and gate are clean. |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- No change to repo-owned `plans/` files: `sync-plans.sh --check` reports everything in-sync.
 
 ## Machine-readable
 
