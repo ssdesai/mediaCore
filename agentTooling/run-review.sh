@@ -74,6 +74,11 @@ REMOTE_TRACKING_PREFIX="refs/remotes/"
 # The fetch is unattended: a remote that wants credentials fails it rather than waiting
 # on a prompt nobody will answer (git's own GIT_TERMINAL_PROMPT switch)
 FETCH_TERMINAL_PROMPT="0"
+# The feature's committed copy of its latest verdict, relative to the feature directory
+# (self/features/review-report-never-tracked/). The same basename as the live report on
+# purpose: the generated plans/.gitignore anchors `/review-report.md` to plans/ so that it
+# ignores the live one and never this one.
+ARCHIVED_REPORT_NAME="review-report.md"
 
 # Bash is on for the same reason it is on for verify, plus one specific to this pass:
 # establishing what the batch changed is read-only git (status/diff/log/show), and there
@@ -215,6 +220,29 @@ if [[ -n "${FEATURE_SLUG:-}" ]]; then
     record_verdict=1
   fi
 fi
+# untrack_review_report — the one-time repair of a repo that committed $REVIEW_REPORT
+# before its ignore line reached it (self/features/review-report-never-tracked/). The
+# .gitignore that covers it never untracks a file already in the index, and the `git add
+# -A` below re-commits a tracked one every round — so two features reviewed at once
+# conflict on it at merge, the live report being the one path every round rewrites. Only
+# the INDEX entry goes: the file stays on disk, where feature-close.sh reads it for the PR
+# body, and the commit below carries the untrack. Only when the ignore now covers it, too:
+# an untrack the next `git add -A` would undo is no repair, so a repo whose plans/.gitignore
+# predates the line is told to run sync-plans.sh instead (which does the same untrack).
+# Advisory like the rest of the commit step: a git failure is reported and the pass goes on.
+untrack_review_report() {
+  git -C "$REPO_DIR" ls-files --error-unmatch -- "$REVIEW_REPORT" >/dev/null 2>&1 || return 0
+  if ! git -C "$REPO_DIR" check-ignore -q --no-index -- "$REVIEW_REPORT" 2>/dev/null; then
+    echo "=== $REVIEW_REPORT_LABEL is tracked and nothing ignores it — run sync-plans.sh, whose .gitignore does, and it untracks it ==="
+    return 0
+  fi
+  if git -C "$REPO_DIR" rm --cached -q -- "$REVIEW_REPORT" >/dev/null 2>&1; then
+    echo "=== untracked $REVIEW_REPORT_LABEL — it is ignored and rewritten every round, and this commit stops git carrying it ==="
+  else
+    echo "=== could not untrack $REVIEW_REPORT_LABEL — it stays tracked, and concurrent features will conflict on it ==="
+  fi
+}
+
 # commit_pass_output <branch> <base> <subject> — commit everything this pass produced.
 #
 # The commit is the RUNNER'S, and pr.sh's older one is now only a fallback that finds a
@@ -239,6 +267,7 @@ commit_pass_output() {
     echo "=== on '$branch', this feature's base — the pass's output is left uncommitted ==="
     return 0
   fi
+  untrack_review_report
   if [[ -z "$(git -C "$REPO_DIR" status --porcelain)" ]]; then
     echo "=== nothing to commit — the working tree is already clean ==="
     return 0
@@ -283,6 +312,8 @@ if (( record_verdict )); then
   escalations_dir="$FEATURES_DIR/$FEATURE_SLUG/$ESCALATIONS_DIR_NAME"
   escalations_file="$escalations_dir/$review_plan.md"
   escalations_label="$FEATURES_LABEL/$FEATURE_SLUG/$ESCALATIONS_DIR_NAME/$review_plan.md"
+  archived_report="$FEATURES_DIR/$FEATURE_SLUG/$ARCHIVED_REPORT_NAME"
+  archived_label="$FEATURES_LABEL/$FEATURE_SLUG/$ARCHIVED_REPORT_NAME"
 
   echo ""
   case "$verdict" in
@@ -307,6 +338,16 @@ if (( record_verdict )); then
     else
       echo "=== could not write $escalations_label — the report is at $REVIEW_REPORT_LABEL ==="
     fi
+  fi
+
+  # The committed record of this round's verdict, clean or not: the live report is ignored
+  # and rewritten every round, so without this a clean verdict survived only as a PR body.
+  # One file per feature, overwritten each round and carried by that round's commit below,
+  # so the feature's history holds every round's verdict and no two features share a path.
+  if cp "$REVIEW_REPORT" "$archived_report" 2>/dev/null; then
+    echo "=== this round's verdict is recorded at $archived_label ==="
+  else
+    echo "=== could not write $archived_label — the round's verdict is only at $REVIEW_REPORT_LABEL ==="
   fi
 
   # The branch this feature was cut from, recorded by feature-start.sh: on it there is

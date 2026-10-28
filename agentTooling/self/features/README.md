@@ -10,6 +10,7 @@ Every agentTooling feature gets one directory here, named by its slug:
       interactive/       bash-heavy steps run by hand, belonging to THIS feature
       escalations/NN.md  written by a level's tier-1/tier-2 pass, never by hand
       escalations/<review-stem>.md  an escalated review's report, written by run-review.sh
+      review-report.md   the latest round's verdict, clean or not, copied by run-review.sh and carried by the round commit
       brief.md, NOTES.md, CHECKPOINT.md   a DIRECT feature's own record (../../AGENT_DIRECT.md)
       routing.json       the record of the router session that started this feature
       planning.json      written later by analysis/capture_planning.py --self
@@ -218,3 +219,13 @@ format".
   no longer says "open the PR by hand" when `pr.sh` failed with a PR open. Built by hand
   (`method: "hand"`) by the cloud session that started it; plan `01-review-opus` is its
   review. It adds `../tests/pr-body-refresh.sh` and `../tests/fixtures/pr-v6.sh`.
+- `review-report-never-tracked` — a consuming repo that committed `plans/review-report.md`
+  before the generated `/review-report.md` ignore line reached it re-committed it every
+  round (`git add -A`), and two features reviewed at once conflicted on it (humanNetworkMap
+  PR #253); the promised archived copy `features/<slug>/review-report.md` was never
+  written. `../../run-review.sh` now untracks the live report in its round commit and
+  copies each verdict to the feature's `review-report.md`; `../../sync-plans.sh` untracks
+  any tracked file `plans/.gitignore` ignores (`UNTRACKED`, `TRACKED` under `--check`).
+  Built by hand (`method: "hand"`) by the cloud session that started it; plan
+  `01-review-opus` is its review; rulings in its `NOTES.md`. It adds
+  `../tests/review-report-untrack.sh`.

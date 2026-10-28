@@ -1,0 +1,70 @@
+{
+  "slug": "pull-agenttooling-pr100",
+  "captured_at": "2026-10-28T01:31:47.709889+00:00",
+  "manifest_branches": [
+    "claude/pull-agenttooling-pr100"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "505ffc7a-9471-5e23-881e-d5ad9a16f2ba",
+      "git_branch": "claude/pull-agenttooling-pr100",
+      "selected_by": "branch",
+      "cwd": "/home/user/mediaCore",
+      "date": "2026-10-28",
+      "started_at": "2026-10-28T01:29:22.527000+00:00",
+      "ended_at": "2026-10-28T01:31:37.828000+00:00",
+      "duration_s": 135
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "82fb28c3-7c26-4583-b6c3-44e1d79d23a3"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "505ffc7a-9471-5e23-881e-d5ad9a16f2ba",
+      "agent_id": null,
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": false,
+      "date": "2026-10-28",
+      "duration_s": 135,
+      "tokens": {
+        "input": 34,
+        "output": 3403,
+        "cache_read": 1562037,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 65583
+      },
+      "cost_usd": 0.4526337,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 0.4526337,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 0.4526337,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 135,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": []
+}

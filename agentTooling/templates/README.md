@@ -46,8 +46,14 @@ the resumable gate's per-check results, so they never dirty the tree they descri
 the repo's root `.gitignore` from an earlier install is redundant rather than wrong. The
 last is anchored where the first three are not, and deliberately: `plans/review-report.md` is
 rewritten every batch, while a feature's archived copy of the same verdict
-(`plans/features/<slug>/review-report.md`) is committed as that batch's record — an
-unanchored pattern would silently stop the next one being added. The file is a real
+(`plans/features/<slug>/review-report.md`, which `run-review.sh` writes every round and
+its round commit carries) is committed as that batch's record — an unanchored pattern
+would silently stop the next one being added. A pattern never untracks a file already
+committed, so a repo that committed `plans/review-report.md` before the line reached it
+would re-commit it every round and conflict on it between concurrent features;
+`sync-plans.sh` untracks any tracked file this `.gitignore` ignores (`UNTRACKED`, or
+`TRACKED` under `--check`), and `run-review.sh` untracks the report in its own commit,
+whichever runs first. The file is a real
 `.gitignore` while it sits here too, which is harmless: nothing under `templates/plans/`
 matches those patterns.
 

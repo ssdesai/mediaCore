@@ -194,7 +194,12 @@ The pass every method ends in, and the one thing that is never the builder's: an
 independent executor reads the diff against the manifest's `base` and writes its verdict
 to `plans/review-report.md`, whose **first line** is `Verdict: clean` or
 `Verdict: escalated` (`AGENT_PLANS.md` → "Review plans"). Local findings are fixed in the
-pass; structural ones are escalated.
+pass; structural ones are escalated. That file is ignored and never committed — it is
+rewritten every round and is the close's PR body — so the runner copies each round's
+verdict to `plans/features/S/review-report.md`, which the round commit carries. A repo that
+committed `plans/review-report.md` before its ignore line arrived has it untracked by that
+same commit, or by `sync-plans.sh` if a propagation pull runs first; until then every round
+re-commits it and two features reviewed at once conflict on it.
 
 **A feature is a sequence of rounds, and the review ends one.** A round is build → gate →
 verify → review. The runner commits what the pass left, as `S: review round N` and only
