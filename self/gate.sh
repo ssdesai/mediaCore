@@ -316,6 +316,7 @@ shell_scripts=(
   self/tests/gate-resume.sh
   self/tests/review-base.sh
   self/tests/pr-body-refresh.sh
+  self/tests/review-report-untrack.sh
   run-escalation-plan.sh
   templates/plans/gate.sh
   templates/plans/pr.sh
@@ -474,6 +475,11 @@ record "review base self-test" bash self/tests/review-base.sh
 # replaced with the current review's (forge.sh pr-edit, pr.sh template-version 7) — both
 # copies against a stub forge, and the PATCH itself (self/features/pr-body-refresh/).
 record "pr body refresh self-test" bash self/tests/pr-body-refresh.sh
+# A plans/review-report.md committed before its ignore line arrived is untracked by the
+# next review's commit or the next sync-plans.sh, whichever comes first, so two features
+# reviewed at once no longer conflict on it; each round's verdict is committed at
+# features/<slug>/review-report.md (self/features/review-report-never-tracked/).
+record "review report untrack self-test" bash self/tests/review-report-untrack.sh
 
 echo "=== gate: profile confinement ==="
 # Only the detector (hooks/env_profile.py and env-profile.sh), the adapters and their tests

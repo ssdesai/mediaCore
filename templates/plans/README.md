@@ -126,7 +126,10 @@ to the machinery is made once and pulled everywhere.
   the round can be closed), and the body of the PR `feature-close.sh` opens. On an
   escalated round the runner copies it to `features/<slug>/escalations/<review-stem>.md`,
   where it becomes the rework brief. Gitignored and regenerated every batch, like
-  `gate-report.txt`.
+  `gate-report.txt`; every round the runner also copies it to
+  `features/<slug>/review-report.md`, which that round's commit carries — the committed
+  record of the verdict, clean or escalated. A copy of the live file committed before the
+  ignore line arrived is untracked by the next `sync-plans.sh` or review commit.
 - `.gitignore` — *generated, overwritten every sync* — the five patterns whose files are
   rewritten every batch and never committed: `gate-report*.txt` (including the per-level
   `gate-report.<NN>.txt`), `**/*.stream.jsonl`, `**/*.logfifo`, `/gate-state/` (the

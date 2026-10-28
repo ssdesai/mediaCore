@@ -116,6 +116,12 @@ code itself — the defects that are still there while every check is green.
   `<slug>: review stamps` (`timing.jsonl` alone), so the round ends on a clean tree. A first line the harness cannot read is `unreadable` and
   is treated exactly like `escalated` — **fail closed** — with a line saying the report
   carried no verdict.
+- **The live report is never committed; a per-feature copy is.** `plans/review-report.md`
+  is ignored and rewritten every round, so before the round commit the runner copies it to
+  `plans/features/<slug>/review-report.md` — the verdict's committed record, clean or not —
+  and, in a repo that committed the live file before its ignore line arrived, untracks it
+  (`git rm --cached`) so that commit stops carrying it. `sync-plans.sh` makes the same
+  repair on a propagation pull, whichever comes first.
 - **It opens no PR and runs no capture.** A runner is a runner. The step that opens the
   PR, captures the cost and asks for the merge is `feature-close.sh`, which refuses
   anything but the tree a clean review judged (`LIFECYCLE.md` → step 6) — so a rework

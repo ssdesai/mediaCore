@@ -107,7 +107,9 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
 - Build: `./run-plans.sh --self <slug>`; verify: `./run-verify.sh --self <slug>`;
   review: `./run-review.sh --self <slug>`; all three plus the close on a clean round:
   `./run-batch.sh --self <slug>`. The review pass records the round's verdict — the first
-  line of `self/review-report.md`, `Verdict: clean` or `Verdict: escalated` — and stops;
+  line of `self/review-report.md` (ignored; the runner copies it to
+  `self/features/<slug>/review-report.md`, which the round commit carries), `Verdict:
+  clean` or `Verdict: escalated` — and stops;
   an escalated round's rework is briefed from
   `self/features/<slug>/escalations/<review-stem>.md` and is a new round.
 - **There is no sweep.** `sweep.sh` is retired: the rates line, the corpus-wide unclaimed

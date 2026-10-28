@@ -245,6 +245,9 @@ check "capped review: the round's verdict is stamped from the report it did writ
 check "capped review: no PR is opened — the close does that, on the verdict above" \
   '[[ ! -f "$AT/self/pr-opened" ]]'
 check "capped review: report carries the cap banner" 'grep -q "reached its budget cap" "$AT/self/review-report.md"'
+# The banner is appended before the round's archived copy is taken (run-review.sh), so the
+# committed record says the pass was capped too (self/features/review-report-never-tracked/).
+check "capped review: the archived copy carries the cap banner too" 'grep -q "reached its budget cap" "$F/review-report.md"'
 rm -f "$AT/self/pr-opened" "$AT/self/review-report.md"
 reset_feature
 echo "brief" > "$F/review/incomplete/11-review-opus.md"
