@@ -121,6 +121,15 @@ second feature in this one, needs a container of its own.
   does not ask the child to switch; it launches a fresh session on the feature's branch
   (`create_session` with that branch) and briefs it to continue the feature
   (`LIFECYCLE.md` → step 2, "A restarted container is off its feature's branch").
+- **A continuing child can come up detached at its branch's tip, and a fresh session
+  does not cure it.** On 2026-10-27, twice in a row (humanNetworkMap,
+  `pull-agenttooling-pr99`), a session created with `source_revision` and
+  `outcome_branch` both set to an existing branch opened with HEAD detached exactly at
+  `origin/<branch>` and the local branch, cached from an earlier clone, 12 commits
+  behind. The child fixes this one itself: the hook's reason and `session-start.sh` name
+  `attach-branch.sh <branch>`, which re-attaches HEAD moving nothing and refuses any
+  other shape. The parent's brief for a continuing child can say so up front
+  (`LIFECYCLE.md` → step 2, "A cached clone comes up detached at its branch's tip").
 - **The parent is a router.** Its spend is routing overhead: it opens several features and
   belongs to none of them. It is never pinned in a child's manifest, and it builds nothing
   in any child's repo.
