@@ -16,6 +16,7 @@ Every feature this repo works on gets one directory here, named by its slug:
       CHECKPOINT.md      direct features only: the implementer's slice list and state, for a resume
       routing.json       the router session that started this feature, written by feature-start.sh
       timing.jsonl       appended by the runners: batch, pass, plan, gate and PR instants
+      review-report.md   the latest review round's verdict, copied by run-review.sh and carried by the round commit
       planning.json      written later by the analysis tooling
       report.md / report.json
 

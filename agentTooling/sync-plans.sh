@@ -391,6 +391,40 @@ migrate_routing() {
   return 0
 }
 
+# untrack_ignored <--check|--write> — every file under plans/ that the generated
+# plans/.gitignore ignores and git nevertheless TRACKS: committed before the line that
+# ignores it reached this repo, which a .gitignore never undoes on its own. The case that
+# made this a step is plans/review-report.md, re-committed by every review round's `git add
+# -A` once tracked, so any two features reviewed at once conflicted on it
+# (self/features/review-report-never-tracked/). Only plans/.gitignore's own patterns
+# count — a match from the repo's root .gitignore, or any other, is the repo's business —
+# and only the index entry goes (`git rm --cached`): the file stays on disk, and the
+# untrack is staged for the human who ran the pull to commit, like the routing moves.
+# `--check` reports each as a TRACKED item and writes nothing; `--write` untracks each as
+# UNTRACKED, which is done, not pending. Silent where plans/ is not in a git work tree.
+# Returns the count of items needing attention.
+untrack_ignored() {
+  local mode="$1" prefix source line path count=0
+  git -C "$PLANS_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  prefix="$(git -C "$PLANS_DIR" rev-parse --show-prefix 2>/dev/null)" || return 0
+  source="${prefix}.gitignore"
+  while IFS= read -r line; do
+    [[ -n "$line" && "${line%%:*}" == "$source" ]] || continue
+    path="${line#*$'\t'}"
+    if [[ "$mode" == "--check" ]]; then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "TRACKED" "plans/$path (ignored by plans/.gitignore but committed; run sync-plans.sh to untrack it)"
+      count=$((count + 1))
+    elif git -C "$PLANS_DIR" rm --cached -q -- "$path" >/dev/null 2>&1; then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "UNTRACKED" "plans/$path (ignored by plans/.gitignore; the file stays — commit the untrack)"
+    else
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "WARN" "plans/$path (ignored but tracked, and git rm --cached failed; it stays tracked)"
+      count=$((count + 1))
+    fi
+  done < <(git -C "$PLANS_DIR" ls-files -c -i --exclude-standard 2>/dev/null \
+    | git -C "$PLANS_DIR" check-ignore --no-index -v --stdin 2>/dev/null || true)
+  return "$count"
+}
+
 # finish <count> — the last line and exit code, shared by --check and the write path.
 finish() {
   local count="$1"
@@ -418,6 +452,7 @@ fi
 if [[ "$MODE" == "check" ]]; then
   count=0
   rc=0; check_stubs || rc=$?; count=$((count + rc))
+  rc=0; untrack_ignored --check || rc=$?; count=$((count + rc))
   rc=0; check_repo_owned || rc=$?; count=$((count + rc))
   rc=0; sync_hook --check || rc=$?; count=$((count + rc))
   finish "$count"
@@ -427,6 +462,10 @@ mkdir -p "$PLANS_DIR/interactive" "$PLANS_DIR/features"
 
 stub_rc=0
 sync_stubs || stub_rc=$?
+# After the stubs, so the .gitignore it judges by is the one just written.
+untrack_rc=0
+untrack_ignored --write || untrack_rc=$?
+stub_rc=$((stub_rc + untrack_rc))
 
 if [[ -f "$PLANS_DIR/PROJECT_FACTS.md" ]]; then
   printf "  %-${STATUS_COL_WIDTH}s%s\n" "kept" "plans/PROJECT_FACTS.md (repo-owned — never overwritten)"

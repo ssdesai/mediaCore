@@ -88,7 +88,9 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   level's level-verify reports that level's failure only at the final gate, with no tier
   in between — and a settled level is not re-settled on a re-run; `run-review.sh` stamps
   the round's `verdict` (read from the report's first line) when the cap fires *after* the
-  report was written and nothing at all when it fires before, and opens no PR either way,
+  report was written and nothing at all when it fires before — the cap banner in both the
+  live report and the feature's archived `review-report.md`, appended before the copy is
+  taken — and opens no PR either way,
   that being `feature-close.sh`'s; a sentinel's `expected-red:`/`defer:` lines reach
   the gate at that level only and make it green without a tier. It also copies
   `check-plans.sh` into the sandbox, so the corpus lint really runs at the head of every
@@ -2728,6 +2730,24 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `html_url` (`GH_NO_URL`) exits 1; E6 too few arguments exit 2; E7 no `gh pr`, `gh auth
   status` or GraphQL. The whole-close view of the same path is `feature-lifecycle.sh`
   X3d–X3f. No model, no network.
+- `review-report-untrack.sh` — the live review report that is never tracked
+  (`self/features/review-report-never-tracked/`). A consuming repo under mktemp with
+  `run-review.sh`, its libs, `sync-plans.sh` and `templates/plans/` under `agentTooling/`,
+  `plans/review-report.md` COMMITTED on `main` before the template's `plans/.gitignore`
+  arrives, two started features, and a stub `claude` that writes `Verdict: clean` naming
+  its reviewer (`$REVIEWER`). U0: the premise — two branches each committing a rewrite of
+  the tracked report conflict on merge. R1: a review on feature A prints
+  `untracked plans/review-report.md`, HEAD and the index no longer carry it, the file is
+  still on disk. R2: `plans/features/<A>/review-report.md` is in HEAD with the verdict the
+  pass wrote. R3: a later `git add -A` commit after the report is rewritten does not
+  re-add it. R4: feature B, reviewed off the same `main`, merges after A with no conflict.
+  R5: with the ignore line missing from `plans/.gitignore`, the report stays tracked and
+  the pass says `run sync-plans.sh`. S1: `sync-plans.sh --check` prints `TRACKED
+  plans/review-report.md` and leaves the index byte-identical. S2: `sync-plans.sh` prints
+  `UNTRACKED plans/review-report.md`, keeps the file, and leaves both a committed
+  `features/<slug>/review-report.md` and a file only the root `.gitignore` ignores
+  tracked. Depends on those printed words and on `run-review.sh` resolving `plans/` from
+  the directory above its own. No model, no network.
 - `gate-resume.sh` — the resumable gate (`self/DESIGN-2026-10-05-cloud-execution.md` §8):
   a gate killed with its container re-runs only what had not finished. Run against **both**
   gates that carry it — `templates/plans/gate.sh` and `self/gate.sh` — each copied into a
