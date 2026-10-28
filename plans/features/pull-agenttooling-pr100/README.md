@@ -46,7 +46,7 @@ Delete this section when the batch has a single level.
   "base": "main",
   "profile": "cloud",
   "gate": "green",
-  "session_window": {"from": "2026-10-28T01:29:22.527Z", "to": null},
+  "session_window": {"from": "2026-10-28T01:29:22.527Z", "to": "2026-10-28T01:31:38Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],
