@@ -1,0 +1,108 @@
+{
+  "slug": "session-start-precision",
+  "captured_at": "2026-10-05T22:32:24.427025+00:00",
+  "manifest_branches": [
+    "claude/session-start-precision"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "781b2be2-e809-5463-b463-52760ce3ea94",
+      "git_branch": "claude/session-start-precision",
+      "selected_by": "branch",
+      "cwd": "/home/user/agenttooling",
+      "date": "2026-10-05",
+      "started_at": "2026-10-05T22:05:29.793000+00:00",
+      "ended_at": "2026-10-05T22:32:19.359000+00:00",
+      "duration_s": 1609
+    }
+  ],
+  "subagents": [
+    {
+      "agent_id": "a66a09c2178b0182c",
+      "parent_session_id": "781b2be2-e809-5463-b463-52760ce3ea94",
+      "date": "2026-10-05",
+      "started_at": "2026-10-05T22:17:34.429000+00:00",
+      "ended_at": "2026-10-05T22:26:10.586000+00:00",
+      "duration_s": 516,
+      "selected_by": "parent",
+      "cross_repo": false
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "6c232522-a29a-47d1-ab4f-12ba2f785cd5"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "781b2be2-e809-5463-b463-52760ce3ea94",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-10-05",
+      "duration_s": 1609,
+      "tokens": {
+        "input": 111,
+        "output": 19490,
+        "cache_read": 7495742,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 163991
+      },
+      "cost_usd": 3.2013204,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "781b2be2-e809-5463-b463-52760ce3ea94",
+      "agent_id": "a66a09c2178b0182c",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-05",
+      "duration_s": 516,
+      "tokens": {
+        "input": 134,
+        "output": 955,
+        "cache_read": 8988393,
+        "cache_creation_5m": 148164,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 2.5581346000000003,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 3.2013204,
+    "sidechain": 2.5581346000000003,
+    "subagents": 2.5581346000000003,
+    "total": 5.759455000000001,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 1609,
+    "subagents": 516,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-02",
+  "warnings": []
+}

@@ -1,0 +1,508 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Refreshes the generated stubs — the READMEs, the feature template and .gitignore — in
+# the consuming repo's plans/ tree from templates/plans/. Run after `git subtree pull`,
+# and after install in place of copying the template by hand.
+#
+# The stubs are pointers into this directory ("see agentTooling/RUNNER.md"), so any
+# change here that moves the target — a renamed subtree prefix, a restructured queue,
+# a doc that gets split — silently staleness every copy already sitting in a repo.
+# Copying once solves nothing; syncing keeps one source of truth.
+#
+# Overwriting the generated stubs is safe because they carry no repo-specific content —
+# provided nobody wrote any into one. A stub that differs from its template is either a
+# template change pulled from upstream, which the overwrite carries in, or a hand edit,
+# which it destroys; the two used to print the same line. Each is now told apart by
+# whether the stub is byte-identical to a template version this repo has vendored
+# (stub_origin below), and a hand edit's dropped lines are printed — `EDITED` under
+# `--check`, `OVERWROTE` on the write path, both items needing attention. A repo's own
+# entries belong in PROJECT_FACTS.md, which the generated README names. The eight files
+# that do carry repo-specific content — PROJECT_FACTS.md, BACKLOG.md, gate.sh, pr.sh,
+# worktree-setup.sh, open-session.sh, environment.sh and cloud-setup.sh — are seeded
+# from the skeleton on first run and never overwritten
+# again. `--check` reports on both halves without writing anything: STALE or missing
+# generated stubs, and repo-owned scripts whose template-version line trails the
+# template's or that are missing (environment.sh and cloud-setup.sh among them, reported
+# `missing` exactly as BACKLOG.md is), plus an unfilled PROJECT_FACTS.md. The write path
+# ends with that same repo-owned report, since the stubs it just wrote are always in
+# sync; a hand-edited stub it overwrote is counted in the same total.
+#
+# The write path also runs `analysis/routing.py --migrate`, which empties the old
+# `plans/routing/` into the features its records name and says what it moved for the human
+# to commit — idempotent, silent once there is nothing there, and never a failure.
+#
+# Beyond plans/, one file in .claude/ is maintained: the PreToolUse hook entry pointing at
+# hooks/allow-repo-commands.sh, which approves repo-confined reads and tests and denies a
+# chained `cd`, and the SessionStart hook entry running agentTooling/session-start.sh (the
+# session's orientation everywhere, then plans/cloud-setup.sh in a Claude Code cloud
+# container). Both are merged, never copied — see hooks/README.md. A repo that hand-edits
+# an entry keeps its version; one that is absent is appended, once; and the entry that ran
+# plans/cloud-setup.sh directly, which the helper wrote before session-start.sh, is removed.
+# The same file also gets the OS `sandbox` block, and there the merge is NOT hands-off:
+# `enabled`, `failIfUnavailable` and `allowUnsandboxedCommands` are set back to
+# wire-settings.py's `SANDBOX_ENABLED` (OFF today) / on / off on every run, even over a
+# repo that changed them — and once the switch is on they govern every developer's
+# interactive sessions in that repo, not just the runners (a machine where the sandbox
+# cannot start will refuse to run Claude Code there). `denyRead` and
+# `allowedDomains` are unions: the repo's own entries stay. hooks/README.md → "The
+# sandbox block".
+#
+# Scope: apart from that one entry, this writes into the CONSUMING repo's plans/ only.
+# agentTooling's own corpus under self/ is hand-written and is never generated from
+# templates/ — every stub here points back up at ../agentTooling/…, which is wrong from
+# inside agentTooling, and this
+# directory is the source those stubs point at rather than a copy of it. There is no
+# --self flag; there would be nothing to generate.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+TEMPLATE_DIR="$SCRIPT_DIR/templates/plans"
+PLANS_DIR="$REPO_DIR/plans"
+USAGE_RC=2
+STATUS_COL_WIDTH=11
+
+# The Claude Code hook wiring. Merged into the repo's .claude/settings.json rather than
+# copied from a template: that file is repo-owned and may hold unrelated settings, so the
+# helper appends its entries and rules when absent and touches nothing else — except the
+# three owned sandbox switches above, which it sets wherever they stand.
+WIRE_SETTINGS="$SCRIPT_DIR/hooks/wire-settings.py"
+
+# The routing-record migration. A record used to live at plans/routing/<session-id>.json,
+# one file per router shared by every feature that router started, and lives inside the
+# feature it links now — plans/features/<slug>/routing.json
+# (agentTooling/analysis/routing.py, self/DESIGN-2026-09-18-ledger-and-routing.md §1). A
+# repo that pulls this subtree still has its records in the old place, so the write path
+# empties it below.
+ROUTING_MODULE="$SCRIPT_DIR/analysis/routing.py"
+
+# The stubs that are regenerated every run. PROJECT_FACTS.md is deliberately absent.
+#
+# .gitignore is generated for the same reason the READMEs are: it holds no repo-specific
+# content, and the install step it replaces was hand-maintained with nothing to detect a
+# missed one — a repo that skipped it committed a per-level gate report every batch. Its
+# patterns are relative to plans/, so a root-level `plans/**/…` pattern from an earlier
+# install is redundant rather than wrong.
+GENERATED=(README.md interactive/README.md features/README.md features/TEMPLATE.md .gitignore)
+
+# Where a stub that differs from its template came from (stub_origin). Upstream: it is
+# byte-identical to a template version this repo once vendored, so overwriting it loses
+# nothing. Edited: it matches none, so a hand edit is in it. Unknown: there is no history
+# to ask, so it may be either — reported like an edit, never assumed to be upstream.
+ORIGIN_UPSTREAM="upstream"
+ORIGIN_EDITED="edited"
+ORIGIN_UNKNOWN="unknown"
+# The margin a dropped line is printed behind, under its stub's status line.
+DROPPED_LINE_PREFIX="| "
+
+# The repo-owned scripts: seeded once from the skeleton, then never overwritten again.
+# `open-session.sh` is what `feature-start.sh --open` runs to put a coordinator session
+# inside the new worktree; it is repo-owned because how a session is opened is a
+# per-machine, per-repo choice (a terminal, a tmux window, an editor).
+# Checked by template-version rather than by content, since a repo customizes
+# everything below each script's REPO-SPECIFIC marker. The last two are the environment
+# adapters of agentTooling/self/DESIGN-2026-10-05-cloud-execution.md §7: environment.sh
+# (the facts that differ by profile, SOURCED by the gate and worktree-setup.sh) and
+# cloud-setup.sh (the repo's part of session start, which agentTooling/session-start.sh
+# runs in the cloud).
+REPO_OWNED_SCRIPTS=(gate.sh pr.sh worktree-setup.sh open-session.sh environment.sh cloud-setup.sh)
+# The repo-owned scripts that are sourced, never run: seeded without the executable bit,
+# so running one by mistake fails rather than setting variables in a child nobody reads.
+SOURCED_SCRIPTS=(environment.sh)
+
+# Repo-owned docs seeded once and then reported by PRESENCE alone. An entry written into
+# one is content, not drift, and an EMPTY one is the correct steady state — a repo that
+# has closed everything it found has an empty backlog — so a present file is `in-sync`
+# and never `unfilled`. PROJECT_FACTS.md is deliberately not in this list: it ships as a
+# list of prompts that a repo MUST replace, which is the opposite property, and it has
+# its own check below.
+SEEDED_DOCS=(BACKLOG.md)
+
+usage() {
+  echo "usage: sync-plans.sh [--check]" >&2
+  exit "$USAGE_RC"
+}
+
+# template_version <file> — the integer after "# template-version:" in its header, or 0
+# when the line is absent (an unversioned copy predating this contract).
+template_version() {
+  local v
+  v="$(sed -n 's/^# template-version:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$1" 2>/dev/null | head -n 1)"
+  echo "${v:-0}"
+}
+
+# The one-time hint printed when a repo-owned script is freshly seeded.
+repo_owned_created_hint() {
+  case "$1" in
+    gate.sh) echo "fill in the REPO-SPECIFIC sections before relying on it" ;;
+    pr.sh) echo "check its forge CLI before relying on it; it bases the PR on whatever branch is checked out" ;;
+    worktree-setup.sh) echo "fill in this repo's per-worktree setup (venv, npm install, dev port)" ;;
+    open-session.sh) echo "it opens a Terminal.app window running claude; swap in this repo's launcher" ;;
+    environment.sh) echo "put the facts that differ between a laptop and a cloud container here (DB connection, browser path)" ;;
+    cloud-setup.sh) echo "a no-op outside a cloud container; start this repo's services there (Postgres, a role)" ;;
+  esac
+}
+
+# is_sourced_script <name> — status 0 for a repo-owned script in SOURCED_SCRIPTS.
+is_sourced_script() {
+  local s
+  for s in "${SOURCED_SCRIPTS[@]}"; do
+    if [[ "$s" == "$1" ]]; then return 0; fi
+  done
+  return 1
+}
+
+# stub_origin <rel> — where plans/<rel>, which differs from templates/plans/<rel>, came
+# from: $ORIGIN_UPSTREAM when it is byte-identical to a version of that template this
+# repo has committed (any commit in HEAD's history that touched the template's path, or
+# the index), $ORIGIN_EDITED when it matches none, and "$ORIGIN_UNKNOWN:<reason>" when
+# the history cannot answer — no git, this directory not inside the consuming repo's own
+# checkout, no commit yet, or a shallow clone whose missing history might hold the match.
+# The comparison is of blob ids, so it is exact, and it needs no state this script keeps:
+# the vendored templates are already in the repo's history, every `subtree pull` having
+# committed one. Never fails: every git error is an answer.
+stub_origin() {
+  local rel="$1" top_here top_repo prefix tmpl_path blob commit vblob
+  top_here="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)" || top_here=""
+  top_repo="$(git -C "$REPO_DIR" rev-parse --show-toplevel 2>/dev/null)" || top_repo=""
+  if [[ -z "$top_here" || "$top_here" != "$top_repo" ]]; then
+    echo "$ORIGIN_UNKNOWN:no git history of the vendored templates to compare it with"
+    return 0
+  fi
+  if ! git -C "$REPO_DIR" rev-parse -q --verify HEAD >/dev/null 2>&1; then
+    echo "$ORIGIN_UNKNOWN:no commit yet to compare it with"
+    return 0
+  fi
+  prefix="$(git -C "$SCRIPT_DIR" rev-parse --show-prefix 2>/dev/null)" || prefix=""
+  tmpl_path="${prefix}templates/plans/$rel"
+  # --path: hash it under the template's own attributes, as its committed blobs were.
+  blob="$(git -C "$REPO_DIR" hash-object --path="$tmpl_path" -- "$PLANS_DIR/$rel" 2>/dev/null)" || blob=""
+  if [[ -z "$blob" ]]; then
+    echo "$ORIGIN_UNKNOWN:git could not hash it"
+    return 0
+  fi
+  vblob="$(git -C "$REPO_DIR" rev-parse -q --verify ":$tmpl_path" 2>/dev/null)" || vblob=""
+  if [[ "$vblob" == "$blob" ]]; then
+    echo "$ORIGIN_UPSTREAM"
+    return 0
+  fi
+  # A commit on a squashed subtree's own side holds the template at the subtree's root,
+  # not under the prefix; its lookup fails and is skipped, and the merge that brought it
+  # in holds the same blob under the prefix.
+  while IFS= read -r commit; do
+    vblob="$(git -C "$REPO_DIR" rev-parse -q --verify "$commit:$tmpl_path" 2>/dev/null)" || continue
+    if [[ "$vblob" == "$blob" ]]; then
+      echo "$ORIGIN_UPSTREAM"
+      return 0
+    fi
+  done < <(git -C "$REPO_DIR" log --format=%H HEAD -- "$tmpl_path" 2>/dev/null || true)
+  if [[ "$(git -C "$REPO_DIR" rev-parse --is-shallow-repository 2>/dev/null)" == "true" ]]; then
+    echo "$ORIGIN_UNKNOWN:this clone is shallow, and the template version it was synced from may be in the history it lacks"
+    return 0
+  fi
+  echo "$ORIGIN_EDITED"
+}
+
+# dropped_lines <rel> — the lines plans/<rel> holds that templates/plans/<rel> does not,
+# one per line: what overwriting it loses.
+dropped_lines() {
+  diff -- "$TEMPLATE_DIR/$1" "$PLANS_DIR/$1" 2>/dev/null | sed -n 's/^> //p' || true
+}
+
+# print_dropped <lines> — each line behind $DROPPED_LINE_PREFIX, under a status line.
+print_dropped() {
+  local line
+  [[ -n "$1" ]] || return 0
+  while IFS= read -r line; do
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "" "$DROPPED_LINE_PREFIX$line"
+  done <<<"$1"
+}
+
+# count_lines <text> — how many lines it holds, 0 for empty.
+count_lines() {
+  if [[ -z "$1" ]]; then echo 0; else grep -c '' <<<"$1"; fi
+}
+
+# check_stubs — one in-sync/STALE/EDITED/missing line per $GENERATED entry, in order,
+# each EDITED one (and each STALE one whose origin is unknown) followed by the lines a
+# sync would drop. Returns the count of items that need attention.
+check_stubs() {
+  local rel origin dropped n count=0
+  for rel in "${GENERATED[@]}"; do
+    if [[ ! -f "$PLANS_DIR/$rel" ]]; then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "missing" "plans/$rel (run sync-plans.sh)"
+      count=$((count + 1))
+    elif cmp -s "$TEMPLATE_DIR/$rel" "$PLANS_DIR/$rel"; then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "in-sync" "plans/$rel"
+    else
+      origin="$(stub_origin "$rel")"
+      dropped="$(dropped_lines "$rel")"
+      n="$(count_lines "$dropped")"
+      count=$((count + 1))
+      case "$origin" in
+        "$ORIGIN_UPSTREAM")
+          printf "  %-${STATUS_COL_WIDTH}s%s\n" "STALE" "plans/$rel (an earlier template's copy, unedited; run sync-plans.sh)"
+          ;;
+        "$ORIGIN_EDITED")
+          if (( n == 0 )); then
+            printf "  %-${STATUS_COL_WIDTH}s%s\n" "EDITED" "plans/$rel (hand-edited, adding nothing the template lacks; run sync-plans.sh to restore it)"
+          else
+            printf "  %-${STATUS_COL_WIDTH}s%s\n" "EDITED" "plans/$rel (hand-edited; sync-plans.sh would drop the $n line(s) below — move them to plans/PROJECT_FACTS.md first)"
+          fi
+          ;;
+        *)
+          printf "  %-${STATUS_COL_WIDTH}s%s\n" "STALE" "plans/$rel (differs from templates/plans/$rel; ${origin#*:}, so it may be a hand edit — sync-plans.sh would drop the $n line(s) below)"
+          ;;
+      esac
+      [[ "$origin" == "$ORIGIN_UPSTREAM" ]] || print_dropped "$dropped"
+    fi
+  done
+  return "$count"
+}
+
+# sync_stubs — the write path's half of check_stubs: copy each $GENERATED entry over its
+# stub, saying how it differed. A hand edit (or a difference of unknown origin) that
+# drops lines is OVERWROTE, with the lines, and counts as an item: the file is the
+# template again, and those lines exist now only in this output and in git, if they were
+# ever committed. Returns the count of such items.
+sync_stubs() {
+  local rel origin dropped n count=0
+  for rel in "${GENERATED[@]}"; do
+    if [[ -f "$PLANS_DIR/$rel" ]] && cmp -s "$TEMPLATE_DIR/$rel" "$PLANS_DIR/$rel"; then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "unchanged" "plans/$rel"
+      continue
+    fi
+    if [[ ! -f "$PLANS_DIR/$rel" ]]; then
+      cp "$TEMPLATE_DIR/$rel" "$PLANS_DIR/$rel"
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "synced" "plans/$rel"
+      continue
+    fi
+    origin="$(stub_origin "$rel")"
+    dropped="$(dropped_lines "$rel")"
+    n="$(count_lines "$dropped")"
+    cp "$TEMPLATE_DIR/$rel" "$PLANS_DIR/$rel"
+    if [[ "$origin" == "$ORIGIN_UPSTREAM" ]]; then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "synced" "plans/$rel (template changed upstream)"
+      continue
+    fi
+    if (( n == 0 )); then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "synced" "plans/$rel (restored the template's lines; it held none of its own)"
+      continue
+    fi
+    count=$((count + 1))
+    if [[ "$origin" == "$ORIGIN_EDITED" ]]; then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "OVERWROTE" "plans/$rel (hand-edited; dropped the $n line(s) below — they belong in plans/PROJECT_FACTS.md, and git has them only if they were committed)"
+    else
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "OVERWROTE" "plans/$rel (${origin#*:}, so it may have been a hand edit; dropped the $n line(s) below — move any of this repo's own to plans/PROJECT_FACTS.md)"
+    fi
+    print_dropped "$dropped"
+  done
+  return "$count"
+}
+
+# check_repo_owned — the six scripts by template-version, then PROJECT_FACTS.md by
+# content, then SEEDED_DOCS by presence alone. Returns the count of items that need
+# attention.
+check_repo_owned() {
+  local f tver cver count=0
+  for f in "${REPO_OWNED_SCRIPTS[@]}"; do
+    if [[ ! -f "$PLANS_DIR/$f" ]]; then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "missing" "plans/$f (never seeded; run sync-plans.sh)"
+      count=$((count + 1))
+    else
+      tver="$(template_version "$TEMPLATE_DIR/$f")"
+      cver="$(template_version "$PLANS_DIR/$f")"
+      if [[ "$cver" == "$tver" ]]; then
+        printf "  %-${STATUS_COL_WIDTH}s%s\n" "in-sync" "plans/$f (template-version $tver)"
+      else
+        printf "  %-${STATUS_COL_WIDTH}s%s\n" "DRIFT" "plans/$f (template-version $cver < $tver; hand-merge, see agentTooling/README.md -> Updating)"
+        count=$((count + 1))
+      fi
+    fi
+  done
+
+  if [[ ! -f "$PLANS_DIR/PROJECT_FACTS.md" ]]; then
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "missing" "plans/PROJECT_FACTS.md (never seeded; run sync-plans.sh)"
+    count=$((count + 1))
+  elif cmp -s "$TEMPLATE_DIR/PROJECT_FACTS.md" "$PLANS_DIR/PROJECT_FACTS.md"; then
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "unfilled" "plans/PROJECT_FACTS.md (still the skeleton; fill it before authoring plans)"
+    count=$((count + 1))
+  else
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "in-sync" "plans/PROJECT_FACTS.md"
+  fi
+
+  local doc
+  for doc in "${SEEDED_DOCS[@]}"; do
+    if [[ ! -f "$PLANS_DIR/$doc" ]]; then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "missing" "plans/$doc (never seeded; run sync-plans.sh)"
+      count=$((count + 1))
+    else
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "in-sync" "plans/$doc"
+    fi
+  done
+  return "$count"
+}
+
+# sync_hook <--check|--write> — one status line for the PreToolUse hook wiring in
+# .claude/settings.json, from the helper that owns the merge. Returns the count of items
+# needing attention (0 or 1), like the checks above.
+sync_hook() {
+  local mode="$1" out rc=0
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "SKIPPED" ".claude/settings.json (python3 not found; hook not wired)"
+    return 1
+  fi
+  if [[ ! -f "$WIRE_SETTINGS" ]]; then
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "SKIPPED" ".claude/settings.json (hooks/wire-settings.py missing; hook not wired)"
+    return 1
+  fi
+  out="$(python3 "$WIRE_SETTINGS" --repo "$REPO_DIR" "$mode")" || rc=$?
+  printf "  %-${STATUS_COL_WIDTH}s%s\n" "${out%%$'\t'*}" "${out#*$'\t'}"
+  return "$rc"
+}
+
+# migrate_routing — empty plans/routing/ into the features its records name, and say what
+# moved. Run on the write path only, which is the path a `git subtree pull` is followed
+# by; `--check` reports drift and writes nothing, and a migration is not drift.
+#
+# Advisory in both directions: it is idempotent and silent once the directory is gone, so
+# every later sync costs one exit-0 process, and a failure is reported without failing the
+# sync — a record left in the old place is a record nobody reads, not a broken repo. The
+# moves are NOT committed: this script never commits, so they are handed to the human who
+# ran the pull, beside everything else that run wrote.
+migrate_routing() {
+  local out line rc=0
+  [[ -f "$ROUTING_MODULE" ]] || return 0
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "SKIPPED" "plans/routing/ (python3 not found; routing records not migrated)"
+    return 0
+  fi
+  out="$(python3 -B "$ROUTING_MODULE" --migrate 2>&1)" || rc=$?
+  if (( rc != 0 )); then
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "WARN" "plans/routing/ (routing.py --migrate exited $rc; the records are as they were)"
+    return 0
+  fi
+  [[ -n "$out" ]] || return 0
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "routing" "$line"
+  done <<<"$out"
+  echo "  commit the routing records above — each one now lives in the feature it links."
+  return 0
+}
+
+# untrack_ignored <--check|--write> — every file under plans/ that the generated
+# plans/.gitignore ignores and git nevertheless TRACKS: committed before the line that
+# ignores it reached this repo, which a .gitignore never undoes on its own. The case that
+# made this a step is plans/review-report.md, re-committed by every review round's `git add
+# -A` once tracked, so any two features reviewed at once conflicted on it
+# (self/features/review-report-never-tracked/). Only plans/.gitignore's own patterns
+# count — a match from the repo's root .gitignore, or any other, is the repo's business —
+# and only the index entry goes (`git rm --cached`): the file stays on disk, and the
+# untrack is staged for the human who ran the pull to commit, like the routing moves.
+# `--check` reports each as a TRACKED item and writes nothing; `--write` untracks each as
+# UNTRACKED, which is done, not pending. Silent where plans/ is not in a git work tree.
+# Returns the count of items needing attention.
+untrack_ignored() {
+  local mode="$1" prefix source line path count=0
+  git -C "$PLANS_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  prefix="$(git -C "$PLANS_DIR" rev-parse --show-prefix 2>/dev/null)" || return 0
+  source="${prefix}.gitignore"
+  while IFS= read -r line; do
+    [[ -n "$line" && "${line%%:*}" == "$source" ]] || continue
+    path="${line#*$'\t'}"
+    if [[ "$mode" == "--check" ]]; then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "TRACKED" "plans/$path (ignored by plans/.gitignore but committed; run sync-plans.sh to untrack it)"
+      count=$((count + 1))
+    elif git -C "$PLANS_DIR" rm --cached -q -- "$path" >/dev/null 2>&1; then
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "UNTRACKED" "plans/$path (ignored by plans/.gitignore; the file stays — commit the untrack)"
+    else
+      printf "  %-${STATUS_COL_WIDTH}s%s\n" "WARN" "plans/$path (ignored but tracked, and git rm --cached failed; it stays tracked)"
+      count=$((count + 1))
+    fi
+  done < <(git -C "$PLANS_DIR" ls-files -c -i --exclude-standard 2>/dev/null \
+    | git -C "$PLANS_DIR" check-ignore --no-index -v --stdin 2>/dev/null || true)
+  return "$count"
+}
+
+# finish <count> — the last line and exit code, shared by --check and the write path.
+finish() {
+  local count="$1"
+  if (( count == 0 )); then
+    echo "plans/ and the hook wiring are in sync with agentTooling/."
+    exit 0
+  fi
+  echo "needs attention: $count item(s) above."
+  exit 1
+}
+
+MODE="write"
+if [[ $# -gt 0 ]]; then
+  [[ "$1" == "--check" ]] || usage
+  MODE="check"
+  shift
+fi
+[[ $# -eq 0 ]] || usage
+
+if [[ ! -d "$TEMPLATE_DIR" ]]; then
+  echo "ERROR: no templates found at $TEMPLATE_DIR" >&2
+  exit 1
+fi
+
+if [[ "$MODE" == "check" ]]; then
+  count=0
+  rc=0; check_stubs || rc=$?; count=$((count + rc))
+  rc=0; untrack_ignored --check || rc=$?; count=$((count + rc))
+  rc=0; check_repo_owned || rc=$?; count=$((count + rc))
+  rc=0; sync_hook --check || rc=$?; count=$((count + rc))
+  finish "$count"
+fi
+
+mkdir -p "$PLANS_DIR/interactive" "$PLANS_DIR/features"
+
+stub_rc=0
+sync_stubs || stub_rc=$?
+# After the stubs, so the .gitignore it judges by is the one just written.
+untrack_rc=0
+untrack_ignored --write || untrack_rc=$?
+stub_rc=$((stub_rc + untrack_rc))
+
+if [[ -f "$PLANS_DIR/PROJECT_FACTS.md" ]]; then
+  printf "  %-${STATUS_COL_WIDTH}s%s\n" "kept" "plans/PROJECT_FACTS.md (repo-owned — never overwritten)"
+else
+  cp "$TEMPLATE_DIR/PROJECT_FACTS.md" "$PLANS_DIR/PROJECT_FACTS.md"
+  printf "  %-${STATUS_COL_WIDTH}s%s\n" "created" "plans/PROJECT_FACTS.md — fill in the prompts before authoring plans"
+fi
+
+for doc in "${SEEDED_DOCS[@]}"; do
+  if [[ -f "$PLANS_DIR/$doc" ]]; then
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "kept" "plans/$doc (repo-owned — never overwritten)"
+  else
+    cp "$TEMPLATE_DIR/$doc" "$PLANS_DIR/$doc"
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "created" "plans/$doc — features write their deferrals here as they close"
+  fi
+done
+
+for f in "${REPO_OWNED_SCRIPTS[@]}"; do
+  if [[ -f "$PLANS_DIR/$f" ]]; then
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "kept" "plans/$f (repo-owned — never overwritten)"
+  else
+    cp "$TEMPLATE_DIR/$f" "$PLANS_DIR/$f"
+    if is_sourced_script "$f"; then
+      chmod a-x "$PLANS_DIR/$f"
+    else
+      chmod +x "$PLANS_DIR/$f"
+    fi
+    printf "  %-${STATUS_COL_WIDTH}s%s\n" "created" "plans/$f — $(repo_owned_created_hint "$f")"
+  fi
+done
+
+migrate_routing
+
+hook_rc=0
+sync_hook --write || hook_rc=$?
+
+count="$stub_rc"
+rc=0; check_repo_owned || rc=$?; count=$((count + rc))
+count=$((count + hook_rc))
+finish "$count"

@@ -1,0 +1,10 @@
+write: /Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/transcript.py
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/capture_planning.py
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/capture_planning.py
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/capture_planning.py
+write: /Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/recover_attempts.py
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/README.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/README.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/README.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/README.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/README.md

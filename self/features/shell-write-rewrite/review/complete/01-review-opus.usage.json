@@ -1,0 +1,56 @@
+{
+  "plan": "01-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "ed6330a9-081c-45f7-b8e3-d1a0771fab13",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 36,
+  "duration_ms": 214027,
+  "total_cost_usd": 3.0709600000000004,
+  "usage": {
+    "input_tokens": 64,
+    "cache_creation_input_tokens": 113778,
+    "cache_read_input_tokens": 2949620,
+    "output_tokens": 18322
+  },
+  "model_usage": {
+    "claude-opus-5": {
+      "inputTokens": 64,
+      "outputTokens": 18322,
+      "cacheReadInputTokens": 2949620,
+      "cacheCreationInputTokens": 113778,
+      "webSearchRequests": 0,
+      "costUSD": 3.0709600000000004,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 9743,
+      "canonicalModel": "claude-opus-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 19,
+    "Edit": 4,
+    "Read": 11,
+    "Write": 1
+  },
+  "files_edited": [
+    "self/review-report.md",
+    "self/tests/README.md",
+    "self/tests/allow-repo-commands.sh"
+  ],
+  "edit_count": 5,
+  "attempts": [
+    {
+      "session_id": "ed6330a9-081c-45f7-b8e3-d1a0771fab13",
+      "outcome": "complete",
+      "total_cost_usd": 3.0709600000000004,
+      "num_turns": 36,
+      "duration_ms": 214027
+    }
+  ]
+}

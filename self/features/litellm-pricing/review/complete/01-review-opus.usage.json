@@ -1,0 +1,58 @@
+{
+  "plan": "01-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "93edebfe-7f2f-4a97-b971-893e3729be83",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 31,
+  "duration_ms": 338888,
+  "total_cost_usd": 1.3881055999999998,
+  "usage": {
+    "input_tokens": 48,
+    "cache_creation_input_tokens": 95324,
+    "cache_read_input_tokens": 1832608,
+    "output_tokens": 12940
+  },
+  "model_usage": {
+    "claude-opus-5-5": {
+      "inputTokens": 48,
+      "outputTokens": 12940,
+      "cacheReadInputTokens": 1832608,
+      "cacheCreationInputTokens": 95324,
+      "webSearchRequests": 0,
+      "costUSD": 1.3881055999999998,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 4446,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 1,
+  "tool_counts": {
+    "Bash": 17,
+    "Edit": 4,
+    "Read": 7,
+    "Write": 2
+  },
+  "files_edited": [
+    "/var/folders/w1/sjvnhgn11ml_fj_s_kch9xv40000gn/T/plan-capture.afsoAY/scratch/parity.py",
+    "analysis/refresh_rates.py",
+    "analysis/transcript.py",
+    "self/review-report.md",
+    "self/tests/timestamps-are-utc.sh"
+  ],
+  "edit_count": 6,
+  "attempts": [
+    {
+      "session_id": "93edebfe-7f2f-4a97-b971-893e3729be83",
+      "outcome": "complete",
+      "total_cost_usd": 1.3881055999999998,
+      "num_turns": 31,
+      "duration_ms": 338888
+    }
+  ]
+}

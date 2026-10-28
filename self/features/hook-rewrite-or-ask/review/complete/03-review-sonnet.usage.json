@@ -1,0 +1,54 @@
+{
+  "plan": "03-review-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "7761ca79-4539-467d-bc55-9c6d8adc96a5",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 15,
+  "duration_ms": 46623,
+  "total_cost_usd": 0.3034872,
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 49096,
+    "cache_read_input_tokens": 310006,
+    "output_tokens": 4507
+  },
+  "model_usage": {
+    "claude-sonnet-5": {
+      "inputTokens": 16,
+      "outputTokens": 4507,
+      "cacheReadInputTokens": 310006,
+      "cacheCreationInputTokens": 49096,
+      "webSearchRequests": 0,
+      "costUSD": 0.3034872,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 1376,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 9,
+    "Grep": 1,
+    "Read": 3,
+    "Write": 1
+  },
+  "files_edited": [
+    "self/review-report.md"
+  ],
+  "edit_count": 1,
+  "attempts": [
+    {
+      "session_id": "7761ca79-4539-467d-bc55-9c6d8adc96a5",
+      "outcome": "complete",
+      "total_cost_usd": 0.3034872,
+      "num_turns": 15,
+      "duration_ms": 46623
+    }
+  ]
+}

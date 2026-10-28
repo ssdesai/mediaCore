@@ -1,0 +1,55 @@
+{
+  "plan": "02-review-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "0803b8c7-9f61-4e47-9627-57ccf3bb3e6f",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 7,
+  "duration_ms": 40968,
+  "total_cost_usd": 0.1879152,
+  "usage": {
+    "input_tokens": 10,
+    "cache_creation_input_tokens": 28095,
+    "cache_read_input_tokens": 149626,
+    "output_tokens": 4559
+  },
+  "model_usage": {
+    "claude-sonnet-5-5": {
+      "inputTokens": 10,
+      "outputTokens": 4559,
+      "cacheReadInputTokens": 149626,
+      "cacheCreationInputTokens": 28095,
+      "webSearchRequests": 0,
+      "costUSD": 0.1879152,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 2143,
+      "canonicalModel": "claude-sonnet-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 1,
+  "tool_counts": {
+    "Bash": 2,
+    "Edit": 3,
+    "Write": 1
+  },
+  "files_edited": [
+    "hooks/allow-repo-commands.sh",
+    "self/review-report.md",
+    "self/tests/allow-repo-commands.sh"
+  ],
+  "edit_count": 4,
+  "attempts": [
+    {
+      "session_id": "0803b8c7-9f61-4e47-9627-57ccf3bb3e6f",
+      "outcome": "complete",
+      "total_cost_usd": 0.1879152,
+      "num_turns": 7,
+      "duration_ms": 40968
+    }
+  ]
+}

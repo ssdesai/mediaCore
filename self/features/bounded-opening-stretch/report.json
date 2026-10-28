@@ -1,0 +1,115 @@
+{
+  "slug": "bounded-opening-stretch",
+  "generated_at": "2026-09-10T14:10:52.903431+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 11.33226725,
+    "build": 11.33226725,
+    "verify": 0.0,
+    "review": 1.9109980000000004,
+    "total": 13.24326525,
+    "planning_pct": 0.0,
+    "build_pct": 85.5700390808075,
+    "verify_pct": 0.0,
+    "review_pct": 14.429960919192498,
+    "cost_per_plan": 13.24326525,
+    "cost_per_file": 6.621632625,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": [
+      {
+        "session_id": "e21abdc0-6f3b-4306-a18e-81272cadb107",
+        "cost_usd": 3.65529525,
+        "also_claimed_by": [
+          "agentTooling/self-corpus-identity"
+        ],
+        "session_cost_usd": 20.4733875
+      }
+    ]
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 1525,
+    "planning_subagents_s": 1562,
+    "planning_s": 0.0,
+    "implementer_s": 3087,
+    "build_s": 3087.0,
+    "verify_s": 0.0,
+    "review_s": 320.347,
+    "executor_s": 3407.3469999999998,
+    "total_s": 3407.3469999999998,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-10T03:55:33+00:00",
+      "last_at": "2026-09-10T04:25:01+00:00",
+      "batch_span_s": 1768.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 329.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 322.0,
+      "plan_runs": 1,
+      "pr_opened_at": "2026-09-10T04:14:02+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/39"
+    },
+    "tests_s": 171.0,
+    "direct_build_s": 267.0,
+    "gate_s": 295.0
+  },
+  "planning_cost_split": {
+    "subagents": 7.676971999999999,
+    "sessions": 3.65529525
+  },
+  "cold_start_tax_tokens": 76600,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 25,
+      "total_cost_usd": 1.9109980000000004,
+      "total_duration_s": 320.347,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "99-review-opus",
+      "edit_count": 4,
+      "files_edited": 2,
+      "churn_ratio": 2.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "99-review-opus",
+      "plan_md_lines": 58,
+      "loc_changed": "not computed: streams unavailable"
+    }
+  ],
+  "re_hunting": "not computed: streams unavailable",
+  "plan_drift": [
+    {
+      "plan": "99-review-opus",
+      "edited_not_listed": [
+        "analysis/capture_planning.py",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": "not computed: streams unavailable",
+  "warnings": []
+}

@@ -1,0 +1,121 @@
+{
+  "slug": "start-takeover",
+  "generated_at": "2026-09-27T01:16:22.255477+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 3.2579856,
+    "build": 3.2579856,
+    "verify": 0.0,
+    "review": 1.0751082,
+    "total": 4.3330938,
+    "planning_pct": 0.0,
+    "build_pct": 75.18843926249646,
+    "verify_pct": 0.0,
+    "review_pct": 24.811560737503534,
+    "cost_per_plan": 4.3330938,
+    "cost_per_file": 1.4443646,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 0,
+    "planning_subagents_s": 1154,
+    "planning_s": 0.0,
+    "implementer_s": 1154,
+    "build_s": 1154.0,
+    "verify_s": 0.0,
+    "review_s": 106.057,
+    "executor_s": 1260.057,
+    "total_s": 1260.057,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-27T00:57:28+00:00",
+      "last_at": "2026-09-27T01:16:20+00:00",
+      "batch_span_s": 1132.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 109.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 109.0,
+      "plan_runs": 1,
+      "pr_opened_at": "2026-09-27T01:16:20+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/67"
+    },
+    "tests_s": 144.0,
+    "direct_build_s": 530.0,
+    "gate_s": 291.0
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 3.2579856,
+      "build_min": 19.233333333333334,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.0751082,
+      "review_min": 1.7676166666666666,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 3.2579856,
+    "sessions": 0.0
+  },
+  "cold_start_tax_tokens": 87701,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 19,
+      "total_cost_usd": 1.0751082,
+      "total_duration_s": 106.057,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 3,
+      "files_edited": 3,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 47,
+      "loc_changed": 103
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "LIFECYCLE.md",
+        "feature-start.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": []
+}

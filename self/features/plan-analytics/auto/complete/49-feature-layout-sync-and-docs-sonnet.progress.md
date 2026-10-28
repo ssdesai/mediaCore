@@ -1,0 +1,17 @@
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/sync-plans.sh
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/sync-plans.sh
+write: /Users/sahildesai/dev/vinylCatalogue/agentTooling/templates/plans/features/README.md
+write: /Users/sahildesai/dev/vinylCatalogue/agentTooling/templates/plans/features/TEMPLATE.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/templates/plans/README.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/templates/plans/README.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/AGENT_PLANS.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/AGENT_PLANS.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/AGENT_PLANS.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/AGENT_PLANS.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/AGENT_PLANS.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/AGENT_PLANS.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/AGENT_PLANS.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/README.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/README.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/README.md
+edit: /Users/sahildesai/dev/vinylCatalogue/agentTooling/README.md

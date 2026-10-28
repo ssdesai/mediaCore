@@ -1,0 +1,10 @@
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/feature-close-and-review-rounds/plan-runner-roots.sh
+write: /var/folders/w1/sjvnhgn11ml_fj_s_kch9xv40000gn/T/plan-capture.VLCpvJ/scratch/check-latest.sh
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/feature-close-and-review-rounds/README.md
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/feature-close-and-review-rounds/README.md
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/feature-close-and-review-rounds/templates/plans/features/TEMPLATE.md
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/feature-close-and-review-rounds/harness/methods/null/README.md
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/feature-close-and-review-rounds/harness/SPEC.md
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/feature-close-and-review-rounds/self/BACKLOG.md
+edit: /Users/sahildesai/dev/agentTooling/.worktrees/feature-close-and-review-rounds/README.md
+write: /Users/sahildesai/dev/agentTooling/.worktrees/feature-close-and-review-rounds/self/review-report.md

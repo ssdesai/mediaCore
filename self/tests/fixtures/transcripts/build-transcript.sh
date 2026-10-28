@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# Shell helpers for synthesizing session-transcript `.jsonl` lines, for
+# self/tests/cost-recovery.sh. Sourced, not executed — defines functions only.
+#
+# Matches the shape `analysis/transcript.py`'s `iter_billable_messages` reads
+# (spec lives in analysis/README.md and, until it lands, in the
+# killed-attempt-cost-recovery feature's plan 03): one `assistant` line per API
+# response, `message.usage` carrying the 5m/1h cache-creation split under
+# `cache_creation.ephemeral_{5m,1h}_input_tokens`.
+
+# transcript_line MESSAGE_ID MODEL TIMESTAMP INPUT OUTPUT CACHE_READ CACHE_5M CACHE_1H [IS_SIDECHAIN]
+# Prints one JSON transcript line to stdout. Two calls with the same
+# MESSAGE_ID simulate the several content-block lines one real API response
+# is written as — the dedup a consumer must key on.
+transcript_line() {
+  local message_id="$1" model="$2" timestamp="$3"
+  local input="$4" output="$5" cache_read="$6" cache_5m="$7" cache_1h="$8"
+  local sidechain="${9:-false}"
+  printf '{"type":"assistant","timestamp":"%s","isSidechain":%s,"message":{"id":"%s","model":"%s","usage":{"input_tokens":%s,"output_tokens":%s,"cache_read_input_tokens":%s,"cache_creation":{"ephemeral_5m_input_tokens":%s,"ephemeral_1h_input_tokens":%s}}}}\n' \
+    "$timestamp" "$sidechain" "$message_id" "$model" "$input" "$output" "$cache_read" "$cache_5m" "$cache_1h"
+}
+
+# session_line SESSION_ID CWD BRANCH MESSAGE_ID MODEL TIMESTAMP INPUT OUTPUT CACHE_READ CACHE_5M CACHE_1H [IS_SIDECHAIN]
+# Prints one JSON transcript line carrying the session-identifying fields
+# `analysis/capture_planning.py` selects on — `sessionId`, `cwd`, `gitBranch` —
+# alongside the same `message.usage` block `transcript_line` emits.
+#
+# Separate from `transcript_line` because the two consumers read different halves:
+# `recover_attempts.py` locates a transcript by filename and needs only usage, while
+# `capture_planning.py` scans every transcript and decides membership from these three
+# fields (cwd under the session root, gitBranch in the manifest's `branches`). A line
+# without them is invisible to capture, which is why its fixtures need this helper.
+# IS_SIDECHAIN defaults to false, like `transcript_line`'s `sidechain` argument: a parent
+# transcript's own sidechain lines are priced into `cost_usd.sidechain` and must be
+# shareable like any other line.
+session_line() {
+  local session_id="$1" cwd="$2" branch="$3" message_id="$4" model="$5" timestamp="$6"
+  local input="$7" output="$8" cache_read="$9" cache_5m="${10}" cache_1h="${11}"
+  local sidechain="${12:-false}"
+  printf '{"type":"assistant","sessionId":"%s","cwd":"%s","gitBranch":"%s","timestamp":"%s","isSidechain":%s,"message":{"id":"%s","model":"%s","usage":{"input_tokens":%s,"output_tokens":%s,"cache_read_input_tokens":%s,"cache_creation":{"ephemeral_5m_input_tokens":%s,"ephemeral_1h_input_tokens":%s}}}}\n' \
+    "$session_id" "$cwd" "$branch" "$timestamp" "$sidechain" "$message_id" "$model" "$input" "$output" "$cache_read" "$cache_5m" "$cache_1h"
+}
+
+# synthetic_line TIMESTAMP [INPUT] [OUTPUT]
+# A `model: "<synthetic>"` locally-generated notice. A real one always carries
+# all-zero usage; INPUT/OUTPUT default to 0 but a caller may pass non-zero
+# values to prove a consumer actually skips the line on `model`, rather than
+# happening to add zero either way.
+synthetic_line() {
+  local timestamp="$1" input="${2:-0}" output="${3:-0}"
+  printf '{"type":"assistant","timestamp":"%s","isSidechain":false,"message":{"id":"synthetic","model":"<synthetic>","usage":{"input_tokens":%s,"output_tokens":%s,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}\n' \
+    "$timestamp" "$input" "$output"
+}
+
+# subagent_line SESSION_ID AGENT_ID CWD BRANCH MESSAGE_ID MODEL TIMESTAMP INPUT OUTPUT CACHE_READ CACHE_5M CACHE_1H
+# One billable line of a *subagent* transcript — the `<session_id>/subagents/agent-<id>.jsonl`
+# file beside the parent's. Carries the parent's `sessionId`, `cwd` and `gitBranch` (a
+# real subagent inherits all three at spawn; it never records a branch of its own),
+# plus `agentId` and `isSidechain: true`, which is what `capture_planning.py` prices it
+# under. Write it to `$PROJECTS/$SESSION_ID/subagents/agent-$AGENT_ID.jsonl`.
+subagent_line() {
+  local session_id="$1" agent_id="$2" cwd="$3" branch="$4" message_id="$5" model="$6" timestamp="$7"
+  local input="$8" output="$9" cache_read="${10}" cache_5m="${11}" cache_1h="${12}"
+  printf '{"type":"assistant","sessionId":"%s","agentId":"%s","cwd":"%s","gitBranch":"%s","timestamp":"%s","isSidechain":true,"message":{"id":"%s","model":"%s","usage":{"input_tokens":%s,"output_tokens":%s,"cache_read_input_tokens":%s,"cache_creation":{"ephemeral_5m_input_tokens":%s,"ephemeral_1h_input_tokens":%s}}}}\n' \
+    "$session_id" "$agent_id" "$cwd" "$branch" "$timestamp" "$message_id" "$model" "$input" "$output" "$cache_read" "$cache_5m" "$cache_1h"
+}
+
+# user_line TIMESTAMP
+# One `user` line — the human's turn, or a tool result. Carries a timestamp and NO usage
+# block, so it moves a transcript's first/last instant without being billable. That gap is
+# the point of the helper: `recover-duration.sh` uses it to give a session a span longer
+# than its priced responses, and `session-share.sh` phase 14 to give one a last line past
+# its window's `to` with no billable response out there — the case where quantifying what
+# lies outside the window would print a measurement of nothing.
+#
+# No `sessionId`/`cwd`/`gitBranch`: a real user line carries them, but capture reads all
+# three from the first line of the file that has them, so a fixture only needs them on the
+# `session_line` beside this one.
+user_line() {
+  local timestamp="$1"
+  printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":"ok"}}\n' "$timestamp"
+}
+
+# bash_tool_line SESSION_ID CWD BRANCH MESSAGE_ID MODEL TIMESTAMP COMMAND INPUT OUTPUT
+# One `assistant` line whose message content holds a `tool_use` block for the **Bash**
+# tool — the shape `analysis/routing.py` reads a router's `feature-start.sh <slug>` calls
+# out of, and the only transcript fact the routing record's `features_started` rests on.
+# Billable like `session_line`: a real tool call is part of a priced response, and the
+# routing record's `cost_usd` is summed over the same lines. Cache counters are zero, so
+# cost is proportional to INPUT/OUTPUT alone.
+#
+# COMMAND is embedded in JSON as-is, so it must carry no double quote or backslash.
+bash_tool_line() {
+  local session_id="$1" cwd="$2" branch="$3" message_id="$4" model="$5" timestamp="$6"
+  local command="$7" input="${8:-100}" output="${9:-200}"
+  printf '{"type":"assistant","sessionId":"%s","cwd":"%s","gitBranch":"%s","timestamp":"%s","isSidechain":false,"message":{"id":"%s","model":"%s","content":[{"type":"tool_use","name":"Bash","input":{"command":"%s"}}],"usage":{"input_tokens":%s,"output_tokens":%s,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}\n' \
+    "$session_id" "$cwd" "$branch" "$timestamp" "$message_id" "$model" "$command" "$input" "$output"
+}
+
+# subagent_prompt_line SESSION_ID AGENT_ID CWD BRANCH TIMESTAMP TEXT
+# The subagent's opening `user` line — the brief it was spawned with. Unbilled (no
+# usage); it exists so `--list-subagents` has a prompt head to print.
+subagent_prompt_line() {
+  local session_id="$1" agent_id="$2" cwd="$3" branch="$4" timestamp="$5" text="$6"
+  printf '{"type":"user","sessionId":"%s","agentId":"%s","cwd":"%s","gitBranch":"%s","timestamp":"%s","isSidechain":true,"message":{"role":"user","content":"%s"}}\n' \
+    "$session_id" "$agent_id" "$cwd" "$branch" "$timestamp" "$text"
+}

@@ -1,0 +1,20 @@
+{"at":"2026-10-05T19:18:52Z","event":"checkpoint","status":"planned","round":"1"}
+{"at":"2026-10-05T19:25:40Z","event":"checkpoint","status":"tests-written","round":"1"}
+{"at":"2026-10-05T19:38:44Z","event":"checkpoint","status":"gating","round":"1"}
+{"at":"2026-10-05T19:38:54Z","event":"checkpoint","status":"committed","round":"1"}
+{"at":"2026-10-05T19:45:02Z","event":"checkpoint","status":"planned","round":"1"}
+{"at":"2026-10-05T19:51:29Z","event":"checkpoint","status":"tests-written","round":"1"}
+{"at":"2026-10-05T20:52:41Z","event":"checkpoint","status":"implementing","round":"1"}
+{"at":"2026-10-05T21:16:15Z","event":"checkpoint","status":"gating","round":"1"}
+{"at":"2026-10-05T21:17:40Z","event":"checkpoint","status":"committed","round":"1"}
+{"at":"2026-10-05T21:23:19Z","event":"pass_start","queue":"review","round":"1"}
+{"at":"2026-10-05T21:23:19Z","event":"plan_start","plan":"01-review-opus","queue":"review","round":"1"}
+{"at":"2026-10-05T21:25:48Z","event":"plan_end","plan":"01-review-opus","queue":"review","rc":"0","verdict":"escalated","head":"e84b4e13075c92a181afc269915bdbb5650ec80f","round":"1"}
+{"at":"2026-10-05T21:25:48Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"1"}
+{"at":"2026-10-05T21:27:18Z","event":"checkpoint","status":"planned","round":"2"}
+{"at":"2026-10-05T21:30:51Z","event":"checkpoint","status":"committed","round":"2"}
+{"at":"2026-10-05T21:36:26Z","event":"pass_start","queue":"review","round":"2"}
+{"at":"2026-10-05T21:36:26Z","event":"plan_start","plan":"02-review-sonnet","queue":"review","round":"2"}
+{"at":"2026-10-05T21:36:50Z","event":"plan_end","plan":"02-review-sonnet","queue":"review","rc":"0","verdict":"clean","head":"52983b614b9f6f508b177c397cee76efebca0166","round":"2"}
+{"at":"2026-10-05T21:36:50Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"2"}
+{"at":"2026-10-05T21:37:19Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/81","round":"2"}

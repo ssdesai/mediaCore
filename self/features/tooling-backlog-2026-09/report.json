@@ -1,0 +1,127 @@
+{
+  "slug": "tooling-backlog-2026-09",
+  "generated_at": "2026-09-02T13:16:06.307068+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 10.31281775,
+    "build": 10.31281775,
+    "verify": 0.0,
+    "review": 5.8495979999999985,
+    "total": 16.16241575,
+    "planning_pct": 0.0,
+    "build_pct": 63.807402986771955,
+    "verify_pct": 0.0,
+    "review_pct": 36.19259701322804,
+    "cost_per_plan": 16.16241575,
+    "cost_per_file": 2.6937359583333333,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 2.6254465,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 0,
+    "planning_subagents_s": 1308,
+    "planning_s": 0.0,
+    "implementer_s": 1308,
+    "build_s": 1308.0,
+    "verify_s": 0.0,
+    "review_s": 439.275,
+    "executor_s": 1747.275,
+    "total_s": 1747.275,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-02T12:54:00+00:00",
+      "last_at": "2026-09-02T13:15:30+00:00",
+      "batch_span_s": 1290.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 780.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 441.0,
+      "plan_runs": 1,
+      "pr_opened_at": "2026-09-02T13:15:30+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/27"
+    },
+    "tests_s": null,
+    "direct_build_s": null,
+    "gate_s": 133.0
+  },
+  "planning_cost_split": {
+    "subagents": 10.31281775,
+    "sessions": 0.0
+  },
+  "cold_start_tax_tokens": 110447,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 46,
+      "total_cost_usd": 3.224151499999999,
+      "total_duration_s": 439.275,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "71-review-opus",
+      "edit_count": 9,
+      "files_edited": 6,
+      "churn_ratio": 1.5
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "71-review-opus",
+      "plan_md_lines": 81,
+      "loc_changed": 135
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "71-review-opus",
+      "edited_not_listed": [
+        "README.md",
+        "self/features/tooling-backlog-2026-09/NOTES.md",
+        "self/review-report.md",
+        "templates/README.md",
+        "templates/plans/.gitignore",
+        "templates/plans/README.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "self/review-report.md",
+      "earlier_plan": "71-review-opus",
+      "later_plan": "71-review-opus",
+      "overlap_chars": 85
+    },
+    {
+      "file": "self/review-report.md",
+      "earlier_plan": "71-review-opus",
+      "later_plan": "71-review-opus",
+      "overlap_chars": 87
+    },
+    {
+      "file": "self/review-report.md",
+      "earlier_plan": "71-review-opus",
+      "later_plan": "71-review-opus",
+      "overlap_chars": 139
+    }
+  ],
+  "warnings": [
+    "plan 71-review-opus has 1 attempt(s) priced from session transcripts rather than reported by the CLI (sessions: 11675eec-5e12-4f16-9ab0-58faf6dd3d54)"
+  ]
+}
