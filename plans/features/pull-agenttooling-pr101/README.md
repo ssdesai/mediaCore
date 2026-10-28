@@ -27,7 +27,7 @@ was squash-merged) and `update.sh` re-anchored it at upstream `125b0d7` before p
   "base": "main",
   "profile": "cloud",
   "gate": "green",
-  "session_window": {"from": "2026-10-28T15:19:56.614Z", "to": null},
+  "session_window": {"from": "2026-10-28T15:19:56.614Z", "to": "2026-10-28T15:22:19Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],
