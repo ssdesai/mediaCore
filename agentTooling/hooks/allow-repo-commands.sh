@@ -450,6 +450,36 @@ GIT_CLOUD_OFF_BRANCH_TEMPLATE = (
     "launched on `%(target)s`, or the human checking `%(target)s` out in this container. "
     "Do not commit or push here, and do not start a feature on `%(protected)s`: stop, and "
     "say that this container is off its feature's branch `%(target)s`.")
+# The cached-clone case (self/features/detached-at-branch-tip-attach/): a session launched
+# to CONTINUE a feature's branch can come up with HEAD detached exactly at
+# origin/<branch>, the local <branch> a stale ancestor from an earlier clone — and a fresh
+# session reproduces it, so the off-branch remedy above does not cure it. On a detached
+# HEAD in the cloud, a `git switch`/`git checkout` that would put the working tree on a
+# commit other than HEAD's is refused (`detached_switch_moves`; the stale local ref is the
+# trap), and one landing on HEAD's own commit is not. Every cloud refusal on a detached
+# HEAD that is ATTACHABLE — `attachable_branch`, plan-runner-roots.sh's
+# attachable_branches in Python: a tracked manifest's branches[0] whose
+# refs/remotes/origin/<branch> IS HEAD's commit and whose local ref is absent or an
+# ancestor of HEAD — gets this reason, naming attach-branch.sh, which checks the same
+# conditions and re-attaches moving nothing. `git checkout -B` and friends stay refused:
+# the settings file's prefix rules refuse them whatever this hook says.
+GIT_HEAD = "HEAD"
+GIT_ATTACH_REMOTE_PREFIX = "refs/remotes/origin/"
+GIT_PROBE_IS_ANCESTOR = ("merge-base", "--is-ancestor")
+GIT_PROBE_ATTACH_CANDIDATES = ("for-each-ref", "--points-at", GIT_HEAD,
+                               "--format=%(refname:lstrip=3)", "refs/remotes/origin")
+ATTACH_SCRIPT = "attach-branch.sh"
+GIT_CLOUD_ATTACH_TEMPLATE = (
+    "allow-repo-commands: this git command moves or makes a branch ref, switches the "
+    "working tree to another commit, or pushes from a detached HEAD, and a Claude Code "
+    "cloud session never does that itself (LIFECYCLE.md § The three rules, rule 2). This "
+    "container's HEAD is detached exactly at `origin/%(branch)s`, the tip of feature "
+    "'%(slug)s''s branch (%(manifest)s), and the local `%(branch)s` is absent or behind "
+    "it: the platform re-checked-out a cached clone detached, and a fresh session will not "
+    "cure that. Re-attach with `%(command)s` — it checks exactly that, points "
+    "`%(branch)s` at HEAD and checks it out, so it moves nothing — then build, commit and "
+    "push `%(branch)s` here. Not `git checkout -B`, and not a plain `git checkout "
+    "%(branch)s`, which would land on the stale local commit.")
 
 # ── The run-time-value deny ───────────────────────────────────────────────────
 # The generalisation of the chained `cd`: what blocks the reads fence is a path decided at
@@ -1239,14 +1269,15 @@ def names_protected_push(args):
 def cloud_refuses(words, args, cwd):
     """True when, in the cloud, this git command is one of the table's cloud-only shapes
     for the branch its checkout is on. The current branch is read only here — for a
-    switch, a checkout or a push — and a branch that cannot be read refuses nothing."""
+    switch, a checkout or a push — and a branch that cannot be read refuses nothing but,
+    on a detached HEAD, a switch that would move the working tree off HEAD's commit."""
     rule = GIT_CLOUD_ONLY_RULE(args[0]) if args else None
     if rule is None:
         return False
     location = git_location(words, cwd)
     _, branch = checkout_state(location)
     if branch is None:
-        return False
+        return rule == CLOUD_SWITCH_AWAY and detached_switch_moves(args, location)
     rest = args[1:]
     if rule == CLOUD_PUSH_ELSEWHERE:
         # ... and, the both-profile entry resolved: a push whose target is the protected
@@ -1407,17 +1438,92 @@ def cloud_off_branch_reason(args, toplevel, branch, features_dir):
                                             "protected": GIT_PROTECTED_BRANCH}
 
 
+def commit_of(location, ref):
+    """The commit `ref` names in the checkout at `location`, or None."""
+    lines = git_probe(location, *(GIT_PROBE_COMMIT + (ref + GIT_COMMIT_PEEL,)))
+    return lines[0] if lines else None
+
+
+def detached_switch_moves(args, location):
+    """True when, on a detached HEAD, this `git switch`/`git checkout` would put the
+    working tree on a commit other than HEAD's: `-`, `--orphan`, or a target — a ref, a
+    sha, or the short name of an origin/ branch git would create a local branch from —
+    that resolves to another commit. A file checkout, a target git cannot resolve, and a
+    switch landing on HEAD's own commit (re-attaching a branch already AT it) move
+    nothing and are not refused."""
+    rest = args[1:]
+    if args[0] == GIT_SWITCH:
+        leaves, value_flags = switch_leaves(rest, None), GIT_SWITCH_VALUE_FLAGS
+    else:
+        leaves, value_flags = checkout_leaves(rest, None, location), GIT_CHECKOUT_VALUE_FLAGS
+    if not leaves:
+        return False
+    positionals, skip = [], False
+    for token in rest:
+        if skip:
+            skip = False
+            continue
+        if token == GIT_PREVIOUS_BRANCH:
+            return True
+        if token.startswith(FLAG_PREFIX):
+            name = token.split(FLAG_VALUE_SEP, 1)[0]
+            if name == GIT_ORPHAN_FLAG:
+                return True
+            skip = name in value_flags and FLAG_VALUE_SEP not in token
+            continue
+        positionals.append(token)
+    target = positionals[0] if positionals else GIT_HEAD
+    head = commit_of(location, GIT_HEAD)
+    there = commit_of(location, target) or commit_of(location,
+                                                     GIT_ATTACH_REMOTE_PREFIX + target)
+    return head is not None and there is not None and there != head
+
+
+def attachable_branch(toplevel, features_dir):
+    """`(branch, slug, manifest)` of the first branch a detached HEAD can be re-attached to
+    moving nothing — plan-runner-roots.sh's attachable_branches: `origin/<branch>` IS
+    HEAD's commit, a tracked manifest names <branch> as branches[0], and the local
+    <branch> is absent or an ancestor of HEAD; else None."""
+    names = git_probe(toplevel, *GIT_PROBE_ATTACH_CANDIDATES) or []
+    for name in sorted(names):
+        if not name or name == GIT_HEAD:
+            continue
+        slug, manifest = started_feature(toplevel, features_dir, name)
+        if not slug:
+            continue
+        local = GIT_BRANCH_REF_PREFIX + name
+        if commit_of(toplevel, local) is not None and git_probe(
+                toplevel, *(GIT_PROBE_IS_ANCESTOR + (local, GIT_HEAD))) is None:
+            continue
+        return name, slug, manifest
+    return None
+
+
 def cloud_git_deny_reason(words, cwd, args=None):
     """The cloud reason for refusing `words`: the branch, and the started feature and its
-    close when one exists, or the start to run here — or, when `args` switches a checkout
-    on `main` or detached to a started feature's branch, the off-branch reason. Never
-    raises — what cannot be read is left out, and the reason is still a cloud one."""
+    close when one exists, or the start to run here — or, on a detached HEAD at a started
+    feature's origin tip, the attach reason; or, when `args` switches a checkout on `main`
+    or detached to a started feature's branch, the off-branch reason. Never raises — what
+    cannot be read is left out, and the reason is still a cloud one."""
     branch_text, feature_text = BRANCH_UNKNOWN, ""
+    toplevel = branch = None
     try:
-        # Only a switch/checkout naming a branch is probed: every other refusal pays nothing
+        toplevel, branch = checkout_state(git_location(words, cwd))
+    except Exception:  # read as unreadable: the reason below still names what it can
+        pass
+    try:
+        prefix, self_arg, features_dir = repo_shape(project_root())
+        # Only a detached HEAD is probed for the attach: every other refusal pays nothing
+        if toplevel and branch is None:
+            found = attachable_branch(toplevel, features_dir)
+            if found:
+                attach, slug, manifest = found
+                command = "%s%s %s%s" % (prefix, ATTACH_SCRIPT, self_arg, attach)
+                return GIT_CLOUD_ATTACH_TEMPLATE % {"branch": attach, "slug": slug,
+                                                    "manifest": manifest,
+                                                    "command": command}
+        # Only a switch/checkout naming a branch is probed for the off-branch reason
         if switch_target_names(args):
-            _, _, features_dir = repo_shape(project_root())
-            toplevel, branch = checkout_state(git_location(words, cwd))
             off_branch = cloud_off_branch_reason(args, toplevel, branch, features_dir)
             if off_branch:
                 return off_branch
@@ -1428,7 +1534,6 @@ def cloud_git_deny_reason(words, cwd, args=None):
         prefix, self_arg, features_dir = repo_shape(root)
         fields = {"prefix": prefix, "self_arg": self_arg}
         feature_text = GIT_CLOUD_UNSTARTED_TEMPLATE % fields
-        toplevel, branch = checkout_state(git_location(words, cwd))
         if branch:
             branch_text = BRANCH_QUOTE % branch
             slug, manifest = started_feature(toplevel, features_dir, branch)

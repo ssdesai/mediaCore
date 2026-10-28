@@ -1697,7 +1697,18 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   branch, the slug, a fresh session, the human; never "push only `main`" or "Commit on
   `main`"), locally they still prompt, a branch no manifest names keeps the existing
   reason, the feature's own branch is unchanged, and on a detached clone **OD** the
-  `-b` shape names "a detached HEAD" while a plain checkout stays unrefused. X5 pins the
+  `-b` shape names "a detached HEAD", and so does a plain checkout of the branch, which
+  would move the working tree off HEAD (O7; still a prompt locally, O7b). A: the
+  cached-clone attach (`../features/detached-at-branch-tip-attach/`) — **AD**, a clone
+  detached exactly at `origin/<branch>` with the local branch one commit behind:
+  `checkout -B`, `switch -C`, `branch -f`, a plain checkout or switch of the branch and
+  `checkout -b x` are refused naming `./agentTooling/attach-branch.sh <branch>`, the
+  feature and that a fresh session will not cure it, never "push only"; `checkout
+  origin/<branch>`, `switch --detach`, `checkout HEAD`, a file checkout and a read are
+  not refused; locally `-B` keeps today's reason; **AE** (local branch already AT HEAD)
+  lets a plain checkout through; **AN** (local branch holding a commit HEAD lacks), OD
+  (HEAD not the tip) and a tip no manifest names (`remote-only`) are refused WITHOUT the
+  attach remedy, and a plain checkout of `remote-only`, HEAD's own commit, is not. X5 pins the
   probe count of a refused cloud non-switch (`git push origin x`: two head reads and the
   reason's one manifest grep; `git reset --hard`: one and one), so the off-branch block
   never costs another command a git call. Depends on the
@@ -2684,12 +2695,29 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   a detached HEAD and never on an assigned branch (C4b–C4d); a tracked manifest whose
   `branches[0]` is this branch names that feature and its close and offers no start,
   while one that only mentions the branch in prose is not it; no stub, one line naming
-  `sync-plans.sh` and rc 0), L1–L3 (local: the primary's start and worktree on `main`
+  `sync-plans.sh` and rc 0), C7 (detached exactly at a started feature's
+  `origin/<branch>`, the local branch behind: one line naming the feature,
+  `./agentTooling/attach-branch.sh <branch>` and that a fresh session will not cure it,
+  instead of the start and restart lines; detached elsewhere, the restart line as before;
+  `self/features/detached-at-branch-tip-attach/`), L1–L3 (local: the primary's start and worktree on `main`
   with the stub NOT run; a feature's branch; a branch no feature names), S1 (`--self`:
   `./feature-start.sh --self`, `self/features/`, `./feature-close.sh --self`, and no
   `plans/cloud-setup.sh` run even under cloud), P1 (a bogus profile: one line, rc 0,
   nothing run) and R1 (every fixture's `git status` clean afterwards). Depends on the
   manifest fence's `branches` and on `resolve_roots`' `--self` roots.
+- `attach-branch.sh` — `../../attach-branch.sh`, the cloud re-attach of a detached HEAD
+  (`self/features/detached-at-branch-tip-attach/`). A bare origin holding `main`, the
+  feature's branch with its tracked manifest, and a branch no manifest names; each case a
+  fresh clone with `attach-branch.sh`, `plan-runner-roots.sh`, `env-profile.sh` and
+  `hooks/env_profile.py` under `agentTooling/`, in the observed shape (HEAD detached at
+  `origin/<branch>`, the local branch one commit behind) or a variant; the profile forced
+  with `AGENTTOOLING_PROFILE`. Asserts T1–T4 (attached: exit 0, on the branch at the SAME
+  commit, the ref moved, upstream `origin/<branch>`, an uncommitted edit kept; no argument
+  takes the only candidate; no local branch, created at the tip; already on it, nothing to
+  do), R1–R6 (refused with exit 1 and HEAD, the ref and the branch unmoved: HEAD not the
+  tip, the local branch holding a commit HEAD lacks, a tip no manifest names, the local
+  profile, on another branch, the local branch checked out in another worktree) and U1 (two arguments, exit 2). Depends on
+  `plan-runner-roots.sh`'s `attachable_branches` and `started_features_on`.
 - `review-base.sh` — the review's base (`self/features/review-base-and-cloud-hook/`,
   Part B): `run-review.sh` fetches `origin <base>` before each review plan, best-effort,
   and names `origin/<base>...HEAD` in the prompt, falling back to the local `<base>` only

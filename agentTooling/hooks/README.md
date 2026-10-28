@@ -341,6 +341,23 @@ variable:
   remedy is a fresh session launched on `<target>` or the human checking it out here; it
   never says to commit or push the base. The refusal itself is unchanged — no carve-out
   allows that switch. The extra probes run only on that refused path.
+- **cloud, detached at the branch's tip**: `GIT_CLOUD_ATTACH_TEMPLATE`
+  (`self/features/detached-at-branch-tip-attach/`). A session launched to continue a
+  feature's branch can come up with HEAD detached exactly at `origin/<branch>`, the local
+  `<branch>` a stale ancestor left by a cached clone; a fresh session reproduces it, so
+  the off-branch remedy does not cure it. When the checkout is detached and
+  `attachable_branch` finds such a branch — `for-each-ref --points-at HEAD
+  refs/remotes/origin`, a tracked manifest naming it as `branches[0]` (`started_feature`),
+  and the local ref absent or an ancestor of HEAD (`merge-base --is-ancestor`), the
+  reading `plan-runner-roots.sh`'s `attachable_branches` makes — **every** cloud refusal
+  there (`checkout -B`, `switch -C`, `branch -f`, a plain switch to the stale branch, a
+  push) gets this reason instead: the shape, that a fresh session will not cure it, and
+  the one command, `<prefix>attach-branch.sh [--self] <branch>`, which checks the same
+  conditions and points the branch at HEAD and checks it out, moving nothing. The ref
+  movers stay refused — the settings file's prefix rules refuse them whatever this hook
+  says — and the script itself is not on the read-only entry-point list: like
+  `feature-start.sh` it moves a ref, so it prompts. The probe runs only on a refusal
+  from a detached HEAD.
 
 And in the cloud, **two more shapes** are denied with that reason — `policy.py`'s
 cloud-only entries, which are hook-only (no prefix can express them, so the settings file
@@ -353,7 +370,12 @@ does not change):
   turn into a local branch), unless it is the current branch, `HEAD` or `@`;
   `git checkout --detach`, `--orphan`. A **file checkout is never a switch**: anything
   after `--`, `-p`/`--patch`, `--pathspec-from-file`, two or more positionals, or one git
-  cannot resolve (a path) keeps today's answer.
+  cannot resolve (a path) keeps today's answer. On a **detached HEAD**, where there is no
+  current branch to leave, the same shapes are refused only when they would move the
+  working tree (`detached_switch_moves`): `-`, `--orphan`, or a target that resolves —
+  as written, else as `origin/<target>` — to a commit other than HEAD's. A switch landing
+  on HEAD's own commit (`git checkout <branch>` whose local ref already IS HEAD,
+  `git switch --detach`, `git checkout origin/<branch>` at HEAD) is not refused.
 - **pushing elsewhere** (`CLOUD_PUSH_ELSEWHERE`): `git push` with `--all`, `--branches`,
   `--mirror`, `--tags`, `--delete`/`-d` (also inside a short cluster) or `--prune`, or a
   refspec — `[+]<src>[:<dst>]`, after the first positional, which is the remote — whose
@@ -388,9 +410,9 @@ on the cloud path of a git command that could be denied: a switch, a checkout or
 or an already-denied shape whose reason needs the branch. Never locally, never for a read
 (`self/tests/hook-cloud-profile.sh` X1–X3, under a logging `git`). `<dir>` is the payload's
 `cwd` (else `CLAUDE_PROJECT_DIR`), moved by each `-C <path>` among git's global options.
-Every probe is bounded (`GIT_PROBE_TIMEOUT_SECONDS`) and any failure — a detached HEAD, no
-repo, no git, a timeout — leaves the cloud-only shapes silent: today's answer, never a
-crash and never an allow. An env prefix (`AGENTTOOLING_PROFILE=local git push …`) is not
+Every probe is bounded (`GIT_PROBE_TIMEOUT_SECONDS`) and any failure — no repo, no git, a
+timeout, a detached HEAD for a push — leaves the cloud-only shapes silent: today's answer,
+never a crash and never an allow. (A detached HEAD's switch is read as above.) An env prefix (`AGENTTOOLING_PROFILE=local git push …`) is not
 read as git by either deny, so it stays an ASK; it changes that command's environment, not
 the hook's.
 
@@ -1320,7 +1342,9 @@ and `GIT_PROBE_*` constants, `GIT_LOCATION_FLAG`, `GIT_PROBE_TIMEOUT_SECONDS`, t
 `GIT_CLOUD_STARTED_TEMPLATE`, `GIT_CLOUD_UNSTARTED_TEMPLATE`, `BRANCH_QUOTE`,
 `BRANCH_UNKNOWN`), and the off-branch reason (`GIT_CLOUD_OFF_BRANCH_TEMPLATE`,
 `OFF_BRANCH_DETACHED`, `GIT_REMOTE_REF_PREFIX`, `GIT_REMOTE_SEPARATOR`,
-`GIT_TREE_PATH_SEPARATOR`, `GIT_SHOW`, `GIT_PROBE_REMOTE_REFS`); a new cloud-only shape is an entry in `policy.GIT_CLOUD_ONLY`, a branch
+`GIT_TREE_PATH_SEPARATOR`, `GIT_SHOW`, `GIT_PROBE_REMOTE_REFS`), and the attach reason
+(`GIT_CLOUD_ATTACH_TEMPLATE`, `ATTACH_SCRIPT`, `GIT_HEAD`, `GIT_ATTACH_REMOTE_PREFIX`,
+`GIT_PROBE_IS_ANCESTOR`, `GIT_PROBE_ATTACH_CANDIDATES`); a new cloud-only shape is an entry in `policy.GIT_CLOUD_ONLY`, a branch
 in `cloud_refuses`, and a row in `self/tests/hook-cloud-profile.sh`'s table with its local
 and its cloud answer. The opaque deny is `OPAQUE_REWRITE_ATTEMPTS`,
 `HEREDOC_LITERAL_PROGRAMS`, `INTERPRETER_CODE_LETTER`, `EVAL_PROGRAM`,

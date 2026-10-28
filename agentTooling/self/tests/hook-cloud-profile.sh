@@ -48,6 +48,16 @@ set -uo pipefail
 #      are refused with the off-branch reason (the branch, the slug, a fresh session or the
 #      human), never "push only `main`"; locally they still prompt; a branch no manifest
 #      names keeps the existing reason, and on the feature's own branch nothing changes;
+#      on a detached HEAD (OD) a plain `git checkout <feature-branch>` that would move the
+#      working tree is refused too (O7), and still prompts locally;
+#   A. the cached-clone attach — clones detached EXACTLY at origin/<feature-branch> with
+#      the local branch behind (AD): `checkout -B`, `switch -C`, `branch -f`, a plain
+#      checkout or switch of the stale branch, any refused shape, all name
+#      `./agentTooling/attach-branch.sh <branch>`; what moves nothing (`checkout
+#      origin/<branch>`, `switch --detach`, a file checkout) is not refused; the local
+#      branch already AT HEAD (AE) lets a plain checkout through; a local branch with a
+#      commit HEAD lacks (AN), HEAD not at the tip (OD), and a tip no manifest names
+#      (`remote-only`) are refused WITHOUT the attach remedy;
 #   P. detection through the hook — CLAUDE_CODE_REMOTE=true with no override is cloud;
 #   X. no subprocess off the cloud path — under a logging `git` stub, no case runs git
 #      locally (a push to `main` included, denied from its words alone), and in the cloud
@@ -459,13 +469,85 @@ words_check("O6. cloud, detached HEAD: `git checkout -b %s origin/%s` gets the o
             "reason, naming a detached HEAD" % (BR, BR),
             "git checkout -b %s origin/%s" % (BR, BR), OFF_WORDS + ("a detached HEAD",),
             OFF_NEVER, hook=HOOK_OD, root=OD, profile=CLOUD)
-got, _ = call("git checkout " + BR, hook=HOOK_OD, root=OD, profile=CLOUD)
-check("O7. ... while a plain checkout there keeps today's answer, unrefused (got %s)" % got,
-      got == P)
+words_check("O7. ... and so is a plain `git checkout %s` there, which would move the working "
+            "tree off HEAD's commit (self/features/detached-at-branch-tip-attach/)" % BR,
+            "git checkout " + BR, OFF_WORDS + ("a detached HEAD",), OFF_NEVER,
+            hook=HOOK_OD, root=OD, profile=CLOUD)
+got, _ = call("git checkout " + BR, hook=HOOK_OD, root=OD, profile=LOCAL)
+check("O7b. ... locally that checkout still prompts (got %s)" % got, got == P)
 _, off_reason = call("git switch " + BR, hook=HOOK_OB, root=OB, profile=CLOUD)
 check("O5. the off-branch reason never says to commit or push on `main`",
       off_reason and "push only" not in off_reason and "Commit on" not in off_reason,
       off_reason)
+
+# ── A. the cached-clone attach (self/features/detached-at-branch-tip-attach/) ─────
+# A session launched to continue a feature's branch came up detached EXACTLY at
+# origin/<branch>, its local <branch> a strict ancestor left by an earlier clone. Every
+# refusal there names attach-branch.sh; a switch that moves nothing is not refused.
+def detached_at_tip(path, local_ahead=False, local_at_head=False):
+    """A clone detached at origin/BR, origin/BR one commit ahead of the local BR (a
+    fetch the clone already saw). `local_ahead` gives the local BR a commit of its own
+    (not an ancestor of HEAD); `local_at_head` points it at HEAD."""
+    hook = clone_on_main(path)
+    git(path, "branch", "-q", BR, "origin/" + BR)
+    if local_ahead:
+        git(path, "checkout", "-q", BR)
+        git(path, "commit", "-q", "--allow-empty", "-m", "local only")
+    git(path, "checkout", "-q", "--detach", "origin/" + BR)
+    git(path, "commit", "-q", "--allow-empty", "-m", "newer on origin")
+    git(path, "update-ref", "refs/remotes/origin/" + BR, "HEAD")
+    if local_at_head:
+        git(path, "branch", "-q", "-f", BR, "HEAD")
+    return hook
+
+
+ATTACH_CMD = "./agentTooling/attach-branch.sh " + BR
+ATTACH_WORDS = (ATTACH_CMD, "`origin/%s`" % BR, "'%s'" % SLUG, "moves nothing",
+                "will not cure", "LIFECYCLE", "rule 2")
+ATTACH_NEVER = ("push only", "Commit on", ".worktrees", "launched on")
+AD = os.path.join(TMP, "attach-detached")
+HOOK_AD = detached_at_tip(AD)
+for cmd in ("git checkout -B %s origin/%s" % (BR, BR), "git switch -C %s origin/%s" % (BR, BR),
+            "git branch -f %s origin/%s" % (BR, BR), "git checkout " + BR,
+            "git switch " + BR, "git checkout -b x"):
+    words_check("A1. cloud, detached at origin/%s with the local branch behind: `%s` is "
+                "refused, naming attach-branch.sh" % (BR, cmd), cmd, ATTACH_WORDS,
+                ATTACH_NEVER, hook=HOOK_AD, root=AD, profile=CLOUD)
+for cmd in ("git checkout origin/" + BR, "git switch --detach", "git checkout HEAD",
+            "git checkout -- README.md", "git status"):
+    got, detail = call(cmd, hook=HOOK_AD, root=AD, profile=CLOUD)
+    check("A2. ... while `%s`, which moves nothing, is not refused (got %s)" % (cmd, got),
+          got in (P, A), detail)
+words_check("A3. ... and locally `git checkout -B` keeps today's local reason",
+            "git checkout -B %s origin/%s" % (BR, BR), LOCAL_WORDS, ("attach-branch",),
+            hook=HOOK_AD, root=AD, profile=LOCAL)
+AE = os.path.join(TMP, "attach-local-at-head")
+HOOK_AE = detached_at_tip(AE, local_at_head=True)
+got, detail = call("git checkout " + BR, hook=HOOK_AE, root=AE, profile=CLOUD)
+check("A4. cloud, detached at the tip with the local branch already AT HEAD: a plain "
+      "`git checkout %s` moves nothing and is not refused (got %s)" % (BR, got), got == P,
+      detail)
+AN = os.path.join(TMP, "attach-local-diverged")
+HOOK_AN = detached_at_tip(AN, local_ahead=True)
+for cmd in ("git checkout -B %s origin/%s" % (BR, BR), "git checkout " + BR):
+    words_check("A5. cloud, detached at the tip but the local branch holds a commit HEAD "
+                "lacks: `%s` is refused WITHOUT the attach remedy" % cmd, cmd,
+                ("LIFECYCLE", "rule 2"), ("attach-branch",), hook=HOOK_AN, root=AN,
+                profile=CLOUD)
+words_check("A6. cloud, detached at a commit that is not the branch's tip: `git checkout -B "
+            "%s origin/%s` is refused WITHOUT the attach remedy" % (BR, BR),
+            "git checkout -B %s origin/%s" % (BR, BR), ("LIFECYCLE", "rule 2"),
+            ("attach-branch",), hook=HOOK_OD, root=OD, profile=CLOUD)
+# OD is detached at main, which origin/remote-only also points at — but no manifest names
+# remote-only, so it is no feature's branch
+words_check("A7. cloud, detached exactly at origin/%s, a branch no manifest names: refused "
+            "WITHOUT the attach remedy" % REMOTE_ONLY,
+            "git checkout -B %s origin/%s" % (REMOTE_ONLY, REMOTE_ONLY),
+            ("LIFECYCLE", "rule 2"), ("attach-branch",), hook=HOOK_OD, root=OD,
+            profile=CLOUD)
+got, _ = call("git checkout " + REMOTE_ONLY, hook=HOOK_OD, root=OD, profile=CLOUD)
+check("A8. ... while a plain `git checkout %s` there, the same commit as HEAD, is not "
+      "refused (got %s)" % (REMOTE_ONLY, got), got == P)
 
 # ── P. detection through the hook ─────────────────────────────────────────────
 got, _ = call("git switch main", remote="true")

@@ -148,6 +148,19 @@ hook's reason says the container is off `<branch>` and names the remedy — a fr
 launched on `<branch>`, or the human checking it out in this container — never "commit on
 `main`" (`session-start.sh` prints the same on `main`; `self/features/cloud-off-branch-remedy/`).
 
+**A cached clone comes up detached at its branch's tip.** A session created to continue a
+feature's branch (`source_revision` and `outcome_branch` both the branch) can instead come
+up with HEAD **detached exactly at `origin/<branch>`**, the local `<branch>` a stale
+ancestor left by an earlier session's cached clone. A fresh session reproduces it, so the
+remedy above does not cure it. This one the session fixes itself, because nothing moves:
+`attach-branch.sh [--self] <branch>` checks that HEAD is detached, that a tracked manifest
+names `<branch>` as `branches[0]`, that `origin/<branch>` IS HEAD's commit and that the
+local ref is absent or an ancestor of HEAD, then points the branch at HEAD and checks it
+out — the working tree does not change. Every other case it refuses untouched. `git
+checkout -B` and its kin stay refused, and on a detached HEAD so does a plain checkout
+that would land on the stale commit; the hook's reason and `session-start.sh` both name
+the command (`self/features/detached-at-branch-tip-attach/`).
+
 `--base` is for a feature stacked on one that has not merged; `--no-gate`, `--pin` (the
 opt-in for the rare case where the starting session really is this feature's coordinator)
 and `--session <id>` are for the cases that need them, and `--no-pin` is still accepted
