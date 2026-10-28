@@ -11,4 +11,6 @@ gate-report*.txt
 # The review pass's verdict, rewritten every batch and used as the PR body. Anchored to
 # plans/ on purpose: a feature's own archived copy (features/<slug>/review-report.md) is
 # the committed record of that batch's verdict, and an unanchored pattern would swallow it.
+# run-review.sh writes that copy each round. A plans/review-report.md committed before this
+# line arrived is untracked by the next sync-plans.sh or review commit, whichever is first.
 /review-report.md
