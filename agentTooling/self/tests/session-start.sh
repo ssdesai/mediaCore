@@ -20,6 +20,10 @@ set -uo pipefail
 #   C5. cloud, a tracked manifest whose branches[0] is this branch: names the feature and
 #       its close, not a start — and a manifest naming ANOTHER branch, or one that only
 #       mentions this branch outside branches[0], is not this branch's feature;
+#   C7. cloud, detached EXACTLY at a started feature's origin/<branch> with the local
+#       branch behind (the cached-clone shape): one line naming the feature,
+#       `./agentTooling/attach-branch.sh <branch>`, and that a fresh session will not cure
+#       it — instead of the start and restart lines; detached elsewhere, the restart line;
 #   C6. cloud with no plans/cloud-setup.sh: says to run sync-plans.sh, exits 0;
 #   L1. local, on main: the primary-checkout line naming branch <slug> and the worktree,
 #       and plans/cloud-setup.sh is NOT run;
@@ -129,6 +133,28 @@ check "C5a. a tracked manifest naming this branch is its feature, with the close
 check "C5b. ... and no start is offered, nor is other-one (which only mentions it) named" \
   '! grep -qF "feature-start.sh" <<<"$out" && ! grep -qF "other-one" <<<"$out"'
 
+# The cached-clone shape (self/features/detached-at-branch-tip-attach/): detached exactly
+# at origin/<branch> of a started feature, the local branch one commit behind
+RA="$(consumer attach)"
+git init -q --bare "$TMP/attach-origin.git"
+git -C "$RA" remote add origin "$TMP/attach-origin.git"
+git -C "$RA" checkout -q -b "$ASSIGNED"
+manifest "$RA/plans/features/attach-one/README.md" "$ASSIGNED"
+git -C "$RA" add -A
+git -C "$RA" commit -q -m "attach-one: start"
+git -C "$RA" checkout -q --detach
+git -C "$RA" commit -q --allow-empty -m "newer on origin"
+git -C "$RA" update-ref "refs/remotes/origin/$ASSIGNED" HEAD
+out="$(hook cloud "$RA/agentTooling/session-start.sh")"
+check "C7a. detached at a started feature's origin tip: the attach line names attach-branch.sh and the feature" \
+  'grep -qF "HEAD is detached at origin/$ASSIGNED" <<<"$out" && grep -qF "'"'"'attach-one'"'"'" <<<"$out" && grep -qF "./agentTooling/attach-branch.sh $ASSIGNED" <<<"$out" && grep -qF "a fresh session will not cure it" <<<"$out"'
+check "C7b. ... instead of the start and restart lines" \
+  '! grep -qF "continuing a feature already started" <<<"$out" && ! grep -qF -- "--branch <name>" <<<"$out"'
+git -C "$RA" update-ref "refs/remotes/origin/$ASSIGNED" HEAD~1
+out="$(hook cloud "$RA/agentTooling/session-start.sh")"
+check "C7c. detached at a commit that is not the tip: no attach line, the restart line as before" \
+  '! grep -qF "attach-branch.sh" <<<"$out" && grep -qF "continuing a feature already started" <<<"$out"'
+
 R2="$(consumer no-setup)"
 rm "$R2/plans/cloud-setup.sh"
 git -C "$R2" commit -q -am "no setup"
@@ -188,7 +214,7 @@ check "P1. a bogus profile: one line naming it, exit 0, nothing run (got $rc)" \
 
 # ── R. read-only ──────────────────────────────────────────────────────────────
 check "R1. no run wrote anything: every fixture's git status is clean" \
-  '[[ -z "$(git -C "$R" status --porcelain)$(git -C "$R2" status --porcelain)$(git -C "$L" status --porcelain)$(git -C "$S" status --porcelain)" ]]'
+  '[[ -z "$(git -C "$R" status --porcelain)$(git -C "$RA" status --porcelain)$(git -C "$R2" status --porcelain)$(git -C "$L" status --porcelain)$(git -C "$S" status --porcelain)" ]]'
 
 echo
 if (( fails )); then

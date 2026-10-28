@@ -425,6 +425,35 @@ started_features_on() {
   done < <(git -C "$repo_dir" grep -l -F -e "$branch" -- "$label/*/$STARTED_MANIFEST_NAME" 2>/dev/null | sort)
 }
 
+# The remote whose tracking branches a detached HEAD is matched against, and the symbolic
+# `<remote>/HEAD` entry, which names no branch of its own
+ATTACH_REMOTE="origin"
+ATTACH_REMOTE_HEAD="HEAD"
+
+# attachable_branches <repo-dir> <features-label> — on a detached HEAD, every branch HEAD
+# can be re-attached to without moving the working tree, one per line, sorted; nothing on
+# a branch (self/features/detached-at-branch-tip-attach/). A branch qualifies when a
+# tracked manifest names it as branches[0] (started_features_on), its remote-tracking tip
+# refs/remotes/origin/<branch> IS HEAD's commit, and its local ref is absent or an ancestor
+# of HEAD — the shape a cloud session gets when the platform re-checks-out a cached clone,
+# whose local branch is stale, detached at the requested revision. The one reading
+# attach-branch.sh acts on and session-start.sh names; hooks/allow-repo-commands.sh's
+# attachable_branch makes the same one in Python. Read-only, no network.
+#   while IFS= read -r branch; do …; done < <(attachable_branches "$REPO_DIR" "$FEATURES_LABEL")
+attachable_branches() {
+  local repo_dir="$1" label="$2" branch
+  ! git -C "$repo_dir" symbolic-ref -q HEAD >/dev/null 2>&1 || return 0
+  while IFS= read -r branch; do
+    [[ -n "$branch" && "$branch" != "$ATTACH_REMOTE_HEAD" ]] || continue
+    [[ -n "$(started_features_on "$repo_dir" "$label" "$branch")" ]] || continue
+    if git -C "$repo_dir" rev-parse -q --verify "refs/heads/$branch" >/dev/null 2>&1; then
+      git -C "$repo_dir" merge-base --is-ancestor "refs/heads/$branch" HEAD 2>/dev/null || continue
+    fi
+    echo "$branch"
+  done < <(git -C "$repo_dir" for-each-ref --points-at HEAD --format='%(refname:lstrip=3)' \
+             "refs/remotes/$ATTACH_REMOTE" 2>/dev/null | sort)
+}
+
 # ── The repo's display name ───────────────────────────────────────────────────
 # What the repo half of `feature: <repo>/<slug>` says. agentTooling's own corpus is
 # declared, not derived: this is repo_display_name(roots.SELF_CORPUS_IDENTITY) in

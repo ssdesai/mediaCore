@@ -24,7 +24,12 @@ set -uo pipefail
 #      read LIFECYCLE.md's local layout as a conflict (it did — the reason this exists).
 #      On the base or a detached HEAD in the cloud it adds the restart case: a session
 #      continuing a feature started on another branch is in a container the platform
-#      restarted on the base, and a fresh session on that branch is the fix.
+#      restarted on the base, and a fresh session on that branch is the fix. One detached
+#      shape is cured differently: HEAD exactly at a started feature's origin/<branch>,
+#      the local branch absent or behind (a cached clone the platform re-checked-out
+#      detached; a fresh session reproduces it). There the one line printed instead names
+#      attach-branch.sh, which re-attaches it moving nothing (plan-runner-roots.sh's
+#      attachable_branches; self/features/detached-at-branch-tip-attach/).
 #   2. THE REPO'S SETUP, cloud only: the consuming repo's seeded `plans/cloud-setup.sh`,
 #      when there is one — services a fresh container lacks (Postgres, a role). Its exit
 #      code is this script's, so a failed setup is not hidden behind the orientation. A
@@ -100,7 +105,14 @@ STARTED="$(started_feature "$BRANCH")"
 if [[ -n "$STARTED" ]]; then
   say "feature '$STARTED' is started on this branch ($FEATURES_LABEL/$STARTED/$MANIFEST_NAME): build it here, and close it with ${TOOL_PREFIX}feature-close.sh ${SELF_ARG}$STARTED (${DOC_PREFIX}$LIFECYCLE_DOC)"
 elif profile_is_cloud; then
-  if [[ -z "$BRANCH" || "$BRANCH" == "$BASE_BRANCH" ]]; then
+  # The cached-clone shape (self/features/detached-at-branch-tip-attach/): detached exactly
+  # at a started feature's origin/<branch>, its local ref absent or behind. Neither a start
+  # nor a fresh session is the remedy there; attach-branch.sh is, and it moves nothing.
+  ATTACH=""
+  [[ -n "$BRANCH" ]] || ATTACH="$(attachable_branches "$REPO_DIR" "$FEATURES_LABEL" | head -n 1)"
+  if [[ -n "$ATTACH" ]]; then
+    say "HEAD is detached at origin/$ATTACH, the tip of feature '$(started_feature "$ATTACH")''s branch: the platform re-checked-out a cached clone, and a fresh session will not cure it. Re-attach with ${TOOL_PREFIX}attach-branch.sh ${SELF_ARG}$ATTACH — it moves nothing — then build here; never git checkout -B or a plain git checkout $ATTACH (${DOC_PREFIX}$LIFECYCLE_DOC)"
+  elif [[ -z "$BRANCH" || "$BRANCH" == "$BASE_BRANCH" ]]; then
     say "this container is one feature's checkout. Start it with $START_CMD --branch <name>: the start cuts <name> off origin/$BASE_BRANCH — never create a branch yourself (${DOC_PREFIX}$LIFECYCLE_DOC)"
     say "$CONTINUING_LINE"
   else

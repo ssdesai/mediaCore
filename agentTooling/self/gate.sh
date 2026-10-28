@@ -254,6 +254,7 @@ shell_scripts=(
   forge.sh
   env-profile.sh
   session-start.sh
+  attach-branch.sh
   check-plans.sh
   update.sh
   self/gate.sh
@@ -313,6 +314,7 @@ shell_scripts=(
   self/tests/env-profile.sh
   self/tests/cloud-start.sh
   self/tests/session-start.sh
+  self/tests/attach-branch.sh
   self/tests/gate-resume.sh
   self/tests/review-base.sh
   self/tests/pr-body-refresh.sh
@@ -463,6 +465,10 @@ record "cloud start self-test" bash self/tests/cloud-start.sh
 # session stands — in the cloud, on its assigned branch — or the feature already started
 # there; then the repo's cloud-setup.sh, in the cloud only; and nothing is written.
 record "session start self-test" bash self/tests/session-start.sh
+# A cloud clone detached exactly at its feature's origin/<branch>, the local branch stale
+# behind it, is re-attached moving nothing — and every other shape is refused untouched
+# (self/features/detached-at-branch-tip-attach/).
+record "attach branch self-test" bash self/tests/attach-branch.sh
 # A gate killed with its container re-runs only what had not finished on the same tree,
 # and everything on a changed one (design §8) — the template gate and this one, each
 # copied into a sandbox with stub checks, killed mid-run and resumed.
