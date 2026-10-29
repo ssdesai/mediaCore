@@ -291,6 +291,7 @@ shell_scripts=(
   self/tests/recover-at-close.sh
   self/tests/recover-duration.sh
   self/tests/check-plans.sh
+  self/tests/model-suffix.sh
   self/tests/sync-check.sh
   self/tests/generated-hand-edit.sh
   self/tests/propagation-pull.sh
@@ -313,6 +314,7 @@ shell_scripts=(
   self/tests/rates-history.sh
   self/tests/env-profile.sh
   self/tests/cloud-start.sh
+  self/tests/cloud-setup-wait.sh
   self/tests/session-start.sh
   self/tests/attach-branch.sh
   self/tests/gate-resume.sh
@@ -384,6 +386,7 @@ record "worktree claims self-test" bash self/tests/worktree-claims.sh
 record "recover at close self-test" bash self/tests/recover-at-close.sh
 record "recover duration self-test" bash self/tests/recover-duration.sh
 record "check plans self-test" bash self/tests/check-plans.sh
+record "model suffix self-test" bash self/tests/model-suffix.sh
 record "sync check self-test" bash self/tests/sync-check.sh
 # A generated stub that differs from its template is a hand edit or an upstream change,
 # told apart by the repo's own history of the vendored templates; a hand edit's dropped
@@ -461,6 +464,10 @@ record "rates history self-test" bash self/tests/rates-history.sh
 # record whose window opens at its own first instant (self/features/execution-profiles/).
 record "env profile self-test" bash self/tests/env-profile.sh
 record "cloud start self-test" bash self/tests/cloud-start.sh
+# A consuming repo's cloud start waits for the setup session-start.sh backgrounded
+# (templates/plans/cloud-setup.sh --wait) before its hook and its base gate
+# (self/features/hand-start-friction/).
+record "cloud setup wait self-test" bash self/tests/cloud-setup-wait.sh
 # The SessionStart hook every repo runs: the orientation names the start to run where the
 # session stands — in the cloud, on its assigned branch — or the feature already started
 # there; then the repo's cloud-setup.sh, in the cloud only; and nothing is written.

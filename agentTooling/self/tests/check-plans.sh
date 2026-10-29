@@ -223,6 +223,22 @@ echo "progress" > "$PLANS/c08c/auto/incomplete/01-build-haiku.progress.md"
 out="$("$AT/check-plans.sh" c08c 2>&1)"; rc=$?
 check "8c. progress sidecar ignored: ok plan filenames well-formed" 'grep -q "^  ok    plan filenames well-formed" <<<"$out"'
 
+# fable is the fourth model suffix (self/features/fable-plan-model); a suffix outside the
+# four still FAILs check 8, naming the file.
+mkfeature "$PLANS" c08d '["01-build-haiku","02-review-fable"]'
+mkplan "$PLANS" c08d auto incomplete 01-build-haiku.md
+mkplan "$PLANS" c08d review incomplete 02-review-fable.md
+out="$("$AT/check-plans.sh" c08d 2>&1)"; rc=$?
+check "8d. NN-review-fable.md: exit 0 and ok plan filenames well-formed (got $rc)" \
+  '[[ $rc -eq 0 ]] && grep -q "^  ok    plan filenames well-formed" <<<"$out"'
+
+mkfeature "$PLANS" c08e '["01-build-haiku","02-review-gpt"]'
+mkplan "$PLANS" c08e auto incomplete 01-build-haiku.md
+mkplan "$PLANS" c08e review incomplete 02-review-gpt.md
+out="$("$AT/check-plans.sh" c08e 2>&1)"; rc=$?
+check "8e. unknown suffix NN-review-gpt.md: FAIL plan filenames well-formed names it" \
+  'grep "^  FAIL  plan filenames well-formed" <<<"$out" | grep -q "02-review-gpt.md"'
+
 # ── 9. plan numbers padded alike ──────────────────────────────────────────────
 mkfeature "$PLANS" c09 '["01-build-haiku","001-extra-haiku"]'
 mkplan "$PLANS" c09 auto incomplete 01-build-haiku.md

@@ -145,7 +145,10 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `from`, `to` null, and **no pin**: the session that runs a start is a router, never a
   claimant) and a
   `@@TODO@@` review stub numbered `01`, whatever another feature's corpus holds
-  (`plan-numbering.sh` is the rule's own test), commits `S: start` with
+  (`plan-numbering.sh` is the rule's own test) — except under `--method hand`, whose
+  brief is complete for a hand build (no line-start marker, the manifest named as its
+  spec, the diff against `origin/main`, the gate) with a "Next" line saying so (S3d2–S3d4),
+  and which T3 then runs as written plus one appended line — commits `S: start` with
   the routing record for that router inside the feature directory
   (`self/features/S/routing.json`, naming S in `features_started` and the router as its
   `session_id`, with nothing written beside the corpus at `self/routing/`),
@@ -195,7 +198,8 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   and still ends at the merge — the two steps after a clean verdict, in the start's own
   last lines.
   **T1**: `run-review.sh` files a brief still carrying `@@TODO@@` to `failed/` without
-  calling `claude` or the PR hook. **C1** (`capture-on-branch`, design §3.2): after a
+  calling `claude` or the PR hook, its refusal naming the file as queued and as filed and
+  the three things a brief holds (T1c2). **C1** (`capture-on-branch`, design §3.2): after a
   commit of work, `feature-capture.sh` run from the worktree commits `S: cost records`
   over it and pushes the BRANCH — the bare remote's `S` carries `planning.json`,
   `report.*`, `timing.jsonl` and the manifest with `to` exactly one second past the
@@ -681,7 +685,10 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   escalation exemption (`11b`/`11c`): a `verify/complete/NN-escalation-MODEL.md` absent
   from `plans[]` still prints `ok    every plan file listed in plans[]` — it is
   synthesized at runtime and no manifest can list it — while the same filename under
-  `auto/` FAILs check 8, the way an `NN-gate.md` outside `auto/` does (`8b`). Also
+  `auto/` FAILs check 8, the way an `NN-gate.md` outside `auto/` does (`8b`). Pins the
+  model suffix (`8d`/`8e`, `../features/fable-plan-model/`): a `NN-review-fable.md` is
+  well-formed and the feature exits 0, while an unknown suffix (`NN-review-gpt.md`)
+  FAILs check 8 naming the file. Also
   asserts the batch stop:
   `run-batch.sh` spends no `claude` call on a feature whose corpus fails check 8
   (malformed filenames) and does spend one on a well-formed feature — copying in
@@ -691,6 +698,20 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `plan-runner-lib.sh`'s refusal rule (`grep -q '^@@TODO@@'`, any line) matching the
   lint's, since the lint exists to predict that refusal: the `10c` fixture is the stub
   `feature-start.sh` really writes, marker on line 3 under a title.
+- `model-suffix.sh` — the plan-filename model suffix (`../features/fable-plan-model/`):
+  `haiku`, `sonnet`, `opus` and `fable`, spelled in three places — `check-plans.sh`'s
+  `MODEL_RE` (pinned by `check-plans.sh` `8d`/`8e` above), `plan-runner-lib.sh`'s
+  `extract_model` and `analysis/manifest.py`'s `PLAN_STEM_RE` — and this test covers the
+  other two. Copies `plan-runner-lib.sh` and `manifest.py` with what it imports
+  (`routing.py`, `pricing.py`, `roots.py`, `transcript.py`, `rates_history.json`,
+  `litellm_prices.py`) into a `mktemp -d` with `RATES_LIVE_LOOKUP=off` and `$HOME`
+  redirected. Asserts `extract_model` passes each of the four through unchanged with no
+  `WARN` (M1) — the suffix is the alias `claude --model` is given — and falls back to
+  `sonnet` with a `WARN` for an unknown suffix or none (M2); `manifest.py set-plans`
+  accepts `01-review-fable` (M3) and refuses `02-review-gpt`, naming it and leaving
+  `plans[]` alone (M4); and `pricing.compute_cost` prices `claude-fable-5-1` — the id a
+  `--model fable` transcript carries — from the history, not live, at its rates (M5).
+  Depends on `plan-runner-lib.sh` sourcing with only `PLAN_KIND` set. No model, no network.
 - `cost-recovery.sh` — copies `analysis/pricing.py`, `analysis/rates_history.json`, `analysis/roots.py`,
   `analysis/report.py`, `analysis/transcript.py` and `analysis/recover_attempts.py` into a
   throwaway checkout, synthesizes a `self/features/` corpus of `usage.json` sidecars (and,
@@ -2016,7 +2037,7 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   body refresh through `forge.sh pr-edit`, past the 4 whose `--merge-request` entry
   point `feature-close.sh` needs; `gate.sh` 3 and `worktree-setup.sh` 2 source
   `plans/environment.sh`, and the gate resumes), `environment.sh` in-sync at 1 and
-  `cloud-setup.sh` at 2 (1l–1m), the first seeded without the executable bit and the second with
+  `cloud-setup.sh` at 3 (1l–1m), the first seeded without the executable bit and the second with
   it (1n), and one SessionStart entry naming `cloud-setup.sh` that a second sync does not
   double (1o–1p) — and only
   `PROJECT_FACTS.md` unfilled, exit 1, `needs attention: 1 item(s)`; that the seeded
@@ -2185,16 +2206,16 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `TEMPLATE_VERSIONS` being re-recorded, by the command in its own header, at every bump,
   and on `origin/main` (or a local `main`) existing in the checkout.
 - `template-version-bump.sh` — the check above, seen to fail (`../features/cloud-pull-fixes/`,
-  defect B). Reads the real tree for B1 (it passes) and B2 (`cloud-setup.sh` is at 2, the
-  table says 2, and its header names `session-start.sh` as its runner), then runs
+  defect B). Reads the real tree for B1 (it passes) and B2 (`cloud-setup.sh` is at 3, the
+  table says 3, and its header names `session-start.sh` as its runner), then runs
   `template-versions.sh` over a copy of `templates/plans` in a `mktemp -d`: a comment-only
   edit unbumped FAILs naming the file (B3, PR 85's case), a body edit unbumped FAILs (B4),
   a bump without re-recording the table FAILs (B5), and a bump re-recorded with the hash
   command **read out of `TEMPLATE_VERSIONS`' own header** passes (B6 — the documented
   recipe is the tested one). B7 seeds a consumer with the real `sync-plans.sh`,
   `templates/`, `hooks/` and `env-profile.sh`, sets its `plans/cloud-setup.sh` back to 1,
-  and asserts `--check` prints `DRIFT plans/cloud-setup.sh (template-version 1 < 2; …)`,
-  and that setting the line to 2 — the whole hand-merge for a copy already carrying the
+  and asserts `--check` prints `DRIFT plans/cloud-setup.sh (template-version 1 < 3; …)`,
+  and that setting the line to 3 — the whole hand-merge for a copy already carrying the
   new header — makes it `in-sync`. B8–B14 tie the hash to the version against a fixture repo
   standing in for `origin/main` (one commit holding the real templates, on a branch not named
   `main`): an unchanged tree passes (B8); **a hash re-recorded at an unchanged version FAILs,
@@ -2244,7 +2265,8 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `update.sh` then says `broken`, prints an `anchor` line, pulls with exit 0, lands the line
   and prints the upstream head on `split` — the anchor a no-change merge whose second parent
   is a parentless squash commit ending in a `git-subtree-dir` trailer block, the merge's own
-  message carrying no `git-subtree-` line (C3); `--check` is then `intact` (C4); landed by
+  message carrying no `git-subtree-` line (C3); `--check` is then `intact`, its line ending
+  "the vendored tree's own commit; a pull merges from it cleanly" (C4, C4b); landed by
   merge commit, the next pull needs no anchor and adds one merge (C5); a squash-merge that
   kept the bodies is `fragile`, exit 0 (C6); a committed local file under the prefix is
   `edited`, exit 0, and nothing is re-anchored (C7); local edits against upstream changes —
@@ -2663,7 +2685,9 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   the stub records to `$GATE_RESUME_OUT`), S1 (a second feature in that container refused naming the first),
   R1–R3 (a foreign commit and a dirty tree refused with the work still there; a start
   whose hook fails leaves the branch and a lock with `refused=`, and its re-run with a hand
-  fix in the tree resumes, commits `S: start` without the fix, and removes the lock),
+  fix in the tree resumes, commits `S: start` without the fix, and removes the lock), R4
+  (a resumed `--method hand` start keeps the brief the earlier one left, extended by the
+  coordinator, byte for byte, and says "kept from the earlier start"),
   N1–N4 (`--branch` from the base cuts the branch off `origin/main` and the session,
   launched on `main`, is still the coordinator — `features/cloud-branch-window-from`: a
   container holds one feature — with no routing record, no pin and no advice to pin, its
@@ -2683,6 +2707,23 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `--branch` is refused). Depends on
   `feature-start.sh`'s lock living at `.git/feature-start.lock` with a `refused=` line,
   and on `planning.json`'s `sessions[].selected_by`.
+- `cloud-setup-wait.sh` — a consuming repo's cloud `feature-start.sh` waits for the
+  background setup `session-start.sh` began before its setup hook and its base gate
+  (`../features/hand-start-friction/`, item 1). Stands up consumer repos with
+  `agentTooling/` vendored one level down, a bare origin, a stub gate green only once a
+  marker in the git dir exists, a stub `plans/worktree-setup.sh` recording whether it did,
+  and a `plans/cloud-setup.sh` that is the **real** template with its skeleton line
+  replaced by one `setup_in_background` step; the profile forced with
+  `AGENTTOOLING_PROFILE`. Asserts the template's contract alone (W1: `--wait` with nothing
+  started exits 0, a second run while the step runs starts nothing, `--wait` returns 0 once
+  it is done, the tree stays clean; `--wait` exits 1 for a step that recorded no exit code
+  (W1f) and for one still running at a shortened timeout (W1g); under the local profile
+  neither run writes anything, W1h); a start run at once waits — one `setup` line, a
+  non-zero wait — before a hook that saw the step done and a green gate, and commits
+  `S: start` (W2); a failed step refuses the start naming `plans/cloud-setup.sh --wait`
+  and the step's exit code, committing nothing and running no hook (W3); a copy with no
+  `--wait` gets one line naming template-version 3 and the start goes on (W4); and the
+  local profile prints no `setup` line and runs no setup (W5).
 - `session-start.sh` — the `SessionStart` hook every repo runs (`../../session-start.sh`).
   Each scenario is a throwaway consuming repo with `session-start.sh`, `env-profile.sh`,
   `hooks/env_profile.py` and `plan-runner-roots.sh` under `agentTooling/` and a stub `plans/cloud-setup.sh` that

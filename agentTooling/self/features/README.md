@@ -229,3 +229,10 @@ format".
   Built by hand (`method: "hand"`) by the cloud session that started it; plan
   `01-review-opus` is its review; rulings in its `NOTES.md`. It adds
   `../tests/review-report-untrack.sh`.
+- `fable-plan-model` — `fable` becomes a fourth plan-filename model suffix beside
+  `haiku`, `sonnet` and `opus`, so a plan — a review in particular — can run on Claude
+  Fable 5.1: `../../check-plans.sh`'s `MODEL_RE`, `../../plan-runner-lib.sh`'s
+  `extract_model` and `../../analysis/manifest.py`'s `PLAN_STEM_RE` accept it, and it
+  reaches `claude --model` as the CLI's own alias. No default model moved. Built by hand
+  (`method: "hand"`) by the cloud session that started it; plan `01-review-fable` is its
+  review, run on fable. It adds `../tests/model-suffix.sh`.

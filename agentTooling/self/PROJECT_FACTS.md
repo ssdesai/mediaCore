@@ -198,8 +198,11 @@ say to run by hand, along with what "passing" looks like.
   check exists: a missing `jq` would otherwise produce an empty progress log, no
   terminal output, and every plan still filed as complete.
 - **Model suffix.** A plan file is `NN-description-MODEL.md` with `MODEL` one of
-  `haiku`, `sonnet`, `opus`; `extract_model` parses the trailing segment and warns-and-
-  defaults to `sonnet` otherwise. Interactive plans carry no model suffix.
+  `haiku`, `sonnet`, `opus`, `fable`; `extract_model` parses the trailing segment and warns-and-
+  defaults to `sonnet` otherwise. The suffix reaches `claude --model` unchanged — each is
+  a CLI alias, so nothing maps it to a full id. The same four are spelled in
+  `check-plans.sh`'s `MODEL_RE` and `analysis/manifest.py`'s `PLAN_STEM_RE`; a fifth
+  model is added to all three. Interactive plans carry no model suffix.
 - **The analysis scripts import each other bare** — `from pricing import compute_cost`,
   `from roots import …`. That works because Python puts the *script's own directory* on
   `sys.path`; there is no package, no `__init__.py`, no install step. A new shared module

@@ -1,0 +1,71 @@
+{
+  "slug": "hand-start-friction",
+  "captured_at": "2026-10-28T21:59:16.859085+00:00",
+  "manifest_branches": [
+    "claude/hand-start-friction"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "1f684247-a78a-5cc9-89ff-81bee5ebe13d",
+      "git_branch": "claude/hand-start-friction",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-10-28",
+      "started_at": "2026-10-28T21:15:43.453000+00:00",
+      "ended_at": "2026-10-28T21:59:11.041000+00:00",
+      "duration_s": 2607
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "b185d255-609b-4a00-9df6-3236d70edc79",
+    "c30a8d27-8e3e-435b-bac2-f36897b046d2"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "1f684247-a78a-5cc9-89ff-81bee5ebe13d",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-10-28",
+      "duration_s": 2607,
+      "tokens": {
+        "input": 253,
+        "output": 72222,
+        "cache_read": 26310709,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 244178
+      },
+      "cost_usd": 8.661017800000002,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 8.661017800000002,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 8.661017800000002,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 2607,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": []
+}

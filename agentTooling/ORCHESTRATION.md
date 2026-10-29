@@ -109,7 +109,7 @@ second feature in this one, needs a container of its own.
 - **Name each child's model on `create_session`; never inherit the parent's by
   accident.** The repo's tiering ("Model tiering" below, `AGENT_PLANS.md`) applies to the
   session itself: the cheapest model that does the job, in the plan-suffix names
-  (`haiku`/`sonnet`/`opus`). A hand-method coordinator whose shape is already decided — a
+  (`haiku`/`sonnet`/`opus`/`fable`). A hand-method coordinator whose shape is already decided — a
   propagation pull, a merge-and-re-close, a doc or script edit — is `sonnet` work; one
   that needs judgment — a design decision, rework to a conflicting PR's semantics,
   adversarial reading — is `opus`. The review executor's model is its plan suffix's,

@@ -98,7 +98,9 @@ set -uo pipefail
 #      START LOCK, `pid=<this process>` and `started=<UTC>`, into that worktree's own admin
 #      dir (`git rev-parse --absolute-git-dir` inside it, .git/worktrees/<name>/);
 #   5. runs the repo's setup hook inside it — plans/worktree-setup.sh, or
-#      self/worktree-setup.sh under --self — for the venv, npm install, dev port;
+#      self/worktree-setup.sh under --self — for the venv, npm install, dev port; in the
+#      cloud, a consuming repo's start first waits for the setup session-start.sh began
+#      (`plans/cloud-setup.sh --wait`, template-version 3) and says so in one line;
 #   6. runs the repo's gate inside it, with GATE_RESUME=1 (a re-run on the same tree skips
 #      the checks that already passed — design §8), and stops unless the verdict is green:
 #      a red base is the implementer's context spent on someone else's failures
@@ -108,7 +110,8 @@ set -uo pipefail
 #      "skipped" under --no-gate or with no gate script, design §7 — `from` now in UTC
 #      with a Z, `to` null, and no pin),
 #      and a review-brief stub carrying @@TODO@@ that run-review.sh refuses to run until
-#      it is replaced;
+#      it is replaced — except under --method hand, which gets a brief complete for a
+#      hand build (its spec the manifest's opening paragraph) and no marker;
 #   8. writes the ROUTING RECORD for the session that ran it, INSIDE that feature
 #      directory — plans/features/S/routing.json, self/features/ under --self — through
 #      analysis/routing.py, from that session's own transcript; unless --pin, since a
@@ -244,6 +247,12 @@ GATE_RECORD_SKIPPED="skipped"
 # RECORD_NAME; this script only prints it, and the two move together).
 ROUTING_MODULE="analysis/routing.py"
 ROUTING_RECORD_NAME="routing.json"
+# The consuming repo's cloud step (session-start.sh's REPO_CLOUD_SETUP_REL; the two move
+# together) and the flag that blocks until its background setup is done
+# (templates/plans/cloud-setup.sh, template-version 3). In the cloud the start waits on it
+# before the setup hook and the gate (see "Wait for the cloud setup" below).
+CLOUD_SETUP_LABEL="plans/cloud-setup.sh"
+CLOUD_SETUP_WAIT_FLAG="--wait"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The command as typed, for the "run it again" line a stale primary ends on.
@@ -755,6 +764,30 @@ else
   echo "  checkout  $WORKTREE — in the cloud the container is the worktree"
 fi
 
+# ── Wait for the cloud setup ──────────────────────────────────────────────────
+# In a cloud container session-start.sh runs the repo's plans/cloud-setup.sh at every
+# session start, and a repo whose setup is slow starts it in the background — so a start
+# run as the session's first command reached the gate with the venv still installing
+# (musicMap: "the gate is not green", fastapi missing), and its setup hook raced the setup
+# for the same .venv (self/features/hand-start-friction). So the start waits for it first,
+# before the hook and the gate, through the template's `--wait` contract, and says so in
+# one line. A copy that does not carry the flag predates the contract (template-version
+# < 3): one line says it was not waited for, since running the setup again here would start
+# a second copy of whatever it backgrounds. Cloud only, and never under --self: a --self
+# checkout has no plans/ (session-start.sh runs nothing there either); locally nothing runs.
+if profile_is_cloud && (( ! SELF_MODE )) && [[ -f "$WT_REPO_DIR/$CLOUD_SETUP_LABEL" ]]; then
+  if grep -qF -- "$CLOUD_SETUP_WAIT_FLAG" "$WT_REPO_DIR/$CLOUD_SETUP_LABEL"; then
+    wait_began="$(date +%s)"
+    if ( cd "$WT_REPO_DIR" && bash "$WT_REPO_DIR/$CLOUD_SETUP_LABEL" "$CLOUD_SETUP_WAIT_FLAG" ); then
+      echo "  setup     waited $(( $(date +%s) - wait_began ))s for $CLOUD_SETUP_LABEL $CLOUD_SETUP_WAIT_FLAG — the cloud setup is done"
+    else
+      refuse "$CLOUD_SETUP_LABEL $CLOUD_SETUP_WAIT_FLAG exited non-zero — the cloud setup failed or is still running (its reason is above); fix it, run $CLOUD_SETUP_LABEL again so the failed step is retried (--wait only reads its recorded result), then run this again"
+    fi
+  else
+    echo "  setup     $CLOUD_SETUP_LABEL has no $CLOUD_SETUP_WAIT_FLAG (template-version < 3), so the start cannot wait for it — merge template-version 3 if it backgrounds anything"
+  fi
+fi
+
 # ── Hook, then gate, both inside the new worktree ─────────────────────────────
 if [[ -x "$WT_REPO_DIR/$HOOK_LABEL" ]]; then
   if ( cd "$WORKTREE" && "$WT_REPO_DIR/$HOOK_LABEL" ); then
@@ -851,8 +884,66 @@ elif ! python3 -B "$WT_AT/analysis/manifest.py" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"
   refuse "could not write the manifest; the worktree is left at $WORKTREE"
 fi
 mkdir -p "$FEATURE_DIR/review/incomplete"
-if [[ ! -e "$FEATURE_DIR/review/incomplete/$STEM.md" ]]; then
-cat > "$FEATURE_DIR/review/incomplete/$STEM.md" <<STUB
+# The review brief. Planned and direct builds get the stub, whose $TODO_MARKER the runner
+# refuses, because their brief must be written BEFORE the build, from the spec, by someone
+# other than the builder (LIFECYCLE.md step 3). A HAND build has no delegate to brief and
+# no build plan to write it beside: the coordinator is the builder, and every hand session
+# in the 2026-10 propagation rounds ran run-review.sh first, was refused, and only then
+# wrote the brief. So under --method hand the brief is written complete here, carrying no
+# marker: its spec is the manifest's own opening paragraph — written before the build, and
+# what the reviewer judges the diff against — and its contracts are the standard hand-build
+# checks, with a line asking the coordinator to add the feature's own
+# (self/features/hand-start-friction/NOTES.md, the ruling).
+REVIEW_BRIEF="$FEATURE_DIR/review/incomplete/$STEM.md"
+REVIEW_NOTE="stub — $TODO_MARKER"
+if (( RESUME )) && [[ -e "$REVIEW_BRIEF" ]] && ! grep -q "^$TODO_MARKER" "$REVIEW_BRIEF"; then
+  REVIEW_NOTE="kept from the earlier start"
+elif [[ "$METHOD" == "hand" && ! -e "$REVIEW_BRIEF" ]]; then
+  REVIEW_NOTE="complete for a hand build — add this feature's own contracts to it"
+cat > "$REVIEW_BRIEF" <<BRIEF
+# $NN — review: $SLUG
+
+A hand build: the coordinator built this feature itself, so there is no build plan and no
+builder's brief. Review the diff against the spec below — never against the builder's
+account of it — and say "no findings" when there are none: that is a legitimate verdict
+(AGENT_PLANS.md → "Review plans").
+
+## What the feature was supposed to do
+
+The spec is the manifest, \`$FEATURES_LABEL/$SLUG/README.md\`: its opening paragraph (what
+the feature delivers and why) and its "Deliberately excluded" list. Read it before the
+diff. If that paragraph is still the template's \`<One paragraph: …>\` placeholder there is
+no spec to review against: say so and return \`Verdict: escalated\`.
+\`$FEATURES_LABEL/$SLUG/NOTES.md\` is the builder's record — its rulings and what it left
+undone. Read it after the diff, to check its claims, not to learn what was intended.
+
+## The diff
+
+Base is \`$BASE\`. Fetch it first (\`git fetch origin $BASE\`), then
+\`git diff origin/$BASE...HEAD --stat\`, then the full diff — the local \`$BASE\` only when
+there is no \`origin\`: one older than this feature's branch point puts already-merged
+commits in the diff.
+
+## Contracts to hold it to
+
+- Every behaviour the spec names is implemented, and nothing the spec excludes is.
+- New or changed behaviour has a test that would fail without it, and the gate
+  (\`$GATE_SCRIPT_LABEL\`) is green on this tree: its report says so, and the review does
+  not re-run it.
+- Every folder the diff touches has a README that still describes it (CONVENTIONS.md →
+  "Keeping READMEs up to date"); a generated README is changed only through the file its
+  header names.
+- No magic literal in new code that CONVENTIONS.md → "Named constants" would name.
+- NOTES.md's claims hold: what it says was done is in the diff, and what it says was left
+  is not silently half-done.
+
+The coordinator adds this feature's own contracts here before running the review: the
+identifiers, files and outputs the change must keep or produce.
+
+## Verdict
+BRIEF
+elif [[ ! -e "$REVIEW_BRIEF" ]]; then
+cat > "$REVIEW_BRIEF" <<STUB
 # $NN — review: $SLUG
 
 $TODO_MARKER — write this brief BEFORE the build, from the spec, never from the builder's
@@ -875,7 +966,7 @@ commits in the diff.
 STUB
 fi
 echo "  manifest  ${FEATURE_DIR#"$WORKTREE"/}/README.md  (method $METHOD, from $WINDOW_FROM$FROM_NOTE${SESSION:+, session $SESSION pinned})"
-echo "  review    ${FEATURE_DIR#"$WORKTREE"/}/review/incomplete/$STEM.md  (stub — $TODO_MARKER)"
+echo "  review    ${REVIEW_BRIEF#"$WORKTREE"/}  ($REVIEW_NOTE)"
 
 # ── The routing record ────────────────────────────────────────────────────────
 # Written for THIS session — the router — INSIDE the feature directory the commit below
@@ -940,7 +1031,17 @@ fi
 # ── Next ──────────────────────────────────────────────────────────────────────
 echo ""
 echo "Next, in this order:"
-echo "  1. Replace $TODO_MARKER in review/incomplete/$STEM.md with the review brief, from the spec."
+if grep -q "^$TODO_MARKER" "$REVIEW_BRIEF" 2>/dev/null; then
+  echo "  1. Replace $TODO_MARKER in review/incomplete/$STEM.md with the review brief, from the spec —"
+  echo "     what the feature was supposed to do, the diff to read, the contracts to hold it to."
+  echo "     run-review.sh refuses the brief while the marker is there."
+elif [[ "$METHOD" == "hand" ]]; then
+  echo "  1. Write the manifest's opening paragraph — the spec review/incomplete/$STEM.md reviews"
+  echo "     against — before building, and add this feature's own contracts to that brief."
+  echo "     It is complete for a hand build already: run-review.sh runs it as written."
+else
+  echo "  1. The review brief review/incomplete/$STEM.md was written by the earlier start's session; check it against the spec."
+fi
 # One place, not two. A session is billed to the branch of the directory it was launched
 # in (LIFECYCLE.md, rule 1), so a coordinator launched in the worktree is claimed by
 # branch $SLUG and needs no pin — and this session, which started the feature, stays a

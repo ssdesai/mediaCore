@@ -33,7 +33,10 @@ set -uo pipefail
 #   2. THE REPO'S SETUP, cloud only: the consuming repo's seeded `plans/cloud-setup.sh`,
 #      when there is one — services a fresh container lacks (Postgres, a role). Its exit
 #      code is this script's, so a failed setup is not hidden behind the orientation. A
-#      `--self` checkout has no plans/ and runs nothing here.
+#      `--self` checkout has no plans/ and runs nothing here. A slow step the repo's
+#      script starts in the background (its `setup_in_background`, template-version 3)
+#      outlives this hook; feature-start.sh waits for it with `plans/cloud-setup.sh
+#      --wait` before its gate (self/features/hand-start-friction/).
 #
 # Constraints, since a SessionStart hook runs on every start — a new session, a resume, a
 # compaction — and its stdout lands in the session's context each time:

@@ -103,9 +103,9 @@ every new feature worktree and stops the start if it exits non-zero
 when present, so an `npm install` there already sees the browser path.
 
 `environment.sh` and `cloud-setup.sh` are the two **environment adapters** of
-`../self/DESIGN-2026-10-05-cloud-execution.md` §7, at `template-version: 1` and `2` (a
-header-only bump: `../session-start.sh` runs it — `../README.md` → "Adopting cloud-setup.sh
-version 2"), both
+`../self/DESIGN-2026-10-05-cloud-execution.md` §7, at `template-version: 1` and `3` (the
+`--wait` contract — `../README.md` → "Adopting cloud-setup.sh version 3"; 2 was a
+header-only bump, `../session-start.sh` runs it), both
 asking `../env-profile.sh` — the one place the profile is decided — through its functions
 and never spelling its variables:
 
@@ -125,7 +125,13 @@ and never spelling its variables:
   entry has no guard: **the script is the guard** — it exits 0 at once unless
   `profile_is_cloud`, and does nothing at all with no `agentTooling/env-profile.sh` beside
   it — so the same committed settings serve laptops and containers. A session starts
-  again on resume and after compaction, so every step in it must be idempotent.
+  again on resume and after compaction, so every step in it must be idempotent. A slow
+  step goes through its `setup_in_background` helper, which detaches it (at most one at a
+  time, its pid, exit code and log in the clone's git dir, never the tree), and
+  `cloud-setup.sh --wait` blocks until that step is done, exiting non-zero when it failed
+  or outlasted `WAIT_TIMEOUT_SECONDS`. `../feature-start.sh` runs `--wait` in the cloud
+  before its setup hook and its base gate whenever the copy carries the flag, so a start
+  that is a session's first command no longer gates a half-installed venv.
 
 **The alternative to `cloud-setup.sh` is the cloud environment's own setup script** — the
 "Setup script" in the Claude Code cloud environment's settings, which runs while a new

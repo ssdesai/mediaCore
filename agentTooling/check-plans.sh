@@ -30,7 +30,7 @@ set -uo pipefail
 
 USAGE_RC=2
 FAIL_RC=1
-MODEL_RE='haiku|sonnet|opus'
+MODEL_RE='haiku|sonnet|opus|fable'
 PLAN_FILENAME_RE="^[0-9]+-[a-z0-9-]+-(${MODEL_RE})\\.md\$"
 GATE_FILENAME_RE='^[0-9]+-gate\.md$'
 # run-escalation-plan.sh / write_escalation_plan (plan-runner-lib.sh) synthesize

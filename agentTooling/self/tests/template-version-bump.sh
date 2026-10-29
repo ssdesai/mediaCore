@@ -12,7 +12,8 @@ set -uo pipefail
 # copy `in-sync` forever. What this asserts:
 #
 #   B1. the checked-in tree passes template-versions.sh;
-#   B2. cloud-setup.sh is at template-version 2, recorded as 2 in TEMPLATE_VERSIONS, and
+#   B2. cloud-setup.sh is at template-version 3 (hand-start-friction's --wait contract),
+#       recorded as 3 in TEMPLATE_VERSIONS, and
 #       its header names session-start.sh as its runner;
 #   B3. in a copy of templates/plans, a COMMENT-ONLY edit to a template fails
 #       template-versions.sh, naming the file — the case PR 85 slipped through;
@@ -21,7 +22,7 @@ set -uo pipefail
 #   B6. bumping it AND re-recording the hash with the command TEMPLATE_VERSIONS' own header
 #       documents passes;
 #   B7. a consumer whose seeded cloud-setup.sh still says version 1 is reported DRIFT
-#       `template-version 1 < 2` by sync-plans.sh --check, and setting its line to 2 — the
+#       `template-version 1 < 3` by sync-plans.sh --check, and setting its line to 3 — the
 #       whole hand-merge for a consumer that already carries the new comment — clears it.
 #
 #   B8-B14 tie the hash to the version, against a fixture repo standing in for origin/main
@@ -52,7 +53,7 @@ CHECKER="$AT/self/tests/template-versions.sh"
 REAL_TEMPLATES="$AT/templates/plans"
 TABLE_NAME="TEMPLATE_VERSIONS"
 SUBJECT="cloud-setup.sh"
-SUBJECT_VERSION="2"
+SUBJECT_VERSION="3"
 SUBJECT_RUNNER="session-start.sh"
 VERSION_LINE_PREFIX="# template-version:"
 # The edits B3 and B4 make to the copy
@@ -91,7 +92,7 @@ echo "template-version-bump"
 out="$(bash "$CHECKER" 2>&1)"; rc=$?
 check "B1. the checked-in templates pass template-versions.sh (rc $rc)" '[[ $rc -eq 0 ]]'
 
-# ── B2. cloud-setup.sh at 2 ──────────────────────────────────────────────────
+# ── B2. cloud-setup.sh at 3 ──────────────────────────────────────────────────
 check "B2a. templates/plans/$SUBJECT carries '$VERSION_LINE_PREFIX $SUBJECT_VERSION'" \
   'grep -qxF "$VERSION_LINE_PREFIX $SUBJECT_VERSION" "$REAL_TEMPLATES/$SUBJECT"'
 check "B2b. $TABLE_NAME records $SUBJECT at $SUBJECT_VERSION" \
@@ -116,7 +117,7 @@ check "B4. a body edit without a bump fails (rc $rc)" '[[ $rc -ne 0 ]] && grep -
 # ── B5. bumped, hash not re-recorded ─────────────────────────────────────────
 fresh_copy "$COPY"
 echo "$COMMENT_EDIT" >> "$COPY/$SUBJECT"
-set_version "$COPY/$SUBJECT" 3
+set_version "$COPY/$SUBJECT" "$((SUBJECT_VERSION + 1))"
 out="$(bash "$CHECKER" "$COPY" 2>&1)"; rc=$?
 check "B5. a bump without re-recording the table fails (rc $rc)" '[[ $rc -ne 0 ]]'
 

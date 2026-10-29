@@ -98,13 +98,18 @@ code itself — the defects that are still there while every check is green.
 - **Model: `opus` by default**, unlike verify's `sonnet`. Judging whether a change
   respects an invariant nobody wrote down is the adversarial-reasoning case verify's
   own model note reserves for opus. `run-review.sh` reads the model from
-  `NN-review-MODEL.md` exactly as the other runners do.
+  `NN-review-MODEL.md` exactly as the other runners do, so `NN-review-fable.md` runs the
+  pass on Claude Fable 5.1 — the CLI's `fable` alias, passed as-is like the other three.
 - **Budgeted separately.** `--max-budget-usd` defaults to `$7.00`
   (`REVIEW_BUDGET_USD`), higher than verify's `$3.00` because the default model is more
   expensive. It supersedes a starting estimate that no measured run fitted inside: the
   first two measured opus runs cost `$4.53` and `$5.11` (the second capped after it had
   written its report), so the figure is the median doubled and rounded down. Re-derive it
-  again after a few more.
+  again after a few more. The figure is opus-calibrated: a `fable` review pays two and a half
+  times Opus 5.5's input, output and cache-write rates, and a quarter more per cache read
+  (`analysis/rates_history.json`); a review's turns replay the same context, so its bill
+  lands between those two ratios. Give it a higher cap on the command line
+  (`REVIEW_BUDGET_USD=15.00 ./run-review.sh …`) until fable runs are measured.
 - **It writes a verdict, and the verdict ends a round.** The executor writes its findings
   to `plans/review-report.md`, whose **first line** is `Verdict: clean` or
   `Verdict: escalated` (`AGENT_PLANS.md` → "Review plans"). `run-review.sh` reads that

@@ -151,7 +151,7 @@ AGENT_ID_RE = re.compile(r"^[0-9a-f]{17}$")
 AGENT_FILE_PREFIX = "agent-"
 # A plan stem: number, kebab name, model — the filename without `.md`. `NN-gate` is a
 # sentinel, not a plan, and never belongs in `plans[]`; the model alternation excludes it.
-PLAN_STEM_RE = re.compile(r"^[0-9]+-[a-z0-9-]+-(haiku|sonnet|opus)$")
+PLAN_STEM_RE = re.compile(r"^[0-9]+-[a-z0-9-]+-(haiku|sonnet|opus|fable)$")
 # The exit code `set-window-to --tighten` gives the WIDEN refusal and nothing else, so
 # that `feature-capture.sh --recapture` can continue past that one refusal — the bound it
 # declined to widen is the one already published — and stop on every other. Deliberately
