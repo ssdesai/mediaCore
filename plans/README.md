@@ -86,7 +86,10 @@ to the machinery is made once and pulled everywhere.
   `../agentTooling/session-start.sh`, the `SessionStart` hook `sync-plans.sh` wires into
   `../.claude/settings.json`, runs it in a cloud container after printing the session's
   orientation; outside one it is not run, and exits at once if run by hand. Put only what
-  this repo needs here. Keep every step idempotent — it runs at every session start. `../agentTooling/templates/README.md` says when the cloud
+  this repo needs here. Keep every step idempotent — it runs at every session start. Start
+  a slow step through its `setup_in_background` helper, never a bare `&`:
+  `cloud-setup.sh --wait` is how `../agentTooling/feature-start.sh` waits for it before
+  the base gate. `../agentTooling/templates/README.md` says when the cloud
   environment's own setup script is the better place.
 - `open-session.sh` — *seeded once, then repo-owned* — how this repo opens a coordinator
   session inside a new feature worktree. `../agentTooling/feature-start.sh --open` runs it
