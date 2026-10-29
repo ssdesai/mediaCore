@@ -21,7 +21,9 @@ set -uo pipefail
 #       re-anchors (`anchor` line, one merge commit whose tree is HEAD's and whose second
 #       parent is a parentless squash commit with the trailers in its closing paragraph),
 #       pulls with exit 0, the line lands, and `split` is the upstream head;
-#   C4. after that pull, --check says `intact` and exits 0;
+#   C4. after that pull, --check says `intact` and exits 0, its line a whole sentence
+#       ending "the vendored tree's own commit; a pull merges from it cleanly" (it was
+#       cut off at "the vendored tree's" until hand-start-friction);
 #   C5. merged onto main with a merge commit, the next pull is clean with no `anchor`
 #       line and exactly the one merge the pull makes;
 #   C6. a squash-merge that kept the commit bodies: --check says `fragile`, exit 0;
@@ -165,6 +167,8 @@ check "C3f the anchor merge's own message carries no subtree trailer line" \
 # ── C4: intact after the repaired pull ───────────────────────────────────────
 c4_out="$(update --check 2>&1)"; c4_rc=$?
 check "C4 --check says intact and exits 0" '(( c4_rc == 0 )) && grep -q "chain  intact" <<<"$c4_out"'
+check "C4b ... and the intact line finishes its sentence" \
+  'grep -q "^  chain  intact — base [0-9a-f]* records split [0-9a-f]*, the vendored tree'"'"'s own commit; a pull merges from it cleanly$" <<<"$c4_out"'
 
 # ── C5: landed with a merge commit, the next pull needs no anchor ────────────
 git -C "$C" checkout -q main

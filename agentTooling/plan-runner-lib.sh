@@ -496,15 +496,17 @@ resolve_feature() {
 }
 
 # Extract the model name from a plan filename like NN-description-MODEL.md.
-# MODEL must be one of haiku, sonnet, opus. Falls back to sonnet with a warning
-# if the trailing segment doesn't match a known model.
+# MODEL must be one of haiku, sonnet, opus, fable. Falls back to sonnet with a warning
+# if the trailing segment doesn't match a known model. The suffix is passed to
+# `claude --model` as-is: each is an alias the CLI resolves to its latest model
+# (`fable` → Claude Fable 5.1), so no suffix maps to a full model id here.
 extract_model() {
   local plan_path="$1"
   local stem
   stem="$(basename "$plan_path" .md)"
   local model="${stem##*-}"
   case "$model" in
-    haiku|sonnet|opus) echo "$model" ;;
+    haiku|sonnet|opus|fable) echo "$model" ;;
     *)
       echo "WARN: $(basename "$plan_path") has no recognized model suffix; defaulting to sonnet" >&2
       echo "sonnet"
@@ -1293,12 +1295,18 @@ run_all() {
     # to failed/ with the reason, no model called, and the pass stops here.
     # Anchored: the stub puts the marker at the start of a line, and a real brief may
     # mention it mid-sentence — this feature's own review brief did, and was refused.
+    # The refusal names both paths and what the brief must hold, so one reading of it is
+    # enough to fix it (self/features/hand-start-friction).
     if grep -q '^@@TODO@@' "$plan_file"; then
       local stub_log="$FAILED_DIR/${current_plan%.md}.progress.md"
-      echo "refused: $current_plan still contains @@TODO@@ — the stub feature-start.sh wrote was never replaced with a real brief; write it and re-queue the plan" > "$stub_log"
+      local stub_failed="${FAILED_DIR#"$REPO_DIR"/}/$current_plan"
+      local stub_queued="${INCOMPLETE_DIR#"$REPO_DIR"/}/$current_plan"
+      local stub_needs="replace the marker with the brief — what the feature was supposed to do, the diff to read, and the contracts to hold it to (AGENT_PLANS.md → \"Review plans\") — then move it back to $stub_queued and run this again"
+      echo "refused: $stub_queued still contains @@TODO@@ — the stub feature-start.sh wrote was never replaced with a real brief. It is now $stub_failed: $stub_needs" > "$stub_log"
       mv "$plan_file" "$FAILED_DIR/$current_plan"
-      echo "=== refused $current_plan: still contains @@TODO@@ (moved to failed) ==="
-      exit_reason="stopped: $current_plan still contains @@TODO@@ (moved to failed; write the brief and move it back to incomplete/)"
+      echo "=== refused $current_plan: still contains @@TODO@@ (moved to $stub_failed) ==="
+      echo "    $stub_needs"
+      exit_reason="stopped: $current_plan still contains @@TODO@@ (moved to $stub_failed; $stub_needs)"
       exit 1
     fi
     local inprogress_plan="$INPROGRESS_DIR/$current_plan"

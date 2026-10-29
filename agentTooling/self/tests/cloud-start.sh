@@ -46,6 +46,9 @@ set -uo pipefail
 #   R3. a refused start (the hook fails) leaves the branch and a lock; a hand fix in the
 #       tree survives the re-run, which resumes at the hook, commits `S: start`, and does
 #       not sweep the fix into that commit;
+#   R4. a resumed --method hand start keeps a review brief the earlier start left and the
+#       coordinator extended, byte for byte, its review line saying "kept from the
+#       earlier start";
 #   N1. --branch from the base: the start checks out that new branch off origin/main, and
 #       the session — launched on main — is still the feature's coordinator
 #       (self/features/cloud-branch-window-from): no routing record, no pin and no advice
@@ -330,6 +333,22 @@ check "R3c. the re-run, with a hand fix in the tree, resumes and starts (got $rc
 check "R3d. ... the hand fix survives, uncommitted, outside the start commit" \
   '[[ "$(cat "$AT/hand-fix.txt" 2>/dev/null)" == "the hand fix" ]] && ! git -C "$AT" show --name-only --format= HEAD | grep -qF "hand-fix.txt"'
 check "R3e. ... and the lock is gone" '[[ ! -e "$AT/.git/$LOCK_NAME" ]]'
+
+# A resumed hand start keeps a review brief the earlier one left, which the coordinator
+# has since extended, byte for byte (self/features/hand-start-friction). The brief is
+# planted after the refusal, standing for an earlier start that got that far.
+AT="$(container r4)"
+assigned "$AT" "claude/cs-hand"
+HOOK_STUB_RC=1 cstart "$AT" "" cs-hand --method hand --no-gate >/dev/null
+R4_BRIEF="$AT/self/features/cs-hand/review/incomplete/01-review-opus.md"
+mkdir -p "$(dirname "$R4_BRIEF")"
+printf '# 01 — review: cs-hand\n\nA hand brief, extended.\n\n- the feature'"'"'s own contract\n' > "$R4_BRIEF"
+cp "$R4_BRIEF" "$TMP/r4-brief"
+out="$(cstart "$AT" "" cs-hand --method hand --no-gate)"; rc=$?
+check "R4a. a resumed hand start keeps the earlier brief byte for byte (got $rc)" \
+  '[[ $rc -eq 0 ]] && cmp -s "$R4_BRIEF" "$TMP/r4-brief"'
+check "R4b. ... and its review line says it was kept" \
+  'grep -qF "01-review-opus.md  (kept from the earlier start)" <<<"$out"'
 
 # ── N. --branch from the base: still the coordinator ──────────────────────────
 # self/features/cloud-branch-window-from: a container holds one feature, so the session

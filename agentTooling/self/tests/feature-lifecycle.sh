@@ -43,7 +43,9 @@ set -uo pipefail
 #       creating nothing in each case;
 #   S3. --pin (the opt-in that restores the old behaviour, and writes NO routing record:
 #       a pinned session is never also a router), --no-pin (an accepted no-op),
-#       --session with and without --pin, an unset environment, --method, --base,
+#       --session with and without --pin, an unset environment, --method (under hand,
+#       a review brief complete for a hand build — no line-start @@TODO@@, the manifest
+#       named as its spec — and a Next line saying so, S3d2–S3d4), --base,
 #       --no-gate, and a red gate (refuses, worktree left in place, no manifest); and
 #       after seven more starts the exclude entry is still there exactly once;
 #   S4. the prune: a start removes every worktree under .worktrees/ whose branch is an
@@ -64,7 +66,8 @@ set -uo pipefail
 #       agentTooling/.claude/settings.local.json, and leaves the shipped, tracked
 #       agentTooling/.claude/settings.json as the generator wrote it (S6h, S6i);
 #   T1. run-review.sh files a brief whose line begins with @@TODO@@ to failed/ without
-#       calling claude, and opens no PR;
+#       calling claude, and opens no PR; its refusal names the file as queued and as
+#       filed, and the three things a brief must hold (T1c2);
 #   C1. feature-capture.sh run from the worktree, after a commit of work, stamps `to` from
 #       evidence, captures and reports, commits the cost records on the branch as
 #       `S: cost records` and pushes the BRANCH: the remote's S carries planning.json,
@@ -762,8 +765,15 @@ start_unrouted lifecycle-noenv --no-gate >/dev/null
 check "S3c. no session id in the environment means no pin" '[[ "$(fence "$(wt_path lifecycle-noenv)/self/features/lifecycle-noenv/README.md" "d[\"sessions\"]")" == "[]" ]]'
 check "S3c2. ... and no routing record, there being no router to record" \
   '[[ ! -e "$(routing_record "$(wt_path lifecycle-noenv)" lifecycle-noenv)" ]]'
-start lifecycle-hand --method hand --no-gate >/dev/null 2>&1
+hand_out="$(start lifecycle-hand --method hand --no-gate)"
 check "S3d. --method hand is recorded" '[[ "$(fence "$(wt_path lifecycle-hand)/self/features/lifecycle-hand/README.md" "d[\"method\"]")" == "hand" ]]'
+HAND_BRIEF="$(wt_path lifecycle-hand)/self/features/lifecycle-hand/review/incomplete/01-review-opus.md"
+check "S3d2. ... and its review brief is complete for a hand build: no line begins with @@TODO@@" \
+  '[[ -f "$HAND_BRIEF" ]] && ! grep -q "^@@TODO@@" "$HAND_BRIEF"'
+check "S3d3. ... it names the manifest as the spec, the diff against origin/main, and the gate" \
+  'grep -qF "self/features/lifecycle-hand/README.md" "$HAND_BRIEF" && grep -qF "git diff origin/main...HEAD" "$HAND_BRIEF" && grep -qF "self/gate.sh" "$HAND_BRIEF"'
+check "S3d4. ... and the start says so, asking for the manifest paragraph and the feature's own contracts" \
+  'grep -qF "complete for a hand build" <<<"$hand_out" && grep -qF "add this feature'"'"'s own contracts" <<<"$hand_out" && ! grep -qF "Replace @@TODO@@" <<<"$hand_out"'
 start lifecycle-bad-method --method nope --no-gate >/dev/null 2>&1; rc=$?
 check "S3e. an unknown --method is refused (got $rc)" '[[ $rc -ne 0 && ! -e "$(wt_path lifecycle-bad-method)" ]]'
 start lifecycle-based --base other --no-gate >/dev/null 2>&1
@@ -1009,6 +1019,8 @@ review "$WT" "$SLUG" >/dev/null; rc=$?
 check "T1a. run-review.sh over a @@TODO@@ brief exits non-zero (got $rc)" '[[ $rc -ne 0 ]]'
 check "T1b. the brief is filed to failed/" '[[ -f "$FD/review/failed/01-review-opus.md" ]]'
 check "T1c. its progress log names the marker" 'grep -q "@@TODO@@" "$FD/review/failed/01-review-opus.progress.md" 2>/dev/null'
+check "T1c2. ... the exact file it was queued as and where it is now, and the three things a brief holds" \
+  'grep -qF "self/features/$SLUG/review/incomplete/01-review-opus.md" "$FD/review/failed/01-review-opus.progress.md" && grep -qF "self/features/$SLUG/review/failed/01-review-opus.md" "$FD/review/failed/01-review-opus.progress.md" && grep -qF "what the feature was supposed to do, the diff to read, and the contracts to hold it to" "$FD/review/failed/01-review-opus.progress.md"'
 check "T1d. claude was never called" '[[ ! -e "$CLAUDE_CALLED_OUT" ]]'
 check "T1e. no PR hook ran" '! grep -q "pr create" "$GH_LOG"'
 # A real brief replaces the stub, queued for T2, and the refused pass's own stamps are
@@ -1180,13 +1192,15 @@ check "V1i. the pass ends plan_end then exactly one pass_end, and one plan_end f
 # ordering is that nothing asks the forge to merge before the records are pushed.
 HWT="$(wt_path lifecycle-hand)"
 HSTEM="$(fence "$HWT/self/features/lifecycle-hand/README.md" "d[\"plans\"][0]")"
-printf '# review\n\nThe start script leaves a stub carrying `@@TODO@@`; hold the diff to the manifest.\n' \
-  > "$HWT/self/features/lifecycle-hand/review/incomplete/$HSTEM.md"
+# The coordinator EXTENDS the brief the hand start wrote (S3d2) rather than replacing it:
+# that brief, as written, must run with no refusal (self/features/hand-start-friction).
+printf '\n- The start script leaves a stub carrying `@@TODO@@` for a planned build; hold the diff to the manifest.\n' \
+  >> "$HWT/self/features/lifecycle-hand/review/incomplete/$HSTEM.md"
 git -C "$HWT" add -A
 git -C "$HWT" commit -q -m "lifecycle-hand: review brief"
 rm -f "$CLAUDE_CALLED_OUT"; : > "$GH_LOG"
 out="$(review "$HWT" lifecycle-hand)"; rc=$?
-check "T3a. a brief that mentions the marker mid-line is not a stub: it runs, and the pass exits 0 (got $rc)" '[[ $rc -eq 0 && -e "$CLAUDE_CALLED_OUT" ]]'
+check "T3a. the hand start's own brief, extended with a line that mentions the marker mid-line, is not a stub: it runs, and the pass exits 0 (got $rc)" '[[ $rc -eq 0 && -e "$CLAUDE_CALLED_OUT" ]]'
 outh="$(PR_AUTO_MERGE=1 close "$HWT" lifecycle-hand)"; rch=$?
 check "T3b. the close over a feature with nothing to capture exits non-zero (got $rch)" '[[ $rch -ne 0 ]]'
 check "T3c. ... reporting the capture's failure with the exact re-run command" \

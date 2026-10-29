@@ -296,7 +296,7 @@ main() {
   tip="$(git -C "$toplevel" rev-parse FETCH_HEAD)"
   read -r state sq recorded match <<<"$(chain_state "$toplevel" "$prefix" "$tip")"
   case "$state" in
-    intact)  echo "  chain  intact — base ${sq:0:$SHORT_SHA_LEN} records split ${recorded:0:$SHORT_SHA_LEN}, the vendored tree's" ;;
+    intact)  echo "  chain  intact — base ${sq:0:$SHORT_SHA_LEN} records split ${recorded:0:$SHORT_SHA_LEN}, the vendored tree's own commit; a pull merges from it cleanly" ;;
     fragile) echo "  chain  fragile — base ${sq:0:$SHORT_SHA_LEN} is a mainline commit whose message holds trailers copied by a squash-merge; the pull works from that text alone (merge propagation PRs with a merge commit, README.md -> \"Updating\")" ;;
     broken)  echo "  chain  broken — base ${sq:0:$SHORT_SHA_LEN} records split ${recorded:0:$SHORT_SHA_LEN}, but $prefix/ is upstream ${match:0:$SHORT_SHA_LEN}'s tree; a pull from the stale base conflicts on whatever upstream changed in between" ;;
     edited)  echo "  chain  edited — $prefix/ matches no upstream commit (local edits under it); base ${sq:0:$SHORT_SHA_LEN} at split ${recorded:0:$SHORT_SHA_LEN} is left as it is; --base <sha> re-anchors at an upstream commit by hand" ;;

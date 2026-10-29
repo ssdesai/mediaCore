@@ -1,0 +1,127 @@
+{
+  "slug": "fable-plan-model",
+  "generated_at": "2026-10-28T22:55:08.652129+00:00",
+  "cost": {
+    "method": "hand",
+    "planning": 0.0,
+    "implementer": 4.0123404,
+    "build": 4.0123404,
+    "verify": 0.0,
+    "review": 2.3295360499999997,
+    "total": 6.34187645,
+    "planning_pct": 0.0,
+    "build_pct": 63.26740092831673,
+    "verify_pct": 0.0,
+    "review_pct": 36.73259907168327,
+    "cost_per_plan": 6.34187645,
+    "cost_per_file": 2.1139588166666665,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "hand",
+    "planning_sessions_s": 1959,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 1959,
+    "build_s": 1959.0,
+    "verify_s": 0.0,
+    "review_s": 138.791,
+    "executor_s": 2097.791,
+    "total_s": 2097.791,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-10-28T22:43:11+00:00",
+      "last_at": "2026-10-28T22:55:08+00:00",
+      "batch_span_s": 717.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 142.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 142.0,
+      "plan_runs": 1,
+      "pr_opened_at": "2026-10-28T22:55:08+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/103"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 4.0123404,
+      "build_min": 32.65,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.3295360499999997,
+      "review_min": 2.3131833333333334,
+      "review_plan": "01-review-fable",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 4.0123404
+  },
+  "cold_start_tax_tokens": 75871,
+  "model_fit": [
+    {
+      "model": "fable",
+      "plan_count": 1,
+      "total_turns": 36,
+      "total_cost_usd": 2.3295360499999997,
+      "total_duration_s": 138.791,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-fable",
+      "edit_count": 5,
+      "files_edited": 3,
+      "churn_ratio": 1.6666666666666667
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-fable",
+      "plan_md_lines": 52,
+      "loc_changed": 67
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-fable",
+      "edited_not_listed": [
+        "AGENT_PLANS.md",
+        "RUNNER.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "RUNNER.md",
+      "earlier_plan": "01-review-fable",
+      "later_plan": "01-review-fable",
+      "overlap_chars": 234
+    }
+  ],
+  "warnings": [],
+  "profile": "cloud",
+  "gate": "green"
+}
