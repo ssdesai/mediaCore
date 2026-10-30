@@ -33,7 +33,7 @@ bare-camelCase rule contradicts the kebab-case slug `LIFECYCLE.md` requires and
   "base": "main",
   "profile": "cloud",
   "gate": "green",
-  "session_window": {"from": "2026-10-30T12:44:53.057Z", "to": null},
+  "session_window": {"from": "2026-10-30T12:44:53.057Z", "to": "2026-10-30T12:48:36Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],
