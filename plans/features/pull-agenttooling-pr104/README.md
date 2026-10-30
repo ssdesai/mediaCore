@@ -1,39 +1,26 @@
-# <Feature title>
+# Propagate agentTooling PR 104
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+Pulls agentTooling PR 104 (feature `claude-md-chain`, split `58da7311e244265484b3a20f7798dcf137f006f8`)
+into mediaCore with `agentTooling/update.sh`, and applies the root `CLAUDE.md` edits a
+`/doctor prompt-audit` and a reading against the code found. The pull trims
+`CONVENTIONS.md` and corrects the `agentTooling/CLAUDE.md` note. The sync removes the
+retired `Edit(**/agentTooling/hooks/**)` deny rule from `.claude/settings.json` (the ask
+rule for the same path stays; deny won, so the ask never worked). Root `CLAUDE.md`:
+`original_year` added to the Rule 1 `Release` field list (it sits between `released` and
+`country` in `src/mediacore/release.py`); the "Branch naming" section deleted (its
+bare-camelCase rule contradicts the kebab-case slug `LIFECYCLE.md` requires and
+`feature-start.sh` enforces); the "Delegated plan execution" section deleted (the new
+`CONVENTIONS.md` preamble carries the same pointer for every repo).
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Review the pull, the settings change and the `CLAUDE.md` edits. |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- `plans/PROJECT_FACTS.md` and the README field lists were not re-audited.
 
 ## Machine-readable
 
