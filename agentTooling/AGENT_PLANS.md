@@ -47,9 +47,9 @@ Plan generation has two phases. Match each to the right model.
 - **Decisions / structure** (plan splitting, data-flow choices, edge-case spotting, resolving spec gaps) — worth Opus.
 - **Filling in literal code** (CRUD signatures with one new arg, route prefix transforms, README bullets, repeating a settled pattern across N files) — don't burn Opus on this.
 
-When the bulk of a plan is the second phase: hand it to the **Plan subagent** (decisions + Explore output already settled) so the parent context isn't paying for the expansion, or ask the user to drop to Sonnet / `/fast`.
+When the bulk of a plan is the second phase: hand it to the **Plan subagent** (decisions + Explore output already settled) so the parent context isn't paying for the expansion, or ask the user to drop to Sonnet. (`/fast` is not a cheaper model: it is Opus at a higher rate for faster output.)
 
-**Tie the model choice to the scope declaration above.** If the declared scope spans ≥2 layers or is majority mechanical expansion (mirror-the-pattern across files), the authoring belongs on a Plan subagent or Sonnet / `/fast` — flag this to the user before expanding. Do not silently author the expansion on Opus; the decisions are the only part that earns Opus.
+**Tie the model choice to the scope declaration above.** If the declared scope spans ≥2 layers or is majority mechanical expansion (mirror-the-pattern across files), the authoring belongs on a Plan subagent or Sonnet — flag this to the user before expanding. Do not silently author the expansion on Opus; the decisions are the only part that earns Opus.
 
 ## Sizing plans for executor cost
 
@@ -532,9 +532,9 @@ When authoring a verify plan, assume the gate has run:
 - **Seeded once, then repo-owned.** `plans/gate.sh` is copied from `templates/plans/gate.sh` by `sync-plans.sh` the first time it's missing — same treatment as `PROJECT_FACTS.md` — and never touched again after that, so a repo edits its own copy freely. The seeded copy runs no checks and reports `GATE NOT CONFIGURED` in `gate-report.txt` until its two REPO-SPECIFIC sections are filled in with this project's real commands. A repo where `plans/gate.sh` doesn't exist or isn't executable (e.g. `sync-plans.sh` has never been run) simply skips the step.
 - **Distinct from `plans/interactive/`.** Interactive plans are bash-heavy steps a human runs by hand (migrations, one-off ops). Verify plans are scripted and unattended, just privileged — same "after the build plans" timing, no human in the loop. This supersedes the older blanket rule that all verification-only work lives in `plans/interactive/`: automated post-build verification is now a verify plan; human-in-the-loop migration/verification is still interactive.
 
-## Bypass CONVENTIONS.md's README traversal for executors
+## Executors skip README traversal
 
-CONVENTIONS.md requires reading every ancestor README before touching a file. That's the right rule for humans/interactive Claude but wasteful for executors who already have an exact file list. At the top of each plan, include:
+CONVENTIONS.md has an interactive session read a folder's README before editing in it. An executor already has an exact file list and the facts pinned below, so it skips that. At the top of each plan, include:
 
 ```
 Executor note: file paths are authoritative — do not traverse ancestor READMEs

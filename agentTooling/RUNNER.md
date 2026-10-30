@@ -389,8 +389,11 @@ Pass `--self` as the **first** argument, before any slug:
 Everything else — the state folders, resume phases, budget, progress and usage
 sidecars — is identical, because both modes drive the same `plan-runner-lib.sh`.
 
-The executor's cwd being `agentTooling/` is why `agentTooling/CLAUDE.md` exists: a
-`--self` executor never sees the consuming repo's root `CLAUDE.md`.
+The executor's cwd being `agentTooling/` is why `agentTooling/CLAUDE.md` exists: in a
+standalone checkout nothing else imports `CONVENTIONS.md`. Launched inside a vendored
+copy, the executor also loads the consuming repo's root `CLAUDE.md`, as it does any
+ancestor's, and the conventions that file imports load once (`CLAUDE.md` here says how
+that was measured).
 
 One asymmetry is worth naming: the analysis scripts take `--self` too, but their
 session root is *not* `REPO_DIR` — planning transcripts are recorded against the git

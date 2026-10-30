@@ -3,10 +3,15 @@
 Shared working conventions for Claude Code, vendored into each repo and imported
 by its root `CLAUDE.md`. Everything here is repo-agnostic. Project-specific facts
 — real field lists, real file paths, build and test commands — belong in the
-consuming repo's root `CLAUDE.md` below the import, not in this file.
+consuming repo's root `CLAUDE.md` below the import, not in this file. Nothing about
+plan authoring, branch naming or the feature lifecycle belongs there either: this file
+and `AGENT_PLANS.md` carry those for every repo, and the lifecycle scripts refuse a bad
+branch name themselves.
 
-See `AGENT_PLANS.md` for the delegated-plan authoring rules, which override parts
-of this file during plan generation.
+Plans are authored per `AGENT_PLANS.md`, which overrides parts of this file during plan
+generation. Before authoring one, read the repo's `plans/PROJECT_FACTS.md`
+(`self/PROJECT_FACTS.md` for agentTooling's own features): the facts a plan must pin so a
+cold-start executor does not re-derive them.
 
 ## File Access
 
@@ -15,38 +20,27 @@ of this file during plan generation.
 
 ## Shell commands
 
-Every Bash call meets one of three outcomes. Which one it meets is decided by what the
-policy could learn from reading it, not by what the command does:
+Every Bash call meets one of three outcomes, decided by what the policy could learn from
+reading it rather than by what the command does: **approved silently** (read-only and
+confined to the project root), **sent back with a rewrite** (a shape nothing can read,
+denied with the rewrite as the reason), or **handed to the human** (a write, an unknown
+program, a path outside the root). One rule produces every row below: **every path a
+literal, every program named, nothing decided at run time.** Where
+`hooks/allow-repo-commands.sh` is wired the rows are enforced and each denial names its
+fix; `hooks/README.md` has the reasoning behind each shape.
 
-1. **Approved silently** — the whole line is read-only and confined to the project root.
-   No prompt, no cost to anyone.
-2. **Sent back with a rewrite** — the policy could not read the command, and there is a
-   rewrite that always works. It is denied, and the denial's reason *is* the rewrite.
-3. **Handed to you** — the policy read the command and cannot vouch for what it does: a
-   write, an unknown program, a path outside the root. Nothing is printed, the ordinary
-   permission flow runs, and the human approves a command that has been read.
+**Approved silently.** Reads and tests, confined to the project root: `ls`, `cat`,
+`head`, `tail`, `wc`, `grep`, `rg`, `find`, `sed -n …p`, `stat`, `du`, a read-only `git`
+(`status`, `log`, `diff`, `show`, `branch --show-current`, `worktree list`, `stash list`,
+behind `-C <path inside the root>` as well), the test and lint runners (pytest, ruff,
+mypy, `npx playwright test`, the named `npm run` scripts), and the harness's own
+read-only entry points (`gate.sh`, `check-plans.sh`, `bash -n`, `shellcheck`,
+`py_compile`, `report.py`, a listing `capture_planning.py`, `manifest.py get`). A
+standalone `cd <absolute path>` inside the root is approved, and the directory persists
+into the next call.
 
-The second outcome is the one worth writing for. A command that cannot be read costs an
-approval and teaches nothing, and the rules below are the whole of what makes a command
-readable. Where `hooks/allow-repo-commands.sh` is wired they are enforced; where it is
-not, they are still the difference between a call that runs and a call that stops.
-
-### What is approved silently
-
-Reads and tests, confined to the project root: `ls`, `cat`, `head`, `tail`, `wc`, `grep`,
-`rg`, `find`, `sed -n …p`, `stat`, `du`, a read-only `git` (`status`, `log`, `diff`,
-`show`, `branch --show-current`, `worktree list`, `stash list` — behind `-C <path inside the root>` as
-well), the test and lint runners (pytest, ruff, mypy, `npx playwright test`, the named
-`npm run` scripts), and the harness's own read-only entry points (`gate.sh`,
-`check-plans.sh`, `bash -n`, `shellcheck`, `py_compile`, `report.py`, a listing
-`capture_planning.py`, `manifest.py get`). A standalone `cd <absolute path>` inside the
-root is approved, and the directory persists into the next call.
-
-### What is sent back with a rewrite
-
-Each of these is a command nothing can read, and each has one mechanical answer. The
-denial names the member and the fix; rewrite it as the reason says rather than retrying
-it, and do not work around it with `pushd` or a subshell, which are denied too.
+**Sent back with a rewrite.** Rewrite it as the reason says rather than retrying it;
+`pushd` and a subshell are denied too.
 
 | Shape | Example | The rewrite |
 |---|---|---|
@@ -69,80 +63,22 @@ it, and do not work around it with `pushd` or a subshell, which are denied too.
 | a `sleep`, anywhere on the line | `sleep 60`, `ls && sleep 5` | nobody polls: run the long command in the background and wait for the notification it sends when it exits (`ORCHESTRATION.md`) |
 | a file authored through the shell: `echo`/`printf` redirected to a path, `cat`/`tee` fed a heredoc, a herestring or an `echo` with output to a path, `sed -i` | `cat >> f <<'EOF'`, `echo x > f`, `sed -i 's/a/b/' f` | the Write tool for a new file or a whole rewrite, the Edit tool for a change — an append is an Edit on the file's last lines |
 
-The rewrite is always one of four: **write the script to the scratchpad with the Write
-tool and run it by name** (`bash <path>`, `python3 <path>`); use the Read, Grep, Write or
-Edit tool instead of a one-liner; inline the literal you already have; or split the line
-into one call each. The one exception is `sleep`, whose rewrite is not a different
-spelling but a different shape: the background run and its exit notification.
+Exempt: a heredoc feeding `cat` is a literal string, not code (`git commit -m "$(cat
+<<'EOF' … EOF)"` is the shape Claude Code itself uses), as is a `$(…)` that is a whole
+argument rather than part of a path. After two such denials in one session the policy
+stops correcting and asks the human instead; under a batch runner it prints nothing then,
+and the executor has a scratch directory of its own (`RUNNER.md` → "The executor's
+environment").
 
-This is one rule seen from several sides: **every path a literal, every program named,
-nothing decided at run time.** A command whose paths only exist once it runs is a command
-the reads fence (`permissions.blockReadsOutsideWorkingDirectories`) cannot check, whatever
-it turns out to do — so `R=/abs/path; sed -n 1,40p $R/src/a.py; grep -n thing $R/src/b.py`
-stops for approval where the same two calls with the path written out are approved with no
-prompt at all. The chained `cd` is the commonest case: a relative path after it resolves
-only at run time, so the call stops even for `ls` inside the repository, and even where an
-allow rule already covers it — it cannot be fixed by adding permissions. This applies to
-worktrees. Run `cd /abs/path/to/.worktrees/<branch>/frontend` on its own, then
-`npx playwright test tests/foo.spec.ts` as the next call — not the two joined by `&&`.
-Delegated agents and batch runs inherit the rule; a brief that pastes a `cd X && ...`
-command teaches the wrong shape.
-
-**Exempt.** A heredoc feeding `cat` is a literal string, not code —
-`git commit -m "$(cat <<'EOF' … EOF)"` is the shape Claude Code itself uses for a commit
-message — as is a `$(…)` that is a whole argument rather than part of a path
-(`x=$(cd dir && pwd)`): there is no literal to inline, so the human judges it. The
-exemption covers the heredoc's **body** and not the rest of its first line:
-`cat <<'EOF' | python3` and `bash -c "$(cat <<'EOF' … EOF)"` still hand an interpreter its
-code, and are denied like any other spelling of it.
-
-After two such denials in one session the policy stops correcting and asks the human
-instead, so a shape it cannot read and you cannot rewrite is not a loop. Under a batch
-runner it prints nothing at that point, since nobody is there to answer; the runner's
-executors are given a scratch directory of their own and told where it is
-(`RUNNER.md` → "The executor's environment").
-
-### What reaches the human, and how to make it cheap
-
-A write, a program outside the read-only list, a path outside the root, an environment
-prefix: the policy prints nothing and the human decides. It is a command they can read,
-so the only thing left to get right is how much they are being asked to approve. The
-write that reaches them is one with no tool to do it instead — a command's output
-captured to a file (`pytest > out.log`), a copy, a move. A file whose content you wrote
-in the command is not theirs to approve: it is sent back to the Write or Edit tool
-(above, and "Writing files" below).
-
-**One write per Bash call, and nothing else on the line.** Reads go in their own calls,
-where they are approved with no prompt at all; the write goes alone, so the one thing the
-human is agreeing to is the thing they were shown. `git add -A && git commit -m x && git
-push` is three approvals bought with one, and a sequence mixing approved reads with a
-write is sent back for exactly this reason.
-
-- `cd <absolute path>` as its own call rather than `git -C <another tree> …`. A `git -C`
-  whose path is inside the root is approved; one that points at another checkout is not,
-  and the human then has to work out which tree the command was for.
-- The **Read, Grep, Write and Edit tools** rather than `sed -n`, `cp`, `cat > file` — the
-  tools are checked against the repo's own allow and deny rules, and a subprocess write is
-  not (see "Writing files" below).
-- Nothing else on the line with a `git commit`, a `mv`, an `rm` or a captured output
-  redirected into a file.
-
-### Writing files
-
-Author files with the Edit and Write tools, never by shelling out — not `cat > file`, not
-`cp`, not a `python3 <<'PY'` heredoc, not `sed -i`. A write made from inside a subprocess is
-invisible to the permission system. It is not covered by the repo's `Edit` allow rules, so
-it stops for approval even where an ordinary edit would not; and it is not checked against
-the repo's `Edit` deny rules, so the carve-outs guarding `.git/`, `.claude/`, the
-virtualenvs and `node_modules/` never see it, and the generic Bash approval is the only
-thing left in front of them. Edit and Write are checked against both. So a file authored
-through the shell — `echo`/`printf` into a path, `cat` or `tee` fed a heredoc, `sed -i` —
-is **sent back** with the Write/Edit rewrite rather than handed to the human, wherever the
-file is (the scratchpad and `/tmp` included); only a command's captured output, a copy or
-a move reaches the human's prompt.
-
-Write each file once. A file authored in one call and then patched three times costs four
-approvals to reach one result — compose the final content, then write it.
+**Handed to the human.** One write per Bash call, and nothing else on the line: reads go
+in their own calls, where they are approved with no prompt, so the one thing the human
+agrees to is the thing they were shown. `cd <absolute path>` as its own call rather than
+`git -C <another tree> …`. What reaches them is a write with no tool to do it instead — a
+captured output (`pytest > out.log`), a copy, a move. A file whose content you wrote in
+the command is not theirs to approve: author files with the Write and Edit tools, never
+through the shell, wherever the file is. A subprocess write is checked against neither
+the repo's `Edit` allow rules nor its deny rules, so it is sent back. Write each file
+once: compose the final content, then write it.
 
 ## Closing a feature
 
@@ -154,7 +90,9 @@ close.
 
 ## READMEs
 
-Each folder has a `README.md` describing its contents.
+Each folder has a `README.md` describing its contents. It is the folder's index: what
+each file is for, and the two kinds of fact a file listing cannot show (Rules 1 and 2
+below).
 
 ### Generated READMEs
 
@@ -168,33 +106,23 @@ repo-specific entry: it ships to every repo that vendors it.
 
 ### Navigating the codebase
 
-**REQUIRED sequence — no exceptions:**
-1. Start by reading the root `README.md` to understand the overall structure and identify which folders are relevant.
-2. Before entering any folder, read its `README.md` to understand its contents and decide what to look at next.
-3. Repeat step 2 recursively as you descend into subfolders.
-
-Never use Glob or Grep to discover files or understand structure — READMEs are the index. Grep/Glob is only for locating a concrete token *inside* a file (or small set of files) a README has already identified as relevant.
-
-**Before any Grep or Glob call, name the README entry that pointed you at the file(s) you are about to search.** If you can't, you're still in discovery — go back to the READMEs. Two cases feel like search but are discovery in disguise, and the READMEs already answer them:
-- "Which files reference / use / import symbol `X`?" — the owning module's README entry, plus the field lists and cross-layer dependency notes required by Rules 1–2 below, name the producers and consumers. Follow those links.
-- "What does consumer `Y` do with value `Z`?" — `Y`'s README entry describes its behavior. Read the entry; only open `Y` itself if you must change it or the entry is genuinely insufficient (in which case update the entry per "Keeping READMEs up to date").
-
-A grep that returns files you didn't already expect from the READMEs means you skipped a step, not that you saved one.
-
-### Avoiding redundant reads
-
-If a file has already been read earlier in the conversation and has not changed since, do not read it again — reference the earlier result instead. If the file may have changed (e.g. you or another process modified it), re-read it before referencing. Use `offset` and `limit` when only a portion of a large file is needed.
+- In a repo you do not know, start from the root `README.md`.
+- Before editing in a folder, read its `README.md`: it names the contracts the files
+  there depend on and what the folder's tests cover. A long README is read by section —
+  the entry for the file you are changing — not whole.
+- Search (Grep, Glob) is the right tool for locating a symbol or a usage; a README is the
+  right tool for learning what a thing is for and what depends on it. A grep hit in a
+  file whose README entry you have not read is a file whose contracts you have not read.
 
 ### Keeping READMEs up to date
 
-After completing any set of changes, you MUST do the following before considering the task done:
-
-1. List every folder that was touched (files added, removed, or significantly modified).
-2. For each touched folder, read its `README.md` and verify it still accurately describes the folder's contents.
-3. Update any README that is out of date — including field lists, file descriptions, and cross-references to other modules. A generated README is updated through the repo-owned file it names ("Generated READMEs" above), never directly.
-4. Also check the parent folder's README if the change affects what that parent describes about the subfolder.
-
-Do not skip this step even for small changes. A new file, a renamed field, or a changed function signature can make a README misleading.
+Before considering a change done, for every folder it touched (files added, removed or
+significantly modified): read that folder's `README.md`, verify it still describes the
+folder — field lists, file descriptions, cross-references — and update it where it does
+not; a generated README is updated through the repo-owned file it names ("Generated
+READMEs" above). Check the parent folder's README too when the change affects what it
+says about the subfolder. A new file, a renamed field or a changed signature is enough to
+make a README misleading.
 
 ### Required README content
 
@@ -220,17 +148,12 @@ If the module is self-contained or its dependencies are all visible at the impor
 
 ## Debugging
 
-### Diagnosing runtime errors
-
-When a runtime error contains a literal `undefined`, `null`, or `[object Object]` in a URL or payload, the bug is a serialization or typing gap. Start at the response schema (server) or the type definition (client) that produces the value — not the UI that renders it. The field lists required by README Rule 1 are what let you jump straight to that schema/type without grepping for it. Widen scope only after you've confirmed the suspect layer is clean.
-
-### Stop conditions
-
-If the failure mode points unambiguously at one layer, do not read files from other layers. One precise read in the right place beats five reads in the wrong place. Form a hypothesis, test it at the suspected source, and only widen scope if the hypothesis is disproven.
-
-Once you have a plausible fix candidate, make the change. Do not read more files first. If the fix is wrong, revert and investigate further — but attempt the fix before widening scope.
-
-For UI bugs specifically: if you have read 3 or more files without identifying the bug, stop reading and run the app to observe actual behavior instead.
+When a runtime error carries a literal `undefined`, `null` or `[object Object]` in a URL
+or payload, the bug is a serialization or typing gap: start at the response schema or
+type definition that produces the value, not the UI that renders it — the field lists
+README Rule 1 requires are what name that schema. Form a hypothesis and test it at the
+suspected source before widening scope; for a UI bug that reading has not found, run the
+app and observe the behaviour.
 
 ## Code style
 

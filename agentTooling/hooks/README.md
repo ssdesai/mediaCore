@@ -948,11 +948,13 @@ root. The cost, stated where a consuming repo will meet it: `Edit(**/hooks/**)` 
 `--self` matches any directory named `hooks/` at any depth of *this* checkout, which is
 the right trade here and is why the vendored spelling keeps its `agentTooling/` segment.
 
-A consuming repo that already has the old `Edit(**/agentTooling/hooks/**)` **deny** rule
-keeps it: the merge never removes a rule except a retired `Bash` deny (below), and this
-one is neither. Its next `sync-plans.sh` adds the ask rule
-beside it, and deny wins over ask, so editing `hooks/` there stays refused until a human
-deletes the deny line by hand. Nothing here reaches into another repo to do it.
+A consuming repo that had the old `Edit(**/agentTooling/hooks/**)` **deny** rule — the
+spelling this helper wrote before the ask rule — got the ask rule added beside it, and
+deny wins over ask, so editing `hooks/` there stayed refused: every consuming repo
+carried both until `claude-md-chain`. That deny is now **retired**
+(`RETIRED_EDIT_DENY_RULES`): the next `sync-plans.sh` removes it where it stands, exactly
+as a retired `Bash` deny (below), and the ask rule is what remains. A deny a repo wrote
+itself under another spelling is the repo's and is not touched.
 
 ### `Bash`
 
@@ -1118,11 +1120,13 @@ not copied**. The hook entry is appended when no hook command anywhere in the fi
 mentions `allow-repo-commands.sh`, and the `SessionStart` entry when no SessionStart hook
 command mentions `session-start.sh` — after any SessionStart hooks the repo has of its own;
 each deny and ask rule is appended when its exact string is absent. Otherwise the file is left byte-for-byte alone. It never reorders or
-rewrites another entry, and it never adds an allow rule. It removes exactly two kinds of
+rewrites another entry, and it never adds an allow rule. It removes exactly three kinds of
 entry, each one it once wrote itself and has since retired. A `Bash` deny rule the table
 dropped (`policy.retired_bash_deny_rules()`, today only `Bash(git stash:*)`), because a
 deny rule left behind would go on overriding the hook's approval of what the table now
-calls read-only. And the SessionStart hook running
+calls read-only. An `Edit` deny rule its ask rule replaced (`RETIRED_EDIT_DENY_RULES`,
+today only `Edit(**/agentTooling/hooks/**)`), because deny wins over ask and leaving it
+refused the humans the ask was written to prompt. And the SessionStart hook running
 `${CLAUDE_PROJECT_DIR}/plans/cloud-setup.sh` directly (`RETIRED_SESSION_COMMANDS`), because
 `session-start.sh` now runs that script and leaving it would run it twice; its entry goes
 once it holds no other hook, and a repo's own differently-spelled `cloud-setup.sh` hook

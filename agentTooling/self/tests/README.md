@@ -1735,11 +1735,14 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   never costs another command a git call. Depends on the
   manifest fence's `branches[0]` and on the hook finding its repo shape from its own path.
   No model, no network.
-- `hook-wiring.sh` — thirty throwaway repos, one per starting state of
+- `hook-wiring.sh` — thirty-one throwaway repos, one per starting state of
   `.claude/settings.json` (absent, unrelated content, hook only, deny rules only, a
   partial deny list with a repo's own rule in it, the hook and the `Edit` rules but no
   `Bash` rules, everything but the ask rule, everything but the sandbox block, complete,
-  complete plus the retired `Bash(git stash:*)` and a repo's own rule, a sandbox block
+  complete plus the retired `Bash(git stash:*)` and a repo's own rule, complete plus the
+  retired `Edit(**/agentTooling/hooks/**)` deny beside the ask rule that replaced it —
+  every consumer's shape before `claude-md-chain`, the deny removed and the ask kept —
+  a sandbox block
   carrying the repo's own domain, `denyRead` path and `excludedCommands`, a sandbox
   switched off by hand, the complete block with only `enabled` flipped against the
   generator's switch, a different hook, twelve malformed shapes — a non-object `sandbox`,

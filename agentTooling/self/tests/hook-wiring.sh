@@ -6,11 +6,13 @@ set -uo pipefail
 # consuming repo's .claude/settings.json (hooks/README.md). Run by self/gate.sh, or by
 # hand: bash self/tests/hook-wiring.sh
 #
-# Builds thirty throwaway repos under mktemp -d, one per starting state of the settings
+# Builds thirty-one throwaway repos under mktemp -d, one per starting state of the settings
 # file — absent, unrelated content only, hook only, deny rules only, a partial deny list
 # with a repo's own rule in it, the hook and the Edit rules but no Bash rules, everything
 # but the ask rule, everything but the sandbox block, complete, complete plus a RETIRED
-# rule (`Bash(git stash:*)`, which the write removes and nothing else with it), a sandbox
+# rule (`Bash(git stash:*)`, which the write removes and nothing else with it), complete
+# plus the retired `Edit(**/agentTooling/hooks/**)` deny beside the ask rule that replaced
+# it (the deny removed, the ask kept — deny beat ask wherever both stood), a sandbox
 # block carrying the repo's own domain, denyRead path and excludedCommands, a sandbox
 # switched off by hand, the complete block with only `enabled` flipped against the
 # generator's switch, a different hook, and twelve malformed shapes (three of them an
@@ -117,6 +119,9 @@ ALL_DENY = EDIT_DENY + BASH_DENY
 # these — `Bash(git stash:*)` denied `git stash list` too, and a deny rule beats the
 # hook's allow — and nothing else the repo carries.
 RETIRED = list(policy.retired_bash_deny_rules())
+# The Edit deny the ask rule replaced: deny wins over ask, so a repo carrying both was
+# refused where it should have been asked. Retired, so the merge removes it.
+RETIRED_EDIT = ["Edit(**/agentTooling/hooks/**)"]
 ASK = ["Edit(**/agentTooling/hooks/**)"]
 SELF_ASK = ["Edit(**/hooks/**)", "Edit(/hooks/**)"]
 OK_WRITE = ("created", "wired", "kept")
@@ -201,6 +206,13 @@ CASES = {
     "retired":      ({"hooks": dict(WIRED_HOOKS),
                       "permissions": {"deny": ["Edit(/secrets/**)"] + RETIRED
                                       + list(ALL_DENY), "ask": list(ASK)},
+                      "sandbox": sandbox_with()},
+                     "UNWIRED", "wired"),
+    # Every consuming repo's shape before claude-md-chain: the old hooks/ deny still
+    # there, the ask rule beside it and dead
+    "retired-edit": ({"hooks": dict(WIRED_HOOKS),
+                      "permissions": {"deny": list(ALL_DENY) + RETIRED_EDIT,
+                                      "ask": list(ASK)},
                       "sandbox": sandbox_with()},
                      "UNWIRED", "wired"),
     "sandbox-own":  ({"hooks": dict(WIRED_HOOKS),
@@ -346,6 +358,12 @@ for name, (content, want_check, want_write) in CASES.items():
               ("%d retired Bash deny rule(s)" % len(RETIRED)) in message
               and "missing" not in message and "ask rule" not in message
               and "hook" not in message, message)
+    if name == "retired-edit":
+        # "hook" is in the rule's own spelling, so the exclusions name the other kinds
+        check("retired-edit: --check names the retired Edit deny to remove and nothing else",
+              ("%d retired Edit deny rule(s) (" % len(RETIRED_EDIT)) in message
+              and "no " not in message and "retired Bash" not in message
+              and "SessionStart" not in message, message)
     check("%s: --check writes nothing" % name,
           (raw(repo) if content is not None else None) == before_raw)
     status, message, rc = run(repo, "--write")
@@ -415,11 +433,15 @@ for name, (content, want_check, want_write) in CASES.items():
               "of the block unchanged",
               sandbox.get("enabled") is SANDBOX_ENABLED_EXPECTED
               and after["sandbox"] == GEN_SANDBOX, "got %r" % after["sandbox"])
-    check("%s: no retired rule is left" % name, not any(r in deny for r in RETIRED),
-          "got %s" % [r for r in RETIRED if r in deny])
+    check("%s: no retired rule is left" % name,
+          not any(r in deny for r in RETIRED + RETIRED_EDIT),
+          "got %s" % [r for r in RETIRED + RETIRED_EDIT if r in deny])
     if name == "retired":
         check("retired: --write removed exactly the retired rules, in place",
               deny == ["Edit(/secrets/**)"] + ALL_DENY, "got %s" % deny)
+    if name == "retired-edit":
+        check("retired-edit: --write removed the retired Edit deny and kept the ask rule",
+              deny == ALL_DENY and ask == ASK, "got %s / %s" % (deny, ask))
     marked = [h for e in after["hooks"]["PreToolUse"] for h in e["hooks"]
               if "allow-repo-commands.sh" in h["command"]]
     check("%s: exactly one hook entry names the script" % name, len(marked) == 1,
@@ -453,7 +475,7 @@ for name, (content, want_check, want_write) in CASES.items():
         kept_keys = all(after.get(k) == v for k, v in content.items()
                         if k not in ("hooks", "permissions", "sandbox"))
         kept_deny = all(r in deny for r in (content.get("permissions") or {}).get("deny") or []
-                        if r not in RETIRED)
+                        if r not in RETIRED + RETIRED_EDIT)
         kept_allow = all(r in after["permissions"].get("allow", [])
                          for r in (content.get("permissions") or {}).get("allow") or [])
         # An entry holding the retired command is changed by design, and checked above
