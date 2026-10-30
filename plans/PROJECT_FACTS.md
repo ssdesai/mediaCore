@@ -114,7 +114,9 @@ Build plans have no bash — these belong in verify plans and interactive plans.
 
 ## Conventions and gotchas
 
-- Branches are bare camelCase, no prefix (see `CLAUDE.md`).
+- Branches are the feature's kebab-case slug, no prefix, cut by
+  `agentTooling/feature-start.sh`, which refuses any other name (`agentTooling/LIFECYCLE.md`);
+  in a Claude Code cloud container, the session's assigned `claude/…` branch.
 - Nothing vinyl-specific may enter `src/` — `medium="vinyl"` is a *value*, the adapter
   that sets it lives in vinylCatalogue.
 

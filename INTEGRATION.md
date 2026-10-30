@@ -673,7 +673,8 @@ the shared brief. The checklist and scorecard live in humanNetworkMap
 `plans/experiments/wp7-bundle-store/`.
 
 Each WP is executed in its own repo with that repo's plan workflow
-(`agentTooling/AGENT_PLANS.md`, `plans/PROJECT_FACTS.md`), on a bare camelCase branch,
+(`agentTooling/AGENT_PLANS.md`, `plans/PROJECT_FACTS.md`), on the branch
+`agentTooling/feature-start.sh` cuts for it (`agentTooling/LIFECYCLE.md`),
 by an agent briefed with this file.
 
 ## 13. Decisions log
