@@ -6,6 +6,22 @@ the `field-choice` pilot (2026-08-21/22: baseline, levels, then tiered — one f
 brief, three worktrees) and meant to be re-run every time `AGENT_PLANS.md` or
 `run-batch.sh` changes behaviour.
 
+## The rule: an experiment runs from, and lives on, the repository it measures
+
+**Every experiment runs from, and lives on, the repository it measures. A cross-repo
+experiment is bad behaviour.** The repository under test is always the one the harness is
+vendored in: its fixtures, programs and experiments are in that repository's own
+`plans/experiments/`, every cell is a worktree of its own checkout, the arm PRs and the
+results PR open on it, and the harness driving them is its own vendored `agentTooling/`
+(bring that up to date there with `agentTooling/update.sh`, never drive it from another
+checkout). A fixture or program that names some other repository is refused at the first
+point the harness reads it; move it into the repository it measures.
+
+Two inputs stay outside, deliberately and **read-only**, because neither is where the
+experiment runs or lives: the agentTooling an arm is pinned to (`--agent-tooling
+<label>=<ref>` — the version under test), and a spec that lives in another repository
+(`spec.url` — an integration contract owned by a sibling, say). Both are only ever read.
+
 ## What is being measured
 
 Two things, in this order, and the first one decides:
@@ -47,7 +63,7 @@ review brief is written from the spec before any arm runs, and the rework reads 
 own tree's findings.
 
 ```bash
-./agentTooling/harness/new-fixture.sh <fixture> --repo … --base … --spec-repo … --spec-ref … --spec-path …
+./agentTooling/harness/new-fixture.sh <fixture> --base … --spec-ref … --spec-path …   # --spec-repo … only for a spec in another repository
 #   then write facts.md, review-brief.md and accept/accept.py from the spec, before any arm runs
 ./agentTooling/harness/check-fixture.sh <fixture>
 ./agentTooling/harness/new-experiment.sh <experiment> --fixtures <fixture> --methods direct,plans --prediction '…'
@@ -80,8 +96,14 @@ shapes and `harness/SPEC.md` for why each stage sits where it does.
 ## Setting up the arms
 
 One worktree per arm, all off the same prep commit, each pinned to the agentTooling
-version it is testing. Pinning is a commit in the worktree's branch that checks out
-the subtree at the wanted upstream commit, titled so it cannot be merged by accident:
+version it is testing. **The harness does this now**: `new-experiment.sh … --agent-tooling
+before=<commit>,after=<commit>` records the arms, and the setup stage pins each
+worktree's vendored copy before anything reads it (`harness/README.md` → "Arms"). What it
+does is the recipe this section gave by hand — a commit in the worktree's branch that
+checks out the subtree at the wanted upstream commit, titled so it cannot be merged by
+accident. An arm equal to the version the base already vendors (the natural control) is
+pinned all the same: the extract and the sync change nothing, and the pin commit is
+empty, so its branch records the version it ran under like the others:
 
 ```bash
 git worktree add ../repo-<arm> -b <user>/<slug>-<arm> <prep-commit>
@@ -90,6 +112,13 @@ git -C ~/dev/agentTooling archive <upstream-commit> | tar -x -C agentTooling   #
 ./agentTooling/sync-plans.sh
 git add -A && git commit -m "EXPERIMENT ARM (revert before merge): pin agentTooling to upstream <commit>"
 ```
+
+Why `archive | tar` and not `update.sh`: a `git subtree pull --squash` can only move a
+vendored copy forward along upstream's history — the squash commits chain, and merging an
+older one is "already up to date" — so the "before" arm cannot be reached by pulling.
+Replacing the tree wholesale reaches any commit, and the vendored version a subtree
+records (`git-subtree-split:` on its squash commit; `update.sh --check` prints it) is
+still the right way to ask what a consuming repo is *on*.
 
 Each arm needs its own toolchain (`.venv`, `node_modules`, browsers) — `gate.sh` is what
 proves the environment, so run it once by hand before the batch. Sharing is not a
@@ -167,9 +196,128 @@ compare the pair rather than the arms. From `harness/` on, the review is a fixtu
 brief written before any arm runs, rework reads only its own tree's findings, and the
 cross-check is read-only — a scoring aid, never an input to either tree.
 
+A **program** comparison scores an orchestrator running an ordered list of features under
+one agentTooling version as a single feature set, over a couple of re-runs per arm. Four
+figures per arm: the **group to PR-open** (the orchestrator's own cost plus every
+feature's build cost), the **group to green** (that, plus every feature's review and
+rework), the **PRs opened** and the **features green** out of the list. **Overhead %** is
+the orchestrator's cost over the group to PR-open, the definition
+`report.py --orchestration` uses; the record's own report is kept in the row as a
+cross-check (`record_report`) and printed beside the harness's figure, never compared. The
+cost pair meets the same ±N% band as a cell's; the counts are read as they stand, and an
+n=1 comparison is marked `(n=1)`. A feature that was meant to start from the previous
+feature's branch and did not is marked `✗` in its table and listed under failures: that
+arm's later features measure a different tree.
+
+## Program cells
+
+A **program cell** answers a different question from a cell: not "which method builds this
+feature cheaper" but "which agentTooling version runs a *set* of features cheaper under an
+orchestrator". `program × orchestrator × arm × repeat`, from a `program.json`
+(`harness/README.md` → "File shapes"); the arms are the agentTooling versions, as for cells.
+
+**What is measured.** Per program cell: the **group to PR-open** (`cost_group_usd` — the
+orchestrator's own cost plus every feature's build cost), the **group to green**
+(`cost_group_green_usd` — that plus every feature's review and rework), and the
+**overhead %** (`cost_overhead_usd` over the group to PR-open). The counts — PRs open and
+features green out of the list — are read beside them. The arm's own `report.py
+--orchestration` figure is kept in the row as `record_report`, a cross-check that is printed
+and never compared (it sums each feature's whole report, review and rework included).
+
+**The loop, and why it is shaped this way.** The orchestrator is one headless session:
+`claude -p --session-id S` for the program brief, then `claude -p --resume S` once per
+feature ("feature k-1 reported X; write the brief for feature k") and once more to write the
+record. Each implementer is a **separate top-level `claude -p`** run by the harness in that
+feature's own worktree, with the brief the orchestrator wrote as its prompt and `Agent Task
+Bash` as its tools, so it may use subagents. The orchestrator cannot do that work itself:
+a subagent cannot spawn subagents, and its cost would land inside the orchestrator's
+transcript, where no per-feature figure could separate them. As top-level runs, each
+implementer has a session of its own that the per-tree capture finds and prices, and the
+orchestrator's transcript is only the orchestrator.
+
+**What is outside the comparison.** The harness starts every feature (worktree, branch,
+arm pin, `fixture.setup`, gate rehearsal, manifest skeleton) and opens nothing at the
+close: an arm's own `feature-start.sh` refuses a copy inside a worktree, so the arms'
+`feature-start.sh` / `feature-close.sh` are not run and not measured. What an arm
+differs in is what it can differ in here: the orchestrator's doctrine, the brief template
+(`ORCHESTRATOR_BRIEF.md`), the record machinery, and the implementer's pinned
+`agentTooling/` (its `forge.sh`, its conventions). The orchestrator is told the same, and
+told to never run those scripts.
+
+**The one write into `agentTooling/`.** The "never edit `agentTooling/`" rule of the method
+contract has one exception here: the orchestration record lives in the pinned copy inside
+the program worktree, at `<program tree>/agentTooling/self/orchestrations/<PSLUG>/README.md`
+(`analysis/roots.py` makes the pinned copy own its record), and the orchestrator and the
+harness write it there, on the program branch. A program tree whose `agentTooling` is a
+symlink is refused at setup, since the record would be written into the source checkout:
+pin an arm.
+
+**Dependencies.** A feature with `depends_on_previous: true` has its branch cut at the
+previous feature's branch **tip as it stood when that implementer finished**, and its PR
+targets that branch (`pr_base`). `dependency_ok` is `git merge-base --is-ancestor
+<previous tip> <this branch>`, a boolean for a dependent feature and `null` for the rest;
+the scorecard marks a `✗` and lists it under failures, because that arm's later features
+then measure a different tree. A dependent feature still runs after a failed predecessor,
+cut at whatever the predecessor's branch holds, and the row records `method_failed` on the
+predecessor.
+
+**Repeats and n.** A program cell is expensive and its orchestrator is the noisiest part of
+it (it chooses each implementer's method and writes each brief), so run **at least two
+repeats** per arm. The scorecard marks a comparison from a single repeat `(n=1)`, and at
+n=1 a difference inside the noise band is a tie, as for cells. Repeats of a program cell
+are `<n>` in every branch it creates, so they never collide.
+
+**The version floor.** An arm whose pinned agentTooling has no `orchestration-start.sh` or
+no `templates/plans/ORCHESTRATOR_BRIEF.md` cannot run a program cell: it is refused at
+`new-experiment.sh` and again at setup, naming the arm and the file. The control arm of a
+program experiment must therefore be a commit that already has the machinery.
+
+**Rehearse once with a real `claude` before trusting numbers.** The harness's smoke test
+runs the program cell against a fake `claude`; three assumptions about the real one are
+unverified, and each would silently spoil a figure:
+
+1. **`claude -p --resume` keeps the session's context headless**, and either reports the
+   same `session_id` or forks into a new one. The harness resumes the most recent id a call
+   reported and prices each id from its own first call's start, so a fork's replayed
+   history (old timestamps) is not counted twice. If a resume turned out to start cold, the
+   orchestrator would write briefs with no memory of the program; the overhead figure
+   would look normal.
+2. **The consumer's hooks inside `-p` accept the orchestrator's git commands** (it commits
+   each brief and the record, and runs `manifest.py`). A hook that denies them in a headless
+   session shows as a missing brief or record, which the row reports as `method_failed` and
+   an intervention rather than as a cost.
+3. **The implementer's session lands under the tree's own project directory**, so
+   `capture_one` finds it by the branch and the cwd. The harness half of this is now
+   proven by the smoke test, for a program's feature and for an ordinary cell alike: its
+   fake transcripts record the real `$PWD`, the tree `<repo>-<Branch>`, which `claim_roots`
+   admits through the manifest's `branches`. The program full run asserts non-zero costs,
+   and so does a priced ordinary `direct` cell, whose implementer, review and rework
+   sessions each price (`cost_method_usd`, `cost_review_usd`, `cost_rework_usd` all above
+   0, summing to `cost_green_usd`, with no `launched_elsewhere` line in its capture log).
+   What stays unverified is only that a real
+   `claude` records that same cwd. If it lands elsewhere the feature
+   prices below what `claude` reported (down to `$0`) and the feature row carries an
+   `unpriced_reason` naming both figures — so an arm that is only unmeasured is not read
+   as a cheap one. A feature with no manifest (no implementer ran) carries one too.
+   The implementer's tool names (`Agent Task Bash`) are likewise unverified: the harness
+   passes both `Agent` and `Task` so whichever the installed `claude` calls its
+   subagent tool is allowed.
+4. **The real CLI refuses a `--session-id` that is already in use.** That is why, when the
+   harness was killed during the first orchestrator call (`orchestrator_first_call_started`
+   set, `orchestrator_calls` still 0), a `--from brief` re-entry mints a fresh id instead of
+   repeating the old one. Rehearse it: start `claude -p --session-id S`, kill it, and start
+   `--session-id S` again; if the second is accepted the fresh id is merely redundant, if it
+   is refused the replacement is what keeps the program from being marked `method_failed`.
+
+Rehearse with a two-feature program on a small fixture and `repeats: 1`, read the row and
+the three logs (`<logs>/<programBranch>-orchestrator-*-result.json`), and only then run
+the experiment.
+
 ## Reporting
 
-One scorecard, both arms side by side, the verdict in the first line. Keep the
+One scorecard, both arms side by side, the verdict in the first line. A program cell's
+scorecard section sits after the cell sections and carries its own comparison line under
+the same band heading (`harness/README.md` → "The program row"). Keep the
 checklist, the score script, the batch logs and the scorecard together under
 `plans/experiments/<slug>/` in the consuming repo; the two (or three) branches and PRs
 stay open until the owner picks one, and the losing arm's pin commit is never merged.

@@ -60,10 +60,12 @@ and the ones a one-shot skips when left to itself:
 1. `cd <tree> && @@GATE_COMMAND@@`, re-run until the verdict line is green (about
    @@GATE_MINUTES@@ minutes per run). A SKIPPED check is not green.
 2. Commit on `@@BRANCH@@` (`CHECKPOINT.md` at status `committed`), push to `origin`,
-   and open the PR against `main` with
-   `gh pr create --base main --head @@BRANCH@@`. Title: `@@SLUG@@`. The body's **first
-   line** must read: *one arm of an experiment — do not merge until it picks a winner*.
-   Then summarise what landed and every design call you made.
+   and open the PR against `main`: write the body to a file outside the tree, then
+   `<tree>/agentTooling/forge.sh pr-open @@BRANCH@@ main '@@SLUG@@' <body file>` — the
+   forge adapter works on a laptop and in a Claude Code cloud container alike, where
+   `gh pr create` is refused. Title: `@@SLUG@@`. The body's **first line** must read:
+   *one arm of an experiment — do not merge until it picks a winner*. Then summarise
+   what landed and every design call you made.
 
 ## Final report, terse
 

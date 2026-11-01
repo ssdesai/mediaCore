@@ -1,0 +1,60 @@
+{
+  "plan": "01-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "190944df-1973-4c66-89e3-303697bc0368",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 36,
+  "duration_ms": 184288,
+  "total_cost_usd": 1.3971620000000002,
+  "usage": {
+    "input_tokens": 44,
+    "cache_creation_input_tokens": 90163,
+    "cache_read_input_tokens": 1985610,
+    "output_tokens": 13928
+  },
+  "model_usage": {
+    "claude-opus-5-5": {
+      "inputTokens": 44,
+      "outputTokens": 13928,
+      "cacheReadInputTokens": 1985610,
+      "cacheCreationInputTokens": 90163,
+      "webSearchRequests": 0,
+      "costUSD": 1.3971620000000002,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 4819,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 90163,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 22,
+    "Edit": 7,
+    "Read": 5,
+    "Write": 1
+  },
+  "files_edited": [
+    "harness/README.md",
+    "harness/SPEC.md",
+    "harness/lib.sh",
+    "harness/run.sh",
+    "self/review-report.md"
+  ],
+  "edit_count": 8,
+  "attempts": [
+    {
+      "session_id": "190944df-1973-4c66-89e3-303697bc0368",
+      "outcome": "complete",
+      "total_cost_usd": 1.3971620000000002,
+      "num_turns": 36,
+      "duration_ms": 184288
+    }
+  ]
+}

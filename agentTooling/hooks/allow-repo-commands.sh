@@ -716,10 +716,11 @@ MIXED_SEQUENCE_REWRITE_REASON = (
 
 # ── A file authored through the shell ─────────────────────────────────────────
 # Content written in the command itself landing in a file (self/features/
-# shell-write-rewrite). CONVENTIONS.md → "Writing files" says to author files with the
-# Write and Edit tools, because a write made by a subprocess gets past the repo's Edit
-# allow and deny rules; and there is a rewrite that always works, so by the membership
-# test above it is a REWRITE and not an ASK. Three spellings, judged per member:
+# shell-write-rewrite). CONVENTIONS.md → "Shell commands" (its last table row and the
+# "Handed to the human" paragraph) says to author files with the Write and Edit tools,
+# because a write made by a subprocess gets past the repo's Edit allow and deny rules;
+# and there is a rewrite that always works, so by the membership test above it is a
+# REWRITE and not an ASK. Three spellings, judged per member:
 #   echo / printf              with its output redirected to a path;
 #   cat / tee                  fed literally — a heredoc or herestring on the member, or
 #                              for tee a pipe from echo/printf or a heredoc-fed cat — with
@@ -761,7 +762,7 @@ PIPE_SEPARATORS = frozenset(["|", "|&"])
 SHELL_AUTHORING_REWRITE_REASON = (
     "%s writes a file from text in the command itself, and a file written by a shell "
     "subprocess is one the repo's Edit allow and deny rules never see (CONVENTIONS.md § "
-    "Writing files). Use the Write tool for a new file or a whole rewrite, and the Edit "
+    "Shell commands). Use the Write tool for a new file or a whole rewrite, and the Edit "
     "tool for a change to an existing file — an append is an Edit anchored on the "
     "file's last lines.")
 

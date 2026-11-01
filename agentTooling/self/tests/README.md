@@ -658,6 +658,19 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `transcript_dir_name` mangled `.`. Depends on `session_line`/`subagent_line`/
   `subagent_prompt_line` from `fixtures/transcripts/build-transcript.sh`. The legacy half
   of the rule is also `capture-guard.sh` phase 15. No model, no network.
+- `harness-claim-root.sh` — `worktree-claims.sh`'s scaffolding, asserting the fourth claim
+  root: the experiment harness runs every session of a feature with cwd
+  `<primary>-<Branch>` (camelCase, `harness_worktree_path`), which `claim_roots` now admits
+  for each entry of the manifest's `branches`. One manifest naming `exportStoreDirectAfter2`
+  and three sessions on that branch: launched in `<primary>-exportStoreDirectAfter2`
+  (selected by branch, cwd recorded, priced — H1), in `<primary>-otherBranch` (not claimed,
+  the warning names the directory and lists the harness tree among the roots — H2) and in
+  `<primary>-exportStoreDirectAfter2Extra` (not claimed, whole-component matching — H4);
+  `--last-branch-instant`, the second call site, bounded by the harness-tree session alone
+  (H5); and `claim_roots` itself, which with empty
+  `branches` returns the three roots it always had and with one branch adds exactly
+  `<primary>-<branch>` (H3). Depends on `session_line` from
+  `fixtures/transcripts/build-transcript.sh`. No model, no network.
 - `check-plans.sh` — copies the real `check-plans.sh` and `plan-runner-roots.sh` into a
   throwaway checkout (a missing `check-plans.sh` is tolerated — RED until it lands, the
   `cost-recovery.sh` convention) and drives it against synthesized feature manifests and
@@ -883,7 +896,7 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `other`, under a manifest declaring `typo`, must still refuse and write no
   `planning.json`. It is the shape of every repo that has ever run a batch, so were the
   serialized (repo-wide) `excluded_session_ids` the set behind the refusal instead of
-  `excluded_on_branch`, a branch typo would read as an evidenced $0.00 everywhere. Phase 18: `--all` skips a feature whose `session_window.to` is still null as in flight and writes nothing, while naming the slug still captures it — a corpus-wide run must not freeze a feature `feature-capture.sh` has not captured.
+  `excluded_on_branch`, a branch typo would read as an evidenced $0.00 everywhere. Phase 18: `--all` skips a feature whose `session_window.to` is still null as in flight and writes nothing, while naming the slug still captures it — a corpus-wide run must not freeze a feature `feature-capture.sh` has not captured. Phase 19: one session id with a short and a long transcript under two project directories is priced once, from the copy that ends latest, with the `session <id> has transcripts in 2 project directories; priced <path>` warning — long copy in the walked directory, long copy only in an unwalked one, and a pinned session found only elsewhere; and `--last-branch-instant --ignore-to` reads that later copy too, so the stamped `to` lies past its end and a pinned session under it is priced whole; and a subagent filed beside the later copy only (not the walked directory) is both priced and counted by `--last-branch-instant` (19j–k).
 - `capture-merge.sh` — `capture-guard.sh`'s scaffolding plus a copy of `report.py`,
   asserting the provenance rules of the merge into the committed record
   (`../features/capture-merges-committed-record/`) over three rounds' coordinators, each
@@ -1735,11 +1748,14 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   never costs another command a git call. Depends on the
   manifest fence's `branches[0]` and on the hook finding its repo shape from its own path.
   No model, no network.
-- `hook-wiring.sh` — thirty throwaway repos, one per starting state of
+- `hook-wiring.sh` — thirty-one throwaway repos, one per starting state of
   `.claude/settings.json` (absent, unrelated content, hook only, deny rules only, a
   partial deny list with a repo's own rule in it, the hook and the `Edit` rules but no
   `Bash` rules, everything but the ask rule, everything but the sandbox block, complete,
-  complete plus the retired `Bash(git stash:*)` and a repo's own rule, a sandbox block
+  complete plus the retired `Bash(git stash:*)` and a repo's own rule, complete plus the
+  retired `Edit(**/agentTooling/hooks/**)` deny beside the ask rule that replaced it —
+  every consumer's shape before `claude-md-chain`, the deny removed and the ask kept —
+  a sandbox block
   carrying the repo's own domain, `denyRead` path and `excludedCommands`, a sandbox
   switched off by hand, the complete block with only `enabled` flipped against the
   generator's switch, a different hook, twelve malformed shapes — a non-object `sandbox`,
@@ -2031,7 +2047,7 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   missing `update.sh` is tolerated — RED until plan 77 lands, the `cost-recovery.sh`
   convention) into two throwaway fixtures. Fixture A is a consuming repo at
   `$TMP/consumer` holding copies of the three under `agentTooling/`; it asserts the
-  `sync-plans.sh --check` contract: a fresh seed reports the five generated stubs and
+  `sync-plans.sh --check` contract: a fresh seed reports the six generated stubs and
   the three repo-owned scripts (`gate.sh`, `pr.sh`, `worktree-setup.sh`) in-sync with
   their `# template-version: <N>` line (3, 7, 2 in that order — `pr.sh` is at 7, the
   body refresh through `forge.sh pr-edit`, past the 4 whose `--merge-request` entry
@@ -2228,6 +2244,23 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   that lowers a version FAILs without the "merge" advice (B15c), and with no shared history
   the tip fallback FAILs a stale copy and says to merge (B15d). B1 runs against the real `origin/main`, so
   the branch itself is checked. No model, no network.
+- `orchestrator-brief.sh` — reads the real tree and writes nothing
+  (`../features/orchestrator-brief/`). Asserts `templates/plans/ORCHESTRATOR_BRIEF.md`
+  exists (B1), carries the literal `--branch claude/<slug>` (B2) and the
+  `./feature-start.sh [--self] <slug> --method <method> --branch claude/<slug>
+  [--orchestration <orchestration>]` shape (B3), tells the implementer to run the start in
+  the background with its output captured to a scratchpad file and to wait for its exit
+  notification before touching the tree, and that the start refuses a tree that changes
+  while it runs (B3b), never says "assigned branch" (B4), stays
+  within 80 lines (B5), that `LIFECYCLE.md` names its path in a consumer
+  (`plans/ORCHESTRATOR_BRIEF.md`, B6) and in agentTooling (B7), and that `sync-plans.sh`'s
+  `GENERATED` list and both READMEs name it (B8–B9). B10 holds every agentTooling-root
+  path in the brief (`feature-start.sh`, `CONVENTIONS.md`, `LIFECYCLE.md`) to the
+  `<tooling>/` prefix, so a bare `./feature-start.sh` cannot return (a consumer runs
+  `./agentTooling/feature-start.sh`); B11–B13 parse `GENERATED` and assert each name is in
+  the `templates/README.md` table and in `sync-check.sh` 1b's loop, matched as a whole word
+  (a bare `README.md` is not satisfied by `interactive/README.md`). Depends on the template living in the
+  folder the sync copies from.
 - `update-cloud-branch.sh` — `update.sh` on a cloud-started pull feature
   (`../features/cloud-pull-fixes/`, defect A), where the branch is the session's
   `claude/…` and the manifest sits at `plans/features/<slug>/README.md`. A bare upstream
@@ -2617,6 +2650,18 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   none of which is visible from an import line. The table's heading, header row, the `†`
   mark and the `—` absent cell are asserted by value, so a change to any of them is a
   visible change here.
+- `orchestration-records.sh` — the orchestration record
+  (`../orchestrations/README.md`). Throwaway checkout holding `orchestration-start.sh`,
+  `orchestration-capture.sh`, `analysis/{pricing,roots,transcript,routing,manifest,
+  capture_planning,report,orchestration_capture}.py` and the feature template, a real
+  `git init` (so `agent_tooling` names a commit), `$HOME` in a `mktemp -d` with a
+  synthesized transcript filed under two project directories. Asserts: the start's fence
+  and its three refusals; `manifest.py --orchestration` add, replace-in-place, set (and
+  null), get, window stamping and its refusals; `init --orchestration` writing the
+  optional key; the capture pricing the later transcript's in-window responses and the
+  subagent's, and refusing a session with no transcript; the group report's four feature
+  rows (priced; no total; no path; path missing), overhead, total, percentage and
+  unpriced count in `report.json` and `report.md`, and an uncaptured overhead.
 - `env-profile.sh` — the profile detector, the checkout-layout adapter, the confinement
   check and `forge.sh`'s profile-dependent verbs
   (`self/DESIGN-2026-10-05-cloud-execution.md` §1, §5; `self/features/execution-profiles/`).
@@ -2683,6 +2728,9 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   by `report.py` as `Gate: green` and in `report.json`; `skipped` under `--no-gate` and in a
   checkout with no gate script; and the start ran its gate with `GATE_RESUME=1`, which
   the stub records to `$GATE_RESUME_OUT`), S1 (a second feature in that container refused naming the first),
+  S2 (a manifest on `origin/main` naming the branch still makes a start refuse, naming the
+  feature and writing nothing, and `started_features_on` names it: one session, one
+  branch, one feature),
   R1–R3 (a foreign commit and a dirty tree refused with the work still there; a start
   whose hook fails leaves the branch and a lock with `refused=`, and its re-run with a hand
   fix in the tree resumes, commits `S: start` without the fix, and removes the lock), R4
@@ -2707,6 +2755,22 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `--branch` is refused). Depends on
   `feature-start.sh`'s lock living at `.git/feature-start.lock` with a `refused=` line,
   and on `planning.json`'s `sessions[].selected_by`.
+- `start-tree-guard.sh` — `feature-start.sh`'s two tree guards under the cloud profile
+  (`../features/start-tree-guard/`). Each scenario is a throwaway checkout with a bare
+  origin, a tracked file outside the features folder, a stub hook, and a fake gate the test
+  controls through `GATE_RED`, `GATE_EDIT` (a tracked path the gate edits while it runs)
+  and `GATE_TOUCH_FEATURE` (a feature directory it writes into). Asserts C1 (a resumed
+  start — first refused by a red gate — with one file staged and one tracked file modified
+  outside the feature directory: the `<slug>: start` commit names only paths under the
+  feature directory, and the staged and modified files are still staged and modified), C2
+  (a gate that edits a tracked file while it runs is refused, the refusal naming the path,
+  with no start commit and the lock left), C3 (the change committed, the same command
+  resumes and succeeds), C4 (the controls: a gate writing only an un-ignored gate report,
+  and one writing only into the feature directory, are not refused). Depends on
+  `feature-start.sh`'s lock at `.git/feature-start.lock` with a `refused=` line, and on
+  `plan-runner-roots.sh`'s self-mode `GATE_REPORT_LABEL` being `self/gate-report.txt` (the
+  path the fake gate writes and the start excludes from its comparison). No model, no
+  network.
 - `cloud-setup-wait.sh` — a consuming repo's cloud `feature-start.sh` waits for the
   background setup `session-start.sh` began before its setup hook and its base gate
   (`../features/hand-start-friction/`, item 1). Stands up consumer repos with

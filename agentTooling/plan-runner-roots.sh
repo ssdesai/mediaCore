@@ -411,7 +411,9 @@ STARTED_MANIFEST_NAME="README.md"
 # container the branch is the session's `claude/…` one, so the slug cannot be derived
 # from it. `git grep` narrows the manifests to those that mention the branch at all, so a
 # corpus of hundreds costs one search; manifest_branch then decides. Tracked only: an
-# untracked manifest is a start nobody committed, which is not a started feature.
+# untracked manifest is a start nobody committed, which is not a started feature. Merged
+# or not, a manifest naming the branch is that branch's feature: one session holds one
+# branch holds one feature, and a second feature is a new session.
 #   while IFS= read -r slug; do …; done < <(started_features_on "$REPO_DIR" "$FEATURES_LABEL" "$branch")
 started_features_on() {
   local repo_dir="$1" label="$2" branch="$3" rel slug

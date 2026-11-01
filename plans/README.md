@@ -22,6 +22,11 @@ to the machinery is made once and pulled everywhere.
   features `../agentTooling/harness/` builds, and the experiment directories it appends
   `results.jsonl` to. See `../agentTooling/harness/EXPERIMENTS.md` → "Running one" and
   `../agentTooling/harness/README.md`. Absent until the repo runs one.
+- `ORCHESTRATOR_BRIEF.md` — *generated, overwritten every sync* — the template an
+  orchestrator session copies and fills in to brief one implementer session for one
+  feature. It names the branch outright (`--branch claude/<slug>`); the session it briefs
+  has no assigned one (`../agentTooling/LIFECYCLE.md` → "Orchestrator and implementer
+  sessions"). Copy it, never edit it here.
 - `PROJECT_FACTS.md` — repo-specific facts every plan must pin, and this repo's own
   entries for this folder (anything here that is not listed in this file). Read this
   before authoring. *Seeded once and never overwritten.*

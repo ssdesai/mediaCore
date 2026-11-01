@@ -16,6 +16,15 @@ planning.json claimed — the JSON edits the lifecycle scripts need, kept out of
     python3 agentTooling/analysis/manifest.py [--self] <slug> unpin-subagent AGENT_ID
     python3 agentTooling/analysis/manifest.py [--self] <slug> unexclude-subagent AGENT_ID
     python3 agentTooling/analysis/manifest.py [--self] <slug> claimed
+    python3 agentTooling/analysis/manifest.py --orchestration <slug> get <key>
+    python3 agentTooling/analysis/manifest.py --orchestration <slug> add-feature repo=R slug=S [session=ID]
+        [branch=B] [pr=URL] [report=PATH]
+    python3 agentTooling/analysis/manifest.py --orchestration <slug> set-feature repo=R slug=S key=value...
+    python3 agentTooling/analysis/manifest.py --orchestration <slug> set-window-to INSTANT|now
+
+`--orchestration <slug>` is a scope of its own: it edits `self/orchestrations/<slug>/README.md`
+(`roots.orchestrations_root`), not a feature manifest. `add-feature` replaces an entry with
+the same repo and slug; `set-feature` changes fields of one (`null` clears a field).
 
 `init` writes `<features>/<slug>/README.md` from `templates/plans/features/TEMPLATE.md`
 with the template's fence replaced by a filled one, and refuses if the file exists —
@@ -87,7 +96,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from roots import AGENT_TOOLING_DIR, add_self_flag, features_root
+from roots import AGENT_TOOLING_DIR, add_self_flag, features_root, orchestrations_root
 # One way, and the direction is the point: `routing` imports `pricing`, `roots` and
 # `transcript` and nothing else — never this module and never `capture_planning` — so
 # importing it here cannot close a cycle. The other candidate would have:
@@ -102,9 +111,20 @@ TEMPLATE_PATH = AGENT_TOOLING_DIR / "templates" / "plans" / "features" / "TEMPLA
 FENCE_RE = re.compile(r"```json\n(.*?)\n```", re.DOTALL)
 # The order the fence is written in, so every manifest reads the same way top to bottom.
 FENCE_KEY_ORDER = (
-    "slug", "method", "plans", "branches", "base", "profile", "gate", "session_window",
-    "exclude_sessions", "exclude_subagents", "sessions", "subagents",
+    "slug", "method", "plans", "branches", "base", "profile", "gate", "orchestration",
+    "session_window", "exclude_sessions", "exclude_subagents", "sessions", "subagents",
 )
+# A feature's optional link to the orchestration record that spawned it (`init
+# --orchestration`, read back with `get orchestration`); the slug pattern is the lifecycle's.
+ORCHESTRATION_KEY = "orchestration"
+SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+# The orchestration record's fence (`--orchestration <slug>` scope, `orchestration-start.sh`):
+# top-level keys in the order it is written, and the keys of one `features[]` entry.
+ORCH_KEY_ORDER = ("slug", "session", "agent_tooling", "session_window", "features")
+ORCH_FEATURE_KEYS = ("repo", "slug", "session", "branch", "pr", "report")
+ORCH_FEATURE_IDENTITY = ("repo", "slug")
+ORCH_NOW = "now"
+ORCH_NULL_WORD = "null"
 KNOWN_METHODS = ("plans", "direct", "hand")
 # Where a feature was started (self/DESIGN-2026-10-05-cloud-execution.md §1): the values
 # env-profile.sh decides between, written by `init --profile` and absent from every
@@ -232,6 +252,15 @@ def cmd_init(args):
         fence[PROFILE_KEY] = args.profile
     if args.gate is not None:
         fence[GATE_KEY] = args.gate
+    if args.orchestration is not None:
+        if not SLUG_RE.match(args.orchestration):
+            print(
+                f"refusing: --orchestration {args.orchestration!r} must match "
+                f"{SLUG_RE.pattern} — kebab-case, no slash",
+                file=sys.stderr,
+            )
+            return 1
+        fence[ORCHESTRATION_KEY] = args.orchestration
     new_text = text[: match.start(1)] + render_fence(fence) + text[match.end(1):]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(new_text)
@@ -732,7 +761,189 @@ def cmd_claimed(args):
     return 0
 
 
+def orchestration_path(slug):
+    return orchestrations_root() / slug / "README.md"
+
+
+def render_orchestration_fence(obj):
+    """The record's fence: one top-level key per line in `ORCH_KEY_ORDER`, compact
+    values, except `features`, one entry per line so a diff shows the entry that moved."""
+    keys = [k for k in ORCH_KEY_ORDER if k in obj] + [k for k in obj if k not in ORCH_KEY_ORDER]
+    lines = []
+    for key in keys:
+        value = obj[key]
+        if key == "features" and value:
+            entries = ",\n".join(
+                "    " + json.dumps(entry, separators=FENCE_VALUE_SEPARATORS) for entry in value
+            )
+            lines.append(f'  "features": [\n{entries}\n  ]')
+        else:
+            lines.append(f'  "{key}": {json.dumps(value, separators=FENCE_VALUE_SEPARATORS)}')
+    return "{\n" + ",\n".join(lines) + "\n}"
+
+
+def write_orchestration(path, text, match, obj):
+    path.write_text(text[: match.start(1)] + render_orchestration_fence(obj) + text[match.end(1):])
+
+
+def load_orchestration(args):
+    """(path, text, match, obj) of the record, or None after printing the refusal."""
+    path = orchestration_path(args.slug)
+    if not path.is_file():
+        print(f"refusing: no orchestration record at {path}", file=sys.stderr)
+        return None
+    text = path.read_text()
+    try:
+        match, obj = last_fence(text)
+    except ValueError as err:
+        print(f"refusing: {path}: {err}", file=sys.stderr)
+        return None
+    return path, text, match, obj
+
+
+def feature_pairs(pairs):
+    """`key=value` words as a dict, or (None, message). `null` is None; a key outside
+    `ORCH_FEATURE_KEYS` is refused."""
+    result = {}
+    for pair in pairs:
+        key, sep, value = pair.partition("=")
+        if not sep or key not in ORCH_FEATURE_KEYS:
+            return None, f"{pair!r} is not key=value with key one of {', '.join(ORCH_FEATURE_KEYS)}"
+        result[key] = None if value == ORCH_NULL_WORD or value == "" else value
+    return result, None
+
+
+def cmd_orch_get(args):
+    loaded = load_orchestration(args)
+    if loaded is None:
+        return 1
+    value = loaded[3]
+    for part in args.key.split("."):
+        if not isinstance(value, dict) or part not in value:
+            return 0
+        value = value[part]
+    if value is None:
+        return 0
+    print(value if isinstance(value, str) else json.dumps(value))
+    return 0
+
+
+def cmd_orch_add_feature(args):
+    """Add a `features[]` entry, replacing the one with the same repo and slug."""
+    loaded = load_orchestration(args)
+    if loaded is None:
+        return 1
+    path, text, match, obj = loaded
+    fields, problem = feature_pairs(args.pairs)
+    if problem:
+        print(f"refusing: {problem}", file=sys.stderr)
+        return 1
+    if not args.repo or not SLUG_RE.match(args.slug_of_feature):
+        print("refusing: a feature needs a repo and a kebab-case slug", file=sys.stderr)
+        return 1
+    entry = {key: None for key in ORCH_FEATURE_KEYS}
+    entry.update(fields)
+    entry["repo"], entry["slug"] = args.repo, args.slug_of_feature
+    # Replaced in place, so the order the features were added in survives a re-add.
+    features = list(obj.get("features") or [])
+    identity = (entry["repo"], entry["slug"])
+    at = next((i for i, f in enumerate(features) if (f.get("repo"), f.get("slug")) == identity), None)
+    replaced = at is not None
+    if replaced:
+        features[at] = entry
+    else:
+        features.append(entry)
+    obj["features"] = features
+    write_orchestration(path, text, match, obj)
+    print(f"{'replaced' if replaced else 'added'} {entry['repo']}/{entry['slug']}; "
+          f"{len(features)} feature(s)")
+    return 0
+
+
+def cmd_orch_set_feature(args):
+    loaded = load_orchestration(args)
+    if loaded is None:
+        return 1
+    path, text, match, obj = loaded
+    fields, problem = feature_pairs(args.pairs)
+    if problem or not fields:
+        print(f"refusing: {problem or 'nothing to set'}", file=sys.stderr)
+        return 1
+    for entry in obj.get("features") or []:
+        if (entry.get("repo"), entry.get("slug")) == (args.repo, args.slug_of_feature):
+            entry.update(fields)
+            write_orchestration(path, text, match, obj)
+            print(f"set {args.repo}/{args.slug_of_feature}: {', '.join(sorted(fields))}")
+            return 0
+    print(f"refusing: no feature {args.repo}/{args.slug_of_feature} in the record", file=sys.stderr)
+    return 1
+
+
+def cmd_orch_set_window_to(args):
+    loaded = load_orchestration(args)
+    if loaded is None:
+        return 1
+    path, text, match, obj = loaded
+    stamp = now_z() if args.timestamp == ORCH_NOW else args.timestamp
+    new = to_instant(stamp)
+    if new is None:
+        print(f"refusing: {stamp!r} is not an ISO 8601 instant", file=sys.stderr)
+        return 1
+    window = obj.setdefault("session_window", {"from": None, "to": None})
+    frm = to_instant(window.get("from"))
+    if frm is not None and new <= frm:
+        print(f"refusing: {stamp} is not after session_window.from {window.get('from')}",
+              file=sys.stderr)
+        return 1
+    window["to"] = stamp
+    write_orchestration(path, text, match, obj)
+    print(f"session_window.to = {stamp}")
+    return 0
+
+
+def orchestration_main(argv):
+    """`manifest.py --orchestration <slug> get|add-feature|set-feature|set-window-to`: the
+    orchestration record's fence, a different file from a feature manifest, so a scope of
+    its own and the existing subcommands untouched."""
+    parser = argparse.ArgumentParser(prog="manifest.py --orchestration")
+    parser.add_argument("--orchestration", dest="slug", required=True, metavar="SLUG")
+    sub = parser.add_subparsers(dest="command", required=True)
+    p_get = sub.add_parser("get", help="print one field of the record's fence (dotted path)")
+    p_get.add_argument("key")
+    p_get.set_defaults(func=cmd_orch_get)
+    p_add = sub.add_parser("add-feature", help="add (or replace) a features[] entry")
+    p_add.add_argument("pairs", nargs="+", metavar="key=value",
+                       help="repo=<r> slug=<s> [session=<id>] [branch=<b>] [pr=<url>] [report=<path>]")
+    p_add.set_defaults(func=cmd_orch_add_feature)
+    p_set = sub.add_parser("set-feature", help="set fields of a features[] entry")
+    p_set.add_argument("pairs", nargs="+", metavar="key=value",
+                       help="repo=<r> slug=<s> key=value…")
+    p_set.set_defaults(func=cmd_orch_set_feature)
+    p_to = sub.add_parser("set-window-to", help="stamp session_window.to")
+    p_to.add_argument("timestamp", metavar="INSTANT|now")
+    p_to.set_defaults(func=cmd_orch_set_window_to)
+    args = parser.parse_args(argv)
+    if not SLUG_RE.match(args.slug):
+        print(f"refusing: slug {args.slug!r} must match {SLUG_RE.pattern}", file=sys.stderr)
+        return 1
+    if args.command in ("add-feature", "set-feature"):
+        ident, problem = feature_pairs(args.pairs)
+        if problem:
+            print(f"refusing: {problem}", file=sys.stderr)
+            return 1
+        args.repo, args.slug_of_feature = ident.get("repo"), ident.get("slug")
+        if not args.repo or not args.slug_of_feature:
+            print("refusing: repo=<r> and slug=<s> are required", file=sys.stderr)
+            return 1
+        # The identity words are consumed here; the rest are the fields to write.
+        args.pairs = [p for p in args.pairs if p.partition("=")[0] not in ORCH_FEATURE_IDENTITY]
+    return args.func(args)
+
+
 def main():
+    # The scope is the FIRST word: `init --orchestration <slug>` is a feature manifest's flag.
+    if sys.argv[1:2] == ["--orchestration"]:
+        return orchestration_main(sys.argv[1:])
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     add_self_flag(parser)
     parser.add_argument("slug")
@@ -756,6 +967,12 @@ def main():
         metavar="GATE",
         help="the start's base gate: green, or skipped (--no-gate, or no gate script); "
         "omitted, the fence carries no gate key",
+    )
+    p_init.add_argument(
+        "--orchestration",
+        metavar="SLUG",
+        help="the orchestration record this feature belongs to; omitted, the fence "
+        "carries no orchestration key",
     )
     p_init.set_defaults(func=cmd_init)
 

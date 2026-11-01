@@ -26,6 +26,7 @@ Usage:
     python3 agentTooling/analysis/report.py <slug>
     python3 agentTooling/analysis/report.py --all
     python3 agentTooling/analysis/report.py <slug> --rounds-md
+    python3 agentTooling/analysis/report.py --orchestration <slug>
 """
 
 from __future__ import annotations
@@ -39,7 +40,9 @@ from pathlib import Path
 from typing import NamedTuple
 
 from pricing import HISTORY_FILENAME, RATES_VERIFIED, is_live, is_rates_stale, live_price_warning
-from roots import add_self_flag, artifact_root, collapse_feature_mentions, features_root
+from roots import (
+    add_self_flag, artifact_root, collapse_feature_mentions, features_root, orchestrations_root,
+)
 # `parse_manifest` is routing.py's: the one copy this module, capture_planning.py and
 # routing.py's pinned-session predicate all read a manifest through.
 from routing import load_records, parse_manifest, routers_of, split_pinned, started_slugs
@@ -3316,8 +3319,159 @@ def run_trend_mode(features_dir):
     render_routing_table(features_dir, sum(row["cost"].get("total") or 0.0 for row in rows))
 
 
+# Orchestration group report (`--orchestration <slug>`): the orchestrator's own transcript
+# (overhead, its planning.json) plus every feature it spawned (each feature's report.json),
+# read from the record at self/orchestrations/<slug>/README.md.
+ORCH_REPORT_MD = "report.md"
+ORCH_REPORT_JSON = "report.json"
+ORCH_PLANNING_JSON = "planning.json"
+ORCH_SHORT_ID_LENGTH = 7
+ORCH_NO_VERSION = "unknown"
+UNPRICED_NO_PATH = "no report path in the record"
+UNPRICED_PATH_MISSING = "report path does not exist: {path}"
+UNPRICED_NO_TOTAL = "no total in {path}"
+OVERHEAD_NOT_CAPTURED = "not captured"
+ORCH_NOTE_UNPRICED = (
+    "{count} feature(s) are unpriced and are NOT in the group total; it is a lower bound."
+)
+ORCH_NOTE_ALL_PRICED = "Every feature is priced; the group total is complete."
+
+
+def read_total_usd(path, keys):
+    """`(total, reason)` — the float at `keys` (a path of dict keys) in a JSON file, or
+    `(None, reason)` when the file is missing, unreadable or carries no number there. The
+    one loader both a feature's `report.json` (`cost.total`) and an orchestrator's
+    `planning.json` (`cost_usd.total`) are read through; it never recomputes a figure."""
+    try:
+        value = json.loads(Path(path).read_text())
+    except OSError:
+        return None, UNPRICED_PATH_MISSING.format(path=path)
+    except json.JSONDecodeError:
+        # The file is there; what it lacks is a readable total.
+        return None, UNPRICED_NO_TOTAL.format(path=path)
+    for key in keys:
+        value = value.get(key) if isinstance(value, dict) else None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None, UNPRICED_NO_TOTAL.format(path=path)
+    return float(value), None
+
+
+def compute_orchestration_report(record, folder, repo_root):
+    """All of the group report's arithmetic, as one dict `report.json` serialises — a
+    scorecard reads it without parsing the markdown.
+
+    `features[]` has one row per record entry: `repo`, `slug`, `pr`, `total_usd` and
+    `unpriced_reason` (exactly one of them None). A `report` path is resolved against
+    `repo_root`. `overhead` is the orchestrator's `planning.json` `cost_usd.total`.
+    `group_total_usd` is priced features plus overhead — unpriced features are NOT in it,
+    `unpriced_count` says how many — and `overhead_pct` is overhead over that total, None
+    when the total is zero."""
+    rows = []
+    for entry in record.get("features") or []:
+        report_path = entry.get("report")
+        total, reason = None, UNPRICED_NO_PATH
+        if report_path:
+            resolved = Path(repo_root) / report_path
+            if resolved.is_file():
+                total, reason = read_total_usd(resolved, ("cost", "total"))
+            else:
+                reason = UNPRICED_PATH_MISSING.format(path=report_path)
+        rows.append({
+            "repo": entry.get("repo"), "slug": entry.get("slug"), "pr": entry.get("pr"),
+            "total_usd": total, "unpriced_reason": None if total is not None else reason,
+        })
+    planning = Path(folder) / ORCH_PLANNING_JSON
+    overhead, overhead_reason = (None, OVERHEAD_NOT_CAPTURED)
+    if planning.is_file():
+        overhead, overhead_reason = read_total_usd(planning, ("cost_usd", "total"))
+    partial = False
+    if overhead is not None:
+        partial = bool(json.loads(planning.read_text()).get("cost_usd", {}).get("total_is_partial"))
+    features_total = sum(r["total_usd"] for r in rows if r["total_usd"] is not None)
+    group_total = features_total + (overhead or 0.0)
+    window = record.get("session_window") or {}
+    commit = record.get("agent_tooling")
+    return {
+        "slug": record.get("slug"),
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "session": record.get("session"),
+        "agent_tooling": commit,
+        "agent_tooling_short": commit[:ORCH_SHORT_ID_LENGTH] if commit else ORCH_NO_VERSION,
+        "session_window": {"from": window.get("from"), "to": window.get("to")},
+        "features": rows,
+        "overhead": {
+            "usd": overhead,
+            "unpriced_reason": None if overhead is not None else (overhead_reason or OVERHEAD_NOT_CAPTURED),
+            "total_is_partial": partial,
+        },
+        "features_total_usd": features_total,
+        "priced_count": sum(1 for r in rows if r["total_usd"] is not None),
+        "unpriced_count": sum(1 for r in rows if r["total_usd"] is None),
+        "group_total_usd": group_total,
+        "overhead_pct": (overhead / group_total * 100) if overhead is not None and group_total else None,
+    }
+
+
+def render_orchestration_md(data):
+    window = data["session_window"]
+    lines = [
+        f"# Orchestration report: {data['slug']}",
+        "",
+        f"Window: {window['from']} → {window['to'] or 'open'}  ",
+        f"agentTooling: `{data['agent_tooling_short']}`  ",
+        f"Orchestrator session: `{data['session']}`",
+        "",
+        "| Repo | Feature | PR | Total (USD) |",
+        "|---|---|---|---|",
+    ]
+    for row in data["features"]:
+        cost = f"${row['total_usd']:.4f}" if row["total_usd"] is not None else f"unpriced ({row['unpriced_reason']})"
+        lines.append(f"| {row['repo']} | {row['slug']} | {row['pr'] or '—'} | {cost} |")
+    if not data["features"]:
+        lines.append("| — | no features in the record | — | — |")
+    overhead = data["overhead"]
+    lines.append("")
+    if overhead["usd"] is not None:
+        partial = " (partial: some tokens had no rate)" if overhead["total_is_partial"] else ""
+        lines.append(f"Overhead (the orchestrator's own transcript): ${overhead['usd']:.4f}{partial}")
+    else:
+        lines.append(f"Overhead (the orchestrator's own transcript): unpriced: {overhead['unpriced_reason']}")
+    pct = f" — overhead is {data['overhead_pct']:.1f}% of it" if data["overhead_pct"] is not None else ""
+    lines.append("")
+    lines.append(
+        f"**Group total: ${data['group_total_usd']:.4f}** "
+        f"(priced features ${data['features_total_usd']:.4f} + overhead){pct}"
+    )
+    lines.append("")
+    lines.append(
+        ORCH_NOTE_UNPRICED.format(count=data["unpriced_count"])
+        if data["unpriced_count"] else ORCH_NOTE_ALL_PRICED
+    )
+    lines.append("")
+    lines.append(f"Generated {data['generated_at']}")
+    return "\n".join(lines) + "\n"
+
+
+def run_orchestration(slug):
+    folder = orchestrations_root() / slug
+    readme = folder / "README.md"
+    if not readme.is_file():
+        print(f"no orchestration record at {readme}", file=sys.stderr)
+        sys.exit(1)
+    data = compute_orchestration_report(parse_manifest(readme), folder, artifact_root(True))
+    write_record(folder / ORCH_REPORT_JSON, json.dumps(data, indent=2) + "\n")
+    write_record(folder / ORCH_REPORT_MD, render_orchestration_md(data))
+    print(render_orchestration_md(data))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--orchestration",
+        metavar="SLUG",
+        help="write the group report of the orchestration record "
+        "self/orchestrations/<slug>/ (report.md and report.json)",
+    )
     parser.add_argument(
         "slug",
         nargs="?",
@@ -3339,6 +3493,10 @@ def main():
     )
     add_self_flag(parser)
     args = parser.parse_args()
+
+    if args.orchestration:
+        run_orchestration(args.orchestration)
+        return
 
     if args.rounds_md:
         if args.all:

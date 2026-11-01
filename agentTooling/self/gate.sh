@@ -250,6 +250,8 @@ shell_scripts=(
   stamp-timing.sh
   feature-start.sh
   feature-capture.sh
+  orchestration-start.sh
+  orchestration-capture.sh
   feature-close.sh
   forge.sh
   env-profile.sh
@@ -272,6 +274,7 @@ shell_scripts=(
   self/tests/claims-ledger.sh
   self/tests/session-share.sh
   self/tests/session-claims.sh
+  self/tests/harness-claim-root.sh
   self/tests/manifest-window.sh
   self/tests/manifest-pin-subagent.sh
   self/tests/manifest-unpin.sh
@@ -282,6 +285,7 @@ shell_scripts=(
   self/tests/batch-sigpipe.sh
   self/tests/report-footnotes.sh
   self/tests/report-rounds.sh
+  self/tests/orchestration-records.sh
   self/tests/report-carried-streams.sh
   self/tests/feature-lifecycle.sh
   self/tests/verdict-readers.sh
@@ -300,6 +304,7 @@ shell_scripts=(
   self/tests/audit-fixes.sh
   self/tests/template-versions.sh
   self/tests/template-version-bump.sh
+  self/tests/orchestrator-brief.sh
   self/tests/claimant-case.sh
   self/tests/open-session.sh
   self/tests/allow-repo-commands.sh
@@ -314,6 +319,7 @@ shell_scripts=(
   self/tests/rates-history.sh
   self/tests/env-profile.sh
   self/tests/cloud-start.sh
+  self/tests/start-tree-guard.sh
   self/tests/cloud-setup-wait.sh
   self/tests/session-start.sh
   self/tests/attach-branch.sh
@@ -321,6 +327,9 @@ shell_scripts=(
   self/tests/review-base.sh
   self/tests/pr-body-refresh.sh
   self/tests/review-report-untrack.sh
+  harness/*.sh
+  harness/methods/*/run.sh
+  harness/tests/*.sh
   run-escalation-plan.sh
   templates/plans/gate.sh
   templates/plans/pr.sh
@@ -365,6 +374,7 @@ record "subagent capture self-test" bash self/tests/subagent-capture.sh
 record "claims ledger self-test" bash self/tests/claims-ledger.sh
 record "session share self-test" bash self/tests/session-share.sh
 record "session claims self-test" bash self/tests/session-claims.sh
+record "harness claim root self-test" bash self/tests/harness-claim-root.sh
 record "manifest window self-test" bash self/tests/manifest-window.sh
 record "manifest pin-subagent self-test" bash self/tests/manifest-pin-subagent.sh
 record "manifest unpin self-test" bash self/tests/manifest-unpin.sh
@@ -375,6 +385,7 @@ record "usage limit kill self-test" bash self/tests/usage-limit-kill.sh
 record "batch sigpipe self-test" bash self/tests/batch-sigpipe.sh
 record "report footnotes self-test" bash self/tests/report-footnotes.sh
 record "report rounds self-test" bash self/tests/report-rounds.sh
+record "orchestration records self-test" bash self/tests/orchestration-records.sh
 record "report carried streams self-test" bash self/tests/report-carried-streams.sh
 record "feature lifecycle self-test" bash self/tests/feature-lifecycle.sh
 # The round readers the close and the batch branch on, called directly: the first line
@@ -412,6 +423,9 @@ record "audit fixes self-test" bash self/tests/audit-fixes.sh
 # first over edited copies, so the check is seen to fail, and a stale consumer to DRIFT.
 record "template versions self-test" bash self/tests/template-versions.sh
 record "template version bump self-test" bash self/tests/template-version-bump.sh
+# The orchestrator brief template names the branch outright and never calls it assigned
+# (self/features/orchestrator-brief/).
+record "orchestrator brief self-test" bash self/tests/orchestrator-brief.sh
 # One feature named in two repo-name spellings is one claimant: the frozen-record refresh,
 # the report's union, the brief-header check and --for compare the repo half
 # case-insensitively, and an unchanged corpus is still written nothing
@@ -464,6 +478,9 @@ record "rates history self-test" bash self/tests/rates-history.sh
 # record whose window opens at its own first instant (self/features/execution-profiles/).
 record "env profile self-test" bash self/tests/env-profile.sh
 record "cloud start self-test" bash self/tests/cloud-start.sh
+# The start commit carries the feature directory only, and a tree that changes while the
+# start's hook and gate run is refused (self/features/start-tree-guard/).
+record "start tree guard self-test" bash self/tests/start-tree-guard.sh
 # A consuming repo's cloud start waits for the setup session-start.sh backgrounded
 # (templates/plans/cloud-setup.sh --wait) before its hook and its base gate
 # (self/features/hand-start-friction/).
@@ -494,6 +511,18 @@ record "pr body refresh self-test" bash self/tests/pr-body-refresh.sh
 # features/<slug>/review-report.md (self/features/review-report-never-tracked/).
 record "review report untrack self-test" bash self/tests/review-report-untrack.sh
 
+echo "=== gate: experiment harness ==="
+# harness/ is most of what a harness feature changes, and was covered by nothing here until
+# self/features/harness-cloud-pins (round 2 ruling): its scripts are syntax-checked above
+# and py_compiled below, and its three tests run here. All are offline and need only jq, git
+# and python3. The scorecard tests are seconds; the smoke test drives every stage of a run
+# against a throwaway repo with a fake claude and a fake forge, and takes about 50 seconds.
+record "harness scorecard arms self-test" bash harness/tests/scorecard-arms.sh
+# The program section: kind "program" ledger rows get their own tables and comparison line,
+# and a ledger with none renders byte for byte as before (harness/README.md → "File shapes").
+record "harness scorecard programs self-test" bash harness/tests/scorecard-programs.sh
+record "harness smoke test" bash harness/tests/smoke.sh
+
 echo "=== gate: profile confinement ==="
 # Only the detector (hooks/env_profile.py and env-profile.sh), the adapters and their tests
 # may spell the two profile variables (the script names them); every lifecycle script asks
@@ -507,6 +536,7 @@ echo "=== gate: python syntax ==="
 # (`from pricing import …`), which only resolve when a script is run directly and
 # python puts its own directory on sys.path.
 record "py_compile analysis" python3 -m py_compile analysis/*.py
+record "py_compile harness" python3 -m py_compile harness/scorecard.py
 # The hook keeps a .sh name so its settings.json entry reads as a hook script; it is
 # Python, and this is the one place its syntax is checked without running it.
 record "py_compile hooks" python3 -m py_compile hooks/policy.py hooks/env_profile.py hooks/wire-settings.py hooks/allow-repo-commands.sh

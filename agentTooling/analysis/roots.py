@@ -112,6 +112,13 @@ def features_root(self_mode):
     return AGENT_TOOLING_DIR.parent / "plans" / "features"
 
 
+def orchestrations_root():
+    """Where orchestration records live: agentTooling's own `self/orchestrations/`, in
+    every mode — an orchestrator's record is committed in this repository whatever repos
+    its features were built in, so there is no `--self` to choose by."""
+    return AGENT_TOOLING_DIR / "self" / "orchestrations"
+
+
 def all_features_roots():
     """Both corpora, regardless of mode.
 

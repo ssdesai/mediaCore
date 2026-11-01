@@ -1,0 +1,51 @@
+{
+  "slug": "agenttooling-roles",
+  "generated_at": "2026-10-30T21:41:54Z",
+  "session": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+  "agent_tooling": "c5cf89425ce5e44d147dd40b3cfd82e698a80f8f",
+  "agent_tooling_short": "c5cf894",
+  "session_window": {
+    "from": "2026-10-30T14:34:46Z",
+    "to": "2026-10-30T21:41:50Z"
+  },
+  "features": [
+    {
+      "repo": "agentTooling",
+      "slug": "claude-md-chain",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/104",
+      "total_usd": 17.59271538,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "harness-cloud-pins",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/105",
+      "total_usd": 32.5388872,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "orchestration-records",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/106",
+      "total_usd": 5.2587011,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "one-feature-per-branch",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/107",
+      "total_usd": 4.507155200000001,
+      "unpriced_reason": null
+    }
+  ],
+  "overhead": {
+    "usd": 21.940069450000003,
+    "unpriced_reason": null,
+    "total_is_partial": false
+  },
+  "features_total_usd": 59.89745888,
+  "priced_count": 4,
+  "unpriced_count": 0,
+  "group_total_usd": 81.83752833,
+  "overhead_pct": 26.809301182129193
+}

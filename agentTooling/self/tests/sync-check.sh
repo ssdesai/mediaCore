@@ -13,7 +13,7 @@ set -uo pipefail
 #
 # Fixture A — a consuming repo at $TMP/consumer, git initted with one commit, holding
 # copies of sync-plans.sh, update.sh, templates/ and hooks/ under agentTooling/. Asserts
-# the --check contract: a fresh seed reports the five generated stubs, the three
+# the --check contract: a fresh seed reports the six generated stubs, the three
 # repo-owned scripts in-sync (template-version 3, 7, 2 in that order — gate.sh 3 and
 # worktree-setup.sh 2 source plans/environment.sh, and the gate resumes, since
 # execution-profiles), environment.sh in-sync at 1 and cloud-setup.sh at 3 (the first not
@@ -135,7 +135,7 @@ git -C "$CONSUMER" add -A && git -C "$CONSUMER" commit -q -m "init"
 # ── 1. fresh seed: everything in-sync except the unfilled skeleton ─────────────
 out="$("$S" --check 2>&1)"; rc=$?
 check "1a. --check rc 1 on a fresh seed (got $rc)" '[[ $rc -eq 1 ]]'
-for rel in README.md interactive/README.md features/README.md features/TEMPLATE.md .gitignore; do
+for rel in README.md interactive/README.md features/README.md features/TEMPLATE.md .gitignore ORCHESTRATOR_BRIEF.md; do
   check "1b. in-sync stub $rel" "grep -qF \"  in-sync    plans/$rel\" <<<\"\$out\""
 done
 check "1c. gate.sh in-sync (template-version 3)" 'grep -qF "  in-sync    plans/gate.sh (template-version 3)" <<<"$out"'

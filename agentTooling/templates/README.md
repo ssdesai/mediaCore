@@ -10,6 +10,7 @@ plans/interactive/README.md  generated
 plans/features/README.md     generated
 plans/features/TEMPLATE.md   generated
 plans/.gitignore             generated
+plans/ORCHESTRATOR_BRIEF.md  generated — the template an orchestrator fills in to brief one implementer session
 plans/PROJECT_FACTS.md       repo-owned — seeded once from the skeleton, never overwritten
 plans/BACKLOG.md             repo-owned — seeded once, never overwritten
 plans/gate.sh                repo-owned — seeded once, never overwritten
@@ -23,11 +24,19 @@ plans/cloud-setup.sh         repo-owned — seeded once, never overwritten
 `plans/TEMPLATE_VERSIONS` is not synced anywhere: it is the version-and-hash table for
 the six repo-owned scripts, described under `template-version` below.
 
-The five stubs are repo-agnostic on purpose: each describes its folder and points at
-`agentTooling/RUNNER.md` for the execution model, so that model is documented once
-rather than restated (and drifted) per repo. That is also why overwriting them is
-safe — they hold nothing a repo could have customized — and each one's header says so,
-naming the repo-owned `PROJECT_FACTS.md` as where a repo's own entries for its folder go.
+`ORCHESTRATOR_BRIEF.md` is generated, not seeded: an orchestrator session **copies** it and
+fills the copy in, so nobody edits it in `plans/`, and a change here reaches every repo on
+its next pull (`../LIFECYCLE.md` → "Orchestrator and implementer sessions"). It carries no
+`template-version` line and is not in `TEMPLATE_VERSIONS`, which is only for the
+repo-owned scripts; `../self/tests/orchestrator-brief.sh` holds its contents.
+
+The six stubs are repo-agnostic on purpose, which is why overwriting them is safe — they
+hold nothing a repo could have customized. The five folder stubs each describe their
+folder and point at `agentTooling/RUNNER.md` for the execution model, so that model is
+documented once rather than restated (and drifted) per repo, and each one's header says
+so, naming the repo-owned `PROJECT_FACTS.md` as where a repo's own entries for its folder
+go. `ORCHESTRATOR_BRIEF.md` describes no folder; its header says it is overwritten every
+pull and is copied, never edited.
 A stub a repo edited anyway is caught rather than silently overwritten: `../sync-plans.sh`
 matches each stub that differs from its template against every version of that template
 the repo has committed (`stub_origin`, `../self/features/generated-readme-repo-owned/NOTES.md`).
