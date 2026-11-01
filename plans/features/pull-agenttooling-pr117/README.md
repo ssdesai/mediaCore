@@ -35,7 +35,7 @@ fixtures, so nothing in it changes because of that rule.
   "base": "main",
   "profile": "cloud",
   "gate": "green",
-  "session_window": {"from": "2026-11-01T13:54:32.183Z", "to": null},
+  "session_window": {"from": "2026-11-01T13:54:32.183Z", "to": "2026-11-01T13:57:44Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": ["afff3b32-41c7-5ccb-8773-5388fec51b09"],
