@@ -46,6 +46,7 @@ Delete this section when the batch has a single level.
   "base": "<base-branch>",
   "profile": "local",
   "gate": "green",
+  "orchestration": "<orchestration-slug>",
   "session_window": {"from": "<YYYY-MM-DDTHH:MM:SSZ>", "to": "<YYYY-MM-DDTHH:MM:SSZ>"},
   "exclude_sessions": ["<session-id>"],
   "exclude_subagents": ["<agent-id>"],
@@ -159,6 +160,11 @@ go wrong quietly:
   still read, so a record captured before the yield rule recaptures as it did; take an
   entry out with `python3 agentTooling/analysis/manifest.py <slug> unexclude-subagent
   <agent-id>`, never by editing the fence.
+- **`orchestration`** — optional: the slug of the orchestration record (a group of
+  features an orchestrator session spawned, `self/orchestrations/<slug>/`) this feature
+  belongs to. `feature-start.sh --orchestration <slug>` writes it, and `manifest.py <slug>
+  get orchestration` reads it. Nothing in the cost capture reads it; the group report
+  (`analysis/report.py --orchestration <slug>`) is what joins the two.
 - **`session_window.to`** — `null` means "still in flight", and open is the right value
   until the feature's first capture. `agentTooling/feature-capture.sh` sets it on the
   branch, from evidence: one second past the last instant of the sessions this feature's
