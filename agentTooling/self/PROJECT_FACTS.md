@@ -27,7 +27,7 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
   `AGENT_DIRECT.md`, `ORCHESTRATION.md`, `RUNNER.md`, `README.md`. `EXPERIMENTS.md` lives
   with its tool, under `harness/`.
 - `templates/` — the stubs `sync-plans.sh` writes into a *consuming* repo's `plans/`.
-  Never edited in the consuming repo. Five are generated and overwritten every sync;
+  Never edited in the consuming repo. Six are generated and overwritten every sync (`ORCHESTRATOR_BRIEF.md` among them);
   eight are seeded once and then repo-owned (`PROJECT_FACTS.md`, `BACKLOG.md`, `gate.sh`,
   `pr.sh`, `worktree-setup.sh`, `open-session.sh`, and the environment adapters
   `environment.sh` and `cloud-setup.sh`). Nothing repo-specific ever goes in here.
@@ -128,17 +128,39 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
   `… unpin-subagent <agent-id>` and `… unexclude-subagent <agent-id>` (the legacy
   `exclude_subagents` has no writer).
 - `--self` is always the **first** argument, before any slug.
+- **Who builds (owner's rule, 2026-10-30; `../LIFECYCLE.md` step 1).** The coordinator's
+  context is for deciding and briefing; building, testing, debugging and drafting go to the
+  cheapest model that can do them, and the method is chosen by that, not by diff size.
+  Default `--method direct` on Sonnet with the session as coordinator; `--method hand` only
+  when the brief would be longer than the diff and the diff is under about fifty lines.
+  Sonnet for implementation, test writing, debugging and doc drafting from rulings; Haiku
+  for mechanical edits with no judgement (renames, field-list updates, applying a review's
+  "fix" lines); Opus only for the review pass the harness already runs and for authoring
+  plans when a feature genuinely needs the plans method. Name the model in every
+  delegation. Debugging is always delegated — a failing test or gate goes to a delegate
+  with the failure output, never re-run by the coordinator to inspect it. The coordinator's
+  written output per feature is the manifest's opening paragraph, the rulings in
+  `NOTES.md`, the delegate briefs and the final report; consumer-side work stays in child
+  sessions, on Sonnet unless the brief says why not. `harness/EXPERIMENTS.md`'s "plans wins
+  above about a thousand lines" is about Opus-versus-Opus cost, not the coordinator's
+  context.
+  On the cloud profile the rule runs per session: an orchestrator briefs and an implementer
+  builds one feature on one branch (`../LIFECYCLE.md` → "Orchestrator and implementer
+  sessions"), briefed from `../templates/plans/ORCHESTRATOR_BRIEF.md`; inside the
+  implementer, Sonnet builds and Opus reviews.
 
 ## Tests
 
 **There is no test *runner* here** — no pytest, no framework, nothing to register a test
 with. What `self/gate.sh` runs is:
 
-- `bash -n <script>` parses every shell script.
+- `bash -n <script>` parses every shell script, `harness/*.sh`, `harness/methods/*/run.sh`
+  and `harness/tests/*.sh` included.
 - `shellcheck` if it happens to be installed; it is not a dependency and `self/gate.sh`
   skips it when absent.
-- `python3 -m py_compile analysis/*.py`, and `hooks/{policy.py,env_profile.py,wire-settings.py,
-  allow-repo-commands.sh}` — the hook keeps a `.sh` name and is Python.
+- `python3 -m py_compile analysis/*.py`, `harness/scorecard.py`, and `hooks/{policy.py,
+  env_profile.py,wire-settings.py,allow-repo-commands.sh}` — the hook keeps a `.sh` name
+  and is Python.
 - `python3 -B hooks/wire-settings.py --self --repo <root> --check` — the tracked,
   generated `.claude/settings.json` exists and is byte for byte what the constants
   generate; a failure names the command that regenerates it (in a vendored copy, the fix
@@ -147,6 +169,11 @@ with. What `self/gate.sh` runs is:
   non-zero on a failed assertion. They stand up a throwaway checkout in a `mktemp -d`
   with a stub `claude` and a stub gate, so they assert runner *behaviour* without calling
   a model or the network. See `self/tests/README.md`.
+- `harness/tests/scorecard-arms.sh`, `harness/tests/scorecard-programs.sh` and
+  `harness/tests/smoke.sh` — the experiment harness's own tests, recorded the same way
+  (offline; they need `jq`, `git` and `python3`). The
+  smoke test drives a whole run against a throwaway repo and takes about 50 seconds.
+  See `harness/tests/README.md`.
 - Everything else is an interactive plan under `self/features/<slug>/interactive/`.
 
 **A new runner contract belongs in `self/tests/`, not in a verify brief.** A check

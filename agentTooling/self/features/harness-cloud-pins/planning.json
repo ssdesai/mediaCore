@@ -1,0 +1,215 @@
+{
+  "slug": "harness-cloud-pins",
+  "captured_at": "2026-10-30T21:41:21.672314+00:00",
+  "manifest_branches": [
+    "claude/brave-planck-no5foj"
+  ],
+  "manifest_subagents": [
+    "a02cb78bdb73b4fa6",
+    "a8250dea111b28fc2",
+    "aa0d2c2b028b6e81e"
+  ],
+  "sessions": [
+    {
+      "session_id": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+      "git_branch": "HEAD",
+      "selected_by": "pinned",
+      "cwd": "/home/user",
+      "date": "2026-10-30",
+      "started_at": "2026-10-30T01:02:29.906000+00:00",
+      "ended_at": "2026-10-30T21:40:39.972000+00:00",
+      "duration_s": 4888,
+      "also_claimed_by": [
+        "agentTooling/claude-md-chain"
+      ],
+      "share_basis": [
+        {
+          "feature": "agentTooling/harness-cloud-pins",
+          "from": "2026-10-30T13:13:18Z",
+          "to": "2026-10-30T14:34:46Z",
+          "source": "self"
+        },
+        {
+          "feature": "agentTooling/claude-md-chain",
+          "from": "2026-10-30T01:02:29.906000Z",
+          "to": "2026-10-30T02:14:32Z",
+          "source": "manifest"
+        }
+      ],
+      "session_cost_usd": 69.34370325,
+      "session_duration_s": 74290,
+      "unclaimed_usd": 31.16838975,
+      "unclaimed_duration_s": 65079
+    }
+  ],
+  "subagents": [
+    {
+      "agent_id": "a02cb78bdb73b4fa6",
+      "parent_session_id": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+      "date": "2026-10-30",
+      "started_at": "2026-10-30T13:42:33.323000+00:00",
+      "ended_at": "2026-10-30T13:54:21.320000+00:00",
+      "duration_s": 707,
+      "selected_by": "pinned",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a8250dea111b28fc2",
+      "parent_session_id": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+      "date": "2026-10-30",
+      "started_at": "2026-10-30T13:58:58.520000+00:00",
+      "ended_at": "2026-10-30T14:14:21.242000+00:00",
+      "duration_s": 922,
+      "selected_by": "pinned",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "aa0d2c2b028b6e81e",
+      "parent_session_id": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+      "date": "2026-10-30",
+      "started_at": "2026-10-30T14:18:28.769000+00:00",
+      "ended_at": "2026-10-30T14:53:40.403000+00:00",
+      "duration_s": 2111,
+      "selected_by": "pinned",
+      "cross_repo": false
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "064a717d-34b6-4c5b-bc4c-23f8ccc0d3b3",
+    "190944df-1973-4c66-89e3-303697bc0368",
+    "20ed1213-db64-4688-aea7-bb7a517961a2",
+    "b1e851fa-c147-4520-bbd2-a51cef56f115"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+      "agent_id": null,
+      "model": "claude-fable-5-1",
+      "is_sidechain": false,
+      "date": "2026-10-30",
+      "duration_s": 74290,
+      "tokens": {
+        "input": 2164,
+        "output": 146289,
+        "cache_read": 24720838,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 405615
+      },
+      "cost_usd": 21.6285995,
+      "rates_applied": {
+        "model": "claude-fable-5-1",
+        "input": 10,
+        "output": 50,
+        "cache_read": 0.25,
+        "cache_creation_5m": 12.5,
+        "cache_creation_1h": 20,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+      "agent_id": "a02cb78bdb73b4fa6",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-30",
+      "duration_s": 707,
+      "tokens": {
+        "input": 302,
+        "output": 32069,
+        "cache_read": 22695314,
+        "cache_creation_5m": 173456,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 3.0244654,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+      "agent_id": "a8250dea111b28fc2",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-30",
+      "duration_s": 922,
+      "tokens": {
+        "input": 108,
+        "output": 32196,
+        "cache_read": 7963196,
+        "cache_creation_5m": 321406,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 1.9220106000000001,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+      "agent_id": "aa0d2c2b028b6e81e",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-30",
+      "duration_s": 2111,
+      "tokens": {
+        "input": 126,
+        "output": 26819,
+        "cache_read": 8806673,
+        "cache_creation_5m": 515000,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 2.4366092999999998,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 21.6285995,
+    "sidechain": 7.383085299999999,
+    "subagents": 7.383085299999999,
+    "total": 29.011684799999998,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 4888,
+    "subagents": 3740,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "session 2483ee85-6358-53d1-b3fe-c7f1f895ab08 may span the window boundary (window 2026-10-30T13:13:18+00:00..2026-10-30T14:34:46+00:00 UTC, session ends 2026-10-30T21:40:39.972000+00:00); $20.1971 and 25553s of it fall at or after `to`, not counted here (the split gives each response to the claimants whose window still covers it, and only what is past every claimant's `to` to nobody, as the unclaimed remainder)",
+    "session 2483ee85-6358-53d1-b3fe-c7f1f895ab08 has transcripts in 2 project directories; priced /root/.claude/projects/-home-user/2483ee85-6358-53d1-b3fe-c7f1f895ab08.jsonl",
+    "session 2483ee85-6358-53d1-b3fe-c7f1f895ab08 is shared by 2 claimant(s); this feature's share is $21.6286 of the session's own $69.3437, the rest going to agentTooling/claude-md-chain",
+    "session 2483ee85-6358-53d1-b3fe-c7f1f895ab08 has $31.1684 (65080s) unclaimed by any feature \u2014 widen a claimant's `to` bound, or pin the session to the feature it belongs to, to have it counted"
+  ]
+}

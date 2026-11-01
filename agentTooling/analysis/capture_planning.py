@@ -361,14 +361,28 @@ def legacy_worktree_path(primary, slug):
     return f"{primary}-{slug}"
 
 
-def claim_roots(primary, slug):
-    """`(roots, fences)` for `cwd_under_any`, for feature `slug`. The roots are where a
-    session it may claim was launched: the primary checkout, this feature's worktree and
-    its legacy sibling. The fence is the one directory under a root that is NOT
-    claimable, `<primary>/.worktrees`, which holds every other feature's worktree — under
-    the primary, so the primary root alone would hand every feature's sessions to every
-    other feature."""
-    roots = (primary, feature_worktree_path(primary, slug), legacy_worktree_path(primary, slug))
+def harness_tree_path(primary, branch):
+    """The experiment harness's own tree for `branch`, `<primary>-<branch>` (camelCase, as
+    `harness_worktree_path` in harness/lib.sh builds it). Every `claude` session the
+    harness runs for a feature — the implementer, the review, the rework — has it as its
+    cwd, and the review and rework manifests carry the same feature branch."""
+    return f"{primary}-{branch}"
+
+
+def claim_roots(primary, slug, branches=()):
+    """`(roots, fences)` for `cwd_under_any`, for feature `slug` whose manifest names
+    `branches`. The roots are where a session it may claim was launched: the primary
+    checkout, this feature's worktree, its legacy sibling and the harness's tree for each
+    of its branches (`harness_tree_path`; none when `branches` is empty). The fence is the
+    one directory under a root that is NOT claimable, `<primary>/.worktrees`, which holds
+    every other feature's worktree — under the primary, so the primary root alone would
+    hand every feature's sessions to every other feature."""
+    roots = (
+        primary,
+        feature_worktree_path(primary, slug),
+        legacy_worktree_path(primary, slug),
+        *(harness_tree_path(primary, branch) for branch in sorted(set(branches))),
+    )
     fences = (f"{primary}/{WORKTREES_DIR_NAME}",)
     return roots, fences
 
@@ -408,21 +422,56 @@ def cwd_under_any(lines, roots, fences=()):
     return False
 
 
-def find_session_elsewhere(session_id, skip_dirs):
-    """The transcript of a pinned *session* under any project directory but the ones
-    already scanned — the planning session that began on `main` in some other checkout
-    before the feature branch existed. A session id is unambiguous, so the pin is
-    honoured wherever the file is."""
+def session_transcript_copies(session_id):
+    """Every `<session id>.jsonl` under every project directory, sorted. Claude Code files
+    a session's transcript under the directory derived from its working directory; when
+    that directory moves a second file with the same id starts under the other project
+    directory, holding the whole session from its first line."""
     projects_root = Path.home() / ".claude" / "projects"
     if not projects_root.exists():
+        return []
+    return [
+        candidate
+        for candidate in (
+            project_dir / f"{session_id}.jsonl" for project_dir in sorted(projects_root.iterdir())
+        )
+        if candidate.parent.is_dir() and candidate.exists()
+    ]
+
+
+def last_instant(path):
+    """The latest timestamp in a transcript, or None when it has none."""
+    try:
+        lines = load_transcript_lines(path)
+    except OSError:
         return None
-    for project_dir in sorted(projects_root.iterdir()):
-        if not project_dir.is_dir() or project_dir in skip_dirs:
-            continue
-        candidate = project_dir / f"{session_id}.jsonl"
-        if candidate.exists():
-            return candidate
-    return None
+    moments = [m for m in (to_utc(line.get("timestamp")) for line in lines) if m is not None]
+    return max(moments) if moments else None
+
+
+def best_session_copy(session_id, skip_dirs=()):
+    """`(path, copies)`: the copy of a session whose latest timestamp is latest, and every
+    copy outside `skip_dirs`. The later copy is a superset of the earlier, which stops
+    growing, so pricing it prices the session once. `(None, [])` when there is none."""
+    copies = [p for p in session_transcript_copies(session_id) if p.parent not in skip_dirs]
+    if not copies:
+        return None, []
+    # The common case, one copy, is returned unread: the walk has its lines already.
+    if len(copies) == 1:
+        return copies[0], copies
+    dated = [(moment, str(p), p) for p in copies for moment in [last_instant(p)] if moment is not None]
+    # A tie goes to the later path in sort order, so a capture is deterministic; copies
+    # with no timestamp at all lose to any that has one.
+    return (max(dated)[2] if dated else copies[0]), copies
+
+
+def warn_multiple_copies(warnings, session_id, copies, priced):
+    """The warning for a session filed under more than one project directory."""
+    if len(copies) > 1:
+        warnings.append(
+            f"session {session_id} has transcripts in {len(copies)} project directories; "
+            f"priced {priced}"
+        )
 
 
 def find_pinned_elsewhere(agent_id, skip_dirs):
@@ -2544,9 +2593,13 @@ def last_branch_instant(slug, features_dir, sessions_dir, ignore_to=False):
 
     # The same claimable directories the capture uses (`claim_roots`), so a session in
     # another feature's worktree can no more bound this window than be priced in it.
-    claimable_roots, claim_fences = claim_roots(str(sessions_dir), slug)
+    claimable_roots, claim_fences = claim_roots(str(sessions_dir), slug, branches)
 
     latest = None
+    # Same dedupe as `capture_feature`'s walk: a session id filed under several project
+    # directories is read once, from the copy that ends latest, with its subagents looked
+    # for beside every copy.
+    walked_session_ids = set()
     for transcript_dir in find_transcript_dirs(sessions_dir):
         for jsonl_path in sorted(transcript_dir.glob("*.jsonl")):
             lines = load_transcript_lines(jsonl_path)
@@ -2557,6 +2610,15 @@ def last_branch_instant(slug, features_dir, sessions_dir, ignore_to=False):
             )
             if session_id is None or session_id in excluded_ids:
                 continue
+            if session_id in walked_session_ids:
+                continue
+            walked_session_ids.add(session_id)
+            best_copy, session_copies = best_session_copy(session_id)
+            if best_copy is not None and best_copy != jsonl_path:
+                best_lines = load_transcript_lines(best_copy)
+                if best_lines:
+                    lines = best_lines
+            copy_dirs = {copy.parent for copy in session_copies} | {transcript_dir}
             branches_seen = {line.get("gitBranch") for line in lines if line.get("gitBranch")}
             if not (branches_seen & branches):
                 continue
@@ -2574,7 +2636,10 @@ def last_branch_instant(slug, features_dir, sessions_dir, ignore_to=False):
             # A delegate's transcript is part of the work: an implementer that ran for
             # four hours under a coordinator whose own last line came first would
             # otherwise bound the feature at the coordinator's instant.
-            for agent_path in subagent_transcript_paths(transcript_dir, session_id):
+            for agent_path in (
+                path for copy_dir in sorted(copy_dirs)
+                for path in subagent_transcript_paths(copy_dir, session_id)
+            ):
                 agent_lines = load_transcript_lines(agent_path)
                 if not agent_lines:
                     continue
@@ -2753,6 +2818,120 @@ def outside_window_cost(lines, to, as_of):
             continue
         cost += priced
     return cost, partial
+
+
+def latest_instant(lines):
+    """The latest parseable timestamp in a transcript's lines, or None."""
+    moments = [m for m in (to_utc(line.get("timestamp")) for line in lines) if m is not None]
+    return max(moments) if moments else None
+
+
+def price_session_in_window(session_id, window, projects_root=None):
+    """One session id, priced inside a window — what the orchestration capture
+    (`orchestration_capture.py`) records, and the one pricing path for a session whose
+    claim is a bare id and a window rather than a branch.
+
+    Every `*/<session_id>.jsonl` under `projects_root` (default `~/.claude/projects`) is a
+    candidate, whatever project directory it is filed under, since a restarted container
+    files the same id again; the one whose latest timestamp is latest is priced, and its
+    siblings are named in `warnings`. A response counts when its FIRST line's instant is
+    inside `window` (`in_window`: half-open, `to` None meaning open) — the dating rule
+    `outside_window_cost` and the share walk use. The session's own subagents
+    (`<project>/<session_id>/subagents/agent-*.jsonl`) are priced the same way, as
+    sidechain cost, and dated by their own first in-window response.
+
+    Returns a dict shaped like `planning.json`'s fields — `sessions[]`, `subagents[]`,
+    `priced[]` (rows carry `session_id`, `agent_id`, `model`, `is_sidechain`, `date`,
+    `tokens`, `cost_usd`, `rates_applied`), `cost_usd{main,sidechain,subagents,total,
+    total_is_partial}`, `duration_s{sessions,subagents,entries_without_duration}`,
+    `warnings[]` — or None when no transcript carries the id.
+    """
+    root = Path(projects_root) if projects_root is not None else Path.home() / ".claude" / "projects"
+    candidates = sorted(root.glob("*/" + session_id + ".jsonl")) if root.is_dir() else []
+    if not candidates:
+        return None
+    loaded = [(path, load_transcript_lines(path)) for path in candidates]
+    path, lines = max(loaded, key=lambda item: latest_instant(item[1]) or NO_EVIDENCE_INSTANT)
+    warnings = []
+    warn_multiple_copies(warnings, session_id, candidates, path)
+
+    def price(entry_lines, pinned_sidechain):
+        tokens, first, last = {}, None, None
+        for model, usage, is_sidechain, moment in iter_billable_messages_at(entry_lines):
+            if not in_window(moment, window):
+                continue
+            first = moment if first is None or moment < first else first
+            last = moment if last is None or moment > last else last
+            add_usage(tokens, (model, True if pinned_sidechain else is_sidechain), usage)
+        return tokens, first, last
+
+    rows = []
+    partial = False
+
+    def rows_of(tokens, first, agent_id):
+        nonlocal partial
+        as_of = first.date().isoformat()
+        for (model, is_sidechain), bucket in sorted(tokens.items(), key=lambda kv: (kv[0][0], kv[0][1])):
+            cost, rates_applied = compute_cost(model, bucket, as_of=as_of)
+            if cost is None:
+                warnings.append(f"no rate for model {model!r} ({agent_id or session_id}); excluded from cost total")
+                partial = True
+            rows.append({
+                "session_id": session_id, "agent_id": agent_id, "model": model,
+                "is_sidechain": is_sidechain, "date": as_of, "tokens": dict(bucket),
+                "cost_usd": cost, "rates_applied": rates_applied,
+            })
+
+    tokens, first, last = price(lines, False)
+    started = min((m for m in (to_utc(line.get("timestamp")) for line in lines) if m), default=None)
+    ended = latest_instant(lines)
+    first_line = lines[0] if lines else {}
+    session = {
+        "session_id": session_id,
+        "git_branch": first_line.get("gitBranch"),
+        "selected_by": "orchestration",
+        "cwd": first_line.get("cwd"),
+        "date": first.date().isoformat() if first else None,
+        "started_at": started.isoformat() if started else None,
+        "ended_at": ended.isoformat() if ended else None,
+        "duration_s": duration_seconds(first, last),
+    }
+    if tokens:
+        rows_of(tokens, first, None)
+    subagents, entries_without_duration = [], []
+    for agent_path in subagent_transcript_paths(path.parent, session_id):
+        agent_lines = load_transcript_lines(agent_path)
+        agent_tokens, a_first, a_last = price(agent_lines, True)
+        if not agent_tokens:
+            continue
+        agent_id = agent_id_of(agent_path, agent_lines)
+        rows_of(agent_tokens, a_first, agent_id)
+        subagents.append({
+            "agent_id": agent_id, "parent_session_id": session_id,
+            "date": a_first.date().isoformat(), "started_at": a_first.isoformat(),
+            "ended_at": a_last.isoformat(), "duration_s": duration_seconds(a_first, a_last),
+            "selected_by": "orchestration", "cross_repo": False,
+        })
+    main_cost = sum(r["cost_usd"] or 0.0 for r in rows if not r["agent_id"] and not r["is_sidechain"])
+    sidechain_cost = sum(r["cost_usd"] or 0.0 for r in rows if not r["agent_id"] and r["is_sidechain"])
+    subagent_cost = sum(r["cost_usd"] or 0.0 for r in rows if r["agent_id"])
+    if session["duration_s"] is None:
+        entries_without_duration.append(session_id)
+    return {
+        "sessions": [session],
+        "subagents": subagents,
+        "priced": rows,
+        "cost_usd": {
+            "main": main_cost, "sidechain": sidechain_cost, "subagents": subagent_cost,
+            "total": main_cost + sidechain_cost + subagent_cost, "total_is_partial": partial,
+        },
+        "duration_s": {
+            "sessions": session["duration_s"] or 0,
+            "subagents": sum(a["duration_s"] or 0 for a in subagents),
+            "entries_without_duration": entries_without_duration,
+        },
+        "warnings": warnings,
+    }
 
 
 # Below these two together, the stretch past `to` is not a quantity worth printing and the
@@ -3270,7 +3449,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     # under `<primary>/.worktrees` is fenced off (`claim_roots`).
     feature_worktree_str = feature_worktree_path(session_dir_str, slug)
     legacy_worktree_str = legacy_worktree_path(session_dir_str, slug)
-    claimable_roots, claim_fences = claim_roots(session_dir_str, slug)
+    claimable_roots, claim_fences = claim_roots(session_dir_str, slug, branches)
 
     totals = {}
     session_start = {}
@@ -3284,6 +3463,8 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     # cannot claim from: cwd -> the branches seen there. The warning names them.
     launched_elsewhere = {}
     matched_session_ids = set()
+    # Session ids the walk has met, so a second transcript of one id is not walked again.
+    walked_session_ids = set()
     # Every session this scan can actually use, selected or not — what check_frozen_cost
     # calls recoverable. Populated only past repo_match, because that is the point the
     # scan has proved it can reach the transcript at all.
@@ -3363,6 +3544,22 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             )
             if session_id is None:
                 continue
+
+            # One session, one pricing: its id may have transcripts under several project
+            # directories (a working directory that moved), the later a superset of the
+            # earlier. The first copy met stands for all of them — it is replaced by the
+            # copy that ends latest — and the others are passed over.
+            if session_id in walked_session_ids:
+                continue
+            walked_session_ids.add(session_id)
+            best_copy, session_copies = best_session_copy(session_id)
+            if best_copy is not None and best_copy != jsonl_path:
+                best_lines = load_transcript_lines(best_copy)
+                if best_lines:
+                    lines = best_lines
+                    branches_seen = {line.get("gitBranch") for line in lines if line.get("gitBranch")}
+                    branches_seen_anywhere |= branches_seen
+            copy_dirs = {copy.parent for copy in session_copies} | {transcript_dir}
 
             # A runner id whose transcript also holds interactive lines is a COLLISION: a
             # runner child that borrowed this session's id (design 2026-10-05 §4). From here
@@ -3444,8 +3641,12 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                 if parent_selected:
                     session_selected_by[session_id] = "pinned" if session_pinned else "branch"
                     session_cwd[session_id] = first_cwd
+                    warn_multiple_copies(warnings, session_id, session_copies, best_copy)
 
-            for agent_path in subagent_transcript_paths(transcript_dir, session_id):
+            for agent_path in (
+                path for copy_dir in sorted(copy_dirs)
+                for path in subagent_transcript_paths(copy_dir, session_id)
+            ):
                 agent_lines = load_transcript_lines(agent_path)
                 if not agent_lines:
                     continue
@@ -3544,7 +3745,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     # checkout, on whatever branch, before this feature existed — is looked for
     # everywhere else and claimed on its id alone, window and cwd notwithstanding.
     for session_id in sorted(pinned_session_ids - matched_session_ids):
-        session_path = find_session_elsewhere(session_id, this_repo_dirs)
+        session_path, session_copies = best_session_copy(session_id, skip_dirs=this_repo_dirs)
         if session_path is None:
             continue
         lines = load_transcript_lines(session_path)
@@ -3572,6 +3773,7 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             session_cwd[session_id] = next(
                 (line.get("cwd") for line in lines if isinstance(line.get("cwd"), str)), ""
             )
+            warn_multiple_copies(warnings, session_id, session_copies, session_path)
 
     # A cross-repo id priced last time and unpinned since is not *gone*: the guard
     # below reads "unreachable" as "expired", so prove the transcript is still on disk
@@ -3587,7 +3789,9 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
             f"{cwd!r}, which this feature cannot claim from: that is the primary checkout "
             f"{session_dir_str!r} outside {claim_fences[0]!r} (other features' worktrees), "
             f"this feature's worktree {feature_worktree_str!r}, and its legacy sibling "
-            f"{legacy_worktree_str!r} — launch the coordinator inside the feature worktree, "
+            f"{legacy_worktree_str!r}, and the harness tree of each of its branches "
+            f"{[harness_tree_path(session_dir_str, b) for b in sorted(set(branches))]!r} — "
+            "launch the coordinator inside the feature worktree, "
             "or pin each session id in the manifest's `sessions`"
         )
     for session_id in sorted(pinned_session_ids - reachable_session_ids):

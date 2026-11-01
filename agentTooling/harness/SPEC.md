@@ -16,8 +16,9 @@ where it pins a fact it was verified on 2026-08-29 in the sessions that ran WP7.
 
 ### Fixture — a feature frozen so it can be built again
 
-Lives in the **consuming repo** at `plans/experiments/fixtures/<name>/` (a fixture names
-another repo's commit, which is a project fact, not tooling):
+Lives in the **consuming repo** at `plans/experiments/fixtures/<name>/` (a fixture pins
+that repo's own commit, which is a project fact, not tooling; since 2026-11-01 it can pin
+no other repository's, §14):
 
 ```
 fixtures/<name>/
@@ -36,9 +37,8 @@ fixtures/<name>/
 ```json
 {
   "name": "importedWhere",
-  "repo": {"path": "/Users/sahildesai/dev/vinylCatalogue", "remote": "origin"},
   "base": "6b078d2",
-  "spec": {"repo": "/Users/sahildesai/dev/mediaCore", "commit": "edc0c47",
+  "spec": {"url": "https://github.com/ssdesai/mediaCore", "commit": "edc0c47",
            "path": "INTEGRATION.md", "sections": ["10.6", "10.1", "10.4", "10.5", "12"]},
   "setup": ["python3.13 -m venv .venv",
             ".venv/bin/python -m pip install -q -e \".[dev]\""],
@@ -48,9 +48,17 @@ fixtures/<name>/
 }
 ```
 
-- `base` is the commit every run branches from. `spec` is a commit in the spec's repo;
-  the harness checks out a **detached, read-only worktree** of that repo at that commit
-  (`<repo>-fx-<name>`) and the brief points delegates at it, so a fixture stays valid
+- `repo` is optional and normally absent: the fixture's repository is the consumer, never
+  resolved or cloned (§14). `repo.remote` alone names another remote of the consumer; a
+  `repo.url` / `repo.path` must identify the consumer itself, else the fixture is refused.
+  `spec.url`, optional, names an external spec repository, a checkout of which is found or
+  cloned on the machine running the fixture (§12 — until 2026-10-30 `repo.url`/`spec.url`
+  were `repo.path` and `spec.repo`, absolute paths on one laptop, still read as hints for
+  `spec.repo`). The example's `spec.url` is such an external spec (mediaCore's contract).
+- `base` is the commit every run branches from, in the consumer. `spec` is a commit in the
+  consumer, or in the external spec repo when `spec.url` is set; the harness checks out a
+  **detached, read-only worktree** of that repo at that commit
+  (`<checkout>-fx-<name>`) and the brief points delegates at it, so a fixture stays valid
   after the spec's branch merges or moves. `sections` are what the brief tells the
   delegate to read.
 - `setup` runs inside the fresh worktree before the gate rehearsal. `gate.green` is the
@@ -137,15 +145,17 @@ checklist-first rule from `EXPERIMENTS.md`.
 
 All under `agentTooling/harness/`, run from the consuming repo root (they derive the
 consumer root as `parents[1]` of the harness dir, like the runners; `--consumer <path>`
-overrides for development):
+remains as a development flag, refused unless that root's `agentTooling/` is the running
+copy, §14):
 
 ```
 harness/run.sh <experiment-dir> [--only <fixture>:<method>[:<n>]] [--from <stage>]
+               [--only <program>[:orchestrator[:<arm>][:<n>]]]    # §13
                [--dry-run] [--no-cleanup]
 harness/scorecard.py <experiment-dir>            # results.jsonl → SCORECARD.md
 harness/lib.sh                                    # sourced by run.sh and methods
 harness/tests/smoke.sh                            # §7
-harness/new-fixture.sh <name> --repo … --base … --spec-repo … --spec-ref … --spec-path …   # §11
+harness/new-fixture.sh <name> --base … --spec-ref … --spec-path … [--spec-repo …]   # §11, §14
 harness/check-fixture.sh <name>                   # §11
 harness/new-experiment.sh <name> --fixtures … --methods … --prediction …               # §11
 harness/publish.sh <experiment-dir> [--branch …]  # §11
@@ -162,8 +172,8 @@ uses.
 
 Sequential; each stage's start/end UTC and outcome are written to the state file.
 
-1. **setup** — `git -C <fixture.repo.path> fetch -q <remote>`; `git worktree add -b
-   <branch> <fixture.repo.path>-<branch> <base>`; run `fixture.setup` inside; run the
+1. **setup** — `git -C <repo checkout> fetch -q <remote>` (the consumer's own checkout,
+   §14); `git worktree add -b <branch> <repo checkout>-<branch> <base>`; run `fixture.setup` inside; run the
    gate and require `gate.green`; record the test counts the gate prints; add the
    spec worktree (detached, at `spec.commit`) if absent; write the manifest skeleton
    (`slug`, `branches: [<branch>]`, `session_window.from = now`, empty `plans`,
@@ -175,7 +185,7 @@ Sequential; each stage's start/end UTC and outcome are written to the state file
    usage-limit reset (reuse `stream_shows_usage_limit` / the reset-time parse in
    `plan-runner-lib.sh` — do not write a second detector) and re-invoke once; exit 1 →
    record `method_failed` and skip to capture/record. On exit 0: verify the PR exists
-   (`gh pr view --json url`), set `session_window.to`, commit that one edit
+   (`forge.sh pr-find`, §12), set `session_window.to`, commit that one edit
    (`<slug>: close the manifest session window at PR-open`), push.
 4. **review** — a fresh `claude -p --model opus --max-budget-usd $REVIEW_BUDGET_USD`
    in `<tree>` with `harness/templates/review-preamble.md` + the fixture's
@@ -211,7 +221,7 @@ tree's findings; no stage reads across worktrees. There is no cross-check stage.
 - Slug (manifest dir under `plans/features/`): the branch in kebab-case —
   `export-store-direct`, `export-store-plans-2`; review/rework manifests append
   `-review` / `-rework`.
-- Worktree: `<fixture.repo.path>-<branch>`.
+- Worktree: `<repo checkout>-<branch>`, the consumer's own checkout (§14).
 
 ## 5. Templates and file shapes
 
@@ -220,7 +230,7 @@ tree's findings; no stage reads across worktrees. There is no cross-check stage.
 path), `@@SPEC_PATH@@`, `@@SPEC_SECTIONS@@`, `@@FACTS@@` (contents of `facts.md`),
 `@@GATE_COMMAND@@`, `@@GATE_MINUTES@@`, `@@ISOLATION@@` (the standard isolation
 paragraph from `harness/templates/isolation.md`, listing the paths the delegate must
-not touch — every sibling worktree of the fixture repo, `plans/experiments/`,
+not touch — every sibling worktree of the consumer repo, `plans/experiments/`,
 `agentTooling/`). The WP7 briefs are the seed: `plans` from
 `f5/delegate-plans.md`, `direct` from `f5/delegate-direct.md` (paths in §9),
 generalised so nothing feature-specific remains in the template.
@@ -257,6 +267,7 @@ gate green; report per item.
 ```
 experiment, fixture, method, repeat, branch, slug, pr_url,
 base, spec_commit, model,
+effort (HARNESS_EFFORT: low|medium|high|xhigh|max, or null when unset),
 t_setup_start, t_method_start, t_pr_open, t_review_end, t_rework_end, t_green,
 cost_method_usd, cost_review_usd, cost_rework_usd, cost_green_usd (sum),
 cost_lost_usd (spend from killed attempts' orphaned windows; never in cost_green_usd),
@@ -320,7 +331,8 @@ the capture stage runs and records `0`, not a dollar figure.
 - **`claude -p`** flags present in this install: `-p/--print`, `--model`,
   `--output-format json` (the result object carries `session_id` and
   `total_cost_usd`), `--max-budget-usd`, `--dangerously-skip-permissions`,
-  `--permission-mode`, `--append-system-prompt`, `--allowedTools`. Copy the invocation
+  `--permission-mode`, `--append-system-prompt`, `--allowedTools`, `--effort <level>`
+  (`harness_claude` adds it from `HARNESS_EFFORT`). Copy the invocation
   pattern from `plan-runner-lib.sh` (how it runs a verify/review plan with Bash
   enabled, the stream handling, `stream_shows_usage_limit`, and the exit-code
   convention `2 = usage limit`). Verify `--resume <session_id>` with `claude --help`
@@ -443,16 +455,283 @@ and the scaffolding makes their absence impossible to miss rather than filling t
   (`TREE`, `SPEC_TREE`, `GATE_COMMAND`, `GATE_MINUTES`), `accept.py` compiles. Exit code
   is the failure count. `new-experiment.sh` calls it on every fixture it names.
 - `new-experiment.sh` computes every cell's branch with `harness_branch_name` and refuses
-  if any exists locally or on the fixture repo's remote — the same collision `run.sh`
+  if any exists locally or on the consumer's remote — the same collision `run.sh`
   refuses at setup, caught before the experiment directory exists. `--override
   <fixture>=<stem>` writes `branch_stem_override`. The prediction is a required argument,
   which is where the checklist-first rule now lives for a scripted run.
 - `publish.sh` commits only the experiment directory, as `<experiment>: run <n> results`,
   on `<experiment>Results` when the consumer is on its default branch or on the current
-  branch otherwise; pushes; opens the PR through `HARNESS_GH_BIN` with `SCORECARD.md` as
-  the body. It is the one place the harness *writes* through the forge seam; the smoke
-  test's fake `gh` records `pr create` per branch for it.
+  branch otherwise; pushes; opens the PR through `forge.sh pr-open` (`HARNESS_FORGE_BIN`,
+  §12) with `SCORECARD.md` as the body. It is the one place the harness *writes* through
+  the forge seam; the smoke test's fake `forge.sh` records `pr-open` per branch for it.
 
 None of them changes `run.sh`'s behaviour. `tests/smoke.sh` §7 gained a fourth section
 covering all four against the same throwaway repo, which now has a bare remote so the
 push and PR paths are exercised.
+
+## 12. Repositories by URL, the forge seam, pinned arms (added 2026-10-30)
+
+Three things kept the harness on one laptop, and the A/B it was built for
+(`EXPERIMENTS.md` → "Setting up the arms") by hand. `self/features/harness-cloud-pins/`.
+
+- **Repositories by URL.** `fixture.json` carried `/Users/<owner>/dev/…` paths, so no
+  cloud container could run a fixture. A fixture then named `repo.url` and `spec.url`
+  (since 2026-11-01 only the external ones still go through this, §14); `lib.sh`'s `harness_resolve_repo` turns a URL into a main checkout on this machine —
+  an environment override, the URL as a local checkout, the fixture's old path as a hint,
+  a search of `HARNESS_REPO_ROOTS` (default: the consuming repo's parent) by origin
+  identity, else a clone into the first root. `new-fixture.sh` writes URLs (a checkout
+  argument contributes its origin), `check-fixture.sh` resolves them, and a path-only
+  fixture still runs where its path exists, with a warning naming the field to add. A
+  dry run names the clone it would make and makes none.
+- **The forge seam.** `harness_pr_url` ran `gh pr view` and `publish.sh` ran
+  `gh pr create`; both are GraphQL, which a cloud container's proxy refuses. The seam is
+  now `forge.sh` (`pr-find`, `pr-open` over `gh api` REST), the vendored copy inside the
+  checkout being asked about — forge.sh reads its own checkout's origin — or
+  `HARNESS_FORGE_BIN`. `HARNESS_GH_BIN` is gone; the smoke test fakes `forge.sh` instead
+  of `gh`. The `direct` brief opens its PR through the same adapter.
+- **Arms.** `experiment.json` may carry `agent_tooling: {<label>: <full sha>}`, a third
+  cell axis. At setup, on a branch that does not yet carry its pin commit, `harness_pin_agent_tooling` replaces the
+  tree's `agentTooling/` with that upstream commit's tree from a checkout of
+  `HARNESS_AGENT_TOOLING_URL`, runs the pinned copy's `sync-plans.sh` (its drift report is
+  logged, not fatal), and commits `EXPERIMENT ARM (revert before merge): pin agentTooling
+  to upstream <sha7>` (an arm equal to the version the base already vendors changes nothing, and its
+  pin commit is made `--allow-empty`, so the branch still records its version and the
+  re-run guard still finds the subject) — §3 stage 1 gains that step, §4's branch becomes
+  `<stem><Method><Arm><n>`, §6's row gains `arm` and `agent_tooling`, and the scorecard
+  compares arms within each fixture × method to PR-open and to green. The driver stays one
+  version; every stage that runs inside the tree reads the pinned copy, the review and
+  rework passes included, which is why the row keeps the method's cost apart.
+
+Pinned facts (verified 2026-10-30, in a cloud container): `gh auth status` fails there
+while `gh api` works, as `forge.sh`'s header says; `python3.13`, `uv`, node 22 and the
+Playwright browsers under `/opt/pw-browsers` are in the image; the clones sit at
+`/home/user/<repo>` in lower case with `https://github.com/<owner>/<repo>` origins, which
+the identity comparison folds; `git archive HEAD | tar` of agentTooling is ~9 MB.
+`tests/smoke.sh` ran its throwaway repo at the filesystem root on Linux — `mktemp -d -t
+<prefix>` is a macOS idiom that GNU mktemp refuses, leaving `WORK` empty — and now uses
+an explicit template under `$TMPDIR`.
+
+## 13. Program cells (added 2026-10-30)
+
+`self/features/program-cells/`. The harness compared one feature at a time; the question
+"which agentTooling version runs a *set* of features cheaper under an orchestrator" needs a
+cell that is a list of features. The row contract and the scorecard were merged first
+(`README.md` → "The program row", `tests/scorecard-programs.sh`); this section is the cell
+that produces the row.
+
+**Stages**, in `program-stages.sh` (`HARNESS_PROGRAM_STAGES` in `lib.sh`; `HARNESS_STAGES`
+is unchanged): `setup brief loop collect review rework accept capture record`.
+
+1. `setup` — the program tree: worktree, arm pin, symlink and version-floor refusals,
+   `program.json` `setup[]`, gate rehearsal, `orchestration-start.sh <PSLUG> --session <S>`
+   in the pinned copy, commit.
+2. `brief` — `claude -p --session-id S` with `templates/program-brief.md`; the reply is `ready`.
+3. `loop` — per feature: the feature's worktree (`setup_tree`, i.e. `do_setup` minus its
+   manifest skeleton), the orchestrator's `--resume` turn that writes the brief, the
+   manifest skeleton, the implementer, the PR check, the manifest window closed, push; then
+   `tip`, `dependency_ok`, `feature_done`.
+4. `collect` — the last `--resume` turn with `templates/program-collect.md`; `t_method_end`;
+   the harness completes the record, commits what is left and pushes the program branch.
+5. `review`, `rework`, `accept`, `capture` — per feature through `do_review`, `do_rework`,
+   `do_accept`, `do_capture` (`load_program_feature` sets the cell globals they read); the
+   capture stage also prices the overhead and reads `record_report`.
+6. `record` — the `kind: "program"` row, the scorecard, worktree cleanup.
+
+`--from` accepts the union of the two stage lists. A program cell maps `--from method` to
+`loop`; an ordinary cell run with `--from loop` or `--from collect` skips all of its stages.
+
+**Shapes.** `program.json`, the `experiment.json` field `programs`, the state keys and the
+row are listed in `README.md` → "File shapes" and "The program row" (the field lists there
+are the contract; this section does not repeat them). In brief: `program.json` is `{ name,
+repo?{remote?, url?, path?} (the consumer), base (full 40-hex), branch_stem, gate{command, green, minutes}?, setup[]?,
+features[{fixture, depends_on_previous, method?}] }` with a hand-written `README.md` beside it,
+under `plans/experiments/programs/<name>/`; `experiment.json` gains `programs: [names]` beside
+`fixtures`; the state files are `<experiment-dir>/state/<programBranch>.json` and one
+`<featureBranch>.json` per feature; the row is appended to `results.jsonl`. Keys this section
+adds to the state files: program `orchestrator_first_call_started` (set before the first
+`--session-id` call; see rule 4 below); feature `unpriced_reason` (string or `null`, written by
+`capture` when the feature has no manifest directory or its captured cost is below 90% of what
+`claude` reported for the implementer, naming both figures).
+
+**Naming.** Program branch `P = harness_branch_name <programStem> orchestrator <n> <repeats>
+<arm>` (`mediaProgramOrchestratorAfter2`); feature branch `harness_branch_name <fixtureStem>
+<programStem> <n> <repeats> <arm>` (`exportStoreMediaProgramAfter2`) — the program stem sits
+where a cell's method does. `branch_stem_override[<program>]` replaces the program stem,
+`branch_stem_override[<fixture>]` the fixture's. `PSLUG` is `P`'s slug. Briefs are at
+`<program tree>/plans/programs/<PSLUG>/briefs/<NN>-<fixture>.md` (`NN` the zero-padded
+position), committed on `P`; harness-side figures live only in the state files. The
+orchestrator's results are `<logs>/<P>-orchestrator-<kind>[-NN]-result.json`.
+
+**Pinned rulings.** Settled by the repository owner:
+
+1. *A harness-driven orchestrator loop.* One headless session, `--session-id` then
+   `--resume` once per feature and once at the end; each implementer a separate top-level
+   `claude -p` in its feature's own worktree with the orchestrator's brief as its prompt,
+   free to use subagents (`Agent` and `Task` in `--allowedTools` beside `Bash`). A subagent
+   cannot spawn subagents and its cost would land inside the orchestrator's transcript.
+2. *The harness starts every feature* (worktree, branch, arm pin, `fixture.setup`, gate
+   rehearsal, manifest skeleton): an arm's `feature-start.sh` refuses a copy inside a
+   worktree. The arms' own start and close scripts are outside the comparison.
+3. *Version floor.* An arm whose pinned agentTooling lacks `orchestration-start.sh` or
+   `templates/plans/ORCHESTRATOR_BRIEF.md` is refused at `new-experiment.sh` and at setup.
+4. *Cost.* A feature's method, review and rework cost come from the per-tree capture
+   (`capture_one`); `cost_overhead_usd` is the orchestrator session(s) priced in
+   `[t_method_start, t_method_end]` with the **driver's** `price_session_in_window`
+   (`program_cost.py`); the arm's `report.py --orchestration` output goes into
+   `record_report` as a cross-check, never as the figure.
+5. *Dependencies.* A dependent feature's branch is cut at the previous feature's branch tip
+   as it stood when that implementer finished (`tip`), its PR targets that branch
+   (`pr_base`), and `dependency_ok` is `git merge-base --is-ancestor <previous tip>
+   <branch>` — a boolean for a dependent feature, `null` otherwise. It runs after a failed
+   predecessor; the row records `method_failed` on the predecessor.
+6. *No PR for the program branch;* it is pushed. The record lives in the pinned copy in the
+   program worktree — the one exception to "never edit `agentTooling/`".
+7. *Review, rework, accept and capture run per feature branch after the loop,* reusing the
+   cell stages. A feature is green when `!method_failed` and (the accept stage is off or
+   `accept_pass`).
+8. *Usage limit.* Exit 2 on the orchestrator: wait once (`harness_wait_for_usage_reset`),
+   `--resume` the same session. On an implementer: wait once, run the same brief again.
+   `PROGRAM_BUDGET_USD` (unset: none) goes to each orchestrator call as `--max-budget-usd`;
+   the orchestrator's model is `HARNESS_MODEL`, and every call of the cell carries
+   `--effort $HARNESS_EFFORT` when that is set; the program row records it as `effort`
+   (a string, or `null`), beside `model`.
+9. *`orchestrator` is a reserved method name:* no `methods/orchestrator/`, a program cell's
+   `method` is the literal `"orchestrator"`, and the orchestrator chooses each implementer's
+   method unless `program.json` pins it. (The brief counted ten owner rulings; these are the
+   nine it listed.)
+
+Further rulings, made while building:
+
+1. Briefs live in the program tree, so the orchestrator (cwd the program tree, `acceptEdits`)
+   can write them; they are committed on the program branch.
+2. The implementer's method is the last line of the feature turn's reply,
+   `METHOD: <direct|plans|hand>`; the harness takes the last such line. A method pinned in
+   `program.json` wins and the prompt says so. Absent or invalid: `direct`, an intervention.
+3. A feature's manifest skeleton is written after its brief is verified, immediately before
+   its implementer starts (the method, in the title, is known by then).
+4. Orchestrator session ids: the first call is `--session-id S` (a fresh UUID); each call
+   records the `session_id` its result reports; the next `--resume` targets the most recent
+   reported id (falling back to `S`); `orchestrator_sessions[]` holds every distinct id in
+   order. Each id is priced from its **own first call's start** to `t_method_end`
+   (`program_cost.py --session <id>@<from-ts>`), so a resume that forks and replays old
+   history under old timestamps is not counted twice. Before the first call the harness
+   persists `orchestrator_first_call_started`; on re-entry (`--from brief`) with
+   `orchestrator_calls == 0` and the marker set, that call never completed and the real CLI
+   would refuse the already-used id, so a fresh id is minted and stored as `session_id`, the
+   old one joins `orchestrator_sessions[]` with the marker's instant as its start (a missing
+   transcript prices 0), and an intervention names both.
+5. A non-zero, non-usage-limit exit on any orchestrator call sets the program
+   `method_failed` and is an intervention; the loop still tries every remaining feature (an
+   unwritten brief: `brief_written: false`, no implementer, `method_failed: true`, no PR).
+   The program's `method_failed` is any orchestrator call failed, any brief unwritten, or
+   the collect turn failed.
+6. A failed feature (implementer exit 1, or exit 0 with no PR open) skips review, rework and
+   accept and is only captured; its `green` is false.
+7. Setup refuses a program tree whose `agentTooling` is a symlink.
+8. Program stage names are the nine above; `--from method` maps to `loop`.
+9. Collect: the harness fills `program-collect.md` with the exact `manifest.py
+   --orchestration` commands per feature that has a branch, then `set-window-to now`. After
+   the turn it checks the record names every such feature (`manifest.py get features`) and
+   that the window is closed (`get session_window.to`), does what is missing itself (each an
+   intervention), commits what is left (`<PSLUG>: orchestration record (left over after the
+   collect turn)`) and pushes. `t_method_end` is the instant the collect turn ended.
+10. `record_report`: in `capture`, best effort and never fatal, the pinned copy's
+    `orchestration-capture.sh <PSLUG>` and `analysis/report.py --orchestration <PSLUG>`; the
+    `{group_total_usd, overhead_pct, unpriced_count}` of the record's `report.json`, `null`
+    when absent; the record files committed on the program branch and pushed.
+
+**Facts pinned from the code.**
+
+- A finished feature (`feature_done`) is skipped on a `--from loop` re-entry (delete its
+  state file to redo it); a feature with `brief_written` and its brief on disk reuses the
+  brief and does not re-ask the orchestrator.
+- If the first (program brief) orchestrator call fails, the loop and collect are skipped;
+  capture and record still run, and `t_method_end` is the instant of the failure.
+- A feature uses its own fixture's gate unless `program.json` names `gate.command`, which
+  then governs the program tree and every feature. The program tree's own gate is
+  `program.json`'s or, per field, the first feature's fixture's.
+- Fixture `base`s are ignored in a program cell: every non-dependent branch is cut at the
+  program's `base`; one warning names the fixtures whose differs.
+- The record: `<program tree>/agentTooling/self/orchestrations/<PSLUG>/README.md`, written
+  by `orchestration-start.sh` at setup and edited with `manifest.py --orchestration`;
+  the row's `orchestration_record` is that path relative to the tree.
+- The implementer is run with `--allowedTools Bash Agent Task` and `--model $HARNESS_MODEL`,
+  cwd the feature's worktree, prompt the feature's `plans/features/<slug>/BRIEF.md` (a copy
+  of the orchestrator's brief). The method name is a label: no `methods/<name>/run.sh` runs.
+- Orchestrator calls run in the program tree with `--permission-mode acceptEdits
+  --allowedTools Bash`.
+- `program_stage_wanted` and `stage_wanted` are separate functions over their own lists.
+
+**Deviations and known limits.**
+
+- *Unverified against a real `claude`:* that `--resume` keeps context headless and whether
+  it keeps or forks the session id; that the consumer's hooks inside `-p` accept the
+  orchestrator's git commands; that a real `claude` records the tree `<repo>-<Branch>` as
+  the implementer's cwd (the smoke test proves `capture_one` claims that cwd through the
+  manifest's `branches`); and the tool names `Agent` and `Task`
+  (`EXPERIMENTS.md` → "Program cells": rehearse once before trusting numbers), and that the
+  real CLI refuses an already-used `--session-id` (the reason a killed first call is
+  replaced by a fresh id, rule 4).
+- After a killed first orchestrator call the orchestration record, written at setup with the
+  first minted id (`orchestration-start.sh --session`), names that old id as its `session`;
+  the sessions that actually ran are in the row's `orchestrator_sessions[]`.
+- The `METHOD:` choice is a label. `plans` is not run as the `plans` method (no architect,
+  no `run-batch.sh` under the harness); a "plans" implementer is whatever the orchestrator
+  asked its single session to do.
+- Every implementer runs at `HARNESS_MODEL`; the Sonnet-builds / Opus-reviews cost rule is
+  in the brief the orchestrator writes, not enforced by the harness.
+- A dependent feature's setup runs the gate at its start point. If a failed predecessor
+  left that branch red, setup does not die: it logs a warning, records the intervention
+  `<feature>: gate red at the previous feature's tip <sha7>; ran anyway`, ends the setup
+  stage with outcome `gate-red-ran-anyway` and goes on (the feature is cut at whatever the
+  predecessor's branch holds). A non-dependent feature and every ordinary cell still die
+  on a red gate (`gate-red`).
+- A feature whose worktree was never created is skipped by review, rework, accept and
+  capture; its cost is `0`.
+- The record is checked and completed only for features that have a local branch.
+- Setup commits (pin, brief, record) are on the program branch, never merged; there is no
+  PR for it.
+- `templates/program-brief.md` names the brief template as `plans/ORCHESTRATOR_BRIEF.md`
+  in a parenthesis; the file the harness passes (`@@BRIEF_TEMPLATE@@`) is the pinned
+  copy's `templates/plans/ORCHESTRATOR_BRIEF.md`.
+
+## 14. Same repository: an experiment runs from, and lives on, what it measures (added 2026-11-01)
+
+`harness-same-repo`. Settled by the repository owner: **every experiment runs from, and
+lives on, the repository it measures; cross-repo experiments are bad behaviour.** Before
+it, a fixture named its repository by URL and the harness resolved or cloned whatever repo
+that was, so one repository held fixtures, programs and ledgers for another's features, and
+a cloud run needed push access to a second repository and a standalone agentTooling clone
+as the driver (§12 records that shape; it is history, not the contract).
+
+- **The measured repository is the consumer.** `fixture.json` and `program.json` `repo` are
+  optional. Absent, the repository is the consumer (`CONSUMER_ROOT`, remote `origin`);
+  `repo.remote` alone may name another remote of the consumer. A `repo.url` / `repo.path`
+  present must identify the consumer itself (`owner/repo` compared case-insensitively, `.git`
+  dropped, so a cloud proxy URL matches). `repo.url` and `repo.path` are each checked, so a
+  fixture still carrying a `repo.path` that is not the consumer is refused even with a
+  matching `repo.url`: drop the `repo.path`. Anything else is refused at the first point the
+  harness reads the file (`check-fixture.sh`, `new-experiment.sh`, `run.sh` including
+  `--dry-run`): this fixture measures `<owner/repo>`; an experiment runs from and lives on
+  the repository it measures; move it into that repository's `plans/experiments/` and run
+  it there. `harness_program_check` also requires every feature's fixture to be on the
+  consumer. The repository is never resolved, searched for or cloned; cells are worktrees
+  added from the consumer.
+- **The driver is the consumer's own vendored copy.** `run.sh`, `new-experiment.sh`,
+  `check-fixture.sh`, `new-fixture.sh` and `publish.sh` refuse when the running harness is
+  not `<consumer>/agentTooling/` (physical paths compared): bring that copy up to date there
+  (`agentTooling/update.sh`) rather than driving it from another checkout. `--consumer`
+  stays a flag for development and is refused on the same test.
+- **Two inputs stay outside, read-only.** An arm's pinned agentTooling (`--agent-tooling
+  <label>=<ref>`, resolved from `HARNESS_AGENT_TOOLING_URL`) and a spec in another
+  repository (`spec.url`, optional; the legacy `spec.repo` path hint likewise). Only these
+  still go through `harness_resolve_repo`, its overrides, its search and its clone. Absent
+  `spec.url`, the spec worktree is added from the consumer at `spec.commit` (the dry run says
+  "from the consumer's own checkout").
+- **`new-fixture.sh`** requires `<name> --base --spec-ref --spec-path`; `--repo` is optional
+  and must be the consumer; the fixture it writes has no `repo` block (only `repo.remote`
+  when `--remote` is not `origin`), and `spec.url` only when `--spec-repo` is given.
+- **Cloud.** The runner session's primary repository is the measured repository, already
+  carrying an up-to-date vendored agentTooling; nothing else needs push access, and the spec
+  repository and agentTooling are attached read-only if the proxy does not serve them
+  (`README.md` → "In a Claude Code cloud container").

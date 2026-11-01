@@ -71,8 +71,9 @@ set -uo pipefail
 # at whatever offset the old one left the interpreter.
 
 # Also `analysis/roots.py`'s SELF_CORPUS_IDENTITY, which declares who agentTooling's own
-# corpus belongs to, and the URL the root `README.md` -> "Updating" passes to
-# `git subtree`. All three are the same string and move together.
+# corpus belongs to, the URL the root `README.md` -> "Updating" passes to `git subtree`,
+# and `harness/lib.sh`'s HARNESS_AGENT_TOOLING_URL, the upstream an experiment arm is
+# pinned from. All four are the same string and move together.
 DEFAULT_REMOTE="https://github.com/ssdesai/agentTooling.git"
 DEFAULT_BRANCH="main"
 USAGE_RC=2

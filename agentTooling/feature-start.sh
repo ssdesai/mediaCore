@@ -2,7 +2,13 @@
 set -uo pipefail
 
 # Start a feature: feature-start.sh [--self] <slug> [--method direct|plans|hand]
-#   [--base <branch>] [--branch <name>] [--no-gate] [--pin] [--session <id>] [--open]
+#   [--base <branch>] [--branch <name>] [--no-gate] [--pin] [--session <id>]
+#   [--orchestration <slug>] [--open]
+#
+# `--orchestration <slug>` records, in the fence's optional `orchestration` key, the
+# orchestration record (orchestration-start.sh) this feature belongs to — both profiles,
+# `--self` or not; only the slug's shape is checked, since the record may live in another
+# repository.
 #
 # The only sanctioned way to create a feature branch or worktree (LIFECYCLE.md). The
 # rule, for slug S in a repo whose primary checkout is R, under the LOCAL profile:
@@ -43,7 +49,12 @@ set -uo pipefail
 #     a re-run of the same slug on that branch whose pid is gone RESUMES at the setup hook:
 #     no clean-tree or own-commit refusal (the hand fix is exactly that), no new branch, an
 #     uncommitted manifest and review stub kept, and nothing deleted — the start commit
-#     only ever adds the feature directory, so a fix in the tree is never swept into it;
+#     only ever adds the feature directory (it is made with that directory as its
+#     pathspec, so anything else staged or modified is as it was after it), so a fix in the
+#     tree is never swept into it. The tree must not change while the hook and the gate
+#     run, resumed or not: the start compares `git status --porcelain` before them with
+#     after, outside the feature directory and the gate report, and a difference is a
+#     refusal (the gate judged a tree that no longer exists);
 #   - the prune runs as everywhere, and finds no worktrees in a container.
 #
 # **Router or coordinator is derived, not configured** (design §3, in both profiles). The
@@ -266,7 +277,7 @@ SELF_FLAG=()
 if [[ "${1:-}" == "--self" ]]; then SELF_FLAG=(--self); shift; fi
 
 usage() {
-  echo "usage: feature-start.sh [--self] <slug> [--method direct|plans|hand] [--base <branch>] [--branch <name>] [--no-gate] [--pin] [--session <id>] [--open]" >&2
+  echo "usage: feature-start.sh [--self] <slug> [--method direct|plans|hand] [--base <branch>] [--branch <name>] [--no-gate] [--pin] [--session <id>] [--orchestration <slug>] [--open]" >&2
   exit "$USAGE_RC"
 }
 # This run's start lock, once step 4 has written it; empty before that and after step 9.
@@ -287,6 +298,10 @@ refuse() {
 SLUG="${1:-}"; [[ -n "$SLUG" ]] || usage; shift
 METHOD="$DEFAULT_METHOD"; BASE="$DEFAULT_BASE"; RUN_GATE=1; PIN=0; SESSION_OPT=""; OPEN=0
 BRANCH_OPT=""
+# The orchestration record this feature belongs to (`orchestration-start.sh`), written to the
+# fence's optional `orchestration` key. Only the slug's shape is checked: the record may
+# live in another repository.
+ORCHESTRATION_OPT=""
 while (( $# )); do
   # Every value-taking flag checks its arity first: `shift 2` with one argument left
   # returns non-zero WITHOUT shifting, and there is no `set -e` here to stop on it, so a
@@ -301,12 +316,16 @@ while (( $# )); do
     # note written under the old one must not stop working on a flag that agrees with it.
     --no-pin)  shift ;;
     --session) (( $# >= 2 )) || usage; SESSION_OPT="$2"; shift 2 ;;
+    --orchestration) (( $# >= 2 )) || usage; ORCHESTRATION_OPT="$2"; shift 2 ;;
     --open)    OPEN=1; shift ;;
     *) usage ;;
   esac
 done
 [[ "$SLUG" =~ $SLUG_PATTERN ]] || refuse "slug '$SLUG' must match $SLUG_PATTERN — kebab-case, no slash, no prefix"
 case " $KNOWN_METHODS " in *" $METHOD "*) ;; *) refuse "--method must be one of: $KNOWN_METHODS" ;; esac
+if [[ -n "$ORCHESTRATION_OPT" && ! "$ORCHESTRATION_OPT" =~ $SLUG_PATTERN ]]; then
+  refuse "--orchestration '$ORCHESTRATION_OPT' must match $SLUG_PATTERN — kebab-case, no slash, no prefix"
+fi
 [[ -n "$BASE" ]] || usage
 if ! profile_why="$(profile_check)"; then refuse "$profile_why"; fi
 echo "  profile   $(profile_describe)"
@@ -532,7 +551,7 @@ if profile_is_cloud; then
     refuse "base branch '$BASE' exists neither as origin/$BASE nor locally"
   fi
   # A second feature: a start commit this branch carries past the base, or a tracked
-  # manifest that names this branch as its own.
+  # manifest that names this branch as its own, merged or not.
   started=""
   while IFS= read -r subject; do
     case "$subject" in
@@ -789,6 +808,21 @@ if profile_is_cloud && (( ! SELF_MODE )) && [[ -f "$WT_REPO_DIR/$CLOUD_SETUP_LAB
 fi
 
 # ── Hook, then gate, both inside the new worktree ─────────────────────────────
+# The tree must not change while they run: the gate judges the tree as it stands, so a
+# change during it means it judged a tree that no longer exists. The status before the hook
+# is compared with the status after the gate, outside the feature directory and the gate
+# report (which the gate writes itself).
+TREE_FEATURE_REL="${WT_FEATURES#"$WORKTREE"/}/$SLUG"
+TREE_REPORT_REL="${WT_REPO_DIR#"$WORKTREE"}"; TREE_REPORT_REL="${TREE_REPORT_REL#/}"
+TREE_REPORT_REL="${TREE_REPORT_REL:+$TREE_REPORT_REL/}$GATE_REPORT_LABEL"
+tree_status() {
+  git -C "$WORKTREE" status --porcelain 2>/dev/null | while IFS= read -r line; do
+    p="${line:3}"
+    case "$p" in "$TREE_FEATURE_REL"|"$TREE_FEATURE_REL"/*|"$TREE_REPORT_REL") continue ;; esac
+    printf '%s\n' "$line"
+  done
+}
+TREE_BEFORE="$(tree_status)"
 if [[ -x "$WT_REPO_DIR/$HOOK_LABEL" ]]; then
   if ( cd "$WORKTREE" && "$WT_REPO_DIR/$HOOK_LABEL" ); then
     echo "  hook      $HOOK_LABEL ran"
@@ -819,6 +853,11 @@ if (( RUN_GATE )); then
   fi
 else
   echo "  gate      skipped (--no-gate)"
+fi
+TREE_AFTER="$(tree_status)"
+if [[ "$TREE_AFTER" != "$TREE_BEFORE" ]]; then
+  changed="$(diff <(printf '%s\n' "$TREE_BEFORE") <(printf '%s\n' "$TREE_AFTER") | sed -n 's/^[<>] ...//p' | awk '!seen[$0]++' | head -n "$DIRTY_PATHS_NAMED" | tr '\n' ' ')"
+  refuse "the tree changed while the start ran (${changed% }) — the gate judged a tree that no longer exists; nothing may change while the start runs: commit those changes with a '$SLUG:' subject or edit them back, then run this again (it resumes)"
 fi
 
 # ── Manifest and review stub ──────────────────────────────────────────────────
@@ -867,6 +906,8 @@ NN="01"
 STEM="$NN-review-opus"
 session_args=()
 if [[ -n "$SESSION" ]]; then session_args=(--session "$SESSION"); fi
+orchestration_args=()
+if [[ -n "$ORCHESTRATION_OPT" ]]; then orchestration_args=(--orchestration "$ORCHESTRATION_OPT"); fi
 # -B: the interpreter must leave no analysis/__pycache__ behind in the new worktree.
 # The first commit on the branch is the manifest and nothing else, and an untracked
 # byte-cache directory would be swept into the next `git add -A` (or, in a repo whose
@@ -880,6 +921,7 @@ if (( RESUME )) && [[ -f "$FEATURE_DIR/README.md" ]]; then
 elif ! python3 -B "$WT_AT/analysis/manifest.py" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} "$SLUG" init \
     --method "$METHOD" --branch "$FEATURE_BRANCH" --base "$BASE" --from "$WINDOW_FROM" \
     --profile "$(profile_name)" --gate "$GATE_RECORD" --plan "$STEM" \
+    ${orchestration_args[@]+"${orchestration_args[@]}"} \
     ${session_args[@]+"${session_args[@]}"} >/dev/null; then
   refuse "could not write the manifest; the worktree is left at $WORKTREE"
 fi
@@ -1004,8 +1046,10 @@ else
   echo "  routing   none (no session id in \$CLAUDE_CODE_SESSION_ID and no --session)"
 fi
 
+# The commit is limited to the feature directory by pathspec: whatever else is staged or
+# modified in the tree (a resumed start keeps a hand fix) is as it was after the commit.
 ( cd "$WORKTREE" && git add "${FEATURE_DIR#"$WORKTREE"/}" \
-    && git commit -q -m "$SLUG: start" ) \
+    && git commit -q -m "$SLUG: start" -- "${FEATURE_DIR#"$WORKTREE"/}" ) \
   || refuse "could not commit the feature directory in $WORKTREE"
 echo "  commit    $SLUG: start"
 # No longer a half-start: the branch has moved, which is what every reader checks first.

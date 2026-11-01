@@ -164,7 +164,7 @@ LINE_BREAK_RE = re.compile(r"[\r\n]")
 # the next command, not to this start's argument list.
 COMMAND_SEPARATORS = frozenset(["&&", "||", ";", "|", "&"])
 # Flags `feature-start.sh` accepts, so the slug is not read off one of their values.
-START_VALUE_FLAGS = frozenset(["--method", "--base", "--session"])
+START_VALUE_FLAGS = frozenset(["--method", "--base", "--branch", "--session", "--orchestration"])
 START_BARE_FLAGS = frozenset(["--self", "--no-gate", "--no-pin", "--pin", "--open"])
 FLAG_PREFIX = "-"
 # The slug pattern feature-start.sh itself refuses on; a token that fails it is not a

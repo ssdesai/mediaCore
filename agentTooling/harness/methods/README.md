@@ -16,8 +16,18 @@ Each holds three files:
 | Method | What it does |
 |---|---|
 | `plans/` | An opus architect authors the plan corpus and `NOTES.md`, then `run-batch.sh` drains it (build → gate → verify → review → PR). The batch's own review plan and `pr.sh` are part of the method; the harness review still runs afterwards. |
-| `direct/` | One opus implementer builds the feature, gates it green, commits, pushes and opens the PR. One shot, no resume. |
+| `direct/` | One opus implementer builds the feature, gates it green, commits, pushes and opens the PR — through the tree's `agentTooling/forge.sh pr-open`, which works in a cloud container where `gh pr create` does not. One shot, no resume. |
 | `null/` | The harness's own test double: no model at all. Writes a marker file, commits, and opens the "PR" through the repo's `plans/pr.sh`. Used by `harness/tests/smoke.sh`. |
+
+**`orchestrator` is a reserved name.** It is the method of a program cell (an orchestrator
+session running an ordered list of features; `../README.md` → "Program cells") and has no
+directory here; do not add `methods/orchestrator/`. A program feature may pin
+`direct`, `plans`, `hand` or any real directory here, but never `null` or `orchestrator`
+(`program.json` is refused otherwise). In a program cell the name is **a label**: no
+`methods/<name>/run.sh` or `template.md` is used. The harness runs every implementer the
+same way, one top-level `claude -p` with the orchestrator's brief as its prompt, and
+records the name in the feature's `method`; what the method name changes is what the
+orchestrator wrote into the brief.
 
 Expected next, none of them written yet: `direct-selfreview` (the same brief plus a
 self-review pass against the spec), `direct-sonnet` (the same brief at `--model sonnet`),

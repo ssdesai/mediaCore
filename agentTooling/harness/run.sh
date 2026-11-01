@@ -4,12 +4,14 @@ set -uo pipefail
 # Experiment harness: build one frozen feature several ways, review and rework every
 # tree the same way, score each run, append the numbers to a ledger.
 #
-#   harness/run.sh <experiment-dir> [--only <fixture>:<method>[:<n>]] [--from <stage>]
+#   harness/run.sh <experiment-dir> [--only <fixture>[:<method>[:<arm>][:<n>]]]
+#                  [--only <program>[:orchestrator[:<arm>][:<n>]]] [--from <stage>]
 #                  [--dry-run] [--no-cleanup] [--consumer <path>]
 #
 # Run from the consuming repo root. The experiment directory may be absolute or
 # relative to that root. See harness/SPEC.md for the design and harness/README.md for
-# the file shapes.
+# the file shapes. A program cell (an orchestrator running a list of features) has
+# its own stages: setup brief loop collect review rework accept capture record.
 #
 # Isolation is structural, not a policy the stages are asked to respect: a run's inputs
 # are its fixture and its method and nothing else, the review brief exists before any
@@ -29,13 +31,13 @@ NO_CLEANUP=0
 CONSUMER_ROOT="$DEFAULT_CONSUMER_ROOT"
 
 usage() {
-  sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-1}"
 }
 
 while (( $# > 0 )); do
   case "$1" in
-    --only)      ONLY="${2:?--only needs <fixture>:<method>[:<n>]}"; shift 2 ;;
+    --only)      ONLY="${2:?--only needs <fixture or program>[:<method>[:<arm>][:<n>]]}"; shift 2 ;;
     --from)      FROM_STAGE="${2:?--from needs a stage}"; shift 2 ;;
     --consumer)  CONSUMER_ROOT="$(cd "${2:?--consumer needs a path}" && pwd)"; shift 2 ;;
     --dry-run)   DRY_RUN=1; shift ;;
@@ -48,6 +50,7 @@ while (( $# > 0 )); do
 done
 
 [[ -n "$EXPERIMENT_ARG" ]] || usage 1
+harness_require_own_driver
 
 if [[ "$EXPERIMENT_ARG" == /* ]]; then
   EXPERIMENT_DIR="$EXPERIMENT_ARG"
@@ -65,26 +68,29 @@ STATE_DIR="$EXPERIMENT_DIR/state"
 LOG_DIR="$EXPERIMENT_DIR/logs"
 
 if [[ -n "$FROM_STAGE" ]]; then
-  case " $HARNESS_STAGES " in
+  case " $HARNESS_STAGES $HARNESS_PROGRAM_STAGES " in
     *" $FROM_STAGE "*) ;;
-    *) harness_die "--from must be one of: $HARNESS_STAGES" ;;
+    *) harness_die "--from must be one of: $HARNESS_STAGES (a program cell: $HARNESS_PROGRAM_STAGES)" ;;
   esac
 fi
 
 (( DRY_RUN )) && HARNESS_REQUIRED_TOOLS="jq git python3"
+# A dry run names the clone a run would make rather than making it.
+(( DRY_RUN )) && export HARNESS_RESOLVE_NO_CLONE=1
 harness_require_tools
 
 # ── Experiment ───────────────────────────────────────────────────────────────
 EXPERIMENT_NAME="$(harness_json "$EXPERIMENT_JSON" .name)"
 REPEATS="$(jq -r '.repeats // 1' "$EXPERIMENT_JSON")"
-DO_REVIEW="$(jq -r '.stages.review // true' "$EXPERIMENT_JSON")"
-DO_REWORK="$(jq -r '.stages.rework // true' "$EXPERIMENT_JSON")"
-DO_ACCEPT="$(jq -r '.stages.accept // true' "$EXPERIMENT_JSON")"
+DO_REVIEW="$(harness_stage_enabled "$EXPERIMENT_JSON" review)"
+DO_REWORK="$(harness_stage_enabled "$EXPERIMENT_JSON" rework)"
+DO_ACCEPT="$(harness_stage_enabled "$EXPERIMENT_JSON" accept)"
 PREDICTION="$(harness_json "$EXPERIMENT_JSON" .prediction)"
 [[ -n "$PREDICTION" ]] || harness_die "experiment.json has no prediction — harness/EXPERIMENTS.md requires the checklist first"
 
 # `run` is set per cell so the stage functions read one name rather than eight arguments.
 FIXTURE=""; METHOD=""; REPEAT=""; BRANCH=""; SLUG=""; TREE=""; STATE=""
+ARM=""; ARM_SHA=""; AT_CHECKOUT=""
 FIXTURE_DIR=""; FIXTURE_JSON=""; REPO_PATH=""; REMOTE=""; BASE=""
 SPEC_REPO=""; SPEC_COMMIT=""; SPEC_PATH=""; SPEC_SECTIONS=""; SPEC_TREE=""
 GATE_COMMAND=""; GATE_GREEN=""; GATE_MINUTES=""; BRIEF_FILE=""
@@ -119,23 +125,23 @@ stage_end()   { harness_state_stage "$STATE" "$1" end "$(harness_utc_now)"; harn
 
 # ── Cell resolution ──────────────────────────────────────────────────────────
 resolve_cell() {
-  FIXTURE="$1"; METHOD="$2"; REPEAT="$3"
+  FIXTURE="$1"; METHOD="$2"; REPEAT="$3"; ARM="${4:-}"; ARM_SHA="${5:-}"
+  [[ "$ARM" != "-" ]] || { ARM=""; ARM_SHA=""; }
 
-  FIXTURE_DIR="$FIXTURES_DIR/$FIXTURE"
-  FIXTURE_JSON="$FIXTURE_DIR/fixture.json"
-  [[ -f "$FIXTURE_JSON" ]] || harness_die "no fixture at $FIXTURE_JSON"
+  require_fixture
   [[ -d "$HARNESS_METHODS_DIR/$METHOD" ]] || harness_die "no method at $HARNESS_METHODS_DIR/$METHOD"
+  if [[ -n "$ARM" ]]; then
+    [[ "$ARM" =~ $HARNESS_ARM_LABEL_RE ]] || harness_die "arm label must be bare lower-case letters: $ARM"
+    [[ -n "$ARM_SHA" ]] || harness_die "arm $ARM names no agentTooling commit in $EXPERIMENT_JSON"
+  fi
 
-  REPO_PATH="$(harness_json "$FIXTURE_JSON" .repo.path)"
+  # The fixture's repository is the consumer (a repo block naming another is refused here,
+  # the first point the fixture is read); only an external spec repository is resolved.
+  REPO_PATH="$(harness_fixture_repo "$FIXTURE_JSON")" || exit 1
   REMOTE="$(jq -r '.repo.remote // "origin"' "$FIXTURE_JSON")"
   BASE="$(harness_json "$FIXTURE_JSON" .base)"
-  SPEC_REPO="$(harness_json "$FIXTURE_JSON" .spec.repo)"
-  SPEC_COMMIT="$(harness_json "$FIXTURE_JSON" .spec.commit)"
-  SPEC_PATH="$(harness_json "$FIXTURE_JSON" .spec.path)"
-  SPEC_SECTIONS="$(jq -r '[.spec.sections[]] | join(", ")' "$FIXTURE_JSON")"
-  GATE_COMMAND="$(harness_json "$FIXTURE_JSON" .gate.command)"
-  GATE_GREEN="$(harness_json "$FIXTURE_JSON" .gate.green)"
-  GATE_MINUTES="$(jq -r '.gate.minutes // "a few"' "$FIXTURE_JSON")"
+  SPEC_REPO="$(harness_fixture_spec_repo "$FIXTURE_JSON")" || exit 1
+  read_fixture_fields
 
   # The fixture names the stem; an experiment may override it for one fixture, which is
   # how a replay of a feature that has already been built avoids landing on the recorded
@@ -143,20 +149,42 @@ resolve_cell() {
   local stem
   stem="$(jq -r --arg f "$FIXTURE" '.branch_stem_override[$f] // empty' "$EXPERIMENT_JSON")"
   [[ -n "$stem" ]] || stem="$(harness_json "$FIXTURE_JSON" .branch_stem)"
-  BRANCH="$(harness_branch_name "$stem" "$METHOD" "$REPEAT" "$REPEATS")"
+  BRANCH="$(harness_branch_name "$stem" "$METHOD" "$REPEAT" "$REPEATS" "$ARM")"
   SLUG="$(harness_slug_of_branch "$BRANCH")"
   TREE="$(harness_worktree_path "$REPO_PATH" "$BRANCH")"
   SPEC_TREE="$(harness_spec_worktree_path "$SPEC_REPO" "$FIXTURE")"
   STATE="$STATE_DIR/$BRANCH.json"
   BRIEF_FILE="$TREE/plans/features/$SLUG/BRIEF.md"
 
+  reset_cell_results
+
+  set_template_vars
+}
+
+# The fixture's directory and file, or a death: the first thing any cell reads.
+require_fixture() {
+  FIXTURE_DIR="$FIXTURES_DIR/$FIXTURE"
+  FIXTURE_JSON="$FIXTURE_DIR/fixture.json"
+  [[ -f "$FIXTURE_JSON" ]] || harness_die "no fixture at $FIXTURE_JSON"
+}
+
+# What fixture.json says that needs no repository resolved (a program feature reads the
+# same fields; its repository, base and spec checkout come from the program).
+read_fixture_fields() {
+  SPEC_COMMIT="$(harness_json "$FIXTURE_JSON" .spec.commit)"
+  SPEC_PATH="$(harness_json "$FIXTURE_JSON" .spec.path)"
+  SPEC_SECTIONS="$(jq -r '[.spec.sections[]] | join(", ")' "$FIXTURE_JSON")"
+  GATE_COMMAND="$(harness_json "$FIXTURE_JSON" .gate.command)"
+  GATE_GREEN="$(harness_json "$FIXTURE_JSON" .gate.green)"
+  GATE_MINUTES="$(jq -r '.gate.minutes // "a few"' "$FIXTURE_JSON")"
+}
+
+reset_cell_results() {
   METHOD_FAILED=false; PR_URL=""
   COST_METHOD=0; COST_METHOD_REPORTED=0; COST_REVIEW=0; COST_REWORK=0
   REVIEW_FIXED=0; REVIEW_ESCALATED=0; REWORK_RAN=false
   ACCEPT_PASS=false; ACCEPT_LINES='[]'
   GATE_COUNTS_PR_OPEN=""; GATE_COUNTS_GREEN=""; COST_LOST=0
-
-  set_template_vars
 }
 
 # Every placeholder any template can name, resolved once per cell — the brief, the
@@ -185,6 +213,23 @@ set_template_vars() {
 # ── Stages ───────────────────────────────────────────────────────────────────
 do_setup() {
   stage_begin setup
+  setup_tree
+  write_stage_manifest "$SLUG" \
+    "$SLUG — $FIXTURE built by the $METHOD method"
+  stage_end setup ok
+}
+
+# Worktree, pin, fixture setup, gate rehearsal and spec worktree: everything setup does
+# before the manifest skeleton. A program feature runs it too, with START_POINT set to the
+# commit its branch is cut at (the previous feature's tip when it depends on it); empty,
+# the cell's BASE. Its stage bookkeeping is the caller's (stage_begin before, stage_end after).
+START_POINT=""
+# 1: a red gate rehearsal ends the run (every cell, and a program's non-dependent feature);
+# program-stages.sh sets 0 around a dependent feature's setup. GATE_RED_RAN_ANYWAY is set
+# by setup_tree when it let a red gate through.
+GATE_RED_FATAL=1
+GATE_RED_RAN_ANYWAY=0
+setup_tree() {
   # Read before the write below: an already-recorded start is what tells a resume of this
   # cell from a fresh cell landing on somebody else's branch.
   local first_setup=0
@@ -210,8 +255,20 @@ do_setup() {
   elif git -C "$REPO_PATH" show-ref --verify --quiet "refs/heads/$BRANCH"; then
     git -C "$REPO_PATH" worktree add "$TREE" "$BRANCH" || harness_die "worktree add failed"
   else
-    git -C "$REPO_PATH" worktree add -b "$BRANCH" "$TREE" "$BASE" || harness_die "worktree add failed"
+    git -C "$REPO_PATH" worktree add -b "$BRANCH" "$TREE" "${START_POINT:-$BASE}" || harness_die "worktree add failed"
   fi
+
+  # The arm's agentTooling version, pinned before anything reads the vendored copy: the
+  # fixture's setup, the gate, the method, the review and the capture all run from it.
+  # Skipped only when the branch already carries its pin commit — not merely because the
+  # tree exists: a pin that died after the worktree was added (a clone the cloud proxy
+  # refused, say) leaves a tree with no pin, and the re-run must still pin it.
+  if [[ -n "$ARM_SHA" ]] && ! git -C "$TREE" log --format=%s "$BASE..HEAD" 2>/dev/null \
+       | grep -qxF "$HARNESS_PIN_SUBJECT_PREFIX ${ARM_SHA:0:$PIN_SHORT_SHA_LEN}"; then
+    AT_CHECKOUT="$(harness_resolve_repo "$HARNESS_AGENT_TOOLING_URL")" || exit 1
+    harness_pin_agent_tooling "$TREE" "$ARM_SHA" "$AT_CHECKOUT"
+  fi
+  harness_state_set_str "$STATE" agent_tooling "$ARM_SHA"
 
   local cmd
   while IFS= read -r cmd; do
@@ -222,9 +279,18 @@ do_setup() {
 
   local log="$LOG_DIR/$BRANCH-gate-setup.log"
   harness_run_gate "$TREE" "$GATE_COMMAND" "$log"
+  GATE_RED_RAN_ANYWAY=0
   if ! harness_gate_is_green "$log" "$GATE_GREEN"; then
-    stage_end setup "gate-red"
-    harness_die "gate is not green at $BASE in $TREE (see $log) — the fixture is broken, not the method"
+    if (( GATE_RED_FATAL )); then
+      stage_end setup "gate-red"
+      harness_die "gate is not green at $BASE in $TREE (see $log) — the fixture is broken, not the method"
+    fi
+    # A dependent program feature: the predecessor's branch is what it is; run anyway.
+    local red_tip
+    red_tip="$(git -C "$TREE" rev-parse --short=7 HEAD)"
+    harness_warn "gate is red at the previous feature's tip $red_tip in $TREE (see $log) — running anyway"
+    harness_state_intervention "$STATE" "$BRANCH: gate red at the previous feature's tip $red_tip; ran anyway"
+    GATE_RED_RAN_ANYWAY=1
   fi
   harness_state_set_str "$STATE" gate_counts_base "$(harness_gate_counts "$TREE")"
 
@@ -233,10 +299,6 @@ do_setup() {
     git -C "$SPEC_REPO" worktree add --detach "$SPEC_TREE" "$SPEC_COMMIT" \
       || harness_die "could not add the read-only spec worktree at $SPEC_TREE"
   fi
-
-  write_stage_manifest "$SLUG" \
-    "$SLUG — $FIXTURE built by the $METHOD method"
-  stage_end setup ok
 }
 
 do_brief() {
@@ -545,7 +607,8 @@ build_ledger_row() {  # the `record` stage: one appended results.jsonl row + sco
     --arg experiment "$EXPERIMENT_NAME" --arg fixture "$FIXTURE" --arg method "$METHOD" \
     --argjson repeat "$REPEAT" --arg branch "$BRANCH" --arg slug "$SLUG" \
     --arg pr_url "$PR_URL" --arg base "$BASE" --arg spec_commit "$SPEC_COMMIT" \
-    --arg model "$HARNESS_MODEL" \
+    --arg model "$HARNESS_MODEL" --arg effort "$HARNESS_EFFORT" --arg arm "$ARM" \
+    --arg agent_tooling "$(state_or agent_tooling "$ARM_SHA")" \
     --arg t_setup_start "$(harness_state_get "$STATE" t_setup_start)" \
     --arg t_method_start "$(harness_state_get "$STATE" t_method_start)" \
     --arg t_pr_open "$(harness_state_get "$STATE" t_pr_open)" \
@@ -569,8 +632,10 @@ build_ledger_row() {  # the `record` stage: one appended results.jsonl row + sco
     --argjson interventions "$(jq -c '.interventions // []' "$STATE")" \
     --arg harness_version "$(harness_version)" \
     '{experiment: $experiment, fixture: $fixture, method: $method, repeat: $repeat,
+      arm: $arm, agent_tooling: $agent_tooling,
       branch: $branch, slug: $slug, pr_url: $pr_url, base: $base,
       spec_commit: $spec_commit, model: $model,
+      effort: (if $effort == "" then null else $effort end),
       t_setup_start: $t_setup_start, t_method_start: $t_method_start,
       t_pr_open: $t_pr_open, t_review_end: $t_review_end,
       t_rework_end: $t_rework_end, t_green: $t_green,
@@ -597,20 +662,32 @@ build_ledger_row() {  # the `record` stage: one appended results.jsonl row + sco
   stage_end record ok
 }
 
+# The program cell's stages (an orchestrator over an ordered list of features) reuse the
+# functions above on each feature's branch.
+# shellcheck source=program-stages.sh
+source "$SCRIPT_DIR/program-stages.sh"
+
 # ── Dry run ──────────────────────────────────────────────────────────────────
 dry_run_cell() {
   say ""
-  say "── $FIXTURE × $METHOD × $REPEAT ─────────────────────────────"
+  say "── $FIXTURE × $METHOD × ${ARM:-(no pin)} × $REPEAT ─────────────────────────────"
   say "  branch:        $BRANCH"
   say "  slug:          $SLUG"
+  say "  repo:          $REPO_PATH"
   say "  worktree:      $TREE"
-  say "  spec worktree: $SPEC_TREE  (detached at $SPEC_COMMIT, read-only)"
+  say "  spec worktree: $SPEC_TREE  (detached at $SPEC_COMMIT, read-only; $(harness_spec_source_label "$FIXTURE_JSON"))"
+  [[ -z "$ARM" ]] || say "  agentTooling:  pinned to upstream $ARM_SHA (arm $ARM)"
   say "  state file:    $STATE"
   say "  stages:        $(for s in $HARNESS_STAGES; do stage_wanted "$s" && printf '%s ' "$s"; done)"
   say "  review: $DO_REVIEW   rework: $DO_REWORK   accept: $DO_ACCEPT"
   say "  commands:"
   dry "git -C $REPO_PATH fetch -q $REMOTE"
   dry "git -C $REPO_PATH worktree add -b $BRANCH $TREE $BASE"
+  if [[ -n "$ARM" ]]; then
+    dry "git -C <checkout of $HARNESS_AGENT_TOOLING_URL> archive $ARM_SHA | tar -x -C $TREE/$AGENT_TOOLING_RELPATH   (after rm -rf of it)"
+    dry "cd $TREE && ./$SYNC_PLANS_RELPATH"
+    dry "git -C $TREE commit -m '$HARNESS_PIN_SUBJECT_PREFIX ${ARM_SHA:0:$PIN_SHORT_SHA_LEN}'"
+  fi
   local cmd
   while IFS= read -r cmd; do
     [[ -n "$cmd" ]] || continue
@@ -620,13 +697,13 @@ dry_run_cell() {
   dry "git -C $SPEC_REPO worktree add --detach $SPEC_TREE $SPEC_COMMIT"
   dry "write $TREE/plans/features/$SLUG/README.md   (manifest skeleton, session_window.from = now)"
   dry "fill $HARNESS_METHODS_DIR/$METHOD/template.md -> $BRIEF_FILE"
-  dry "$HARNESS_METHODS_DIR/$METHOD/run.sh $TREE $BRIEF_FILE $SLUG"
-  dry "$HARNESS_GH_BIN pr view $BRANCH --json url --jq .url"
+  dry "$HARNESS_METHODS_DIR/$METHOD/run.sh $TREE $BRIEF_FILE $SLUG   (its claude call: --model $HARNESS_MODEL$(harness_effort_dry))"
+  dry "${HARNESS_FORGE_BIN:-$TREE/$FORGE_RELPATH} pr-find $BRANCH"
   if [[ "$DO_REVIEW" == true ]]; then
-    dry "$HARNESS_CLAUDE_BIN -p --output-format json --model $HARNESS_MODEL --max-budget-usd $REVIEW_BUDGET_USD --permission-mode acceptEdits --allowedTools Bash <review preamble + $FIXTURE_DIR/review-brief.md>   (cwd $TREE)"
+    dry "$HARNESS_CLAUDE_BIN -p --output-format json$(harness_effort_dry) --model $HARNESS_MODEL --max-budget-usd $REVIEW_BUDGET_USD --permission-mode acceptEdits --allowedTools Bash <review preamble + $FIXTURE_DIR/review-brief.md>   (cwd $TREE)"
   fi
   if [[ "$DO_REWORK" == true ]]; then
-    dry "$HARNESS_CLAUDE_BIN -p --output-format json --model $HARNESS_MODEL --max-budget-usd $REWORK_BUDGET_USD --permission-mode acceptEdits --allowedTools Bash <rework preamble + $(harness_findings_path "$TREE" "$SLUG")>   (only if escalated >= 1)"
+    dry "$HARNESS_CLAUDE_BIN -p --output-format json$(harness_effort_dry) --model $HARNESS_MODEL --max-budget-usd $REWORK_BUDGET_USD --permission-mode acceptEdits --allowedTools Bash <rework preamble + $(harness_findings_path "$TREE" "$SLUG")>   (only if escalated >= 1)"
   fi
   if [[ "$DO_ACCEPT" == true ]]; then
     dry "python3 $FIXTURE_DIR/accept/accept.py $TREE"
@@ -647,6 +724,7 @@ run_cell() {
   harness_state_set_str "$STATE" fixture "$FIXTURE"
   harness_state_set_str "$STATE" method "$METHOD"
   harness_state_set "$STATE" repeat "$REPEAT"
+  harness_state_set_str "$STATE" arm "$ARM"
   harness_state_set_str "$STATE" branch "$BRANCH"
   harness_state_set_str "$STATE" slug "$SLUG"
 
@@ -670,17 +748,24 @@ run_cell() {
   return 0
 }
 
+# --only <fixture>[:<method>[:<arm>][:<n>]] — the arm is letters, the repeat digits, so
+# the two trailing parts are told apart by shape.
 cell_selected() {
-  local fixture="$1" method="$2" repeat="$3" want_f want_m want_n rest
+  local fixture="$1" method="$2" repeat="$3" arm="$4" want_f want_m want_a want_n rest part
   [[ -n "$ONLY" ]] || return 0
-  want_f="${ONLY%%:*}"; want_m=""; want_n=""
+  want_f="${ONLY%%:*}"; want_m=""; want_a=""; want_n=""
   if [[ "$ONLY" == *:* ]]; then
     rest="${ONLY#*:}"
     want_m="${rest%%:*}"
-    [[ "$rest" == *:* ]] && want_n="${rest#*:}"
+    rest="${rest#"$want_m"}"; rest="${rest#:}"
+    while [[ -n "$rest" ]]; do
+      part="${rest%%:*}"; rest="${rest#"$part"}"; rest="${rest#:}"
+      if [[ "$part" =~ ^[0-9]+$ ]]; then want_n="$part"; else want_a="$part"; fi
+    done
   fi
   [[ "$fixture" == "$want_f" ]] || return 1
   [[ -z "$want_m" || "$method" == "$want_m" ]] || return 1
+  [[ -z "$want_a" || "$arm" == "$want_a" ]] || return 1
   [[ -z "$want_n" || "$repeat" == "$want_n" ]] || return 1
   return 0
 }
@@ -690,18 +775,41 @@ say "prediction: $PREDICTION"
 (( DRY_RUN )) && say "(dry run — nothing below is executed)"
 
 failures=0
-for fixture in $(jq -r '.fixtures[]' "$EXPERIMENT_JSON"); do
-  for method in $(jq -r '.methods[]' "$EXPERIMENT_JSON"); do
+# One "<label> <sha>" per arm, or "- -" when the experiment pins no agentTooling version.
+ARMS="$(harness_experiment_arms "$EXPERIMENT_JSON")" || exit 1
+for fixture in $(jq -r '.fixtures[]?' "$EXPERIMENT_JSON"); do
+  for method in $(jq -r '.methods[]?' "$EXPERIMENT_JSON"); do
+    # Read on its own descriptor: the stages below run programs that may read stdin.
+    while read -r -u 3 arm_label arm_sha; do
+      [[ -n "$arm_label" ]] || continue
+      for repeat in $(seq 1 "$REPEATS"); do
+        cell_selected "$fixture" "$method" "$repeat" "${arm_label#-}" || continue
+        resolve_cell "$fixture" "$method" "$repeat" "$arm_label" "$arm_sha"
+        if (( DRY_RUN )); then
+          dry_run_cell
+        else
+          run_cell || failures=$(( failures + 1 ))
+        fi
+      done
+    done 3<<<"$ARMS"
+  done
+done
+
+# Program cells: program × arm × repeat. cell_selected reads the program as the fixture and
+# the reserved method name as the method.
+for program in $(jq -r '.programs[]?' "$EXPERIMENT_JSON"); do
+  while read -r -u 3 arm_label arm_sha; do
+    [[ -n "$arm_label" ]] || continue
     for repeat in $(seq 1 "$REPEATS"); do
-      cell_selected "$fixture" "$method" "$repeat" || continue
-      resolve_cell "$fixture" "$method" "$repeat"
+      cell_selected "$program" "$HARNESS_PROGRAM_METHOD" "$repeat" "${arm_label#-}" || continue
+      resolve_program_cell "$program" "$repeat" "$arm_label" "$arm_sha"
       if (( DRY_RUN )); then
-        dry_run_cell
+        dry_run_program_cell
       else
-        run_cell || failures=$(( failures + 1 ))
+        run_program_cell || failures=$(( failures + 1 ))
       fi
     done
-  done
+  done 3<<<"$ARMS"
 done
 
 if (( DRY_RUN )); then

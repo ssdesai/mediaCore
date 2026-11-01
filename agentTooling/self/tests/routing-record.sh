@@ -449,6 +449,10 @@ check "R9m. ... and nothing under the features root changed" \
 # Continuations are joined first, then each line is matched on its own.
 check "R10a. the slug is the token after the script on the script's own line" \
   '[[ "$(slug_of "./feature-start.sh --self alpha")" == "alpha" ]]'
+check "R10a2. --orchestration's value is never read as the slug, before or after it" \
+  '[[ "$(slug_of "./feature-start.sh --self --orchestration grp-x feat-y")" == "feat-y" && "$(slug_of "./feature-start.sh --self feat-y --orchestration grp-x")" == "feat-y" ]]'
+check "R10a3. --branch's value is never read as the slug, before or after it" \
+  '[[ "$(slug_of "./feature-start.sh --self --branch claude/feat-y feat-y --method direct")" == "feat-y" && "$(slug_of "./feature-start.sh --self feat-y --method direct --branch claude/feat-y")" == "feat-y" && "$(slug_of "./feature-start.sh --self feat-y --method direct --branch claude/feat-y --orchestration grp-x")" == "feat-y" ]]'
 check "R10b. a start with no slug on its line yields nothing, not the next line's first word" \
   '[[ "$(slug_of "$(printf "./feature-start.sh --self\\nls")")" == "None" ]]'
 check "R10c. ... nor a slug-shaped word from a later command" \

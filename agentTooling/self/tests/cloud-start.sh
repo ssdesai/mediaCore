@@ -41,6 +41,9 @@ set -uo pipefail
 #       and the start hands its gate GATE_RESUME=1 (design §8);
 #   S1. a second start in the same container is refused, naming the feature already
 #       there, with nothing new written;
+#   S2. a manifest naming the branch makes a start refuse even when it is already on
+#       origin/main (one session, one branch, one feature): the refusal names the
+#       feature, nothing is written, and started_features_on names it too;
 #   R1. a branch carrying a commit not on origin/main is refused, the commit still there;
 #   R2. a dirty tree is refused, the file still there;
 #   R3. a refused start (the hook fails) leaves the branch and a lock; a hand fix in the
@@ -298,6 +301,26 @@ check "S1a. a second start on a branch that carries cs-one is refused (got $rc)"
 check "S1b. ... naming cs-one" 'grep -qF "cs-one" <<<"$out"'
 check "S1c. ... writing nothing" \
   '[[ "$(heads "$AT")" == "$heads_before" && "$(git -C "$AT" rev-parse HEAD)" == "$head_before" && ! -e "$AT/self/features/cs-two" ]]'
+
+# ── S2. a manifest naming the branch makes a start refuse, merged or not ─────
+# One session holds one branch holds one feature: a manifest already on origin/main that
+# names the assigned branch is that branch's feature, and a second is a new session.
+AT="$(container s2)"
+BR="claude/cs-reuse"
+mkdir -p "$AT/self/features/cs-merged"
+printf '# cs-merged\n\nMerged.\n\n```json\n{"slug": "cs-merged", "branches": ["%s"], "session_window": {"from": "2026-01-01T00:00:00Z", "to": "2026-01-01T01:00:00Z"}}\n```\n' "$BR" \
+  > "$AT/self/features/cs-merged/README.md"
+git -C "$AT" add -A
+git -C "$AT" commit -q -m "cs-merged (#1)"
+git -C "$AT" push -q origin "$BASE" 2>/dev/null
+assigned "$AT" "$BR"
+head_before="$(git -C "$AT" rev-parse HEAD)"
+out="$(cstart "$AT" "" cs-again --no-gate)"; rc=$?
+check "S2a. a start on a branch a merged manifest names is refused (got $rc)" '[[ $rc -eq 1 ]]'
+check "S2b. ... naming cs-merged and writing nothing" \
+  'grep -qF "cs-merged" <<<"$out" && [[ ! -e "$AT/self/features/cs-again" && "$(git -C "$AT" rev-parse HEAD)" == "$head_before" ]]'
+check "S2c. ... and started_features_on names the merged feature" \
+  '[[ "$(cd "$AT" && SELF_MODE=1 bash -c "source ./plan-runner-roots.sh >/dev/null 2>&1; started_features_on \"$AT\" self/features \"$BR\"")" == "cs-merged" ]]'
 
 # ── R. somebody's work is refused ─────────────────────────────────────────────
 AT="$(container r1)"

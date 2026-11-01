@@ -57,6 +57,23 @@ choice". The answer becomes `--method` in the next step and the manifest's `meth
 field, which is what tells `analysis/report.py` whether `planning.json` holds planning
 or the build.
 
+The threshold is amended by an owner's rule (2026-10-30): **the coordinator's context is
+for deciding and briefing; building, testing, debugging and drafting go to the cheapest
+model that can do them, and the method is chosen by that, not by diff size.** So the
+default is `--method direct` on Sonnet, with the session as coordinator; `--method hand`
+only when the brief would be longer than the diff and the diff is under about fifty lines.
+Sonnet does implementation, test writing, debugging and doc drafting from the rulings;
+Haiku does mechanical edits that need no judgement (renames, field-list updates, applying a
+review's "fix" lines); Opus is for the review pass the harness already runs and for
+authoring plans when a feature genuinely needs the plans method. Every delegation names its
+model explicitly. Debugging is always delegated: a failing test or gate goes to a delegate
+with the failure output, and the coordinator never re-runs it to inspect it. The
+coordinator's written output per feature is the manifest's opening paragraph, the rulings
+in `NOTES.md`, the delegate briefs and the final report; consumer-side work stays in child
+sessions, on Sonnet unless the brief says why not. `harness/EXPERIMENTS.md`'s "plans wins
+above about a thousand lines" is a rule about Opus-versus-Opus cost and says nothing about
+the coordinator's context.
+
 ## 2. Start
 
     ./agentTooling/feature-start.sh [--self] <slug> [--method direct|plans|hand] [--base <branch>] [--branch <name>] [--open]
@@ -129,7 +146,14 @@ second feature in the container (one branch, one feature), a branch carrying com
 on `origin/<base>`, and a dirty tree; "the primary is on `main`" becomes "the checkout
 contains `origin/<base>`", with the same fast-forward and exit 3 when it is strictly
 behind. A refused cloud start leaves a lock in `.git/`; re-running it resumes at the setup
-hook and deletes nothing, so a fix made by hand survives. Before the setup hook and the
+hook and deletes nothing, so a fix made by hand survives, and the `<slug>: start` commit
+carries the feature directory only — whatever else is staged or modified stays as it was.
+The tree must not change while the start's hook and gate run, resumed or not: the start
+compares `git status --porcelain` before them with after (outside the feature directory
+and the gate report) and refuses a difference, because the gate judged a tree that no
+longer exists; commit those changes with a `<slug>:` subject or edit them back, then run it
+again. So run the start in the background and wait for its exit notification before
+touching the tree. Before the setup hook and the
 gate, a consuming repo's cloud start waits for the setup `session-start.sh` began in the
 background — `plans/cloud-setup.sh --wait`, template-version 3 — and says so in one line,
 so a start run as the session's first command never gates a half-installed toolchain
@@ -206,6 +230,29 @@ in the manifest's `subagents` while its transcript still exists, with
 `analysis/manifest.py [--self] S pin-subagent <agent-id>` (the id `capture_planning.py
 --list-subagents --unclaimed` prints, or the Agent tool returned). The manifest is a cost
 record, so the pin rides the capture's commit.
+
+## Orchestrator and implementer sessions
+
+On the cloud profile the work divides between two kinds of session, one branch each.
+
+- **The orchestrator** decides the backlog, writes one brief per feature, spawns one
+  implementer session per feature, watches them, forwards anything they need to the
+  repository owner, and reports. It never runs `feature-start.sh`, never builds, and
+  commits nothing except its own orchestration record (defined by the feature
+  `orchestration-records`).
+- **The implementer** takes one feature from `feature-start.sh` to `feature-close.sh` on
+  its assigned branch and ends when the PR is open. Inside it the cost rule in
+  `self/PROJECT_FACTS.md` applies: Sonnet builds, Opus reviews.
+- **Consequence.** One session holds one branch holds one feature; a second feature is a
+  new session, and a start refuses a branch whose manifest is tracked, merged or not. The
+  assigned branch is the feature's branch, as the slug branch is locally, so cost
+  attribution by branch needs no windows, pins or shared-session splitting.
+- **The branch is named in the brief.** A session the orchestrator creates has no
+  assigned branch and comes up on a detached HEAD at `origin/main`, so the brief names the
+  branch outright as `--branch claude/<slug>`, which the start cuts off `origin/main`; the
+  start refuses a detached HEAD without it. The brief is filled in from a template, never
+  rewritten from memory: `plans/ORCHESTRATOR_BRIEF.md` in a consuming repo,
+  `templates/plans/ORCHESTRATOR_BRIEF.md` in agentTooling itself.
 
 ## 5. Review
 
@@ -573,3 +620,18 @@ own capture (step 6) or is a repair somebody reaches for with a reason:
    merge freezes it, and `analysis/manifest.py` is what edits it in between. An executor may correct the
    prose above it — a plan table that drifted, an exclusion that turned out wrong — and
    never the fence.
+
+## Orchestration records
+
+An orchestrator session spawns one implementer session per feature and builds nothing, so
+the cost of a group of features is the orchestrator's own transcript (overhead) plus each
+feature's. The **orchestration record** is `self/orchestrations/<slug>/`: the orchestrator
+writes it — `orchestration-start.sh <slug>` at the start, `manifest.py --orchestration
+<slug> add-feature …` for each feature it spawns (each started with `feature-start.sh
+--orchestration <slug>`, which writes the manifest's optional `orchestration` key), and
+`set-window-to now` at the end — and commits nothing else, pushing the record on its
+assigned branch as a records-only PR. It is captured once, when the orchestrator is done:
+`orchestration-capture.sh <slug>` prices its transcript into `planning.json`, then
+`report.py --orchestration <slug>` writes the group report. The record carries the
+agentTooling commit the orchestrator ran under, so an experiment comparing two versions at
+the orchestrator level reads the same file.

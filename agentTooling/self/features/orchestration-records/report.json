@@ -1,0 +1,165 @@
+{
+  "slug": "orchestration-records",
+  "generated_at": "2026-10-30T19:01:05.527313+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 3.6434509000000004,
+    "build": 3.6434509000000004,
+    "verify": 0.0,
+    "review": 1.6152501999999997,
+    "total": 5.2587011,
+    "planning_pct": 0.0,
+    "build_pct": 69.28423636779813,
+    "verify_pct": 0.0,
+    "review_pct": 30.715763632201877,
+    "cost_per_plan": 2.62935055,
+    "cost_per_file": 1.7529003666666665,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 2008,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 2008,
+    "build_s": 2008.0,
+    "verify_s": 0.0,
+    "review_s": 145.121,
+    "executor_s": 2153.121,
+    "total_s": 2153.121,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-10-30T18:55:25+00:00",
+      "last_at": "2026-10-30T19:01:04+00:00",
+      "batch_span_s": 339.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 151.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 151.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-10-30T19:01:04+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/106"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 3.6434509000000004,
+      "build_min": 33.46666666666667,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.1486052999999998,
+      "review_min": 1.6527333333333334,
+      "review_plan": "01-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/01-review-opus.md"
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.4666449,
+      "review_min": 0.76595,
+      "review_plan": "02-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 3.6434509000000004
+  },
+  "cold_start_tax_tokens": 119169,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 2,
+      "total_turns": 43,
+      "total_cost_usd": 1.6152501999999997,
+      "total_duration_s": 145.121,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "02-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 59,
+      "loc_changed": 108
+    },
+    {
+      "plan": "02-review-opus",
+      "plan_md_lines": 20,
+      "loc_changed": 63
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/home/user/agentTooling/self/features/orchestration-records/NOTES.md",
+      "tool": "Read",
+      "plans": [
+        "01-review-opus",
+        "02-review-opus"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "analysis/report.py",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-opus",
+      "edited_not_listed": [
+        "self/features/orchestration-records/NOTES.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": [],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and this feature stamped no `checkpoint` event \u2014 nothing divides it by round, so all of it sits in round 1"
+    }
+  ],
+  "profile": "cloud",
+  "gate": "green"
+}

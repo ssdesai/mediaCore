@@ -4,14 +4,21 @@ set -uo pipefail
 # Scaffold a fixture: pin the commits, verify what a script can verify, write the rest
 # as stubs that fail loudly until a person replaces them.
 #
-#   harness/new-fixture.sh <name> --repo <path> --base <ref> \
-#                          --spec-repo <path> --spec-ref <ref> --spec-path <file> \
+#   harness/new-fixture.sh <name> --base <ref> --spec-ref <ref> --spec-path <file> \
+#                          [--spec-repo <url or checkout>] [--repo <the consumer>] \
 #                          [--sections 5.1,12] [--setup '<cmd>']... \
 #                          [--gate-command ./plans/gate.sh] [--gate-green 'all checks passed'] \
 #                          [--gate-minutes N] [--branch-stem <stem>] [--diff-lines N] \
 #                          [--consumer <path>]
 #
-# Run from the consuming repo root. Writes plans/experiments/fixtures/<name>/ with a
+# Run from the consuming repo root, with that repo's own vendored harness. The fixture
+# measures that repo (an experiment runs from, and lives on, the repository it measures):
+# `--repo`, if given at all, must be the consumer (anything else is refused), and the
+# fixture.json carries no `repo` block (only `repo.remote` when --remote names a remote
+# other than origin). `--spec-repo` defaults to the consumer too; given, it names an
+# external spec repository (a checkout contributes its `origin`; a URL is cloned if no
+# checkout is found, lib.sh → harness_resolve_repo) and the fixture records `spec.url`,
+# never a path, which is one machine's. Writes plans/experiments/fixtures/<name>/ with a
 # fixture.json whose `base` and `spec.commit` are full commit ids resolved from the refs
 # given (a ref moves; a fixture must not), and the three files only a person can write —
 # facts.md, review-brief.md, accept/accept.py — as stubs: the first two carry a
@@ -44,16 +51,16 @@ REMOTE="$DEFAULT_REMOTE"
 CONSUMER_ROOT="$DEFAULT_CONSUMER_ROOT"
 
 usage() {
-  sed -n '3,24p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,30p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-1}"
 }
 
 while (( $# > 0 )); do
   case "$1" in
-    --repo)         REPO="$(cd "${2:?--repo needs a path}" && pwd)"; shift 2 ;;
+    --repo)         REPO="${2:?--repo needs a url or a checkout}"; shift 2 ;;
     --remote)       REMOTE="${2:?--remote needs a name}"; shift 2 ;;
     --base)         BASE_REF="${2:?--base needs a ref}"; shift 2 ;;
-    --spec-repo)    SPEC_REPO="$(cd "${2:?--spec-repo needs a path}" && pwd)"; shift 2 ;;
+    --spec-repo)    SPEC_REPO="${2:?--spec-repo needs a url or a checkout}"; shift 2 ;;
     --spec-ref)     SPEC_REF="${2:?--spec-ref needs a ref}"; shift 2 ;;
     --spec-path)    SPEC_PATH="${2:?--spec-path needs a file}"; shift 2 ;;
     --sections)     SECTIONS="${2:?--sections needs a comma list}"; shift 2 ;;
@@ -72,7 +79,8 @@ while (( $# > 0 )); do
 done
 
 [[ -n "$NAME" ]] || usage 1
-for required in REPO BASE_REF SPEC_REPO SPEC_REF SPEC_PATH; do
+harness_require_own_driver
+for required in BASE_REF SPEC_REF SPEC_PATH; do
   [[ -n "${!required}" ]] || harness_die "--$(printf '%s' "$required" | tr '[:upper:]_' '[:lower:]-') is required"
 done
 [[ "$NAME" =~ ^[a-z][A-Za-z0-9]*$ ]] || harness_die "fixture name must be bare camelCase: $NAME"
@@ -83,6 +91,43 @@ harness_require_tools
 
 FIXTURE_DIR="$CONSUMER_ROOT/plans/experiments/fixtures/$NAME"
 [[ ! -e "$FIXTURE_DIR" ]] || harness_die "fixture already exists: $FIXTURE_DIR"
+
+# ── The repositories: a URL each, and a checkout here to resolve refs in ──────
+# repo_url_of <url or checkout> — the URL the fixture records: a checkout's origin, else
+# the argument itself (a URL, or a path with no origin, which only this machine can use).
+repo_url_of() {
+  local url
+  if harness_is_checkout "$1"; then
+    url="$(git -C "$1" config --get remote.origin.url 2>/dev/null)"
+    if [[ -n "$url" ]]; then printf '%s' "$url"; return 0; fi
+    harness_warn "$1 has no origin — the fixture will name the path, which no other machine has"
+    ( cd "$1" && pwd ); return 0
+  fi
+  printf '%s' "$1"
+}
+# The fixture's repository is the consumer. A --repo that names anything else is refused.
+if [[ -n "$REPO" ]]; then
+  REPO_URL="$(repo_url_of "$REPO")"
+  named="$(harness_repo_identity "$REPO_URL")"
+  own="$(harness_consumer_identity)"
+  same_dir=false
+  if [[ -d "$REPO" && "$(cd "$REPO" && pwd -P)" == "$(cd "$CONSUMER_ROOT" && pwd -P)" ]]; then same_dir=true; fi
+  if [[ "$same_dir" != true && ( -z "$own" || "$named" != "$own" ) ]]; then
+    harness_die "$(harness_measured_repo_message "--repo $REPO" fixture "$named")"
+  fi
+fi
+REPO="$CONSUMER_ROOT"
+# The spec comes from the consumer unless --spec-repo names an external spec repository.
+SPEC_URL=""
+if [[ -n "$SPEC_REPO" ]]; then
+  SPEC_URL="$(repo_url_of "$SPEC_REPO")"
+  SPEC_REPO="$(harness_resolve_repo "$SPEC_URL" "$SPEC_REPO")" || exit 1
+else
+  SPEC_REPO="$CONSUMER_ROOT"
+fi
+if [[ -n "$SPEC_URL" ]]; then SPEC_WHERE="\`$SPEC_URL\`"; else SPEC_WHERE="this repository"; fi
+harness_log "repo   the consumer  (checkout $REPO)"
+harness_log "spec   ${SPEC_URL:-the consumer}  (checkout $SPEC_REPO)"
 
 # ── Pin the base ─────────────────────────────────────────────────────────────
 git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1 || harness_die "not a git repository: $REPO"
@@ -134,20 +179,23 @@ else
   SETUP_JSON="[]"
 fi
 
+# No `repo` block (the consumer), unless a remote other than origin is named; no spec.url
+# unless the spec lives in another repository.
 jq -n \
-  --arg name "$NAME" --arg repo "$REPO" --arg remote "$REMOTE" --arg base "$BASE_SHA" \
-  --arg srepo "$SPEC_REPO" --arg scommit "$SPEC_SHA" --arg spath "$SPEC_PATH" \
+  --arg name "$NAME" --arg remote "$REMOTE" --arg defremote "$DEFAULT_REMOTE" --arg base "$BASE_SHA" \
+  --arg srepo "$SPEC_URL" --arg scommit "$SPEC_SHA" --arg spath "$SPEC_PATH" \
   --argjson sections "$SECTIONS_JSON" --argjson setup "$SETUP_JSON" \
   --arg gcmd "$GATE_COMMAND" --arg ggreen "$GATE_GREEN" --argjson gmin "$GATE_MINUTES" \
   --arg stem "$BRANCH_STEM" --argjson diff "$DIFF_LINES" \
-  '{name: $name,
-    repo: {path: $repo, remote: $remote},
-    base: $base,
-    spec: {repo: $srepo, commit: $scommit, path: $spath, sections: $sections},
-    setup: $setup,
-    gate: {command: $gcmd, green: $ggreen, minutes: $gmin},
-    branch_stem: $stem,
-    diff_lines: $diff}' > "$FIXTURE_DIR/fixture.json"
+  '{name: $name}
+   + (if $remote != $defremote then {repo: {remote: $remote}} else {} end)
+   + {base: $base,
+      spec: ((if $srepo != "" then {url: $srepo} else {} end)
+             + {commit: $scommit, path: $spath, sections: $sections}),
+      setup: $setup,
+      gate: {command: $gcmd, green: $ggreen, minutes: $gmin},
+      branch_stem: $stem,
+      diff_lines: $diff}' > "$FIXTURE_DIR/fixture.json"
 
 cat > "$FIXTURE_DIR/facts.md" <<FACTS
 ## What this feature is — and is not
@@ -227,12 +275,14 @@ define it, frozen so it can be built again by any method.
 
 ## The pins, and where they came from
 
+- \`repo\` — none: the fixture measures this repository, the one it lives in
+  (\`agentTooling/harness/README.md\` → "Repositories by URL").
 - \`base\` — \`$BASE_SHA\`, resolved from \`$BASE_REF\` in \`$REPO\` on $(harness_utc_now).
   @@TODO@@: say why this commit (the merge-base of earlier arms, \`main\` after a
   particular merge, …).
-- \`spec\` — \`$SPEC_PATH\` at \`$SPEC_SHA\`, resolved from \`$SPEC_REF\` in \`$SPEC_REPO\`;
+- \`spec\` — \`$SPEC_PATH\` at \`$SPEC_SHA\`, resolved from \`$SPEC_REF\` in $SPEC_WHERE;
   sections $SECTIONS_JSON. The harness checks it out detached at
-  \`$SPEC_REPO-fx-$NAME\` and points every brief there, so the fixture survives that
+  \`<spec checkout>-fx-$NAME\` and points every brief there, so the fixture survives that
   branch moving.
 - \`setup\` — $SETUP_JSON. @@TODO@@: say why each command is needed before the gate.
 - \`gate\` — \`$GATE_COMMAND\`, green when its last lines contain \`$GATE_GREEN\`, about

@@ -14,7 +14,7 @@ A standalone `agentTooling` clone works too, with both roots landing on the clon
 
 **A feature worktree's copy is the right copy before the merge.** `feature-capture.sh` runs in the worktree, on the branch (`../LIFECYCLE.md` → step 5), so the capture it runs is the worktree's copy, and it writes `planning.json` into the worktree's own corpus — which is the branch, and what the PR carries. A worktree holds a `.git` of its own (a file rather than a directory, which is why the rule tests `.exists()`), and the session root follows it home: when the nearest `.git` is a linked worktree's file, `roots.session_root` reads its `gitdir:` line and that directory's `commondir` and returns the **primary checkout** the common git dir belongs to (`roots.worktree_primary`, no subprocess). So a worktree's copy scans the same transcript directories and claims from the same roots as `R`'s own copy would; only where it writes differs. A submodule's `.git` file has no `commondir` and resolves as before. Asserted by `self/tests/capture-from-worktree.sh`.
 
-**Which launch directories a feature claims from.** For slug `<slug>`, `capture_planning.claim_roots` names three roots — the primary `R`, the feature's worktree `R/.worktrees/<slug>`, and the legacy sibling `R-<slug>` a feature started before worktrees moved inside the primary still has, kept claimable for good so that a `--recapture` of such a feature finds every session it found before — and one fence, `R/.worktrees`. The fence is needed because every other feature's worktree is under `R` too, and a prefix test on `R` would hand each feature's sessions to all the others. A cwd is claimable when the longest of the roots and the fence that it equals or sits under is a root (`cwd_claimable`), so `R/.worktrees/<other>` falls to the fence while `R/.worktrees/<slug>` is claimed by its own, longer root. Capture, `--last-branch-instant` and the `launched_elsewhere` warning all use that one rule; `--list-sessions` and `--list-subagents` are discovery across every feature, and apply no fence. Both worktree paths are derived from the slug rather than looked up, so they stay matchable after the next `feature-start.sh` prunes the merged worktree. **The project directory** Claude Code files a session under is the launch cwd with every `/` and `.` turned into `-` (`transcript_dir_name`, `TRANSCRIPT_DIR_MANGLED_CHARS`), so a nested worktree's transcripts are under `…-R--worktrees-<slug>`, which contains `R`'s own mangled name and is found by the same substring scan as every other (`find_transcript_dirs`). Mangling `/` alone, as it once did, left a `.` in `R`'s own path unmangled and matched no directory at all.
+**Which launch directories a feature claims from.** For slug `<slug>`, `capture_planning.claim_roots` names four roots — the primary `R`, the feature's worktree `R/.worktrees/<slug>`, the legacy sibling `R-<slug>` a feature started before worktrees moved inside the primary still has, kept claimable for good so that a `--recapture` of such a feature finds every session it found before, and, for each entry of the manifest's `branches`, the experiment harness's own tree `R-<Branch>` (`harness_tree_path`; camelCase, `harness_worktree_path` in `harness/lib.sh`, the cwd of every harness `claude` session — implementer, review and rework, whose manifests all carry the feature branch; no such root when `branches` is empty) — and one fence, `R/.worktrees`. The fence is needed because every other feature's worktree is under `R` too, and a prefix test on `R` would hand each feature's sessions to all the others. A cwd is claimable when the longest of the roots and the fence that it equals or sits under is a root (`cwd_claimable`), so `R/.worktrees/<other>` falls to the fence while `R/.worktrees/<slug>` is claimed by its own, longer root. Capture, `--last-branch-instant` and the `launched_elsewhere` warning all use that one rule; `--list-sessions` and `--list-subagents` are discovery across every feature, and apply no fence. Both worktree paths are derived from the slug rather than looked up, so they stay matchable after the next `feature-start.sh` prunes the merged worktree. **The project directory** Claude Code files a session under is the launch cwd with every `/` and `.` turned into `-` (`transcript_dir_name`, `TRANSCRIPT_DIR_MANGLED_CHARS`), so a nested worktree's transcripts are under `…-R--worktrees-<slug>`, which contains `R`'s own mangled name and is found by the same substring scan as every other (`find_transcript_dirs`). Mangling `/` alone, as it once did, left a `.` in `R`'s own path unmangled and matched no directory at all.
 
 `feature-start.sh` still refuses to run from a worktree's copy — a feature is started from the primary — while `feature-capture.sh` runs from the worktree's copy before the merge and from the primary's after it.
 
@@ -190,7 +190,9 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   imports neither `roots` nor any of them — it is pure transcript parsing). Exposes
   `AGENT_TOOLING_DIR`, `SELF_CORPUS_IDENTITY`, `add_self_flag(parser)`,
   `artifact_root(self_mode)`,
-  `features_root(self_mode)`, `all_features_roots()`, `session_root(self_mode)`,
+  `features_root(self_mode)`, `all_features_roots()`, `orchestrations_root()` (always
+  `self/orchestrations/`, in both modes: an orchestration record lives in agentTooling
+  whatever repos its features were built in, so it takes no `--self`), `session_root(self_mode)`,
   `checkout_of(path)` (the nearest ancestor of `path`, inclusive, holding `.git` — a
   linked worktree counts as its own checkout — or `None`; what `session_root` starts from
   and `routing.feature_dir_in_worktree` measures the corpus against),
@@ -280,8 +282,9 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   the script and the first that NAMES a slug wins — a slugless start names no feature, so
   the scan passes over it and keeps looking, but only at another line that *runs* the
   script, never at an arbitrary word. Past the script token the flags are read
-  positionally against `START_BARE_FLAGS` and `START_VALUE_FLAGS`, so `--base x` before
-  the slug does not become one.
+  positionally against `START_BARE_FLAGS` and `START_VALUE_FLAGS` (`--method`, `--base`,
+  `--branch`, `--session`, `--orchestration` take a value), so `--base x` or `--branch
+  claude/x` before the slug does not become one.
   **`is_router_lines` follows from that and needs no rule of its own**: it asks
   `bool(feature_start_slugs(lines))`, and a start that names no feature contributes no
   entry — so a session whose only `feature-start.sh` call carries no slug started nothing,
@@ -496,7 +499,19 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `usage.json`) and `exclude_sessions`, sums tokens per `(session, model,
   is_sidechain)`, prices each with `pricing.compute_cost` using that session's own
   date, and freezes the result as dollars into `<features root>/<slug>/planning.json`.
-  Cost is computed once here; nothing downstream recomputes it. Usage:
+  Cost is computed once here; nothing downstream recomputes it. **Project-directory
+  contract:** Claude Code files a session at `~/.claude/projects/<directory derived from
+  its working directory>/<session id>.jsonl`, and when the working directory moves a
+  second file with the same id starts under the other project directory, holding the
+  whole session from its first line — a superset of the first, which stops growing. For
+  every session id priced (by branch, by cwd or by pin) the capture finds every such
+  file across every project directory (`session_transcript_copies`, not only the repo's
+  own), prices the copy whose latest timestamp is latest (`best_session_copy`), looks for
+  its subagents beside every copy, counts the session once (`last_branch_instant`, the evidence for the window's `to`, applies the
+  same rule, so the bound is never stamped from the shorter copy), and warns `session <id> has transcripts in <n> project directories;
+  priced <path>`. Correct only while the later copy really is the superset; a copy that
+  forks from a shared prefix would be under-priced. Tested by `self/tests/capture-guard.sh`
+  phase 19. Usage:
   `python3 agentTooling/analysis/capture_planning.py <slug>`,
   `… --all [--recapture]`, `… --annotate-frozen [--except <slug>]`,
   `… --list-subagents [--since YYYY-MM-DD]`,
@@ -1441,6 +1456,33 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   written). Usage:
   `python3 agentTooling/analysis/report.py <slug>` or
   `python3 agentTooling/analysis/report.py --all`.
+- `orchestration_capture.py` — `orchestration_capture.py <slug>`, run by
+  `../orchestration-capture.sh`: prices the orchestrator's own transcript into
+  `self/orchestrations/<slug>/planning.json`. It reads the record's `session` and
+  `session_window` (`to` null = now) and calls
+  `capture_planning.price_session_in_window(session_id, window)` — the one pricing path
+  for a bare session id. That function takes **every** `~/.claude/projects/*/<id>.jsonl`
+  (a restarted container files one id again), prices the one whose latest timestamp is
+  latest and names the others in `warnings`, counts a response when its first line's
+  instant is in the half-open window (the dating rule of `outside_window_cost`), and
+  prices the chosen file's `<id>/subagents/agent-*.jsonl` too, as subagent cost. Exit 1,
+  nothing written, when there is no record, no `session`, or no transcript. Output shape:
+  "JSON artifacts" → orchestration `planning.json`.
+- `report.py --orchestration <slug>` — the **group report**: `report.py` reads
+  `self/orchestrations/<slug>/README.md` and writes `report.md` and `report.json` beside
+  it. `compute_orchestration_report(record, folder, repo_root)` is the one function holding
+  the arithmetic and returns the dict `report.json` serialises; `render_orchestration_md`
+  only prints it. One row per `features[]` entry: priced from that feature's `report.json`
+  (`cost.total`, read by `read_total_usd`, the one loader — also used for the
+  orchestrator's `planning.json` `cost_usd.total`) when its `report` path (relative to
+  `repo_root`, the agentTooling root) is a file holding a number, else `unpriced` with one
+  of three reasons: `no report path in the record`, `report path does not exist: <path>`,
+  `no total in <path>`. The overhead is the orchestrator's `planning.json` total, or
+  `unpriced: not captured`. **Unpriced features are not in the group total**
+  (`group_total_usd` = priced features + overhead) and the report says how many there are
+  (`unpriced_count`); `overhead_pct` is overhead over the group total, null when there is
+  no overhead or the total is zero. Output fields: "JSON artifacts" → orchestration
+  `report.json`. Asserted by `../self/tests/orchestration-records.sh` S6.
 - `manifest.py` — reads and writes a feature manifest's machine-readable fence, and reads
   what its `planning.json` claimed: the JSON edits the lifecycle scripts need, kept out of
   bash. Twelve subcommands, `--self` first as everywhere. `init --method M --branch B --base
@@ -1569,6 +1611,23 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   diff after `init` or `set-window-to` shows the change and nothing else. `method` is one
   of `plans`, `direct`, `hand`. Depends on `TEMPLATE.md` still carrying a fenced JSON block to
   replace, and on `roots.features_root` for where the file goes.
+  **The orchestration scope** (`../self/features/orchestration-records/`):
+  `manifest.py --orchestration <slug> <subcommand>` — `--orchestration` is the **first**
+  word, which is what selects it (after a slug it is `init`'s flag, below) — edits
+  `self/orchestrations/<slug>/README.md`, a different file from a feature manifest, through
+  the same last-fence reader. Four subcommands, the feature ones untouched: `get <key>`
+  (a scalar or JSON from the record's fence, dotted path, empty when absent);
+  `add-feature repo=R slug=S [session=ID] [branch=B] [pr=URL] [report=PATH]`, which
+  appends the entry and **replaces in place** one with the same repo *and* slug (same slug
+  in two repos are two entries; unset fields are null), printing `added` or `replaced`;
+  `set-feature repo=R slug=S key=value…`, changing named fields of one entry (`null` or an
+  empty value clears a field; a key outside `repo, slug, session, branch, pr, report`, and
+  an entry that is not there, are refused, exit 1); and `set-window-to <instant|now>`,
+  stamping `session_window.to` in either direction but refusing one not after `from`.
+  The fence is rewritten one top-level key per line with `features` one entry per line
+  (`render_orchestration_fence`). **`init --orchestration <slug>`** writes the feature
+  manifest's optional `orchestration` key (after `gate` in `FENCE_KEY_ORDER`), refusing a
+  slug that fails the lifecycle's pattern; `get orchestration` reads it.
 
 ## JSON artifacts
 
@@ -1940,6 +1999,36 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   `missing_duration_plans[]`, and it keeps `time.total_is_partial` true because a span is
   a lower bound rather than the executor's wall clock.
 
+- the orchestration record's fence (`self/orchestrations/<slug>/README.md`, the last
+  ```` ```json ```` block) — `{ slug, session, agent_tooling, session_window{from,to},
+  features[{repo,slug,session,branch,pr,report}] }`. `session` is the orchestrator's session
+  id; `agent_tooling` the full commit id of the checkout it ran under, or null (a vendored
+  copy has no `.git` to ask); `session_window.to` is null until
+  `manifest.py --orchestration <slug> set-window-to`. A feature entry's `repo` is the
+  repository name as its origin names it, `session` the implementer's session id or null,
+  `report` that feature's `report.json` path relative to the agentTooling root or null when
+  it lives in another repository. Written by `orchestration-start.sh` and `manifest.py
+  --orchestration`; read by `orchestration_capture.py` and `report.py --orchestration`.
+- an orchestration's `planning.json` (`self/orchestrations/<slug>/planning.json`) — `{ slug,
+  captured_at, orchestration: true, agent_tooling, session_window{from,to}, sessions[{session_id,
+  git_branch,selected_by:"orchestration",cwd,date,started_at,ended_at,duration_s}],
+  subagents[{agent_id,parent_session_id,date,started_at,ended_at,duration_s,selected_by,
+  cross_repo}], priced[{session_id,agent_id,model,is_sidechain,date,tokens,cost_usd,
+  rates_applied}], cost_usd{main,sidechain,subagents,total,total_is_partial},
+  duration_s{sessions,subagents,entries_without_duration[]}, rates_source, warnings[] }`.
+  **Where it differs from a feature's `planning.json`** (above): it carries `orchestration`,
+  `agent_tooling` and `session_window` where a feature's carries `manifest_branches`,
+  `manifest_subagents`, `open_claimants`, `excluded_*` and `yielded_agent_ids`; its entries
+  have no `share_basis`, `also_claimed_by` or `carried_from` and its `priced[]` rows no
+  `duration_s`, `share` or `shared_with` (nothing else claims the orchestrator's session, and
+  a capture is a whole re-pricing); and `selected_by` is `"orchestration"`. `cost_usd.total`
+  is the key `report.py` reads from both.
+- an orchestration's `report.json` — `{ slug, generated_at, session, agent_tooling,
+  agent_tooling_short, session_window{from,to}, features[{repo,slug,pr,total_usd,
+  unpriced_reason}], overhead{usd,unpriced_reason,total_is_partial}, features_total_usd,
+  priced_count, unpriced_count, group_total_usd, overhead_pct }` — for each feature exactly
+  one of `total_usd` and `unpriced_reason` is null; `group_total_usd` excludes unpriced
+  features; `overhead_pct` is null when there is no overhead or the total is zero.
 - `timing.jsonl` — one JSON object per line, `{ at, event, ...detail }`, appended by the
   runners (`stamp_timing`, `plan-runner-roots.sh`) as a batch runs: `batch_start`/
   `batch_end{rc}`, `pass_start`/`pass_end{queue,reason,round}`, `plan_start`/

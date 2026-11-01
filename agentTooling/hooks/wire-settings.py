@@ -12,10 +12,12 @@ agentTooling's `session-start.sh` when no SessionStart hook already names that s
 (the session's orientation in every profile, then the repo's `plans/cloud-setup.sh` in a
 Claude Code cloud container), and appends each `Edit` deny, `Bash` deny
 and `Edit` ask rule that is absent. It never reorders or rewrites another entry, and it
-removes exactly two kinds, each something this helper itself once wrote and has since
+removes exactly three kinds, each something this helper itself once wrote and has since
 retired: a `Bash` deny rule the policy table dropped (`policy.retired_bash_deny_rules()` —
 `Bash(git stash:*)`, which denied `git stash list` too, and a deny rule beats the hook's
-allow), and the SessionStart command that ran `plans/cloud-setup.sh` directly
+allow), an `Edit` deny rule its ask rule replaced (`RETIRED_EDIT_DENY_RULES` —
+`Edit(**/agentTooling/hooks/**)`, which beat the ask wherever both stood), and the
+SessionStart command that ran `plans/cloud-setup.sh` directly
 (`RETIRED_SESSION_COMMANDS`), which `session-start.sh` now calls. Everything it adds
 is a restriction or a prompt-remover for reads; it never adds an allow rule.
 
@@ -151,6 +153,11 @@ EDIT_DENY_RULES = (
     "Edit(**/venv/**)",
     "Edit(**/node_modules/**)",
 )
+# The Edit deny rules this helper once wrote and has since retired, removed wherever they
+# stand: the hooks/ deny that POLICY_ASK_RULES replaced. Deny wins over ask, so a repo
+# carrying both was refused where the ask meant it to be prompted. Only the exact string
+# this helper wrote — a repo's own spelling of a hooks/ deny is the repo's.
+RETIRED_EDIT_DENY_RULES = ("Edit(**/agentTooling/hooks/**)",)
 # The policy itself, as an ASK rule: an unattended executor must not be able to widen
 # what the hook approves, and a human editing it should be asked rather than refused.
 # Spelled at any depth so a worktree's copy is covered from a session rooted at the
@@ -389,8 +396,9 @@ def missing_entries(present, wanted):
 
 def gaps_in(settings, self_mode):
     """(need_hook, missing Edit denies, missing Bash denies, missing ask rules, retired
-    Bash denies still present, wrong owned sandbox settings, missing denyRead paths,
-    missing allowed domains, need_session, retired SessionStart commands still present).
+    Bash denies still present, retired Edit denies still present, wrong owned sandbox
+    settings, missing denyRead paths, missing allowed domains, need_session, retired
+    SessionStart commands still present).
     Only the two hook commands and the ask spelling differ between the modes; the deny
     rules and the sandbox block are the same in both, since the policy's own rule left it
     for `permissions.ask`."""
@@ -400,6 +408,7 @@ def gaps_in(settings, self_mode):
         missing_rules(settings, DENY_KEY, policy.bash_deny_rules()),
         missing_rules(settings, ASK_KEY, edit_ask_rules(self_mode)),
         present_rules(settings, DENY_KEY, policy.retired_bash_deny_rules()),
+        present_rules(settings, DENY_KEY, RETIRED_EDIT_DENY_RULES),
         wrong_sandbox_settings(settings),
         missing_entries(sandbox_section(settings, SANDBOX_FILESYSTEM_KEY).get(
             SANDBOX_DENY_READ_KEY), SANDBOX_DENY_READ),
@@ -429,14 +438,15 @@ def apply_sandbox(settings, wrong_owned, missing_deny_read, missing_domains):
 
 
 def apply_gaps(settings, self_mode, need_hook, missing_edit, missing_bash, missing_ask,
-               retired_bash, wrong_owned, missing_deny_read, missing_domains, need_session,
-               retired_session):
+               retired_bash, retired_edit, wrong_owned, missing_deny_read, missing_domains,
+               need_session, retired_session):
     """Remove the retired rules and SessionStart commands where they stand, append what
     is absent, in the documented order, set the owned sandbox keys, and change nothing
     else."""
-    if retired_bash:
+    retired = list(retired_bash) + list(retired_edit)
+    if retired:
         deny = settings[PERMISSIONS_KEY][DENY_KEY]
-        deny[:] = [rule for rule in deny if rule not in retired_bash]
+        deny[:] = [rule for rule in deny if rule not in retired]
     if retired_session:
         remove_session_commands(settings, retired_session)
     if need_hook:
@@ -562,14 +572,15 @@ def describe_gaps(need_hook, missing_edit, missing_bash, missing_ask, wrong_owne
 def describe_changes(gaps, check):
     """The whole gap as one clause: what is missing (`no …` for a check, `added …` for a
     write) and the retired rules (`… to remove`, `removed …`)."""
-    (need_hook, missing_edit, missing_bash, missing_ask, retired_bash, wrong_owned,
-     missing_deny_read, missing_domains, need_session, retired_session) = gaps
+    (need_hook, missing_edit, missing_bash, missing_ask, retired_bash, retired_edit,
+     wrong_owned, missing_deny_read, missing_domains, need_session, retired_session) = gaps
     parts = []
     missing = describe_gaps(need_hook, missing_edit, missing_bash, missing_ask,
                             wrong_owned, missing_deny_read, missing_domains, need_session)
     if missing:
         parts.append((CHECK_MISSING_LEAD if check else WRITE_MISSING_LEAD) + missing)
     for retired_items, what in ((retired_bash, "%s %s rule(s)" % (BASH_RULE_LABEL, DENY_RULE_KIND)),
+                                (retired_edit, "%s %s rule(s)" % (EDIT_RULE_LABEL, DENY_RULE_KIND)),
                                 (retired_session, "%s command(s)" % SESSION_EVENT)):
         if retired_items:
             retired = "%d %s %s (%s)" % (

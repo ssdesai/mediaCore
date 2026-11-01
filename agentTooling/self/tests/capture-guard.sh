@@ -87,6 +87,13 @@ set -uo pipefail
 #      branch (17d): the evidence is pinned to the manifest's branches, not to the
 #      presence of excluded sessions in the repo, or a branch typo would read as an
 #      evidenced $0.00 in every repo that has ever run a batch.
+#  19. one session id with transcripts under two project directories, one longer, is
+#      priced once from the copy that ends latest — whichever directory it is in, walked
+#      or not, and for a pinned session found only elsewhere — with the warning naming the
+#      session, the count and the copy priced; and `--last-branch-instant` reads the same
+#      later copy, so a `to` stamped from it does not cut a pinned session short (19h-i);
+#      both readers also look for a session's subagents beside every copy, not only the
+#      walked one (19j-k).
 #
 # Assertions 3-7 were RED until the guard landed in analysis/capture_planning.py, and 3,
 # 8 and 13 RED again until the refusal became the merge; 10-13 were RED until the skip
@@ -632,6 +639,124 @@ check "18b. and writes no planning.json for it" "[ ! -f '$PLANNING' ]"
 capture > "$TMP/out18c.txt"
 check "18c. naming the slug does not skip it as in flight" "! grep -q 'in flight' '$TMP/out18c.txt'"
 rm -f "$PLANNING"
+
+# ── 19: one session id, two transcripts, priced once ─────────────────────────
+# A working directory that moves starts a second `<id>.jsonl` under the other project
+# directory, holding the whole session from its first line: the first file stops growing
+# and the second is its superset. The capture prices the copy that ends latest, once, and
+# warns — whichever directory the later copy is in, and whether or not the walk reaches it.
+SESSION_C="cccccccc-0000-0000-0000-000000000003"
+OTHER_PROJECT="$FAKE_HOME/.claude/projects/-moved-working-directory"
+FIRST_INSTANT="2026-07-01T10:00:00.000Z"
+LATER_INSTANT="2026-07-01T10:30:00.000Z"
+SHORT_OUTPUT=1000
+LONG_OUTPUT=4000
+short_copy() { session_line "$SESSION_C" "$AT" "$BRANCH" "msg-c1" "$MODEL" "$FIRST_INSTANT" 100 "$SHORT_OUTPUT" 0 0 0; }
+long_copy() {
+  short_copy
+  session_line "$SESSION_C" "$AT" "$BRANCH" "msg-c2" "$MODEL" "$LATER_INSTANT" 100 "$LONG_OUTPUT" 0 0 0
+}
+mkdir -p "$OTHER_PROJECT"
+rm -f "$PROJECTS"/*.jsonl "$OTHER_PROJECT"/*.jsonl
+write_manifest "2026-07-01T00:00:00.000Z"
+
+# The reference: the long copy alone.
+long_copy > "$PROJECTS/$SESSION_C.jsonl"
+rm -f "$PLANNING"; capture > "$TMP/out19ref.txt"
+long_total="$(total_of "$PLANNING")"
+rm -f "$PROJECTS/$SESSION_C.jsonl"
+short_copy > "$PROJECTS/$SESSION_C.jsonl"
+rm -f "$PLANNING"; capture > "$TMP/out19short.txt"
+short_total="$(total_of "$PLANNING")"
+check "19a. (fixture) the long copy costs more than the short one" \
+  "python3 -c \"import sys; sys.exit(0 if float('$long_total') > float('$short_total') > 0 else 1)\""
+check "19b. a lone copy draws no copies warning" "! grep -q 'project directories' '$TMP/out19ref.txt'"
+
+# The short copy in the repo's directory, the long one in a directory the walk never reaches.
+long_copy > "$OTHER_PROJECT/$SESSION_C.jsonl"
+rm -f "$PLANNING"; capture > "$TMP/out19c.txt"
+check "19c. the later copy is priced, once, though only the earlier is in the walked directory" \
+  "python3 -c \"import sys; sys.exit(0 if abs(float('$(total_of "$PLANNING")') - float('$long_total')) < 1e-9 else 1)\" && [ \"\$(python3 -c \"import json;print(len(json.load(open('$PLANNING'))['sessions']))\")\" = 1 ]"
+check "19d. ... and the warning names the session, the count and the copy priced" \
+  "grep -qF 'session $SESSION_C has transcripts in 2 project directories; priced $OTHER_PROJECT/$SESSION_C.jsonl' '$TMP/out19c.txt'"
+
+# The long copy in the repo's directory, the short one elsewhere: the same answer.
+rm -f "$PROJECTS/$SESSION_C.jsonl" "$OTHER_PROJECT/$SESSION_C.jsonl"
+long_copy > "$PROJECTS/$SESSION_C.jsonl"
+short_copy > "$OTHER_PROJECT/$SESSION_C.jsonl"
+rm -f "$PLANNING"; capture > "$TMP/out19e.txt"
+check "19e. the later copy in the walked directory is priced once as well" \
+  "python3 -c \"import sys; sys.exit(0 if abs(float('$(total_of "$PLANNING")') - float('$long_total')) < 1e-9 else 1)\""
+check "19f. ... naming that copy" \
+  "grep -qF 'priced $PROJECTS/$SESSION_C.jsonl' '$TMP/out19e.txt'"
+
+# A pin finds both copies too: the session is pinned, and neither copy is in the walked set.
+rm -f "$PROJECTS/$SESSION_C.jsonl" "$OTHER_PROJECT/$SESSION_C.jsonl"
+SECOND_PROJECT="$FAKE_HOME/.claude/projects/-second-moved-directory"
+mkdir -p "$SECOND_PROJECT"
+short_copy > "$OTHER_PROJECT/$SESSION_C.jsonl"
+long_copy > "$SECOND_PROJECT/$SESSION_C.jsonl"
+write_manifest "2026-07-01T00:00:00.000Z"
+python3 - "$FEATURE_DIR/README.md" "$SESSION_C" <<'PY'
+import json, re, sys
+path, session = sys.argv[1], sys.argv[2]
+text = open(path).read()
+match = list(re.finditer(r"```json\n(.*?)\n```", text, re.S))[-1]
+fence = json.loads(match.group(1))
+fence["branches"] = ["no-such-branch"]
+fence["sessions"] = [session]
+open(path, "w").write(text[: match.start(1)] + json.dumps(fence, indent=2) + text[match.end(1):])
+PY
+rm -f "$PLANNING"; capture > "$TMP/out19g.txt"
+check "19g. a pinned session filed under two directories elsewhere is priced once, from the later" \
+  "python3 -c \"import sys; sys.exit(0 if abs(float('$(total_of "$PLANNING")') - float('$long_total')) < 1e-9 else 1)\" && grep -qF 'session $SESSION_C has transcripts in 2 project directories; priced $SECOND_PROJECT/$SESSION_C.jsonl' '$TMP/out19g.txt'"
+
+# The window evidence reads the same copy the capture prices: the short copy in the walked
+# directory, the long one elsewhere, and `to` stamped from that evidence must lie past the
+# long copy's end — or a pinned session is cut to a window that ends with the short copy.
+rm -f "$OTHER_PROJECT/$SESSION_C.jsonl" "$SECOND_PROJECT/$SESSION_C.jsonl"
+short_copy > "$PROJECTS/$SESSION_C.jsonl"
+long_copy > "$OTHER_PROJECT/$SESSION_C.jsonl"
+write_manifest "2026-07-01T00:00:00.000Z" null
+EVIDENCE_BOUND="2026-07-01T10:30:01Z"
+evidence="$(HOME="$FAKE_HOME" python3 "$AT/analysis/capture_planning.py" --self --last-branch-instant "$SLUG" --ignore-to 2>&1)"
+check "19h. --last-branch-instant reads the later copy: one second past its last instant (got $evidence)" \
+  "[ \"\$evidence\" = '$EVIDENCE_BOUND' ]"
+python3 - "$FEATURE_DIR/README.md" "$SESSION_C" "$EVIDENCE_BOUND" <<'PY'
+import json, re, sys
+path, session, bound = sys.argv[1:4]
+text = open(path).read()
+match = list(re.finditer(r"```json\n(.*?)\n```", text, re.S))[-1]
+fence = json.loads(match.group(1))
+fence["sessions"] = [session]
+fence["session_window"]["to"] = bound
+open(path, "w").write(text[: match.start(1)] + json.dumps(fence, indent=2) + text[match.end(1):])
+PY
+rm -f "$PLANNING"; capture > "$TMP/out19i.txt"
+check "19i. a pinned session under a bound stamped from that evidence is priced whole, from the later copy" \
+  "python3 -c \"import sys; sys.exit(0 if abs(float('$(total_of "$PLANNING")') - float('$long_total')) < 1e-9 else 1)\""
+
+# A subagent filed beside the later copy only: both readers look for a session's subagents
+# under every copy's project directory, not just the walked one.
+AGENT_C="agentc00-0000-0000-0000-000000000004"
+AGENT_START_INSTANT="2026-07-01T10:31:00.000Z"
+AGENT_END_INSTANT="2026-07-01T10:45:00.000Z"
+AGENT_END_BOUND="2026-07-01T10:45:01Z"
+AGENT_OUTPUT=7000
+mkdir -p "$OTHER_PROJECT/$SESSION_C/subagents"
+{
+  subagent_prompt_line "$SESSION_C" "$AGENT_C" "$AT" "$BRANCH" "$AGENT_START_INSTANT" "a delegate"
+  subagent_line "$SESSION_C" "$AGENT_C" "$AT" "$BRANCH" "msg-$AGENT_C" "$MODEL" "$AGENT_END_INSTANT" 100 "$AGENT_OUTPUT" 0 0 0
+} > "$OTHER_PROJECT/$SESSION_C/subagents/agent-$AGENT_C.jsonl"
+write_manifest "2026-07-01T00:00:00.000Z" null
+evidence="$(HOME="$FAKE_HOME" python3 "$AT/analysis/capture_planning.py" --self --last-branch-instant "$SLUG" --ignore-to 2>&1)"
+check "19j. --last-branch-instant counts a subagent filed beside the later copy only (got $evidence)" \
+  "[ \"\$evidence\" = '$AGENT_END_BOUND' ]"
+rm -f "$PLANNING"; capture > "$TMP/out19k.txt"
+check "19k. the capture prices that subagent too: the total rises past the long copy's" \
+  "python3 -c \"import sys; sys.exit(0 if float('$(total_of "$PLANNING")') > float('$long_total') + 1e-9 else 1)\" && [ \"\$(python3 -c \"import json;print(len(json.load(open('$PLANNING')).get('subagents', [])))\")\" = 1 ]"
+rm -rf "$OTHER_PROJECT" "$SECOND_PROJECT"
+rm -f "$PROJECTS"/*.jsonl "$PLANNING"
 
 echo
 if [ "$fails" -eq 0 ]; then

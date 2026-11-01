@@ -87,6 +87,10 @@ second feature in this one, needs a container of its own.
   coordinator sent it a name. `feature-start.sh`'s cloud refusal on the base or a detached
   HEAD now names `--branch claude/<slug>`, so a child that is missing one picks the
   conventional name, but the assignment is what makes it certain.
+- **The child runs the start in the background and waits.** The start runs the base gate
+  (minutes) and refuses a tree that changes while it runs, so a child that edits before the
+  start's exit notification gets a refusal and a lock (`LIFECYCLE.md`, cloud start); its
+  start commit carries the feature directory only.
 - **The brief is self-contained.** The child starts with nothing but its prompt, and it
   has no coordinator in its container to ask. The brief names the repo, the slug, the
   `--method` (`hand` for a propagation; a self feature's by step 1), the start command

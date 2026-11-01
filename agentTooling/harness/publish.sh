@@ -11,9 +11,10 @@ set -uo pipefail
 # state/ — logs/ is gitignored by the consumer), as `<experiment>: run <n> results` where
 # n is the ledger's row count. If the consumer is on its default branch it first creates
 # `<experiment>Results` (or --branch) and moves the uncommitted results onto it; on any
-# other branch it commits there. Pushes with `-u`; opens the PR through HARNESS_GH_BIN
-# when that is available and no PR is open for the branch yet, otherwise prints the
-# branch to open one from. The PR body is SCORECARD.md.
+# other branch it commits there. Pushes with `-u`; opens the PR through the forge seam
+# (the consumer's vendored `agentTooling/forge.sh`, or HARNESS_FORGE_BIN) when that is
+# there and no PR is open for the branch yet, otherwise prints the branch to open one
+# from. The PR body is SCORECARD.md.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HARNESS_REQUIRED_TOOLS="jq git python3"
@@ -42,6 +43,7 @@ while (( $# > 0 )); do
   esac
 done
 [[ -n "$EXPERIMENT_ARG" ]] || usage 1
+harness_require_own_driver
 
 harness_require_tools
 
@@ -100,14 +102,19 @@ fi
 # ── Push and PR ──────────────────────────────────────────────────────────────
 harness_push "$CONSUMER_ROOT" "$BRANCH"
 
+# Through the forge seam — the consumer's own vendored forge.sh (`gh api` REST, which
+# works on a laptop and in a cloud container alike), or HARNESS_FORGE_BIN.
 existing="$(harness_pr_url "$CONSUMER_ROOT" "$BRANCH")"
 if [[ -n "$existing" ]]; then
   harness_log "PR already open for $BRANCH: $existing"
-elif command -v "$HARNESS_GH_BIN" >/dev/null 2>&1 && harness_has_remote "$CONSUMER_ROOT"; then
-  url="$(cd "$CONSUMER_ROOT" && "$HARNESS_GH_BIN" pr create --title "$NAME: results, run $ROWS" \
-           --body-file "$EXPERIMENT_DIR/SCORECARD.md" 2>&1 | tail -1)"
-  harness_log "PR: $url"
+elif [[ -n "$(harness_forge_for "$CONSUMER_ROOT")" ]] && harness_has_remote "$CONSUMER_ROOT"; then
+  url="$(harness_pr_open "$CONSUMER_ROOT" "$BRANCH" "$NAME: results, run $ROWS" "$EXPERIMENT_DIR/SCORECARD.md")"
+  if [[ -n "$url" ]]; then
+    harness_log "PR: $url"
+  else
+    harness_warn "the forge did not open the PR — open it from branch $BRANCH by hand, body $REL_DIR/SCORECARD.md"
+  fi
 else
-  harness_log "no forge CLI or no remote — open the PR from branch $BRANCH by hand, body $REL_DIR/SCORECARD.md"
+  harness_log "no forge adapter or no remote — open the PR from branch $BRANCH by hand, body $REL_DIR/SCORECARD.md"
 fi
 harness_log "next: add a results section to $REL_DIR/README.md (what the row says against the prediction), then commit that on $BRANCH"

@@ -1,0 +1,51 @@
+{
+  "slug": "program-ab",
+  "generated_at": "2026-10-31T02:07:54Z",
+  "session": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+  "agent_tooling": "3e6c6a14d74814a8266c05d360002e871556be2f",
+  "agent_tooling_short": "3e6c6a1",
+  "session_window": {
+    "from": "2026-10-30T21:41:50Z",
+    "to": "2026-10-31T02:07:46Z"
+  },
+  "features": [
+    {
+      "repo": "agentTooling",
+      "slug": "orchestrator-brief",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/109",
+      "total_usd": 3.1548933000000003,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "program-scorecard",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/110",
+      "total_usd": 3.1831015000000003,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "program-cells",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/111",
+      "total_usd": 14.7782929,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "harness-claim-root",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/113",
+      "total_usd": 3.2128402,
+      "unpriced_reason": null
+    }
+  ],
+  "overhead": {
+    "usd": 23.0075166,
+    "unpriced_reason": null,
+    "total_is_partial": false
+  },
+  "features_total_usd": 24.3291279,
+  "priced_count": 4,
+  "unpriced_count": 0,
+  "group_total_usd": 47.3366445,
+  "overhead_pct": 48.60402937939549
+}

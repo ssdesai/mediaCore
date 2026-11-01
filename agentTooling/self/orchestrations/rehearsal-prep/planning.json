@@ -1,0 +1,140 @@
+{
+  "slug": "rehearsal-prep",
+  "captured_at": "2026-10-31T14:13:44.595203+00:00",
+  "orchestration": true,
+  "agent_tooling": "bc3835d880540da2150ee61df89818992e902445",
+  "session_window": {
+    "from": "2026-10-31T02:07:46Z",
+    "to": "2026-10-31T14:13:36Z"
+  },
+  "sessions": [
+    {
+      "session_id": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+      "git_branch": "HEAD",
+      "selected_by": "orchestration",
+      "cwd": "/home/user",
+      "date": "2026-10-31",
+      "started_at": "2026-10-30T01:02:29.906000+00:00",
+      "ended_at": "2026-10-31T14:13:06.828000+00:00",
+      "duration_s": 43486
+    }
+  ],
+  "subagents": [
+    {
+      "agent_id": "a5bd7af2b592403e7",
+      "parent_session_id": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+      "date": "2026-10-31",
+      "started_at": "2026-10-31T14:12:54.957000+00:00",
+      "ended_at": "2026-10-31T14:13:33.205000+00:00",
+      "duration_s": 38,
+      "selected_by": "orchestration",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a669cebd4f6e94fc7",
+      "parent_session_id": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+      "date": "2026-10-31",
+      "started_at": "2026-10-31T02:07:46.397000+00:00",
+      "ended_at": "2026-10-31T02:08:14.810000+00:00",
+      "duration_s": 28,
+      "selected_by": "orchestration",
+      "cross_repo": false
+    }
+  ],
+  "priced": [
+    {
+      "session_id": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+      "agent_id": null,
+      "model": "claude-fable-5-1",
+      "is_sidechain": false,
+      "date": "2026-10-31",
+      "tokens": {
+        "input": 682,
+        "output": 37169,
+        "cache_read": 4518162,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 191944
+      },
+      "cost_usd": 6.8336905,
+      "rates_applied": {
+        "model": "claude-fable-5-1",
+        "input": 10,
+        "output": 50,
+        "cache_read": 0.25,
+        "cache_creation_5m": 12.5,
+        "cache_creation_1h": 20,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+      "agent_id": "a5bd7af2b592403e7",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-31",
+      "tokens": {
+        "input": 22,
+        "output": 2227,
+        "cache_read": 925298,
+        "cache_creation_5m": 99872,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 0.3645238,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+      "agent_id": "a669cebd4f6e94fc7",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-31",
+      "tokens": {
+        "input": 18,
+        "output": 2195,
+        "cache_read": 874008,
+        "cache_creation_5m": 2546,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 0.1157518,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 6.8336905,
+    "sidechain": 0,
+    "subagents": 0.4802756,
+    "total": 7.3139661,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 43486,
+    "subagents": 66,
+    "entries_without_duration": []
+  },
+  "warnings": [
+    "session 2483ee85-6358-53d1-b3fe-c7f1f895ab08 has transcripts in 2 project directories; priced /root/.claude/projects/-home-user/2483ee85-6358-53d1-b3fe-c7f1f895ab08.jsonl"
+  ],
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13"
+}

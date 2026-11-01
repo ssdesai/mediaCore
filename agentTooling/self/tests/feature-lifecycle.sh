@@ -743,6 +743,15 @@ mkdir -p "$(wt_path lifecycle-occupied)"
 start lifecycle-occupied --no-gate >/dev/null 2>&1; rc=$?
 check "S2f. a slug whose worktree path is already taken is refused, creating no branch (got $rc)" '[[ $rc -ne 0 && "$(branches)" == "$before" ]]'
 rmdir "$(wt_path lifecycle-occupied)"
+# The optional `orchestration` key (self/features/orchestration-records): a bad slug is
+# refused before anything is created, a good one lands in the committed fence, and a plain
+# start's fence has no such key.
+start lifecycle-orch --no-gate --orchestration "Bad/Slug" >/dev/null 2>&1; rc=$?
+check "S2g. --orchestration with a bad slug is refused, creating no branch or worktree (got $rc)" '[[ $rc -eq 1 && "$(branches)" == "$before" && ! -e "$(wt_path lifecycle-orch)" ]]'
+start lifecycle-orch --no-gate --orchestration grp-x >/dev/null 2>&1; rc=$?
+ORCH_FD="$(wt_path lifecycle-orch)/self/features/lifecycle-orch"
+check "S2h. --orchestration grp-x lands in the committed manifest (got $rc)" '[[ $rc -eq 0 && "$(fence "$ORCH_FD/README.md" "d[\"orchestration\"]")" == "grp-x" ]]'
+check "S2i. a start without the flag writes no orchestration key" '[[ "$(fence "$FD/README.md" "\"orchestration\" in d")" == "False" ]]'
 
 # ── S3. options ───────────────────────────────────────────────────────────────
 start lifecycle-nopin --no-pin --no-gate >/dev/null 2>&1
