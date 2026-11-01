@@ -1,0 +1,11 @@
+write: /tmp/plan-capture.bo9myX/scratch/oldcheck.sh
+edit: /home/user/agentTooling/harness/scorecard.py
+edit: /home/user/agentTooling/harness/README.md
+edit: /home/user/agentTooling/harness/tests/scorecard-programs.sh
+edit: /home/user/agentTooling/harness/tests/README.md
+edit: /home/user/agentTooling/harness/README.md
+edit: /home/user/agentTooling/harness/scorecard.py
+edit: /home/user/agentTooling/harness/scorecard.py
+edit: /home/user/agentTooling/harness/scorecard.py
+edit: /home/user/agentTooling/harness/scorecard.py
+write: /home/user/agentTooling/self/review-report.md

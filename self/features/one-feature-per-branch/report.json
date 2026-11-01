@@ -1,0 +1,198 @@
+{
+  "slug": "one-feature-per-branch",
+  "generated_at": "2026-10-30T20:06:44.850573+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 2.2537166,
+    "build": 2.2537166,
+    "verify": 0.0,
+    "review": 2.2534386000000004,
+    "total": 4.507155200000001,
+    "planning_pct": 0.0,
+    "build_pct": 50.003083985215326,
+    "verify_pct": 0.0,
+    "review_pct": 49.996916014784674,
+    "cost_per_plan": 1.502385066666667,
+    "cost_per_file": 1.1267888000000001,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 5940,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 5940,
+    "build_s": 5940.0,
+    "verify_s": 0.0,
+    "review_s": 252.01,
+    "executor_s": 6192.01,
+    "total_s": 6192.01,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-10-30T19:41:36+00:00",
+      "last_at": "2026-10-30T20:06:44+00:00",
+      "batch_span_s": 1508.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 260.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 260.0,
+      "plan_runs": 3,
+      "pr_opened_at": "2026-10-30T20:06:44+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/107"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 2.2537166,
+      "build_min": 99.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.1241406000000003,
+      "review_min": 2.2483666666666666,
+      "review_plan": "01-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/01-review-opus.md"
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.5414058,
+      "review_min": 1.0566333333333333,
+      "review_plan": "02-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/02-review-opus.md"
+    },
+    {
+      "round": 3,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.5878922000000001,
+      "review_min": 0.8951666666666667,
+      "review_plan": "03-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 2.2537166
+  },
+  "cold_start_tax_tokens": 164668,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 3,
+      "total_turns": 58,
+      "total_cost_usd": 2.2534386000000004,
+      "total_duration_s": 252.01,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 3,
+      "files_edited": 2,
+      "churn_ratio": 1.5
+    },
+    {
+      "plan": "02-review-opus",
+      "edit_count": 3,
+      "files_edited": 3,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "03-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 53,
+      "loc_changed": 99
+    },
+    {
+      "plan": "02-review-opus",
+      "plan_md_lines": 32,
+      "loc_changed": 68
+    },
+    {
+      "plan": "03-review-opus",
+      "plan_md_lines": 30,
+      "loc_changed": 45
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/home/user/agentTooling/analysis/capture_planning.py",
+      "tool": "Read",
+      "plans": [
+        "01-review-opus",
+        "02-review-opus",
+        "03-review-opus"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "analysis/capture_planning.py",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-opus",
+      "edited_not_listed": [
+        "analysis/README.md",
+        "analysis/capture_planning.py",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "03-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md",
+        "self/tests/capture-guard.sh"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": [],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and this feature stamped no `checkpoint` event \u2014 nothing divides it by round, so all of it sits in round 1"
+    }
+  ],
+  "profile": "cloud",
+  "gate": "green"
+}

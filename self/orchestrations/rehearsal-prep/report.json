@@ -1,0 +1,37 @@
+{
+  "slug": "rehearsal-prep",
+  "generated_at": "2026-10-31T14:13:48Z",
+  "session": "2483ee85-6358-53d1-b3fe-c7f1f895ab08",
+  "agent_tooling": "bc3835d880540da2150ee61df89818992e902445",
+  "agent_tooling_short": "bc3835d",
+  "session_window": {
+    "from": "2026-10-31T02:07:46Z",
+    "to": "2026-10-31T14:13:36Z"
+  },
+  "features": [
+    {
+      "repo": "agentTooling",
+      "slug": "start-tree-guard",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/115",
+      "total_usd": 1.8649059000000001,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "smoke-priced-cells",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/114",
+      "total_usd": 2.399489,
+      "unpriced_reason": null
+    }
+  ],
+  "overhead": {
+    "usd": 7.3139661,
+    "unpriced_reason": null,
+    "total_is_partial": false
+  },
+  "features_total_usd": 4.2643949,
+  "priced_count": 2,
+  "unpriced_count": 0,
+  "group_total_usd": 11.578361000000001,
+  "overhead_pct": 63.1692698128863
+}

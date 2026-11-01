@@ -1,0 +1,166 @@
+{
+  "slug": "program-cells",
+  "generated_at": "2026-10-31T00:03:40.373000+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 11.1953574,
+    "build": 11.1953574,
+    "verify": 0.0,
+    "review": 3.5829354999999996,
+    "total": 14.7782929,
+    "planning_pct": 0.0,
+    "build_pct": 75.75541691963623,
+    "verify_pct": 0.0,
+    "review_pct": 24.244583080363764,
+    "cost_per_plan": 7.38914645,
+    "cost_per_file": 3.694573225,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 4030,
+    "planning_subagents_s": 2169,
+    "planning_s": 0.0,
+    "implementer_s": 6199,
+    "build_s": 6199.0,
+    "verify_s": 0.0,
+    "review_s": 401.99199999999996,
+    "executor_s": 6600.992,
+    "total_s": 6600.992,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-10-30T23:36:57+00:00",
+      "last_at": "2026-10-31T00:03:39+00:00",
+      "batch_span_s": 1602.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 407.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 407.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-10-31T00:03:39+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/111"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 11.1953574,
+      "build_min": 103.31666666666666,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.5484972999999997,
+      "review_min": 4.515916666666667,
+      "review_plan": "01-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/01-review-opus.md"
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.0344382,
+      "review_min": 2.1839500000000003,
+      "review_plan": "02-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 7.925791800000001,
+    "sessions": 3.2695656
+  },
+  "cold_start_tax_tokens": 213500,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 2,
+      "total_turns": 74,
+      "total_cost_usd": 3.5829354999999996,
+      "total_duration_s": 401.99199999999996,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 4,
+      "files_edited": 3,
+      "churn_ratio": 1.3333333333333333
+    },
+    {
+      "plan": "02-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 70,
+      "loc_changed": 109
+    },
+    {
+      "plan": "02-review-opus",
+      "plan_md_lines": 46,
+      "loc_changed": 103
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/home/user/agentTooling/harness/README.md",
+      "tool": "Read",
+      "plans": [
+        "01-review-opus",
+        "02-review-opus"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "harness/new-experiment.sh",
+        "harness/program-stages.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-opus",
+      "edited_not_listed": [
+        "harness/README.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": [],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and this feature stamped no `checkpoint` event \u2014 nothing divides it by round, so all of it sits in round 1"
+    }
+  ],
+  "profile": "cloud",
+  "gate": "green"
+}

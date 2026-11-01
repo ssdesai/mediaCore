@@ -1,0 +1,7 @@
+{"at":"2026-10-30T22:23:38Z","event":"pass_start","queue":"review","round":"1"}
+{"at":"2026-10-30T22:23:38Z","event":"pass_end","queue":"review","reason":"stopped: 01-review-opus.md still contains @@TODO@@ (moved to self/features/program-scorecard/review/failed/01-review-opus.md; replace the marker with the brief — what the feature was supposed to do, the diff to read, and the contracts to hold it to (AGENT_PLANS.md → \"Review plans\") — then move it back to self/features/program-scorecard/review/incomplete/01-review-opus.md and run this again)","round":"1"}
+{"at":"2026-10-30T22:24:13Z","event":"pass_start","queue":"review","round":"1"}
+{"at":"2026-10-30T22:24:13Z","event":"plan_start","plan":"01-review-opus","queue":"review","round":"1"}
+{"at":"2026-10-30T22:26:32Z","event":"plan_end","plan":"01-review-opus","queue":"review","rc":"0","verdict":"clean","head":"36ecd5437c066314adbda8da2ea5579217ddd7f8","round":"1"}
+{"at":"2026-10-30T22:26:32Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"1"}
+{"at":"2026-10-30T22:26:44Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/110","round":"1"}
