@@ -1,39 +1,28 @@
-# <Feature title>
+# Propagate agentTooling PR 117
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+Propagate agentTooling PR 117 (`harness-same-repo`) into mediaCore: the vendored
+`agentTooling/` is brought up to agentTooling main at the PR's merge, split sha
+`0e28a4caa042cd0626e9352732e81088318054c7`, by `agentTooling/update.sh` (a `git subtree
+pull --squash`, merge commit on this branch). The `chain` line read `fragile` (intact,
+resting on trailers copied by an earlier squash-merge); the pull was clean, with no
+conflicts. `sync-plans.sh` then re-synced `plans/README.md`, `plans/features/TEMPLATE.md`,
+the new `plans/ORCHESTRATOR_BRIEF.md` and the hook wiring in `.claude/settings.json`
+(one retired Edit deny rule removed). The range also brings the harness rule that every
+experiment runs from and lives on the repository it measures; mediaCore has no harness
+fixtures, so nothing in it changes because of that rule.
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Reviews that the `agentTooling/` diff is the upstream range and nothing else, and that the sync output is committed and the gate green. |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- Any edit under `agentTooling/` or `.claude/` by hand: the pull and `sync-plans.sh`
+  wrote every change there.
+- Any change to repo-owned `plans/` files (`PROJECT_FACTS.md`, `gate.sh`, ...): the sync
+  reported them `kept` / `in-sync`.
 
 ## Machine-readable
 

@@ -34,7 +34,23 @@ commits in the diff.
 - NOTES.md's claims hold: what it says was done is in the diff, and what it says was left
   is not silently half-done.
 
-The coordinator adds this feature's own contracts here before running the review: the
-identifiers, files and outputs the change must keep or produce.
+This feature's own contracts:
+
+- What was pulled: agentTooling main at PR 117's merge, split sha
+  `0e28a4caa042cd0626e9352732e81088318054c7`, via `agentTooling/update.sh`
+  (`git subtree pull --squash`; clean, no conflicts; `chain` line `fragile`).
+- The `agentTooling/` diff is the upstream range and nothing else: no hand edit anywhere
+  under `agentTooling/` or `.claude/` (the one `.claude/settings.json` change is what
+  `sync-plans.sh` wired: a retired `Edit(**/agentTooling/hooks/**)` deny rule removed).
+- `agentTooling/sync-plans.sh --check` is clean, and what the sync wrote
+  (`plans/README.md`, `plans/features/TEMPLATE.md`, `plans/ORCHESTRATOR_BRIEF.md`,
+  `.claude/settings.json`) is committed in `pull-agenttooling-pr117: commit what
+  sync-plans.sh wrote`.
+- Repo-owned `plans/` files (`PROJECT_FACTS.md`, `BACKLOG.md`, `gate.sh`, `pr.sh`, ...)
+  are untouched.
+- Gate: the base gate at the start was green, and `plans/gate.sh` after the pull was
+  green (install, lint, fixture idempotent, wheel contains fixture, tests).
+- The manifest's opening paragraph names agentTooling PR 117 and the split sha.
+- mediaCore has no harness fixtures, so the same-repo rule changes nothing here.
 
 ## Verdict
