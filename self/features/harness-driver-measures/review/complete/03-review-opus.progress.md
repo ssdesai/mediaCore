@@ -1,0 +1,9 @@
+edit: /home/user/agentTooling/harness/tests/README.md
+write: /home/user/agentTooling/self/review-report.md
+write: /tmp/plan-capture.XB1Rzk/scratch/wait.sh
+edit: /home/user/agentTooling/harness/tests/smoke.sh
+edit: /home/user/agentTooling/harness/tests/smoke.sh
+edit: /home/user/agentTooling/harness/tests/smoke.sh
+edit: /home/user/agentTooling/harness/tests/README.md
+write: /home/user/agentTooling/self/review-report.md
+edit: /home/user/agentTooling/self/review-report.md

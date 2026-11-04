@@ -20,6 +20,8 @@ A standalone `agentTooling` clone works too, with both roots landing on the clon
 
 The scripts never take a repo path, so there is no way to point one repo's checkout at another repo's plans. That is deliberate: the subtree is shared across repos, and a `--repo` flag would make it possible to write one repo's costs into another's `plans/` tree. `--self` does not weaken this — it selects between two fixed roots derived from the script's own location, not an arbitrary path.
 
+The one exception is `--arm-root <checkout>` on `capture_planning.py` and `report.py` (not with `--self`), for the experiment harness: *measuring is the driver's, building is the arm's*. A fixture's historical base leaves an arm's worktree with an old vendored `agentTooling/`, whose rates table has no price for today's models; the harness therefore runs the **driver's** copy of these scripts and points its ordinary artifact root at the arm's worktree, so `plans/features/<slug>/` is read and written there while the rates and capture rules are the driver's. The session root is unchanged (the primary checkout the worktree belongs to), so transcripts are found exactly as when the arm's own copy ran. Nothing else takes it, and it must name an existing directory.
+
 ## Every instant is UTC
 
 One convention, because cost depends on it: **every timestamp is normalized to UTC before it is compared, sorted, or turned into a date.** `transcript.to_utc` does the parsing and `transcript.utc_date` the dating; nothing here slices `timestamp[:10]` or compares two ISO strings with `<`.
@@ -189,6 +191,9 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
 - `roots.py` — root resolution shared by the other scripts below (`transcript.py`
   imports neither `roots` nor any of them — it is pure transcript parsing). Exposes
   `AGENT_TOOLING_DIR`, `SELF_CORPUS_IDENTITY`, `add_self_flag(parser)`,
+  `add_arm_root_flag(parser)` / `apply_arm_root(parser, args)` (the harness's `--arm-root`:
+  sets the process-wide ordinary artifact root `artifact_root(False)` and
+  `features_root(False)` answer with; a usage error with `--self`),
   `artifact_root(self_mode)`,
   `features_root(self_mode)`, `all_features_roots()`, `orchestrations_root()` (always
   `self/orchestrations/`, in both modes: an orchestration record lives in agentTooling

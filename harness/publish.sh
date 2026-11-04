@@ -12,7 +12,7 @@ set -uo pipefail
 # n is the ledger's row count. If the consumer is on its default branch it first creates
 # `<experiment>Results` (or --branch) and moves the uncommitted results onto it; on any
 # other branch it commits there. Pushes with `-u`; opens the PR through the forge seam
-# (the consumer's vendored `agentTooling/forge.sh`, or HARNESS_FORGE_BIN) when that is
+# (the driver's `forge.sh` — here the consumer's own vendored copy — or HARNESS_FORGE_BIN) when that is
 # there and no PR is open for the branch yet, otherwise prints the branch to open one
 # from. The PR body is SCORECARD.md.
 
@@ -102,7 +102,8 @@ fi
 # ── Push and PR ──────────────────────────────────────────────────────────────
 harness_push "$CONSUMER_ROOT" "$BRANCH"
 
-# Through the forge seam — the consumer's own vendored forge.sh (`gh api` REST, which
+# Through the forge seam — the driver's forge.sh, which here is the consumer's own vendored
+# copy, pointed at the consumer's origin (`gh api` REST, which
 # works on a laptop and in a cloud container alike), or HARNESS_FORGE_BIN.
 existing="$(harness_pr_url "$CONSUMER_ROOT" "$BRANCH")"
 if [[ -n "$existing" ]]; then

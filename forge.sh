@@ -59,7 +59,9 @@ set -uo pipefail
 # Depends on (README.md Rule 2, none of it visible from a call site):
 #   - env-profile.sh beside this file, which decides `local` or `cloud`;
 #   - the origin URL above, in the checkout holding this file (a vendored copy's is the
-#     consuming repo's, since a vendored agentTooling/ has no .git of its own);
+#     consuming repo's, since a vendored agentTooling/ has no .git of its own) — or in
+#     $FORGE_CHECKOUT when that is set, a directory the experiment harness points at an
+#     arm's worktree;
 #   - `gh` on PATH, with credentials that reach the REST API: a token locally, the proxy's
 #     injected credentials in a Claude Code cloud container. Which host it talks to is
 #     gh's own (GH_HOST, default github.com); the origin's host is not passed.
@@ -96,6 +98,10 @@ REACHABLE_JQ='.full_name // empty'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/env-profile.sh"
+# The checkout whose origin names the repository. Unset, it is the checkout this copy
+# lives in. The experiment harness sets FORGE_CHECKOUT so its own (driver's) forge.sh asks
+# about an arm's worktree: a fixture's historical base carries no forge.sh, or an old one.
+ORIGIN_DIR="${FORGE_CHECKOUT:-$SCRIPT_DIR}"
 
 usage() {
   echo "usage: $FORGE_SCRIPT_NAME pr-find <head>" >&2
@@ -108,7 +114,7 @@ usage() {
 fail() { echo "  forge     $*" >&2; exit "$FAILED_RC"; }
 
 # origin_url — remote.origin.url of the checkout this copy lives in, as configured.
-origin_url() { git -C "$SCRIPT_DIR" config --get "remote.$ORIGIN_REMOTE.url" 2>/dev/null; }
+origin_url() { git -C "$ORIGIN_DIR" config --get "remote.$ORIGIN_REMOTE.url" 2>/dev/null; }
 
 # repo_of <url> — "<owner>/<repo>" for a forge URL, or nothing for anything else.
 repo_of() {
@@ -156,7 +162,7 @@ fi
 ORIGIN_URL="$(origin_url)"
 REPO="$(repo_of "$ORIGIN_URL")"
 if [[ -z "$REPO" ]]; then
-  fail "the origin of $SCRIPT_DIR (${ORIGIN_URL:-none configured}) names no forge repository <owner>/<repo> — nothing was asked of the forge"
+  fail "the origin of $ORIGIN_DIR (${ORIGIN_URL:-none configured}) names no forge repository <owner>/<repo> — nothing was asked of the forge"
 fi
 OWNER="${REPO%%/*}"
 PULLS_ENDPOINT="repos/$REPO/pulls"

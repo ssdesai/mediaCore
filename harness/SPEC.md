@@ -185,7 +185,10 @@ Sequential; each stage's start/end UTC and outcome are written to the state file
    usage-limit reset (reuse `stream_shows_usage_limit` / the reset-time parse in
    `plan-runner-lib.sh` — do not write a second detector) and re-invoke once; exit 1 →
    record `method_failed` and skip to capture/record. On exit 0: verify the PR exists
-   (`forge.sh pr-find`, §12), set `session_window.to`, commit that one edit
+   (the driver's `forge.sh pr-find`, §12) — and when none is open but the branch is
+   pushed with commits beyond `base`, open it with the driver's `forge.sh pr-open` and
+   record `pr_opened_by_harness` and an intervention rather than `method_failed` (no
+   commits, or no pushed branch, is still `method_failed`) — set `session_window.to`, commit that one edit
    (`<slug>: close the manifest session window at PR-open`), push.
 4. **review** — a fresh `claude -p --model opus --max-budget-usd $REVIEW_BUDGET_USD`
    in `<tree>` with `harness/templates/review-preamble.md` + the fixture's
@@ -201,8 +204,9 @@ Sequential; each stage's start/end UTC and outcome are written to the state file
    Manifest `<slug>-rework`.
 6. **accept** — `fixture/accept/accept.py <tree>`; exit code and its lines go in the row.
    Then the gate once more; counts recorded as the checklist-green counts.
-7. **capture** — from `<tree>` (its own vendored copy):
-   `agentTooling/analysis/capture_planning.py <slug>`, `<slug>-review`, `<slug>-rework`;
+7. **capture** — from the **driver's** `analysis/` (measuring is the driver's, building
+   is the arm's), pointed at `<tree>` with `--arm-root <tree>`:
+   `analysis/capture_planning.py <slug>`, `<slug>-review`, `<slug>-rework`;
    then `analysis/report.py` for each; read the dollars; delete `report.{json,md}`.
 8. **record** — append the ledger row (§6); re-render `SCORECARD.md`; unless
    `--no-cleanup`, remove the feature worktree (keep the branch and the PR; the branch
@@ -214,8 +218,10 @@ tree's findings; no stage reads across worktrees. There is no cross-check stage.
 
 ## 4. Naming
 
-- Branch: `<branch_stem><Method><n>` in bare camelCase, method capitalised, `n`
-  omitted when `repeats` is 1 — `exportStoreDirect`, `exportStorePlans2`. Never a
+- Branch: `<branch_stem><Method><n>` in bare camelCase, method capitalised (a hyphenated method name is camelCased, hyphens dropped: `direct-bare` →
+  `DirectBare`; the row's `method` stays the directory name), `n`
+  omitted when `repeats` is 1 — `exportStoreDirect`, `exportStorePlans2`,
+  `exportStoreDirectBare2`. Never a
   `user/` prefix: `capture_planning.py` matches the manifest's `branches` entry
   literally against each session's `gitBranch`, and a mismatch silently reports `$0.00`.
 - Slug (manifest dir under `plans/features/`): the branch in kebab-case —
@@ -265,16 +271,21 @@ gate green; report per item.
 `results.jsonl`, one JSON object per run:
 
 ```
-experiment, fixture, method, repeat, branch, slug, pr_url,
-base, spec_commit, model,
+experiment, fixture, method, repeat, arm, agent_tooling,
+arm_kind ("agent_tooling" | "base" | ""; absent on older rows), branch, slug, pr_url,
+base (a base arm's commit for a base arm), spec_commit, model,
 effort (HARNESS_EFFORT: low|medium|high|xhigh|max, or null when unset),
 t_setup_start, t_method_start, t_pr_open, t_review_end, t_rework_end, t_green,
 cost_method_usd, cost_review_usd, cost_rework_usd, cost_green_usd (sum),
 cost_lost_usd (spend from killed attempts' orphaned windows; never in cost_green_usd),
+read_files_before_edit, read_bytes_before_edit, readme_bytes_read (integers, or null when
+  not measured; absent on older rows),
 review_fixed, review_escalated, rework_ran,
 gate_counts_pr_open, gate_counts_green   (whatever the gate prints, as a string),
 accept_pass (bool), accept_lines (list),
-method_failed (bool), interventions (list of {t, what}),
+method_failed (bool),
+pr_opened_by_harness (bool: the method pushed commits but opened no PR; the harness did),
+interventions (list of {t, what}),
 harness_version (git sha of agentTooling)
 ```
 
@@ -290,7 +301,8 @@ manifest window opened is stale — an earlier attempt's — and capture rebuild
 `scorecard.py` renders: the prediction; one table row per run with cost to PR-open,
 review fixed/escalated, rework cost, cost to green, wall time to PR-open, accept
 pass/fail; per (fixture, method) mean and spread when `repeats > 1`; the noise band
-applied to each fixture's method pairs.
+applied to each fixture's method pairs; a `## Reading before the first edit` table after the
+Runs table (`—` for not measured; absent when no row carries the fields).
 
 ## 7. Smoke test — `harness/tests/smoke.sh`
 
@@ -320,11 +332,16 @@ the capture stage runs and records `0`, not a dollar figure.
 
 ## 8. Pinned facts (verified 2026-08-29)
 
-- **Cost capture.** `analysis/capture_planning.py <slug>` must run **from the
-  worktree** (its session root is `parents[2]` of the script — the cwd the sessions ran
-  from; a `claude -p` launched in `~/dev/vinylCatalogue-x` writes its transcript under
-  the project dir for that path, not for `~/dev/vinylCatalogue`). The batch's per-plan
-  runs are already captured this way. `branches` is matched literally on `gitBranch`;
+- **Cost capture.** *(Amended: the first version ran the worktree's vendored copy; a
+  fixture's historical base left it with no rates for today's models and it priced a
+  $3.26 run at $0.)* `analysis/capture_planning.py <slug> --arm-root <worktree>` runs
+  from the **driver's** copy — measuring is the driver's, building is the arm's.
+  `--arm-root` points the driver's scripts at the worktree's `plans/features/`; the
+  session root stays the primary checkout the worktree belongs to, and the transcripts
+  are found as they always were (a `claude -p` launched in `~/dev/vinylCatalogue-x`
+  writes its transcript under the project dir for that path, not for
+  `~/dev/vinylCatalogue`; `claim_roots` admits that cwd through the manifest's
+  `branches`). `branches` is matched literally on `gitBranch`;
   `session_window` is UTC ISO; subagents spawned by the Agent tool are pinned by id in
   `subagents` — `claude -p` sessions need no pin. Run `analysis/report.py <slug>` for
   dollars and delete `report.{json,md}` afterwards (they are not committed).
@@ -485,10 +502,13 @@ Three things kept the harness on one laptop, and the A/B it was built for
   dry run names the clone it would make and makes none.
 - **The forge seam.** `harness_pr_url` ran `gh pr view` and `publish.sh` ran
   `gh pr create`; both are GraphQL, which a cloud container's proxy refuses. The seam is
-  now `forge.sh` (`pr-find`, `pr-open` over `gh api` REST), the vendored copy inside the
-  checkout being asked about — forge.sh reads its own checkout's origin — or
-  `HARNESS_FORGE_BIN`. `HARNESS_GH_BIN` is gone; the smoke test fakes `forge.sh` instead
-  of `gh`. The `direct` brief opens its PR through the same adapter.
+  now `forge.sh` (`pr-find`, `pr-open` over `gh api` REST) — *(amended: the driver's own
+  copy, run with `FORGE_CHECKOUT=<the checkout being asked about>` so it reads that
+  checkout's origin; the first version ran the checkout's vendored copy, which an arm
+  built from a historical base may not have)* — or `HARNESS_FORGE_BIN`. `HARNESS_GH_BIN`
+  is gone; the smoke test fakes `forge.sh` instead of `gh`. The `direct` brief opens its
+  PR through the same adapter (the arm building); the harness opens it with the driver's
+  when a method pushed commits and opened none.
 - **Arms.** `experiment.json` may carry `agent_tooling: {<label>: <full sha>}`, a third
   cell axis. At setup, on a branch that does not yet carry its pin commit, `harness_pin_agent_tooling` replaces the
   tree's `agentTooling/` with that upstream commit's tree from a checkout of
@@ -735,3 +755,42 @@ as the driver (§12 records that shape; it is history, not the contract).
   carrying an up-to-date vendored agentTooling; nothing else needs push access, and the spec
   repository and agentTooling are attached read-only if the proxy does not serve them
   (`README.md` → "In a Claude Code cloud container").
+
+## 15. Base arms and reading metrics (added 2026-11-03)
+
+`harness-arm-base` (`self/features/harness-arm-base/`). Two additions, each independent of
+the other.
+
+**Base arms.** An experiment's arms may differ by a commit of the measured repository
+(`experiment.json` `base_arms: {<label>: <full sha>}`, `new-experiment.sh --base-arms
+<label>=<ref>,…`) instead of by an agentTooling version. Each ref is resolved in the
+measured repository's own checkout (a sha missing locally is fetched by sha from `origin`
+once); one that does not resolve there is refused, citing §14's rule that an experiment
+runs from and lives on the repository it measures. Each cell's worktree is cut at its arm's
+commit instead of the fixture's `base`; the spec pin, facts, review brief, accept probe,
+setup, gate, method, review and rework are the fixture's, unchanged. The branch is
+`<stem><Method><Arm><n>`; there is no pin commit. The tree's vendored `agentTooling/` is
+whatever that commit carries, so a base arm also varies the agentTooling version when the
+two commits vendor different ones. **One kind per experiment**: `agent_tooling` with
+`base_arms` is refused by `new-experiment.sh` and `run.sh` (`harness_experiment_arm_kind`),
+and so is `base_arms` with `programs` (a program pins its own `base`). The row carries
+`arm_kind: "base"`, `arm`, `base` = the arm's commit and `agent_tooling` = `""`; the
+scorecard compares base arms as it does agentTooling arms (pairwise within each fixture ×
+method, to PR-open and to green, under `noise_band_pct`), labels one `<arm> (base <sha7>)`
+and lists `base arms: <label>=<sha7>, …` in its header.
+
+**Reading metrics.** The capture stage (`do_reading_metrics`) runs the harness's
+`reading_metrics.py`, importing the driver's `analysis/` modules, and puts
+`read_files_before_edit`, `read_bytes_before_edit` and `readme_bytes_read` in the state file
+before `record`. The window is `[t_method_start, t_pr_open]` (now when no PR opened) over
+the transcripts under the worktree's own project directory (exact name) and their
+subagents; the first edit is the first `Edit`/`Write`/`MultiEdit`/`NotebookEdit`; a read is
+a non-error `Read` result, its bytes the UTF-8 text; files are counted distinct;
+`readme_bytes_read` is every `README.md` read in the window, before or after the first edit.
+Only the `Read` tool counts — a `cat` through `Bash` does not. `null` means not measured
+(no transcript in the window), never 0. The scorecard's `## Reading before the first edit`
+table has one row per cell row carrying the fields; a ledger without them renders as before.
+
+**Program rows are unchanged**: neither the program row nor its `features[]` carries the
+reading fields (a program feature's capture does not run the extractor) or `arm_kind`, and a
+program cell cannot have base arms.

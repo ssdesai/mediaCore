@@ -1,0 +1,219 @@
+{
+  "slug": "harness-driver-measures",
+  "generated_at": "2026-11-03T14:30:15.272100+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 6.4255477999999995,
+    "build": 6.4255477999999995,
+    "verify": 0.0,
+    "review": 5.872667000000001,
+    "total": 12.2982148,
+    "planning_pct": 0.0,
+    "build_pct": 52.247809169831704,
+    "verify_pct": 0.0,
+    "review_pct": 47.7521908301683,
+    "cost_per_plan": 4.099404933333333,
+    "cost_per_file": 1.7568878285714287,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 6654,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 6654,
+    "build_s": 6654.0,
+    "verify_s": 0.0,
+    "review_s": 561.597,
+    "executor_s": 7215.597,
+    "total_s": 7215.597,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-03T14:10:24+00:00",
+      "last_at": "2026-11-03T14:30:14+00:00",
+      "batch_span_s": 1190.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 570.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 570.0,
+      "plan_runs": 3,
+      "pr_opened_at": "2026-11-03T14:30:14+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/118"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 6.4255477999999995,
+      "build_min": 110.9,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.0828259,
+      "review_min": 1.6297666666666666,
+      "review_plan": "01-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/01-review-opus.md"
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.6987519000000001,
+      "review_min": 1.6001666666666667,
+      "review_plan": "02-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/02-review-opus.md"
+    },
+    {
+      "round": 3,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 4.091089200000001,
+      "review_min": 6.130016666666666,
+      "review_plan": "03-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 6.4255477999999995
+  },
+  "cold_start_tax_tokens": 220273,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 3,
+      "total_turns": 188,
+      "total_cost_usd": 5.872667000000001,
+      "total_duration_s": 561.597,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 4,
+      "files_edited": 4,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "02-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "03-review-opus",
+      "edit_count": 9,
+      "files_edited": 4,
+      "churn_ratio": 2.25
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 78,
+      "loc_changed": 50
+    },
+    {
+      "plan": "02-review-opus",
+      "plan_md_lines": 51,
+      "loc_changed": 70
+    },
+    {
+      "plan": "03-review-opus",
+      "plan_md_lines": 43,
+      "loc_changed": 109
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/home/user/agentTooling/harness/tests/smoke.sh",
+      "tool": "Read",
+      "plans": [
+        "02-review-opus",
+        "03-review-opus"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "harness/lib.sh",
+        "self/review-report.md",
+        "self/tests/README.md",
+        "self/tests/harness-driver-measures.sh"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-opus",
+      "edited_not_listed": [
+        "harness/tests/README.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "03-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.XB1Rzk/scratch/wait.sh",
+        "harness/tests/README.md",
+        "harness/tests/smoke.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "harness/tests/README.md",
+      "earlier_plan": "02-review-opus",
+      "later_plan": "03-review-opus",
+      "overlap_chars": 138
+    },
+    {
+      "file": "harness/tests/README.md",
+      "earlier_plan": "03-review-opus",
+      "later_plan": "03-review-opus",
+      "overlap_chars": 251
+    },
+    {
+      "file": "self/review-report.md",
+      "earlier_plan": "03-review-opus",
+      "later_plan": "03-review-opus",
+      "overlap_chars": 44
+    }
+  ],
+  "warnings": [],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and this feature stamped no `checkpoint` event \u2014 nothing divides it by round, so all of it sits in round 1"
+    }
+  ],
+  "profile": "cloud",
+  "gate": "green"
+}

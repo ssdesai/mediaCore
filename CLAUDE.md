@@ -25,7 +25,7 @@ copy also loads the consuming repo's root `CLAUDE.md`, as it does any ancestor's
 
 ### Commands
 
-- Mechanical gate: `./self/gate.sh` (syntax checks, the settings check, `self/tests/` and the harness's three tests)
+- Mechanical gate: `./self/gate.sh` (syntax checks, the settings check, `self/tests/` and the harness's five tests)
 - Build a self feature: `./run-plans.sh --self <slug>`, then `./run-verify.sh --self <slug>`,
   then `./run-review.sh --self <slug>` (or `./run-batch.sh --self <slug>` for all three)
 - Cost report: `python3 analysis/report.py --self <slug>`

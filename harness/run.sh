@@ -22,6 +22,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
+# Reading metrics (harness/reading_metrics.py): its row fields, in the order they print
+READING_METRICS_SCRIPT="reading_metrics.py"
+READING_FIELDS="read_files_before_edit read_bytes_before_edit readme_bytes_read"
+
 # ── Arguments ────────────────────────────────────────────────────────────────
 EXPERIMENT_ARG=""
 ONLY=""
@@ -91,10 +95,11 @@ PREDICTION="$(harness_json "$EXPERIMENT_JSON" .prediction)"
 # `run` is set per cell so the stage functions read one name rather than eight arguments.
 FIXTURE=""; METHOD=""; REPEAT=""; BRANCH=""; SLUG=""; TREE=""; STATE=""
 ARM=""; ARM_SHA=""; AT_CHECKOUT=""
+EXPERIMENT_ARM_KIND=""; ARM_BASE=""; FIXTURE_BASE=""
 FIXTURE_DIR=""; FIXTURE_JSON=""; REPO_PATH=""; REMOTE=""; BASE=""
 SPEC_REPO=""; SPEC_COMMIT=""; SPEC_PATH=""; SPEC_SECTIONS=""; SPEC_TREE=""
 GATE_COMMAND=""; GATE_GREEN=""; GATE_MINUTES=""; BRIEF_FILE=""
-METHOD_FAILED=false; PR_URL=""
+METHOD_FAILED=false; PR_URL=""; PR_OPENED_BY_HARNESS=false; RECAPTURE_METHOD=false
 COST_METHOD=0; COST_METHOD_REPORTED=0; COST_REVIEW=0; COST_REWORK=0
 REVIEW_FIXED=0; REVIEW_ESCALATED=0; REWORK_RAN=false
 ACCEPT_PASS=false; ACCEPT_LINES='[]'
@@ -127,12 +132,20 @@ stage_end()   { harness_state_stage "$STATE" "$1" end "$(harness_utc_now)"; harn
 resolve_cell() {
   FIXTURE="$1"; METHOD="$2"; REPEAT="$3"; ARM="${4:-}"; ARM_SHA="${5:-}"
   [[ "$ARM" != "-" ]] || { ARM=""; ARM_SHA=""; }
+  ARM_BASE=""
+  if [[ -n "$ARM" && "$EXPERIMENT_ARM_KIND" == "$HARNESS_ARM_KIND_BASE" ]]; then
+    ARM_BASE="$ARM_SHA"; ARM_SHA=""
+  fi
 
   require_fixture
   [[ -d "$HARNESS_METHODS_DIR/$METHOD" ]] || harness_die "no method at $HARNESS_METHODS_DIR/$METHOD"
   if [[ -n "$ARM" ]]; then
     [[ "$ARM" =~ $HARNESS_ARM_LABEL_RE ]] || harness_die "arm label must be bare lower-case letters: $ARM"
-    [[ -n "$ARM_SHA" ]] || harness_die "arm $ARM names no agentTooling commit in $EXPERIMENT_JSON"
+    if [[ "$EXPERIMENT_ARM_KIND" == "$HARNESS_ARM_KIND_BASE" ]]; then
+      [[ -n "$ARM_BASE" ]] || harness_die "arm $ARM names no commit of the measured repository in $EXPERIMENT_JSON"
+    else
+      [[ -n "$ARM_SHA" ]] || harness_die "arm $ARM names no agentTooling commit in $EXPERIMENT_JSON"
+    fi
   fi
 
   # The fixture's repository is the consumer (a repo block naming another is refused here,
@@ -140,6 +153,8 @@ resolve_cell() {
   REPO_PATH="$(harness_fixture_repo "$FIXTURE_JSON")" || exit 1
   REMOTE="$(jq -r '.repo.remote // "origin"' "$FIXTURE_JSON")"
   BASE="$(harness_json "$FIXTURE_JSON" .base)"
+  FIXTURE_BASE="$BASE"
+  if [[ -n "$ARM_BASE" ]]; then BASE="$ARM_BASE"; fi
   SPEC_REPO="$(harness_fixture_spec_repo "$FIXTURE_JSON")" || exit 1
   read_fixture_fields
 
@@ -180,7 +195,7 @@ read_fixture_fields() {
 }
 
 reset_cell_results() {
-  METHOD_FAILED=false; PR_URL=""
+  METHOD_FAILED=false; PR_URL=""; PR_OPENED_BY_HARNESS=false; RECAPTURE_METHOD=false
   COST_METHOD=0; COST_METHOD_REPORTED=0; COST_REVIEW=0; COST_REWORK=0
   REVIEW_FIXED=0; REVIEW_ESCALATED=0; REWORK_RAN=false
   ACCEPT_PASS=false; ACCEPT_LINES='[]'
@@ -237,6 +252,9 @@ setup_tree() {
   harness_state_set_str "$STATE" t_setup_start "$(harness_utc_now)"
 
   git -C "$REPO_PATH" fetch -q "$REMOTE" || harness_warn "fetch of $REMOTE failed — using what is on disk"
+  # A base that is a prep commit on no fetched branch: fetch it by sha once (no ref moves).
+  harness_resolve_commit "$REPO_PATH" "$BASE" "$REMOTE" >/dev/null \
+    || harness_die "base $BASE does not resolve in $REPO_PATH, even after fetching it from $REMOTE"
 
   # A branch that already exists and that this cell has never set up is a collision, not
   # a resume: continuing would append this arm's commits to whatever that branch records
@@ -327,7 +345,34 @@ do_method() {
     return 1
   fi
 
+  settle_pr || return 1
+  stage_end method ok
+}
+
+# The PR step of the method stage, and the whole of a resume that skips the method
+# (`--from review` on a cell recorded `no-pr`: do_pr_resume). Returns 1 with the stage
+# closed as "no-pr" when there is no PR and the harness could not open one.
+settle_pr() {
   PR_URL="$(harness_pr_url "$TREE" "$BRANCH")"
+  # The build is the arm's, the PR bookkeeping the driver's. A method that exited 0 with
+  # its branch pushed and commits beyond the base has built the feature; when its own
+  # PR hook could not open the PR (an August arm's plans/pr.sh, `gh` unauthenticated in a
+  # cloud container) the harness opens it, through the driver's forge, and says so on the
+  # row — never silently. Title and body follow the direct method: the slug, and a body
+  # that names who opened it.
+  if [[ -z "$PR_URL" ]] && harness_branch_pushed "$TREE" "$BRANCH" \
+       && harness_branch_has_commits "$TREE" "$BASE"; then
+    local pr_body="$LOG_DIR/$BRANCH-pr-body.md"
+    printf '%s\n\n%s\n' "$SLUG" \
+      "Opened by the experiment harness, not by the $METHOD method: it exited 0 with this branch pushed and commits beyond $BASE, and no PR was open." > "$pr_body"
+    PR_URL="$(harness_pr_open "$TREE" "$BRANCH" "$SLUG" "$pr_body")"
+    if [[ -n "$PR_URL" ]]; then
+      PR_OPENED_BY_HARNESS=true
+      harness_state_set "$STATE" pr_opened_by_harness true
+      harness_state_intervention "$STATE" "$METHOD exited 0 with the branch pushed but no PR open; the harness opened $PR_URL"
+      harness_warn "$METHOD opened no PR for $BRANCH — the harness opened $PR_URL"
+    fi
+  fi
   if [[ -z "$PR_URL" ]]; then
     METHOD_FAILED=true
     harness_state_set "$STATE" method_failed true
@@ -345,7 +390,50 @@ do_method() {
 
   GATE_COUNTS_PR_OPEN="$(harness_gate_counts "$TREE")"
   harness_state_set_str "$STATE" gate_counts_pr_open "$GATE_COUNTS_PR_OPEN"
-  stage_end method ok
+}
+
+# A cell whose method built and pushed but was recorded method_failed ("no-pr") only
+# because no PR was open — an old harness's verdict — resumed past the method stage. The
+# method is never re-run (a build costs real money): the worktree is brought back from the
+# branch if the record stage removed it, the PR is checked and, if need be, opened by the
+# harness, the state is cleared of method_failed, and the later stages go on. The method's
+# cost is re-captured with the driver's rates (RECAPTURE_METHOD).
+resume_no_pr() {
+  [[ "$(harness_state_get "$STATE" method_failed)" == true \
+     && "$(jq -r '.stages.method.outcome // empty' "$STATE")" == no-pr ]]
+}
+
+do_pr_resume() {
+  harness_log "$BRANCH — resuming a cell recorded no-pr: PR check/open only, the method is not re-run"
+  ensure_resume_trees
+  stage_begin method
+  if ! settle_pr; then
+    METHOD_FAILED=true
+    return 1
+  fi
+  METHOD_FAILED=false
+  harness_state_set "$STATE" method_failed false
+  harness_state_intervention "$STATE" "resumed from no-pr with --from $FROM_STAGE: the method was not re-run; the PR is $PR_URL"
+  RECAPTURE_METHOD=true
+  stage_end method "ok(pr-resumed)"
+}
+
+# The worktree and the spec worktree, which a finished cell's record stage removes.
+ensure_resume_trees() {
+  if [[ ! -d "$TREE" ]]; then
+    git -C "$REPO_PATH" fetch -q "$REMOTE" 2>/dev/null || harness_warn "fetch of $REMOTE failed — using what is on disk"
+    if git -C "$REPO_PATH" show-ref --verify --quiet "refs/heads/$BRANCH"; then
+      git -C "$REPO_PATH" worktree add "$TREE" "$BRANCH" || harness_die "worktree add failed for the resume"
+    elif git -C "$REPO_PATH" show-ref --verify --quiet "refs/remotes/$REMOTE/$BRANCH"; then
+      git -C "$REPO_PATH" worktree add -b "$BRANCH" "$TREE" "$REMOTE/$BRANCH" || harness_die "worktree add failed for the resume"
+    else
+      harness_die "cannot resume $BRANCH: it is on no local branch and not on $REMOTE"
+    fi
+  fi
+  if [[ ! -d "$SPEC_TREE" ]]; then
+    git -C "$SPEC_REPO" worktree add --detach "$SPEC_TREE" "$SPEC_COMMIT" \
+      || harness_die "could not add the read-only spec worktree at $SPEC_TREE"
+  fi
 }
 
 # A stage that re-runs (a `--from` resume after a kill) overwrites its manifest with
@@ -506,13 +594,18 @@ do_accept() {
   stage_end accept "$( (( rc == 0 )) && echo pass || echo fail )"
 }
 
-# Cost capture runs from the WORKTREE's own vendored copy: capture_planning.py resolves
-# its session root from the script's location, and a `claude -p` launched in
-# ~/dev/repo-<branch> writes its transcript under the project directory for that path.
+# Measuring is the driver's, building is the arm's: cost capture runs from the DRIVER's
+# own analysis/ (the copy this run.sh lives in, with today's rates and capture rules),
+# never from the worktree's vendored copy, which a fixture's historical base can leave
+# months stale — an old rates table has no price for today's `opus`/`sonnet` and leaves
+# those sessions out. `--arm-root $TREE` points the driver's scripts at the worktree's
+# plans/features/; the transcripts are found as before (the session root is the primary
+# checkout the worktree belongs to, and `claim_roots` admits the worktree's own project
+# directory by the manifest's branches).
 capture_one() {
   local slug="$1"
-  local capture="$TREE/agentTooling/analysis/capture_planning.py"
-  local report="$TREE/agentTooling/analysis/report.py"
+  local capture="$AGENT_TOOLING_DIR/analysis/capture_planning.py"
+  local report="$AGENT_TOOLING_DIR/analysis/report.py"
   local dir="$TREE/plans/features/$slug"
   [[ -d "$dir" ]] || { printf '0'; return 0; }
   # capture_planning.py honours an existing planning.json as a frozen record and skips.
@@ -523,7 +616,12 @@ capture_one() {
   # and a redone stage used to report the old attempt's cost. Rebuild it; a freeze
   # from inside the current window is left alone.
   local recapture=()
-  if [[ -f "$dir/planning.json" ]]; then
+  if [[ "$slug" == "$SLUG" && "$RECAPTURE_METHOD" == true ]]; then
+    # A resume past a method recorded no-pr: its freeze was priced then, perhaps with the
+    # arm's stale rates, and the method is not re-run — price the same transcripts again.
+    harness_log "capture: $slug resumed past a no-pr method — recapturing at the driver's rates" >&2
+    recapture=(--recapture)
+  elif [[ -f "$dir/planning.json" ]]; then
     local stamp started
     stamp="$(jq -r '.captured_at // empty' "$dir/planning.json" 2>/dev/null)"
     started="$(manifest_window_from "$slug")"
@@ -534,8 +632,8 @@ capture_one() {
       recapture=(--recapture)
     fi
   fi
-  python3 "$capture" "$slug" ${recapture[@]+"${recapture[@]}"} >> "$LOG_DIR/$BRANCH-capture.log" 2>&1 || true
-  python3 "$report" "$slug" >> "$LOG_DIR/$BRANCH-capture.log" 2>&1 || true
+  python3 "$capture" "$slug" --arm-root "$TREE" ${recapture[@]+"${recapture[@]}"} >> "$LOG_DIR/$BRANCH-capture.log" 2>&1 || true
+  python3 "$report" "$slug" --arm-root "$TREE" >> "$LOG_DIR/$BRANCH-capture.log" 2>&1 || true
   local total=0
   if [[ -f "$dir/report.json" ]]; then
     total="$(jq -r '.cost.total // 0' "$dir/report.json")"
@@ -571,17 +669,45 @@ do_capture() {
   stage_end capture ok
 }
 
+# What the method's sessions read before their first edit: the transcripts filed under
+# the worktree's own project directory, inside [t_method_start, t_pr_open] (now, when
+# no PR opened). Ordinary cells only: a program feature's capture never calls this.
+do_reading_metrics() {
+  local from to out field
+  from="$(harness_state_get "$STATE" t_method_start)"
+  [[ -n "$from" ]] || return 0
+  to="$(harness_state_get "$STATE" t_pr_open)"
+  [[ -n "$to" ]] || to="$(harness_utc_now)"
+  if ! out="$(python3 "$SCRIPT_DIR/$READING_METRICS_SCRIPT" "$AGENT_TOOLING_DIR/analysis" "$TREE" \
+              --from "$from" --to "$to" 2>>"$LOG_DIR/$BRANCH-reading.log")"; then
+    harness_warn "reading metrics failed for $BRANCH — see $LOG_DIR/$BRANCH-reading.log"
+    return 0
+  fi
+  for field in $READING_FIELDS; do
+    harness_state_set "$STATE" "$field" "$(jq -c --arg f "$field" '.[$f]' <<<"$out")"
+  done
+}
+
 # A `--from` resume runs record in a fresh process: fields set by stages of the
 # killed process exist only in the state file, so a state value wins over this
 # process's per-cell default (which is what the row silently got before this fix).
+cell_arm_kind() {  # the row's arm_kind: agent_tooling or base for an arm, "" for none
+  if [[ -n "$ARM" ]]; then printf '%s' "$EXPERIMENT_ARM_KIND"; fi
+}
+
 state_or() {  # $1 state key, $2 fallback
   local v; v="$(harness_state_get "$STATE" "$1")"
   if [[ -n "$v" ]]; then printf '%s' "$v"; else printf '%s' "$2"; fi
 }
 
+state_json_or_null() {  # $1 state key: its JSON value, or null when the state lacks it
+  jq -c --arg k "$1" '.[$k] // null' "$STATE" 2>/dev/null || printf 'null'
+}
+
 build_ledger_row() {  # the `record` stage: one appended results.jsonl row + scorecard render
   stage_begin record
   PR_URL="$(state_or pr_url "$PR_URL")"
+  PR_OPENED_BY_HARNESS="$(state_or pr_opened_by_harness "$PR_OPENED_BY_HARNESS")"
   REVIEW_FIXED="$(state_or review_fixed "$REVIEW_FIXED")"
   REVIEW_ESCALATED="$(state_or review_escalated "$REVIEW_ESCALATED")"
   REWORK_RAN="$(state_or rework_ran "$REWORK_RAN")"
@@ -609,6 +735,7 @@ build_ledger_row() {  # the `record` stage: one appended results.jsonl row + sco
     --arg pr_url "$PR_URL" --arg base "$BASE" --arg spec_commit "$SPEC_COMMIT" \
     --arg model "$HARNESS_MODEL" --arg effort "$HARNESS_EFFORT" --arg arm "$ARM" \
     --arg agent_tooling "$(state_or agent_tooling "$ARM_SHA")" \
+    --arg arm_kind "$(cell_arm_kind)" \
     --arg t_setup_start "$(harness_state_get "$STATE" t_setup_start)" \
     --arg t_method_start "$(harness_state_get "$STATE" t_method_start)" \
     --arg t_pr_open "$(harness_state_get "$STATE" t_pr_open)" \
@@ -621,6 +748,9 @@ build_ledger_row() {  # the `record` stage: one appended results.jsonl row + sco
     --argjson cost_rework_usd "$COST_REWORK" \
     --argjson cost_green_usd "$green" \
     --argjson cost_lost_usd "$COST_LOST" \
+    --argjson read_files_before_edit "$(state_json_or_null read_files_before_edit)" \
+    --argjson read_bytes_before_edit "$(state_json_or_null read_bytes_before_edit)" \
+    --argjson readme_bytes_read "$(state_json_or_null readme_bytes_read)" \
     --argjson review_fixed "$(num "$REVIEW_FIXED")" \
     --argjson review_escalated "$(num "$REVIEW_ESCALATED")" \
     --argjson rework_ran "$REWORK_RAN" \
@@ -629,10 +759,12 @@ build_ledger_row() {  # the `record` stage: one appended results.jsonl row + sco
     --argjson accept_pass "$ACCEPT_PASS" \
     --argjson accept_lines "$ACCEPT_LINES" \
     --argjson method_failed "$METHOD_FAILED" \
+    --argjson pr_opened_by_harness "$PR_OPENED_BY_HARNESS" \
     --argjson interventions "$(jq -c '.interventions // []' "$STATE")" \
     --arg harness_version "$(harness_version)" \
     '{experiment: $experiment, fixture: $fixture, method: $method, repeat: $repeat,
       arm: $arm, agent_tooling: $agent_tooling,
+      arm_kind: $arm_kind,
       branch: $branch, slug: $slug, pr_url: $pr_url, base: $base,
       spec_commit: $spec_commit, model: $model,
       effort: (if $effort == "" then null else $effort end),
@@ -643,11 +775,14 @@ build_ledger_row() {  # the `record` stage: one appended results.jsonl row + sco
       cost_review_usd: $cost_review_usd,
       cost_rework_usd: $cost_rework_usd, cost_green_usd: $cost_green_usd,
       cost_lost_usd: $cost_lost_usd,
+      read_files_before_edit: $read_files_before_edit, read_bytes_before_edit:
+      $read_bytes_before_edit, readme_bytes_read: $readme_bytes_read,
       review_fixed: $review_fixed, review_escalated: $review_escalated,
       rework_ran: $rework_ran,
       gate_counts_pr_open: $gate_counts_pr_open, gate_counts_green: $gate_counts_green,
       accept_pass: $accept_pass, accept_lines: $accept_lines,
-      method_failed: $method_failed, interventions: $interventions,
+      method_failed: $method_failed, pr_opened_by_harness: $pr_opened_by_harness,
+      interventions: $interventions,
       harness_version: $harness_version}')"
   printf '%s\n' "$row" >> "$RESULTS_FILE"
 
@@ -676,14 +811,15 @@ dry_run_cell() {
   say "  repo:          $REPO_PATH"
   say "  worktree:      $TREE"
   say "  spec worktree: $SPEC_TREE  (detached at $SPEC_COMMIT, read-only; $(harness_spec_source_label "$FIXTURE_JSON"))"
-  [[ -z "$ARM" ]] || say "  agentTooling:  pinned to upstream $ARM_SHA (arm $ARM)"
+  [[ -z "$ARM_SHA" ]] || say "  agentTooling:  pinned to upstream $ARM_SHA (arm $ARM)"
+  [[ -z "$ARM_BASE" ]] || say "  base:          arm $ARM at $ARM_BASE (the fixture's own base $FIXTURE_BASE is not used)"
   say "  state file:    $STATE"
   say "  stages:        $(for s in $HARNESS_STAGES; do stage_wanted "$s" && printf '%s ' "$s"; done)"
   say "  review: $DO_REVIEW   rework: $DO_REWORK   accept: $DO_ACCEPT"
   say "  commands:"
   dry "git -C $REPO_PATH fetch -q $REMOTE"
   dry "git -C $REPO_PATH worktree add -b $BRANCH $TREE $BASE"
-  if [[ -n "$ARM" ]]; then
+  if [[ -n "$ARM_SHA" ]]; then
     dry "git -C <checkout of $HARNESS_AGENT_TOOLING_URL> archive $ARM_SHA | tar -x -C $TREE/$AGENT_TOOLING_RELPATH   (after rm -rf of it)"
     dry "cd $TREE && ./$SYNC_PLANS_RELPATH"
     dry "git -C $TREE commit -m '$HARNESS_PIN_SUBJECT_PREFIX ${ARM_SHA:0:$PIN_SHORT_SHA_LEN}'"
@@ -698,7 +834,7 @@ dry_run_cell() {
   dry "write $TREE/plans/features/$SLUG/README.md   (manifest skeleton, session_window.from = now)"
   dry "fill $HARNESS_METHODS_DIR/$METHOD/template.md -> $BRIEF_FILE"
   dry "$HARNESS_METHODS_DIR/$METHOD/run.sh $TREE $BRIEF_FILE $SLUG   (its claude call: --model $HARNESS_MODEL$(harness_effort_dry))"
-  dry "${HARNESS_FORGE_BIN:-$TREE/$FORGE_RELPATH} pr-find $BRANCH"
+  dry "${HARNESS_FORGE_BIN:-$DRIVER_FORGE} pr-find $BRANCH   (the driver's forge, FORGE_CHECKOUT=$TREE; none open, branch pushed with commits: pr-open $BRANCH $HARNESS_PR_BASE)"
   if [[ "$DO_REVIEW" == true ]]; then
     dry "$HARNESS_CLAUDE_BIN -p --output-format json$(harness_effort_dry) --model $HARNESS_MODEL --max-budget-usd $REVIEW_BUDGET_USD --permission-mode acceptEdits --allowedTools Bash <review preamble + $FIXTURE_DIR/review-brief.md>   (cwd $TREE)"
   fi
@@ -709,8 +845,9 @@ dry_run_cell() {
     dry "python3 $FIXTURE_DIR/accept/accept.py $TREE"
     dry "cd $TREE && $GATE_COMMAND"
   fi
-  dry "python3 $TREE/agentTooling/analysis/capture_planning.py $SLUG   (also $SLUG-review, $SLUG-rework)"
-  dry "python3 $TREE/agentTooling/analysis/report.py $SLUG             (read cost.total, then delete report.json/md)"
+  dry "python3 $AGENT_TOOLING_DIR/analysis/capture_planning.py $SLUG --arm-root $TREE   (the driver's copy; also $SLUG-review, $SLUG-rework)"
+  dry "python3 $AGENT_TOOLING_DIR/analysis/report.py $SLUG --arm-root $TREE             (read cost.total, then delete report.json/md)"
+  dry "python3 $SCRIPT_DIR/$READING_METRICS_SCRIPT $AGENT_TOOLING_DIR/analysis $TREE --from <t_method_start> --to <t_pr_open>   (reading before the first edit)"
   dry "append one row to $RESULTS_FILE"
   dry "python3 $SCRIPT_DIR/scorecard.py $EXPERIMENT_DIR"
   (( NO_CLEANUP )) || dry "git -C $REPO_PATH worktree remove $TREE   (branch and PR kept)"
@@ -725,6 +862,8 @@ run_cell() {
   harness_state_set_str "$STATE" method "$METHOD"
   harness_state_set "$STATE" repeat "$REPEAT"
   harness_state_set_str "$STATE" arm "$ARM"
+  harness_state_set_str "$STATE" arm_kind "$(cell_arm_kind)"
+  harness_state_set_str "$STATE" base "$BASE"
   harness_state_set_str "$STATE" branch "$BRANCH"
   harness_state_set_str "$STATE" slug "$SLUG"
 
@@ -733,7 +872,15 @@ run_cell() {
   if stage_wanted method; then
     if ! do_method; then
       harness_warn "method failed — recording the row and skipping the remaining model stages"
-      stage_wanted capture && do_capture
+      stage_wanted capture && { do_capture; do_reading_metrics; }
+      stage_wanted record && build_ledger_row
+      return 1
+    fi
+  elif stage_wanted review && resume_no_pr; then
+    # Past the method on a cell the old verdict failed for want of a PR: PR step only.
+    if ! do_pr_resume; then
+      harness_warn "resume found no PR and could not open one — recording the row"
+      stage_wanted capture && { do_capture; do_reading_metrics; }
       stage_wanted record && build_ledger_row
       return 1
     fi
@@ -743,7 +890,7 @@ run_cell() {
   stage_wanted review && do_review
   stage_wanted rework && do_rework
   stage_wanted accept && do_accept
-  stage_wanted capture && do_capture
+  stage_wanted capture && { do_capture; do_reading_metrics; }
   stage_wanted record && build_ledger_row
   return 0
 }
@@ -775,7 +922,11 @@ say "prediction: $PREDICTION"
 (( DRY_RUN )) && say "(dry run — nothing below is executed)"
 
 failures=0
-# One "<label> <sha>" per arm, or "- -" when the experiment pins no agentTooling version.
+EXPERIMENT_ARM_KIND="$(harness_experiment_arm_kind "$EXPERIMENT_JSON")" || exit 1
+if [[ "$EXPERIMENT_ARM_KIND" == "$HARNESS_ARM_KIND_BASE" && -n "$(jq -r '.programs[]?' "$EXPERIMENT_JSON")" ]]; then
+  harness_die "$EXPERIMENT_JSON: $HARNESS_BASE_ARMS_NO_PROGRAMS_MSG"
+fi
+# One "<label> <sha>" per arm, or "- -" when the experiment names no arms.
 ARMS="$(harness_experiment_arms "$EXPERIMENT_JSON")" || exit 1
 for fixture in $(jq -r '.fixtures[]?' "$EXPERIMENT_JSON"); do
   for method in $(jq -r '.methods[]?' "$EXPERIMENT_JSON"); do

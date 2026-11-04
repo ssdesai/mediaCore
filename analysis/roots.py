@@ -100,16 +100,52 @@ def add_self_flag(parser):
     )
 
 
+# Measuring is the driver's, building is the arm's. The experiment harness runs these
+# scripts from the DRIVER's own copy (current rates, current capture rules) over a
+# worktree whose vendored agentTooling/ may be months old; `--arm-root <worktree>` points
+# the ordinary (non---self) artifact root at that worktree, so its `plans/features/` is
+# read and written while the code that prices it is the driver's. Process-wide, set once
+# by `apply_arm_root` before anything resolves a root.
+_arm_root = None
+
+
+def add_arm_root_flag(parser):
+    """Register --arm-root on a script that prices or reports a feature."""
+    parser.add_argument(
+        "--arm-root",
+        dest="arm_root",
+        metavar="DIR",
+        help="read and write plans/features/ under this checkout instead of the one "
+        "this copy of the scripts is vendored in (the experiment harness's driver "
+        "measuring an arm's worktree). Not with --self",
+    )
+
+
+def apply_arm_root(parser, args):
+    """Make `--arm-root` the ordinary artifact root; a usage error with --self."""
+    global _arm_root
+    if not getattr(args, "arm_root", None):
+        return
+    if args.self_mode:
+        parser.error("--arm-root is for a consuming repo's corpus, not --self")
+    arm = Path(args.arm_root).resolve()
+    if not arm.is_dir():
+        parser.error(f"--arm-root {args.arm_root!r} is not a directory")
+    _arm_root = arm
+
+
 def artifact_root(self_mode):
     """Where feature directories live and results are written."""
-    return AGENT_TOOLING_DIR if self_mode else AGENT_TOOLING_DIR.parent
+    if self_mode:
+        return AGENT_TOOLING_DIR
+    return _arm_root or AGENT_TOOLING_DIR.parent
 
 
 def features_root(self_mode):
     """The per-feature tree under the artifact root."""
     if self_mode:
         return AGENT_TOOLING_DIR / "self" / "features"
-    return AGENT_TOOLING_DIR.parent / "plans" / "features"
+    return artifact_root(False) / "plans" / "features"
 
 
 def orchestrations_root():

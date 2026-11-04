@@ -1,0 +1,14 @@
+# Paths agentTooling's README-index check (../check-readme-index.py, run blocking by
+# gate.sh) does not require a README to name. The pattern rules are the checker's
+# docstring. Every entry says why; an entry is never a way to avoid writing a README
+# line (CONVENTIONS.md -> "READMEs").
+
+# A feature directory is its manifest and plan queues: the manifest README is the
+# feature's record, not an index of auto/, verify/, review/ and the cost files.
+self/features/*/
+# An orchestration record is the same kind of record, for a group of features.
+self/orchestrations/*/
+# The version-and-hash table beside the templates. Its folder's README.md is the generated
+# plans/ stub every consumer receives, which must not describe agentTooling-only files;
+# templates/README.md documents it.
+templates/plans/TEMPLATE_VERSIONS

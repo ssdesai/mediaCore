@@ -1,0 +1,154 @@
+{
+  "slug": "harness-arm-base",
+  "captured_at": "2026-11-03T23:17:08.646992+00:00",
+  "manifest_branches": [
+    "claude/harness-arm-base"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "cdf37345-edab-5c98-a13c-d282863a061f",
+      "git_branch": "claude/harness-arm-base",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-11-03",
+      "started_at": "2026-11-03T21:31:47.152000+00:00",
+      "ended_at": "2026-11-03T23:17:03.675000+00:00",
+      "duration_s": 6316
+    }
+  ],
+  "subagents": [
+    {
+      "agent_id": "ab590e162cb0e4b58",
+      "parent_session_id": "cdf37345-edab-5c98-a13c-d282863a061f",
+      "date": "2026-11-03",
+      "started_at": "2026-11-03T23:03:27.358000+00:00",
+      "ended_at": "2026-11-03T23:03:57.834000+00:00",
+      "duration_s": 30,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "ac7ffd320774da71f",
+      "parent_session_id": "cdf37345-edab-5c98-a13c-d282863a061f",
+      "date": "2026-11-03",
+      "started_at": "2026-11-03T21:45:11.108000+00:00",
+      "ended_at": "2026-11-03T21:56:02.546000+00:00",
+      "duration_s": 651,
+      "selected_by": "parent",
+      "cross_repo": false
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "2dc0d2f6-08d8-43cb-9daa-cb2aaaee825e",
+    "4bb7ef0c-8edb-4186-8de8-fb2bb9a83f06",
+    "61813de8-0350-483e-9e53-1e303cc4d41b",
+    "90a00074-8e5e-46c1-b7ba-ea433054bc17",
+    "9bab56fa-b7e6-415f-8742-427fc91ba412",
+    "a25a6adb-aecd-44b8-b220-69f2848ddc94",
+    "b6b8fd12-32f1-4969-911e-0b22f0556127",
+    "dfbbd715-0c57-47a4-bc7b-d836bcb8cb34",
+    "ea78118c-601f-47d3-93ef-c7e356ad90b1",
+    "f22a0f78-f866-453f-b646-b7877bbe773e"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "cdf37345-edab-5c98-a13c-d282863a061f",
+      "agent_id": null,
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-03",
+      "duration_s": 6316,
+      "tokens": {
+        "input": 123,
+        "output": 15258,
+        "cache_read": 7443906,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 111665
+      },
+      "cost_usd": 1.3438766000000002,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "cdf37345-edab-5c98-a13c-d282863a061f",
+      "agent_id": "ab590e162cb0e4b58",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-03",
+      "duration_s": 30,
+      "tokens": {
+        "input": 12,
+        "output": 2073,
+        "cache_read": 283641,
+        "cache_creation_5m": 59543,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 0.1979756,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "cdf37345-edab-5c98-a13c-d282863a061f",
+      "agent_id": "ac7ffd320774da71f",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-03",
+      "duration_s": 651,
+      "tokens": {
+        "input": 118,
+        "output": 71023,
+        "cache_read": 10694933,
+        "cache_creation_5m": 218427,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 4.6520535999999995,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 1.3438766000000002,
+    "sidechain": 4.8500292,
+    "subagents": 4.8500292,
+    "total": 6.1939058,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 6316,
+    "subagents": 681,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": []
+}

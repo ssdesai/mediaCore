@@ -124,6 +124,14 @@ READMEs" above). Check the parent folder's README too when the change affects wh
 says about the subfolder. A new file, a renamed field or a changed signature is enough to
 make a README misleading.
 
+The index half of this is mechanical, and a gate holds it: agentTooling's
+`check-readme-index.py` lists every tracked file and direct subfolder its folder's
+`README.md` never names, and exits non-zero if there is one. agentTooling's own gate runs
+it blocking; a consuming repo opts in (`agentTooling/README.md` → "Adopting the
+README-index check"), with a repo-owned ignore list for record and fixture directories —
+never for a file that should have had its line. It checks that an entry exists, not that
+it is true: a Rule 1 field list against its schema is a per-repo test, described there.
+
 ### Required README content
 
 The two rules below apply **only when an entry matches the trigger condition**. Entries that don't match (pure utilities, constants files, CSS, scripts, fixtures, ordinary React component descriptions, etc.) follow the regular README guidance and need no extra treatment.

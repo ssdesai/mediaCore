@@ -25,6 +25,10 @@ and the same rework as every other method. Nothing in this directory reviews its
 output, and a comparison that treats the model call as the whole arm is measuring the
 wrong thing — which is the mistake the WP7 scorecards had to correct for by hand.
 
+`../direct-bare/` is this method's control: the same brief without the procedure steps
+above. An edit to `template.md` here fails `self/tests/direct-bare-pair.sh` until
+`direct-bare/template.md` follows it.
+
 The brief tells the implementer to decide everything the spec leaves open rather than
 stop to ask: nobody is listening, and a run that stalls on a question scores as a
 failure of the method rather than of the brief.
