@@ -32,7 +32,7 @@ HARNESS_METHODS_DIR="$HARNESS_DIR/methods"
 # smoke test sets it to a fake that answers from a per-branch file.
 HARNESS_CLAUDE_BIN="${HARNESS_CLAUDE_BIN:-claude}"
 HARNESS_FORGE_BIN="${HARNESS_FORGE_BIN:-}"
-FORGE_RELPATH="agentTooling/forge.sh"
+DRIVER_FORGE="$AGENT_TOOLING_DIR/forge.sh"
 # The base every arm's PR targets, and what the harness tells the forge.
 HARNESS_PR_BASE="${HARNESS_PR_BASE:-main}"
 
@@ -93,6 +93,13 @@ PIN_SHORT_SHA_LEN=7
 # An arm label is bare lower-case letters: it is capitalised into the branch name
 # (`exportStoreDirectAfter2`) and must not run into the repeat index.
 HARNESS_ARM_LABEL_RE='^[a-z]+$'
+# Arm kinds: what an experiment's arms vary — one kind per experiment.
+HARNESS_ARM_KIND_AGENT_TOOLING="agent_tooling"   # experiment.json key agent_tooling
+HARNESS_ARM_KIND_BASE="base"                     # experiment.json key base_arms
+HARNESS_BASE_ARMS_KEY="base_arms"
+HARNESS_ARM_KINDS_EXCLUSIVE_MSG="an experiment's arms vary one thing — the agentTooling version (agent_tooling, --agent-tooling) or the measured repository's commit (base_arms, --base-arms) — never both"
+HARNESS_BASE_ARMS_NO_PROGRAMS_MSG="base_arms (--base-arms) does not combine with programs (--programs): a program pins its own base"
+HARNESS_BASE_ARM_REPO_RULE="an experiment runs from, and lives on, the repository it measures (harness/EXPERIMENTS.md): push the commit there and name a ref that resolves in its checkout"
 
 # ── Exit-code convention, copied from plan-runner-lib.sh ─────────────────────
 # A method's run.sh reports its outcome with these and nothing else.
@@ -208,8 +215,19 @@ harness_require_tools() {
 # arm omitted when the experiment pins no agentTooling version, n omitted at repeats=1.
 # Never a user/ prefix: capture_planning.py matches `branches` literally against each
 # session's gitBranch, and a mismatch silently reports $0.00.
+#
+# A hyphenated name (`direct-bare`, `direct-selfreview`: methods/README.md) is camelCased,
+# each hyphen-separated part capitalised and the hyphens dropped, so the branch stays bare
+# camelCase (`exportStoreDirectBare`). Only the branch changes: the row's `method` stays the
+# directory name. Plain `tr` and `${1:0:1}`, not `${part^}`: macOS ships bash 3.2.
 harness_capitalise() {
-  printf '%s%s' "$(printf '%s' "${1:0:1}" | tr '[:lower:]' '[:upper:]')" "${1:1}"
+  local word out="" rest="$1"
+  while [[ "$rest" == *-* ]]; do
+    word="${rest%%-*}"
+    rest="${rest#*-}"
+    out+="$(printf '%s' "${word:0:1}" | tr '[:lower:]' '[:upper:]')${word:1}"
+  done
+  printf '%s%s%s' "$out" "$(printf '%s' "${rest:0:1}" | tr '[:lower:]' '[:upper:]')" "${rest:1}"
 }
 
 harness_branch_name() {
@@ -224,14 +242,31 @@ harness_branch_name() {
   fi
 }
 
-# The arms an experiment runs: one "<label> <sha>" line each, or one "- -" line when
-# experiment.json pins nothing (the tree's own vendored copy, as before).
+# harness_experiment_arm_kind <experiment.json> — what its arms vary: agent_tooling, base,
+# or nothing (no arms). Both keys at once dies: one experiment varies one thing.
+harness_experiment_arm_kind() {
+  local has_at has_base
+  has_at="$(jq -r --arg k "$HARNESS_ARM_KIND_AGENT_TOOLING" 'has($k)' "$1")" || harness_die "cannot read $1"
+  has_base="$(jq -r --arg k "$HARNESS_BASE_ARMS_KEY" 'has($k)' "$1")" || harness_die "cannot read $1"
+  if [[ "$has_at" == true && "$has_base" == true ]]; then
+    harness_die "$1: $HARNESS_ARM_KINDS_EXCLUSIVE_MSG"
+  fi
+  if [[ "$has_base" == true ]]; then printf '%s' "$HARNESS_ARM_KIND_BASE"
+  elif [[ "$has_at" == true ]]; then printf '%s' "$HARNESS_ARM_KIND_AGENT_TOOLING"; fi
+}
+
+# The arms an experiment runs: one "<label> <sha>" line each — the sha an agentTooling
+# commit or, for base arms, a commit of the measured repository — or one "- -" line when
+# experiment.json names no arms (the tree's own vendored copy at the fixture's base).
 harness_experiment_arms() {
-  local arms
-  # A malformed agent_tooling dies rather than reading as "no pin": an experiment meant to
-  # compare versions must not quietly run every cell on the tree's own copy.
-  arms="$(jq -r '(.agent_tooling // {}) | to_entries[] | "\(.key) \(.value)"' "$1")" \
-    || harness_die "agent_tooling in $1 must be an object of <label>: <full sha>"
+  local kind key arms
+  kind="$(harness_experiment_arm_kind "$1")" || exit 1
+  key="$HARNESS_ARM_KIND_AGENT_TOOLING"
+  if [[ "$kind" == "$HARNESS_ARM_KIND_BASE" ]]; then key="$HARNESS_BASE_ARMS_KEY"; fi
+  # A malformed value dies rather than reading as "no arms": an experiment meant to
+  # compare arms must not quietly run every cell unpinned.
+  arms="$(jq -r --arg k "$key" '(.[$k] // {}) | to_entries[] | "\(.key) \(.value)"' "$1")" \
+    || harness_die "$key in $1 must be an object of <label>: <full sha>"
   if [[ -n "$arms" ]]; then printf '%s\n' "$arms"; else printf -- '- -\n'; fi
 }
 
@@ -461,13 +496,26 @@ harness_fixture_spec_repo() {
 }
 
 # ── The forge seam ───────────────────────────────────────────────────────────
-# harness_forge_for <checkout> — the forge adapter to ask about that checkout's PRs:
-# HARNESS_FORGE_BIN when set, else the checkout's own vendored forge.sh (whose origin is
-# that checkout's); prints nothing when there is neither.
+# harness_forge_for [<checkout>] — the forge adapter to ask about PRs: HARNESS_FORGE_BIN
+# when set, else the DRIVER's own forge.sh (the copy this harness lives in) — never the
+# checkout's vendored one, which an arm built from a historical base may not have at all.
+# The checkout is passed to the forge as FORGE_CHECKOUT (harness_forge_run), so the
+# driver's adapter asks about that checkout's origin. Prints nothing when there is no
+# forge.sh to run.
 harness_forge_for() {
   if [[ -n "$HARNESS_FORGE_BIN" ]]; then printf '%s' "$HARNESS_FORGE_BIN"; return 0; fi
-  if [[ -x "$1/$FORGE_RELPATH" ]]; then printf '%s' "$1/$FORGE_RELPATH"; return 0; fi
+  if [[ -x "$DRIVER_FORGE" ]]; then printf '%s' "$DRIVER_FORGE"; return 0; fi
   printf ''
+}
+
+# harness_forge_run <checkout> <forge verb and args…> — the verb through the forge seam,
+# run in the checkout and pointed at its origin.
+harness_forge_run() {
+  local tree="$1" forge
+  shift
+  forge="$(harness_forge_for "$tree")"
+  [[ -n "$forge" ]] || return 1
+  ( cd "$tree" && FORGE_CHECKOUT="$tree" "$forge" "$@" )
 }
 
 # ── Pinning ──────────────────────────────────────────────────────────────────
@@ -584,6 +632,20 @@ harness_wait_for_usage_reset() {
 # is a bug, so the fill fails loudly rather than shipping a literal @@NAME@@ to a model.
 # Multi-line values (facts, isolation) are ordinary bash variables: ${x//a/b} does not
 # care about newlines.
+#
+# Every substitution goes through harness_replace_literal, never `${text//pat/$value}`:
+# bash 5.2 turns `patsub_replacement` on by default, and under it an `&` in the
+# replacement expands to the matched text and a `\` quotes the next character, so a
+# facts.md line with an `&` shipped as `@@FACTS@@` repeated into the brief.
+harness_replace_literal() {
+  local text="$1" pattern="$2" replacement="$3" result=""
+  while [[ "$text" == *"$pattern"* ]]; do
+    result="$result${text%%"$pattern"*}$replacement"
+    text="${text#*"$pattern"}"
+  done
+  printf -v HARNESS_REPLACED '%s' "$result$text"
+}
+
 harness_fill_template() {
   local file="$1" text name value missing wants_prev=false
   text="$(cat "$file")"
@@ -591,7 +653,7 @@ harness_fill_template() {
   # and findings.md all carry scalar placeholders of their own (`@@SPEC_TREE@@`,
   # `@@GATE_MINUTES@@`, `@@TREE@@`), and only a pass that runs after they are inserted
   # can resolve them. Insert last and they ship to a model verbatim.
-  text="${text//@@ISOLATION@@/${HARNESS_ISOLATION-}}"
+  harness_replace_literal "$text" '@@ISOLATION@@' "${HARNESS_ISOLATION-}"; text="$HARNESS_REPLACED"
   # The program templates' multi-line values (FEATURES, RECORD_COMMANDS, DEPENDS,
   # METHOD_CHOICE) carry scalar placeholders too, so they go in before the scalars.
   for name in FACTS REVIEW_BRIEF FINDINGS_TEXT FEATURES RECORD_COMMANDS DEPENDS METHOD_CHOICE \
@@ -601,7 +663,7 @@ harness_fill_template() {
               PROGRAM PROGRAM_SLUG PROGRAM_BRANCH PROGRAM_TREE ARM FEATURE_COUNT POSITION \
               PR_BASE PR_FIRST_LINE BRIEF_PATH BRIEF_DIR RECORD_PATH BRIEF_TEMPLATE; do
     eval "value=\${HARNESS_$name-}"
-    text="${text//@@${name}@@/$value}"
+    harness_replace_literal "$text" "@@${name}@@" "$value"; text="$HARNESS_REPLACED"
   done
   # PREV_OUTCOME is a previous implementer's report, free text that may itself contain an
   # @@NAME@@: it is inserted last and never scanned, so it can neither be substituted into
@@ -615,7 +677,7 @@ harness_fill_template() {
     harness_die "unfilled placeholder(s) in $file: $missing"
   fi
   if [[ "$wants_prev" == true ]]; then
-    text="${text//@@PREV_OUTCOME@@/${HARNESS_PREV_OUTCOME-}}"
+    harness_replace_literal "$text" '@@PREV_OUTCOME@@' "${HARNESS_PREV_OUTCOME-}"; text="$HARNESS_REPLACED"
   fi
   printf '%s\n' "$text"
 }
@@ -714,7 +776,8 @@ harness_gate_counts() {
   local report="$tree/$GATE_REPORT_RELPATH" counts
   [[ -f "$report" ]] || { printf ''; return 0; }
   counts="$(grep -hoE "$GATE_COUNT_RE" "$report" 2>/dev/null | awk '!seen[$0]++' | paste -sd'|' - )"
-  printf '%s' "${counts//|/$GATE_COUNTS_JOIN}"
+  harness_replace_literal "$counts" '|' "$GATE_COUNTS_JOIN"
+  printf '%s' "$HARNESS_REPLACED"
 }
 
 # ── Findings ─────────────────────────────────────────────────────────────────
@@ -759,19 +822,42 @@ harness_push() {
 # The PR the method was asked to open. Read-only, through the forge seam: `pr-find`
 # prints the open PR's url for that head, or nothing.
 harness_pr_url() {
-  local tree="$1" branch="$2" forge
-  forge="$(harness_forge_for "$tree")"
-  [[ -n "$forge" ]] || { printf ''; return 0; }
-  ( cd "$tree" && "$forge" pr-find "$branch" 2>/dev/null ) || printf ''
+  local tree="$1" branch="$2"
+  harness_forge_run "$tree" pr-find "$branch" 2>/dev/null || printf ''
 }
 
 # harness_pr_open <tree> <branch> <title> <body-file> — opens the PR into
 # HARNESS_PR_BASE through the forge seam and prints its url; nothing when it could not.
 harness_pr_open() {
-  local tree="$1" branch="$2" title="$3" body="$4" forge
-  forge="$(harness_forge_for "$tree")"
-  [[ -n "$forge" ]] || { printf ''; return 1; }
-  ( cd "$tree" && "$forge" pr-open "$branch" "$HARNESS_PR_BASE" "$title" "$body" ) || printf ''
+  local tree="$1" branch="$2" title="$3" body="$4"
+  harness_forge_run "$tree" pr-open "$branch" "$HARNESS_PR_BASE" "$title" "$body" || { printf ''; return 1; }
+}
+
+# harness_branch_has_commits <tree> <base> — whether HEAD carries commits beyond <base>.
+harness_branch_has_commits() {
+  [[ -n "$(git -C "$1" log --format=%H -1 "$2..HEAD" 2>/dev/null)" ]]
+}
+
+# harness_branch_pushed <tree> <branch> — whether origin has <branch> at all.
+harness_branch_pushed() {
+  [[ -n "$(git -C "$1" ls-remote origin "refs/heads/$2" 2>/dev/null)" ]]
+}
+
+# harness_resolve_commit <repo> <ref> [<remote>] — prints the commit sha <ref> names in
+# <repo>. A fixture base can be a prep commit that is on no branch of main, so a clone has
+# it only once someone fetched its branch; when the ref does not resolve and looks like a
+# sha, fetch it by sha from the remote ONCE and retry. Fetching by sha creates and moves
+# no ref (it lands in FETCH_HEAD). Prints nothing and returns 1 when it still does not
+# resolve.
+harness_resolve_commit() {
+  local repo="$1" ref="$2" remote="${3:-origin}" sha
+  if sha="$(git -C "$repo" rev-parse --verify --quiet "${ref}^{commit}" 2>/dev/null)"; then
+    printf '%s' "$sha"; return 0
+  fi
+  [[ "$ref" =~ ^[0-9a-fA-F]{7,40}$ ]] || return 1
+  git -C "$repo" fetch -q "$remote" "$ref" 2>/dev/null || return 1
+  sha="$(git -C "$repo" rev-parse --verify --quiet "${ref}^{commit}" 2>/dev/null)" || return 1
+  printf '%s' "$sha"
 }
 
 # ── State file ───────────────────────────────────────────────────────────────

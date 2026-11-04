@@ -1011,7 +1011,7 @@ dry_run_program_cell() {
     dry "git -C $PREPO_PATH worktree add -b ${PF_BRANCH[$i]} ${PF_TREE[$i]} $start   (then pin, fixture setup, gate, spec worktree)"
     dry "$HARNESS_CLAUDE_BIN -p --output-format json$(harness_effort_dry) --resume <latest orchestrator session> ... <feature $(( i + 1 )) request>   -> $(program_brief_path "$i")   (cwd $PTREE)"
     dry "$HARNESS_CLAUDE_BIN -p --output-format json$(harness_effort_dry) --model $HARNESS_MODEL --permission-mode acceptEdits --allowedTools $PROGRAM_IMPLEMENTER_TOOLS <the brief>   (cwd ${PF_TREE[$i]})"
-    dry "${HARNESS_FORGE_BIN:-${PF_TREE[$i]}/$FORGE_RELPATH} pr-find ${PF_BRANCH[$i]}; push; record tip"
+    dry "${HARNESS_FORGE_BIN:-$DRIVER_FORGE} pr-find ${PF_BRANCH[$i]}; push; record tip"
   done
   dry "$HARNESS_CLAUDE_BIN -p --output-format json$(harness_effort_dry) --resume <latest orchestrator session> ... <collect request>   (cwd $PTREE)"
   dry "push $PBRANCH (no PR)"
@@ -1024,7 +1024,7 @@ dry_run_program_cell() {
   if [[ "$DO_ACCEPT" == true ]]; then
     dry "per feature: python3 <fixture>/accept/accept.py <tree>; then its gate once more"
   fi
-  dry "per feature: python3 <tree>/agentTooling/analysis/capture_planning.py <slug> (also -review, -rework); report.py <slug>"
+  dry "per feature: python3 $AGENT_TOOLING_DIR/analysis/capture_planning.py <slug> --arm-root <tree> (the driver's copy; also -review, -rework); report.py <slug> --arm-root <tree>"
   dry "python3 $SCRIPT_DIR/$PROGRAM_COST_SCRIPT $AGENT_TOOLING_DIR/analysis --session <id>@<first call start> ... --from <t_method_start> --to <t_method_end>"
   dry "cd $PTREE/$AGENT_TOOLING_RELPATH && ./$PROGRAM_CAPTURE_SCRIPT $PSLUG; python3 $PROGRAM_REPORT_PY --orchestration $PSLUG   (best effort)"
   dry "append one kind=program row to $RESULTS_FILE"

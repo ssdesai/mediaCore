@@ -104,7 +104,8 @@ BASE="$(harness_json "$FIXTURE_JSON" .base)"
 if [[ -n "$REPO" ]] && git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1; then
   ok "repo checkout is a git repository"
   git -C "$REPO" remote get-url "$REMOTE" >/dev/null 2>&1 && ok "repo has remote $REMOTE" || warn "repo has no remote $REMOTE (run.sh fetches from it)"
-  if BASE_SHA="$(git -C "$REPO" rev-parse --verify --quiet "${BASE}^{commit}")"; then
+  # A base can be a prep commit on a branch no clone has fetched: one fetch by sha, then fail.
+  if BASE_SHA="$(harness_resolve_commit "$REPO" "$BASE" "$REMOTE")"; then
     ok "base resolves ($BASE_SHA)"
     [[ "$BASE" =~ $FULL_SHA_RE ]] || warn "base is abbreviated ($BASE) — a full id cannot become ambiguous later"
     [[ -n "$(git -C "$REPO" branch -r --contains "$BASE_SHA" 2>/dev/null)" ]] && ok "base is on a remote branch" || warn "base is on no remote branch of $REPO"

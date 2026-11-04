@@ -671,6 +671,26 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `branches` returns the three roots it always had and with one branch adds exactly
   `<primary>-<branch>` (H3). Depends on `session_line` from
   `fixtures/transcripts/build-transcript.sh`. No model, no network.
+- `harness-driver-measures.sh` — "measuring is the driver's, building is the arm's"
+  (`self/features/harness-driver-measures/`), offline: a stub `gh` on PATH, throwaway git
+  repos, transcripts under a redirected `$HOME`. T1 sources `harness/lib.sh` and asserts
+  `harness_fill_template` and `harness_replace_literal` are literal under bash 5.2's
+  `patsub_replacement` on and off for a value holding `&`, `\&`, `\\`, `/`, `@@OTHER@@` and
+  newlines (the premise, that `${t//pat/$v}` expands `&` on this bash, is asserted too),
+  and that no `${x//pat/$var}` with a variable replacement remains in `harness/`'s code;
+  T2 `harness_resolve_commit` fetches a prep commit by sha once, creates no ref, and
+  still fails for a sha no remote has or a name that is not a sha; T3 `harness_pr_url` /
+  `harness_pr_open` ask the *driver's* `forge.sh` about the arm checkout's origin
+  (`FORGE_CHECKOUT`; stub `gh` sees `repos/acme/widget/pulls`) when the arm has no
+  `forge.sh`, and `HARNESS_FORGE_BIN` still overrides; T4 an arm whose vendored rates lack
+  `claude-sonnet-5-5` prices the session at $0 with its own copy and at the driver's rates
+  with `--arm-root` (the arm's `plans/features/` written, the driver's repo untouched),
+  and `--arm-root` with `--self` or naming no directory is exit 2; T5 the corpus's oldest
+  feature directory (`agenttooling-self-host`, August) goes through the driver's capture
+  and report without a traceback. The end-to-end half — the harness opening the PR a built
+  branch lacks, and `check-fixture.sh` fetching an unfetched base — is `harness/tests/smoke.sh`.
+  Depends on `session_line` from `fixtures/transcripts/build-transcript.sh`. No model, no
+  network.
 - `check-plans.sh` — copies the real `check-plans.sh` and `plan-runner-roots.sh` into a
   throwaway checkout (a missing `check-plans.sh` is tolerated — RED until it lands, the
   `cost-recovery.sh` convention) and drives it against synthesized feature manifests and
@@ -2333,6 +2353,18 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `feature-start.sh` and `feature-capture.sh` set `REPO_NAME` from it (C8, read as text —
   driving a start would need a fixture whose directory differs from its origin, which
   `cloud-start.sh`'s does not). No model, no network.
+- `direct-bare-pair.sh` — keeps `harness/methods/direct-bare/` honest as the control for
+  `direct`'s procedure steps. Derives the expected `direct-bare/template.md` from
+  `direct/template.md` by deleting the `## Procedure` section (heading up to
+  `## Quality bar`) and the ``(`CHECKPOINT.md` at status `committed`)`` parenthetical, and
+  fails on any other difference, so an edit to `direct/template.md` fails the gate until
+  `direct-bare` follows it. Also fills both templates through `harness_fill_template` with
+  one environment (no unfilled placeholder; `direct-bare` uses none `direct` lacks), and
+  checks `direct-bare/run.sh` is executable and equals `direct/run.sh` once comments and the
+  method name are set aside. Also pins `harness_branch_name` for a hyphenated method
+  (`direct-bare` → `exportStoreDirectBare2`) and that every directory under
+  `harness/methods/` yields a branch matching `^[a-z][A-Za-z0-9]*$`. Reads
+  `harness/lib.sh`'s fill and naming; no model, no network.
 - `direct-timing.sh` — copies `plan-runner-roots.sh`, the top-level `stamp-timing.sh` and
   `analysis/{pricing,roots,transcript,report}.py` into a throwaway checkout and
   synthesizes a `self/features/` corpus of hand-written manifests, `planning.json` files
@@ -2917,3 +2949,19 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `run-plans.sh` resolving `plans/gate.sh` and `plans/features/` from the directory above
   its own. The killed run's process group comes from bash job control (`set -m`), not
   `setsid`, which macOS does not ship. No model, no network.
+- `readme-index.sh` — the README-index checker's contract, black-box. Copies
+  `../../check-readme-index.py` into one `mktemp -d` and runs that copy with `python3 -B`
+  over `git init` fixture repos beside it, files staged and never committed. I1: a clean
+  repo exits 0 with `none missing`. I2: an unlisted file is `README.md: c.sh`, exit 1,
+  summary `1 missing in 1 of 2`. I3: an unlisted subfolder is reported as `newdir/`, not
+  its files. I4: a file is checked against its own folder's README only. I5: untracked,
+  gitignored and deleted-but-tracked files are never entries. I6: the recognition
+  boundaries (`gate` vs `integrate`/`gates`, `tools/run.sh.` names `run.sh`, `tool.py.bak`
+  does not name `tool.py`, case-sensitive). I7: `--report-only` exits 0 and marks the
+  summary. I8: the ignore list (comments, folder-only `records/*/`, ancestors). I9: an
+  unreadable ignore file, an absolute or `..` pattern and an unknown flag exit 2. I10: a
+  non-checkout exits 2 under `GIT_CEILING_DIRECTORIES`. I11: a generated README is checked
+  against the repo-owned file its header names (an absent one counts as empty). I12:
+  `git status`, `.git/index` and `__pycache__` untouched. I13: a subfolder is named by its
+  bare name. Depends on the checker's output lines and exit codes as its docstring states
+  them. No model, no network.

@@ -1,0 +1,75 @@
+{
+  "plan": "01-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "23dbe7b1-cf01-4a17-9627-4ab99bcd7a9a",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 18,
+  "duration_ms": 97786,
+  "total_cost_usd": 1.0828259,
+  "usage": {
+    "input_tokens": 32,
+    "cache_creation_input_tokens": 81324,
+    "cache_read_input_tokens": 1337887,
+    "output_tokens": 8199
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 5400,
+      "outputTokens": 17,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0005485,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 32,
+      "outputTokens": 8199,
+      "cacheReadInputTokens": 1337887,
+      "cacheCreationInputTokens": 81324,
+      "webSearchRequests": 0,
+      "costUSD": 1.0822774000000002,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 3484,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 81324,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 10,
+    "Edit": 3,
+    "Read": 3,
+    "Write": 1
+  },
+  "files_edited": [
+    "harness/lib.sh",
+    "self/review-report.md",
+    "self/tests/README.md",
+    "self/tests/harness-driver-measures.sh"
+  ],
+  "edit_count": 4,
+  "attempts": [
+    {
+      "session_id": "23dbe7b1-cf01-4a17-9627-4ab99bcd7a9a",
+      "outcome": "complete",
+      "total_cost_usd": 1.0828259,
+      "num_turns": 18,
+      "duration_ms": 97786
+    }
+  ]
+}

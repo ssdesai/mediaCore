@@ -63,6 +63,19 @@ PROGRAM_FAILED_NOTE = "the orchestrator did not finish the program."
 UNPRICED_NOTE_PREFIX = "unpriced — "
 PERCENT_SCALE = 100.0
 
+# Arms that vary the measured repository's commit (experiment.json `base_arms`)
+ARM_KIND_BASE = "base"
+BASE_ARMS_KEY = "base_arms"
+BASE_ARM_LABEL_FMT = "{arm} (base {sha})"
+
+# Reading metrics (harness/reading_metrics.py), rendered beside the cost figures
+READING_HEADING = "## Reading before the first edit"
+READING_FIELDS = ("read_files_before_edit", "read_bytes_before_edit", "readme_bytes_read")
+READING_COLUMNS = ("Fixture", "Method", "Arm", "Branch", "To PR-open",
+                   "Files read before 1st edit", "Bytes read before 1st edit",
+                   "README bytes read")
+BYTES_FMT = "{:,}"
+
 
 def read_json(path: Path):
     with open(path) as handle:
@@ -126,11 +139,15 @@ def cell_label(row: dict) -> str:
 
 
 def arm_label(row: dict) -> str:
-    """The arm a row ran under: its label, with the pinned agentTooling commit abbreviated;
-    NA for a run with no pin (the tree's own vendored copy)."""
+    """The arm a row ran under: its label, with the pinned agentTooling commit abbreviated
+    (or, for a base arm, the measured repository's commit); NA for a run with no pin (the
+    tree's own vendored copy)."""
     arm = row.get("arm") or ""
     if not arm:
         return NA
+    if row.get("arm_kind") == ARM_KIND_BASE:
+        sha = (row.get("base") or "")[:SHORT_SHA_LEN]
+        return BASE_ARM_LABEL_FMT.format(arm=arm, sha=sha) if sha else arm
     sha = (row.get("agent_tooling") or "")[:SHORT_SHA_LEN]
     return f"{arm} ({sha})" if sha else arm
 
@@ -290,6 +307,27 @@ def render_programs(experiment: dict, rows: list[dict], band: float) -> list[str
     return out
 
 
+def reading_cell(value) -> str:
+    """A reading figure: grouped digits, or NA when it was not measured."""
+    return NA if value is None else BYTES_FMT.format(int(value))
+
+
+def render_reading(rows: list[dict]) -> list[str]:
+    """The reading table: one row per cell carrying any reading field; empty when none does."""
+    measured = [r for r in rows if any(field in r for field in READING_FIELDS)]
+    if not measured:
+        return []
+    out: list[str] = [READING_HEADING, ""]
+    out.extend(table_header(READING_COLUMNS))
+    for row in measured:
+        out.append(table_row(
+            str(row.get("fixture", "?")), cell_label(row), arm_label(row),
+            f"`{row.get('branch', '?')}`", money(row.get("cost_method_usd")),
+            *(reading_cell(row.get(field)) for field in READING_FIELDS)))
+    out.append("")
+    return out
+
+
 def render(experiment: dict, all_rows: list[dict]) -> str:
     rows, programs = split_rows(all_rows)
     name = experiment.get("name", "experiment")
@@ -311,11 +349,14 @@ def render(experiment: dict, all_rows: list[dict]) -> str:
     arms = experiment.get("agent_tooling") or {}
     arms_text = ("  ·  agentTooling arms: " + ", ".join(
         f"{label}={sha[:SHORT_SHA_LEN]}" for label, sha in arms.items())) if arms else ""
+    base_arms = experiment.get(BASE_ARMS_KEY) or {}
+    base_arms_text = ("  ·  base arms: " + ", ".join(
+        f"{label}={sha[:SHORT_SHA_LEN]}" for label, sha in base_arms.items())) if base_arms else ""
     programs_text = f"  ·  programs: {len(programs)}" if programs else ""
     out.append(f"Fixtures: {', '.join(experiment.get('fixtures', []))}  ·  "
                f"methods: {', '.join(experiment.get('methods', []))}  ·  "
                f"repeats: {experiment.get('repeats', 1)}  ·  "
-               f"noise band: ±{band}%{programs_text}{arms_text}")
+               f"noise band: ±{band}%{programs_text}{arms_text}{base_arms_text}")
     out.append("")
 
     if not rows and not programs:
@@ -347,6 +388,7 @@ def render(experiment: dict, all_rows: list[dict]) -> str:
                 f"{accept} | {pr} |"
             )
         out.append("")
+        out.extend(render_reading(rows))
 
     # Per (fixture, method, arm): mean and spread, which only mean anything above one
     # repeat. The arm is "" for a run with no agentTooling pin.
