@@ -1,0 +1,350 @@
+{
+  "slug": "harness-arm-base",
+  "generated_at": "2026-11-03T23:17:08.921048+00:00",
+  "cost": {
+    "method": "plans",
+    "planning": 6.1939058,
+    "implementer": 0.0,
+    "build": 1.8728189999999998,
+    "verify": 0.2534295,
+    "review": 2.0875364000000003,
+    "total": 10.4076907,
+    "planning_pct": 59.512777411803754,
+    "build_pct": 17.9945681898483,
+    "verify_pct": 2.4350214404430752,
+    "review_pct": 20.05763295790487,
+    "cost_per_plan": 1.04076907,
+    "cost_per_file": 0.5782050388888889,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "plans",
+    "planning_sessions_s": 6316,
+    "planning_subagents_s": 681,
+    "planning_s": 6997,
+    "implementer_s": null,
+    "build_s": 379.79300000000006,
+    "verify_s": 375.02,
+    "review_s": 196.368,
+    "executor_s": 951.181,
+    "total_s": 7948.1810000000005,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-03T21:56:12+00:00",
+      "last_at": "2026-11-03T23:17:07+00:00",
+      "batch_span_s": 4855.0,
+      "batch_runs": 1,
+      "batch_runs_s": 1844.0,
+      "passes_s": {
+        "auto": 390.0,
+        "verify": 376.0,
+        "review": 201.0
+      },
+      "gates_s": 681.0,
+      "gate_runs": 1,
+      "plans_s": 967.0,
+      "plan_runs": 10,
+      "pr_opened_at": "2026-11-03T23:17:07+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/121"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 1.8728189999999998,
+      "build_min": 6.329883333333333,
+      "verify_usd": 0.2534295,
+      "verify_min": 6.250333333333333,
+      "review_usd": 1.3758861000000002,
+      "review_min": 2.0392166666666665,
+      "review_plan": "09-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.7116503000000001,
+      "review_min": 1.2335833333333333,
+      "review_plan": "10-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 4.8500292,
+    "sessions": 1.3438765999999998
+  },
+  "cold_start_tax_tokens": 454576,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 2,
+      "total_turns": 55,
+      "total_cost_usd": 2.0875364000000003,
+      "total_duration_s": 196.368,
+      "flags": []
+    },
+    {
+      "model": "sonnet",
+      "plan_count": 8,
+      "total_turns": 173,
+      "total_cost_usd": 2.1262485,
+      "total_duration_s": 754.813,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-base-arms-driver-sonnet",
+      "edit_count": 24,
+      "files_edited": 3,
+      "churn_ratio": 8.0
+    },
+    {
+      "plan": "02-reading-metrics-sonnet",
+      "edit_count": 11,
+      "files_edited": 3,
+      "churn_ratio": 3.6666666666666665
+    },
+    {
+      "plan": "03-scorecard-sonnet",
+      "edit_count": 5,
+      "files_edited": 1,
+      "churn_ratio": 5.0
+    },
+    {
+      "plan": "04-tests-arm-base-sonnet",
+      "edit_count": 3,
+      "files_edited": 3,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "05-tests-reading-metrics-sonnet",
+      "edit_count": 4,
+      "files_edited": 3,
+      "churn_ratio": 1.3333333333333333
+    },
+    {
+      "plan": "06-tests-smoke-base-arms-sonnet",
+      "edit_count": 10,
+      "files_edited": 2,
+      "churn_ratio": 5.0
+    },
+    {
+      "plan": "07-docs-sonnet",
+      "edit_count": 31,
+      "files_edited": 7,
+      "churn_ratio": 4.428571428571429
+    },
+    {
+      "plan": "08-verify-sonnet",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "09-review-opus",
+      "edit_count": 3,
+      "files_edited": 2,
+      "churn_ratio": 1.5
+    },
+    {
+      "plan": "10-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-base-arms-driver-sonnet",
+      "plan_md_lines": 178,
+      "loc_changed": 125
+    },
+    {
+      "plan": "02-reading-metrics-sonnet",
+      "plan_md_lines": 152,
+      "loc_changed": 261
+    },
+    {
+      "plan": "03-scorecard-sonnet",
+      "plan_md_lines": 76,
+      "loc_changed": 57
+    },
+    {
+      "plan": "04-tests-arm-base-sonnet",
+      "plan_md_lines": 91,
+      "loc_changed": 157
+    },
+    {
+      "plan": "05-tests-reading-metrics-sonnet",
+      "plan_md_lines": 105,
+      "loc_changed": 268
+    },
+    {
+      "plan": "06-tests-smoke-base-arms-sonnet",
+      "plan_md_lines": 121,
+      "loc_changed": 151
+    },
+    {
+      "plan": "07-docs-sonnet",
+      "plan_md_lines": 141,
+      "loc_changed": 152
+    },
+    {
+      "plan": "08-verify-sonnet",
+      "plan_md_lines": 34,
+      "loc_changed": 2
+    },
+    {
+      "plan": "09-review-opus",
+      "plan_md_lines": 80,
+      "loc_changed": 96
+    },
+    {
+      "plan": "10-review-opus",
+      "plan_md_lines": 62,
+      "loc_changed": 62
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/home/user/agentTooling/harness/README.md",
+      "tool": "Read",
+      "plans": [
+        "07-docs-sonnet",
+        "09-review-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/harness/lib.sh",
+      "tool": "Read",
+      "plans": [
+        "01-base-arms-driver-sonnet",
+        "04-tests-arm-base-sonnet"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/harness/new-experiment.sh",
+      "tool": "Read",
+      "plans": [
+        "01-base-arms-driver-sonnet",
+        "09-review-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/harness/reading_metrics.py",
+      "tool": "Read",
+      "plans": [
+        "07-docs-sonnet",
+        "09-review-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/harness/run.sh",
+      "tool": "Read",
+      "plans": [
+        "01-base-arms-driver-sonnet",
+        "02-reading-metrics-sonnet",
+        "09-review-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/harness/tests/README.md",
+      "tool": "Read",
+      "plans": [
+        "06-tests-smoke-base-arms-sonnet",
+        "07-docs-sonnet"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/harness/tests/scorecard-arms.sh",
+      "tool": "Read",
+      "plans": [
+        "04-tests-arm-base-sonnet",
+        "05-tests-reading-metrics-sonnet"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "08-verify-sonnet",
+      "edited_not_listed": [
+        "harness/tests/smoke.sh"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "09-review-opus",
+      "edited_not_listed": [
+        "harness/README.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "10-review-opus",
+      "edited_not_listed": [
+        "self/README.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "self/gate.sh",
+      "earlier_plan": "04-tests-arm-base-sonnet",
+      "later_plan": "05-tests-reading-metrics-sonnet",
+      "overlap_chars": 67
+    },
+    {
+      "file": "harness/tests/README.md",
+      "earlier_plan": "04-tests-arm-base-sonnet",
+      "later_plan": "05-tests-reading-metrics-sonnet",
+      "overlap_chars": 64
+    },
+    {
+      "file": "harness/README.md",
+      "earlier_plan": "07-docs-sonnet",
+      "later_plan": "07-docs-sonnet",
+      "overlap_chars": 58
+    },
+    {
+      "file": "harness/README.md",
+      "earlier_plan": "07-docs-sonnet",
+      "later_plan": "07-docs-sonnet",
+      "overlap_chars": 277
+    },
+    {
+      "file": "harness/README.md",
+      "earlier_plan": "07-docs-sonnet",
+      "later_plan": "09-review-opus",
+      "overlap_chars": 162
+    },
+    {
+      "file": "harness/README.md",
+      "earlier_plan": "07-docs-sonnet",
+      "later_plan": "09-review-opus",
+      "overlap_chars": 275
+    }
+  ],
+  "warnings": [],
+  "profile": "cloud",
+  "gate": "green"
+}

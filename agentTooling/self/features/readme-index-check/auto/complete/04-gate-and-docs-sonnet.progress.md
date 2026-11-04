@@ -1,0 +1,11 @@
+write: /home/user/agentTooling/self/readme-index-ignore
+edit: /home/user/agentTooling/self/gate.sh
+edit: /home/user/agentTooling/self/gate.sh
+edit: /home/user/agentTooling/self/README.md
+edit: /home/user/agentTooling/self/README.md
+edit: /home/user/agentTooling/self/README.md
+edit: /home/user/agentTooling/self/PROJECT_FACTS.md
+edit: /home/user/agentTooling/self/PROJECT_FACTS.md
+edit: /home/user/agentTooling/README.md
+edit: /home/user/agentTooling/README.md
+edit: /home/user/agentTooling/CONVENTIONS.md

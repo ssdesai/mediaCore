@@ -17,6 +17,7 @@ Each holds three files:
 |---|---|
 | `plans/` | An opus architect authors the plan corpus and `NOTES.md`, then `run-batch.sh` drains it (build → gate → verify → review → PR). The batch's own review plan and `pr.sh` are part of the method; the harness review still runs afterwards. |
 | `direct/` | One opus implementer builds the feature, gates it green, commits, pushes and opens the PR — through the tree's `agentTooling/forge.sh pr-open`, which works in a cloud container where `gh pr create` does not. One shot, no resume. |
+| `direct-bare/` | The control for `direct`'s procedure steps: `direct`'s brief with the `CHECKPOINT.md`, the `stamp-timing.sh` calls and the acceptance-tests-first commit removed, and nothing else changed. Exists to measure what those steps cost; `self/tests/direct-bare-pair.sh` fails the gate if the two briefs drift apart. No checkpoint stamps, so no tests/build/gate split in its Time table. |
 | `null/` | The harness's own test double: no model at all. Writes a marker file, commits, and opens the "PR" through the repo's `plans/pr.sh`. Used by `harness/tests/smoke.sh`. |
 
 **`orchestrator` is a reserved name.** It is the method of a program cell (an orchestrator
@@ -29,7 +30,7 @@ same way, one top-level `claude -p` with the orchestrator's brief as its prompt,
 records the name in the feature's `method`; what the method name changes is what the
 orchestrator wrote into the brief.
 
-Expected next, none of them written yet: `direct-selfreview` (the same brief plus a
+`direct-bare` is the first such variant. Expected next, none of them written yet: `direct-selfreview` (the same brief plus a
 self-review pass against the spec), `direct-sonnet` (the same brief at `--model sonnet`),
 `spec-opus-build-sonnet`.
 

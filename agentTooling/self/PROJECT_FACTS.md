@@ -62,6 +62,11 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
   own per-user file of "don't ask again" grants, which nothing here generates.
 - `self/` — this corpus. Not generated from `templates/`. `self/tests/` holds the
   harness's own behavioural checks, run by `self/gate.sh`.
+- `check-readme-index.py` — the README-index checker, stdlib Python at the top level,
+  always run `python3 -B` (it writes nothing). `self/gate.sh` runs it blocking over this
+  checkout with `self/readme-index-ignore`, so a new tracked file needs its line in its
+  folder's `README.md` — the ignore list is for records, never for a missing entry. Its
+  docstring is the one statement of its rules.
 
 ## Commands
 
@@ -158,9 +163,13 @@ with. What `self/gate.sh` runs is:
   and `harness/tests/*.sh` included.
 - `shellcheck` if it happens to be installed; it is not a dependency and `self/gate.sh`
   skips it when absent.
-- `python3 -m py_compile analysis/*.py`, `harness/scorecard.py`, and `hooks/{policy.py,
+- `python3 -m py_compile analysis/*.py`, `harness/scorecard.py`, `harness/reading_metrics.py`,
+  `check-readme-index.py`, and `hooks/{policy.py,
   env_profile.py,wire-settings.py,allow-repo-commands.sh}` — the hook keeps a `.sh` name
   and is Python.
+- `python3 -B check-readme-index.py --root <root> --ignore self/readme-index-ignore` —
+  blocking: every tracked folder's `README.md` names each tracked file and direct
+  subfolder in it. `self/tests/readme-index.sh` tests the checker itself.
 - `python3 -B hooks/wire-settings.py --self --repo <root> --check` — the tracked,
   generated `.claude/settings.json` exists and is byte for byte what the constants
   generate; a failure names the command that regenerates it (in a vendored copy, the fix
@@ -169,7 +178,8 @@ with. What `self/gate.sh` runs is:
   non-zero on a failed assertion. They stand up a throwaway checkout in a `mktemp -d`
   with a stub `claude` and a stub gate, so they assert runner *behaviour* without calling
   a model or the network. See `self/tests/README.md`.
-- `harness/tests/scorecard-arms.sh`, `harness/tests/scorecard-programs.sh` and
+- `harness/tests/scorecard-arms.sh`, `harness/tests/scorecard-programs.sh`,
+  `harness/tests/arm-base.sh`, `harness/tests/reading-metrics.sh` and
   `harness/tests/smoke.sh` — the experiment harness's own tests, recorded the same way
   (offline; they need `jq`, `git` and `python3`). The
   smoke test drives a whole run against a throwaway repo and takes about 50 seconds.

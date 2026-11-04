@@ -6,9 +6,12 @@
 | `scorecard-arms.sh` | `scorecard.py`'s arm-aware comparisons on a hand-built `results.jsonl` (fixture `f`, methods `a`/`b`, arms `before`/`after`, then one unpinned row). No repo, no network, nothing outside a `mktemp -d` directory. Reads `scorecard.py`'s `render()` / `compare()` wording, so a change to it is a change here. |
 | `scorecard-programs.sh` | `scorecard.py`'s program section on a hand-built ledger: two `kind: "program"` rows (program `pr1`, arms `before`/`after`, two features each) beside two ordinary cell rows. Also holds the byte-identity check against `scorecard-programs.cells.md`. No repo, no network, nothing outside a `mktemp -d` directory; needs `jq`. Reads `scorecard.py`'s `render_programs()` / `program_comparisons()` wording, so a change to it is a change here. `--write-expected` rewrites the fixture. |
 | `scorecard-programs.cells.md` | The scorecard `scorecard.py` rendered for `scorecard-programs.sh`'s experiment and its two cell rows alone, before program rows existed — the expected text of the byte-identity check. Not hand-edited; regenerated with `scorecard-programs.sh --write-expected` only when an ordinary cell's rendering is meant to change. |
+| `arm-base.sh` | `lib.sh`'s arm-kind helpers (`harness_experiment_arm_kind`, `harness_experiment_arms`) on hand-written `experiment.json`s — none, `agent_tooling`, `base_arms`, both (refused), malformed — and `scorecard.py`'s base-arm rendering on a hand-built ledger: the header's `base arms:` list, the `<arm> (base <sha7>)` label and the arm and method comparison lines. No repo, no network, nothing outside a `mktemp -d` directory. |
+| `reading-metrics.sh` | `reading_metrics.py` on fabricated transcripts under a `mktemp -d` projects root: the window (both ends inclusive), the first edit, a repeated file counted once, an errored read not counted, a subagent's reads counted, README bytes after the edit counted, a sibling `<tree>2` project directory ignored, the no-edit and no-transcript cases, usage errors; then `scorecard.py`'s `## Reading before the first edit` table (grouped digits, `—` for not measured, absent for a ledger without the fields). No repo, no network. |
 
-`self/gate.sh` runs all three (steps `harness scorecard arms self-test`,
-`harness scorecard programs self-test` and `harness smoke test`, under "experiment
+`self/gate.sh` runs all five (steps `harness scorecard arms self-test`,
+`harness scorecard programs self-test`, `harness arm base self-test`,
+`harness reading metrics self-test` and `harness smoke test`, under "experiment
 harness"), syntax-checks every `harness/*.sh`, `harness/methods/*/run.sh` and
 `harness/tests/*.sh`, and compiles `scorecard.py`; a change under `harness/` is covered
 by the gate. To run one alone, from the repo root:
@@ -17,6 +20,8 @@ by the gate. To run one alone, from the repo root:
 ./agentTooling/harness/tests/smoke.sh
 ./agentTooling/harness/tests/scorecard-arms.sh
 ./agentTooling/harness/tests/scorecard-programs.sh
+./agentTooling/harness/tests/arm-base.sh
+./agentTooling/harness/tests/reading-metrics.sh
 ```
 
 ## What it builds
@@ -39,6 +44,25 @@ the copy being run (`harness_require_own_driver` in `lib.sh`). `smoke.sh` drives
 consumers from this checkout, so it exports `HARNESS_TEST_EXTERNAL_DRIVER=1` (a named constant
 in `lib.sh`) for everything except the one section that asserts the refusal, which runs
 under `env -u`. It is a test seam, not an operator option: nothing else sets it.
+
+**The harness-opened PR.** Two `direct` cells run with `SMOKE_IMPL_NO_PR=1` (the fake
+builds, commits and pushes but opens no PR: the harness must open it through the fake
+forge, and the row carries `pr_opened_by_harness: true` and an intervention, `method_failed`
+false) and `SMOKE_IMPL_NO_COMMIT=1` (it exits 0 having built nothing: still
+`method_failed`, no PR opened). The scaffolding section also pushes a prep commit to a
+branch the consumer never fetched and asserts `check-fixture.sh` fetches the base by sha
+once, creates no ref, and still fails a base no remote has. A third cell
+(`SMOKE_FORGE_OPEN_FAILS=1`, the fake forge refusing `pr-open`) ends `no-pr`/`method_failed`
+with its worktree removed; `run.sh --from review` on it then must open the PR, record
+`pr_opened_by_harness` and a "resumed from no-pr" intervention, make no model call (the
+method is not re-run), log that it re-captures the method's slug — and only that slug —
+at the driver's rates, and leave a non-failed row. Before the resume the test commits a
+far-future frozen `planning.json` (`captured_at` 2099, `cost_usd.total` 5.0) onto the
+cell's local branch, which no stale-freeze rule would rebuild: the capture log must then
+carry no `<slug>: already captured` line, so dropping `--recapture` from `capture_one`
+fails the suite. The row's `cost_method_usd` is not asserted: the fake sessions price
+nothing, so the honoured `--recapture` refuses to write a $0 record and the freeze stays. Offline unit checks of the
+same seams are `self/tests/harness-driver-measures.sh`.
 
 The fake `claude` reads the prompt on stdin, writes a canned `findings.md`
 with exactly one escalated item when the prompt carries the review preamble's title,
@@ -128,7 +152,9 @@ worktree's `agentTooling/` a real directory holding the pinned tree (not the sym
 one commit titled `EXPERIMENT ARM (revert before merge): pin agentTooling to upstream
 <sha7>`, the generated `plans/README.md` the pinned copy's sync wrote, and a ledger row
 carrying `arm` and `agent_tooling`, with the arm in the scorecard; the unpinned run's
-row carries an empty `arm`. An `experiment.json` whose `agent_tooling` is `"abc"` (not an
+row carries an empty `arm`. The pinned row carries `arm_kind: "agent_tooling"` and the
+unpinned row `arm_kind: ""` with its three reading fields `null` (no transcript, not
+measured). An `experiment.json` whose `agent_tooling` is `"abc"` (not an
 object of `<label>: <sha>`) makes `run.sh --dry-run` exit non-zero, print no `branch:` line
 and name the expected shape, instead of running every cell unpinned.
 
@@ -149,6 +175,23 @@ exits 0 with exactly one pin commit on the branch, that commit lists no files un
 `git show --stat` and has its parent's tree, `agentTooling/` is still the real directory, and
 the row's `agent_tooling` is the arm's full sha. A further `--from setup` finds the empty
 commit by its subject and adds no second one.
+
+Then the base arms (section 8b, `smokeBaseArms` experiment, branches `smokeBasedNullOld` and
+`smokeBasedNullNew`): a restructure commit is cut from the smoke base on `smokeRestructure`
+(it adds a marker file) and pushed to `origin`. `new-experiment.sh --base-arms
+old=<base>,new=smokeRestructure` writes `base_arms` with full shas (the branch resolved) and
+no `agent_tooling`, and the README lists both branches. It refuses five shapes — a ref that
+does not resolve, a sha `origin` does not have (both naming the repository rule), `--base-arms`
+with `--agent-tooling` (never both), with `--programs` (does not combine with programs), and a
+label that is not bare letters. Two hand-edited `experiment.json` files, one adding
+`agent_tooling` and one adding `programs`, make `run.sh --dry-run` exit non-zero, print no
+`branch:` line and name the same two reasons. The dry run of the real experiment names both
+branches and a `base:  arm new at <sha>` line, with no `pinned to upstream` line. The full
+`new` cell is cut at the restructure commit: the marker file is present, the branch descends
+from that commit with no pin commit, `agentTooling/` is still the base's symlink, and the row
+carries `arm: "new"`, `arm_kind: "base"`, `base` the restructure sha, an empty
+`agent_tooling` and `fixture: "smoke"`; the scorecard shows `new (base <sha7>)` and a
+`base arms:` line.
 
 Then the program cell, in `smoke.sh` too (its fake `claude` also answers the three program
 prompts, matched by their titles `# Harness program brief`, `# Harness program feature` and
@@ -195,7 +238,8 @@ experiment directories of their own, both pinned to this checkout:
   `cost_review_usd` and `cost_rework_usd` all above 0, `cost_green_usd` equal to their sum
   within `ARITHMETIC_TOLERANCE`, `cost_method_reported_usd` equal to what the fake reported,
   no "claude reported" (unpriced) warning, and a capture log with no `cannot claim` /
-  `launched_elsewhere` line. It fails if `capture_planning.py`'s `claim_roots` stops
+  `launched_elsewhere` line, and the three reading fields all `0` (the fake implementer's
+  transcript holds no tool calls). It fails if `capture_planning.py`'s `claim_roots` stops
   admitting the harness's own `<primary>-<branch>` tree; the ordinary full run above
   asserts only 0s.
 - **`stages {review: false}` as a run** (`smokeNoReviewRun`, method `null`). A review that

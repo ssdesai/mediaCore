@@ -109,6 +109,22 @@ CONTROL_TREE="$REPO-$CONTROL_BRANCH"
 CONTROL_PREP_BRANCH="smokeControlPrep"
 CONTROL_PREP_TREE="$WORK/control-prep"
 CONTROL_PIN_COMMITS_EXPECTED=1
+# The base-arm run: arms that differ by a commit of the measured repository — `old` the
+# smoke base, `new` a restructure commit cut from it on a branch pushed to origin.
+BASE_ARM_EXPERIMENT="smokeBaseArms"
+BASE_ARM_STEM="smokeBased"
+BASE_ARM_OLD="old"
+BASE_ARM_NEW="new"
+BASE_ARM_OLD_BRANCH="smokeBasedNullOld"
+BASE_ARM_NEW_BRANCH="smokeBasedNullNew"
+BASE_ARM_TREE="$REPO-$BASE_ARM_NEW_BRANCH"
+BASE_ARM_PREP_BRANCH="smokeRestructure"
+BASE_ARM_PREP_TREE="$WORK/restructure-prep"
+BASE_ARM_MARKER_RELPATH="plans/restructure-marker.md"
+BASE_ARM_UNKNOWN_SHA="0000000000000000000000000000000000000000"
+BASE_ARM_REPO_RULE_TEXT="runs from, and lives on"
+ARM_KINDS_EXCLUSIVE_TEXT="never both"
+BASE_ARMS_NO_PROGRAMS_TEXT="does not combine with programs"
 # The repository rule (an experiment runs from, and lives on, the repository it measures):
 # a fixture naming the consumer's own URL, one naming another repository, a spec that lives
 # in an external repository (reached by `spec.url`, or by the legacy `spec.repo` path), and a
@@ -214,6 +230,18 @@ PRICED_CELL_REPORTED_USD="0.01"
 PRICED_CELL_UNCLAIMED_PATTERN="cannot claim|launched_elsewhere"
 PRICED_CELL_UNPRICED_PATTERN="claude reported"
 # The no-review run: `stages {review: false}` as a whole run (the null method, pinned).
+HARNESS_PR_EXPERIMENT="smokeHarnessPr"
+HARNESS_PR_STEM="smokeHarnessPr"
+HARNESS_PR_BRANCH="smokeHarnessPrDirectHead"
+HARNESS_PR_SLUG="smoke-harness-pr-direct-head"
+NO_COMMIT_EXPERIMENT="smokeNoCommit"
+NO_COMMIT_STEM="smokeNoCommit"
+NO_COMMIT_BRANCH="smokeNoCommitDirectHead"
+NO_COMMIT_SLUG="smoke-no-commit-direct-head"
+RESUME_PR_EXPERIMENT="smokeResumePr"
+RESUME_PR_STEM="smokeResumePr"
+RESUME_PR_BRANCH="smokeResumePrDirectHead"
+RESUME_PR_SLUG="smoke-resume-pr-direct-head"
 NO_REVIEW_RUN_EXPERIMENT="smokeNoReviewRun"
 NO_REVIEW_RUN_STEM="smokeNoReviewRun"
 NO_REVIEW_RUN_BRANCH="smokeNoReviewRunNullHead"
@@ -422,13 +450,20 @@ case "\$prompt" in
     # An ordinary cell's \`direct\` implementer: the marker the fixture's probe looks for,
     # committed, pushed, and its PR opened through the fake forge.
     branch="\$(git branch --show-current)"
-    printf 'built by the fake direct implementer\n' > "$NULL_MARKER_RELPATH"
-    git add -A && git commit -q -m "build \$branch"
-    git push -q -u origin "\$branch" 2>/dev/null
-    body="\$(mktemp "\${TMPDIR:-/tmp}/smoke-pr-body.XXXXXX")"
-    printf 'one arm of an experiment — do not merge until it picks a winner\n' > "\$body"
-    "\$HARNESS_FORGE_BIN" pr-open "\$branch" main "smoke: \$branch" "\$body" >/dev/null
-    rm -f "\$body"
+    # SMOKE_IMPL_NO_COMMIT=1: exits 0 having built nothing (no commit, no push, no PR).
+    # SMOKE_IMPL_NO_PR=1: builds, commits and pushes, but its own PR hook could not open
+    # the PR (an August arm's pr.sh with gh unauthenticated) — the harness opens it.
+    if [ -z "\${SMOKE_IMPL_NO_COMMIT:-}" ]; then
+      printf 'built by the fake direct implementer\n' > "$NULL_MARKER_RELPATH"
+      git add -A && git commit -q -m "build \$branch"
+      git push -q -u origin "\$branch" 2>/dev/null
+      if [ -z "\${SMOKE_IMPL_NO_PR:-}" ]; then
+        body="\$(mktemp "\${TMPDIR:-/tmp}/smoke-pr-body.XXXXXX")"
+        printf 'one arm of an experiment — do not merge until it picks a winner\n' > "\$body"
+        "\$HARNESS_FORGE_BIN" pr-open "\$branch" main "smoke: \$branch" "\$body" >/dev/null
+        rm -f "\$body"
+      fi
+    fi
     cost="\${SMOKE_IMPL_REPORTED_USD:-0}"
     bills=1
     ;;
@@ -489,6 +524,8 @@ case "\${1:-}" in
     [[ -f "\$SMOKE_PR_DIR/\${2:-}" ]] && cat "\$SMOKE_PR_DIR/\$2"
     exit 0 ;;
   pr-open)
+    # SMOKE_FORGE_OPEN_FAILS=1: the forge refuses to open a PR (gh unauthenticated).
+    [[ -z "\${SMOKE_FORGE_OPEN_FAILS:-}" ]] || { echo "  forge     refused by the smoke fake" >&2; exit 1; }
     [[ -f "\${5:-}" ]] || { echo "  forge     no body file" >&2; exit 1; }
     echo "https://example.invalid/pr/\$2" > "\$SMOKE_PR_DIR/\$2"
     # The base the PR was opened against, for the program cell's pr_base assertions.
@@ -791,6 +828,34 @@ derived_experiment "$OWN_URL_EXPERIMENT" "$OWN_URL_FIXTURE" "$OWN_URL_STEM"
 "$CHECK_FIXTURE" "$OWN_URL_FIXTURE" --consumer "$REPO" > "$WORK/check-own-url.txt" 2>&1
 check "check-fixture passes a fixture whose repo.url is the consumer's own origin" "(( $? == 0 ))"
 check "... and says the fixture's repository is the consumer" "grep -q \"the fixture's repository is the consumer ($REPO)\" '$WORK/check-own-url.txt'"
+
+# A base that is a prep commit on a branch the consumer has not fetched: check-fixture
+# fetches that sha once (no ref created) before it fails with "base does not resolve".
+git -C "$REMOTE_URL" config uploadpack.allowAnySHA1InWant true
+PREP_CLONE="$WORK/prep-base-clone"
+git clone -q "file://$REMOTE_URL" "$PREP_CLONE" 2>/dev/null
+git -C "$PREP_CLONE" config user.email smoke@example.invalid
+git -C "$PREP_CLONE" config user.name "Harness Smoke"
+git -C "$PREP_CLONE" checkout -q -b smokePrepBase
+echo "prep" > "$PREP_CLONE/prep.txt"
+git -C "$PREP_CLONE" add -A
+git -C "$PREP_CLONE" commit -q -m "smoke prep base"
+PREP_BASE_SHA="$(git -C "$PREP_CLONE" rev-parse HEAD)"
+git -C "$PREP_CLONE" push -q origin smokePrepBase 2>/dev/null
+PREP_BASE_FIXTURE="smokePrepBaseFixture"
+derived_fixture "$PREP_BASE_FIXTURE" "smokePrepBase" ".base = \"$PREP_BASE_SHA\""
+check "premise: the consumer does not have the prep base commit" \
+  "! git -C '$REPO' cat-file -e '$PREP_BASE_SHA^{commit}' 2>/dev/null"
+PREP_REFS_BEFORE="$(git -C "$REPO" for-each-ref)"
+"$CHECK_FIXTURE" "$PREP_BASE_FIXTURE" --consumer "$REPO" > "$WORK/check-prep-base.txt" 2>&1
+check "check-fixture fetches an unfetched base by sha and passes it" \
+  "(( $? == 0 )) && grep -q 'base resolves ($PREP_BASE_SHA)' '$WORK/check-prep-base.txt'"
+check "... and the fetch created or moved no ref" "[[ \"\$(git -C '$REPO' for-each-ref)\" == '$PREP_REFS_BEFORE' ]]"
+UNFETCHABLE_BASE="0123456789abcdef0123456789abcdef01234567"
+derived_fixture "smokeNoBaseFixture" "smokeNoBase" ".base = \"$UNFETCHABLE_BASE\""
+"$CHECK_FIXTURE" "smokeNoBaseFixture" --consumer "$REPO" > "$WORK/check-no-base.txt" 2>&1
+check "check-fixture still fails a base no remote has: 'base does not resolve'" \
+  "(( $? != 0 )) && grep -q 'base does not resolve' '$WORK/check-no-base.txt'"
 "$RUN" "$REPO/plans/experiments/$OWN_URL_EXPERIMENT" --consumer "$REPO" --dry-run > "$WORK/dry-run-own-url.txt" 2>&1
 check "run --dry-run accepts a fixture whose repo.url is the consumer's own origin" "(( $? == 0 )) && grep -q 'repo:  *$REPO\$' '$WORK/dry-run-own-url.txt'"
 "$NEW_EXPERIMENT" smokeOwnUrlNew --fixtures "$OWN_URL_FIXTURE" --methods null --prediction p --override "$OWN_URL_FIXTURE=$OWN_URL_STEM" \
@@ -970,10 +1035,13 @@ check "the pin is one commit titled so it cannot be merged by accident" \
 check "the pinned copy's sync ran (generated plans/README.md present)" "[[ -f '$PIN_TREE/plans/README.md' ]]"
 check "pinned row carries the arm and the agentTooling commit" \
   "[[ \$(jq -r '.arm' '$PIN_DIR/results.jsonl') == '$PIN_ARM' && \$(jq -r '.agent_tooling' '$PIN_DIR/results.jsonl') == '$AT_HEAD' ]]"
+check "pinned row's arm_kind is agent_tooling" "[[ \$(jq -r '.arm_kind' '$PIN_DIR/results.jsonl') == agent_tooling ]]"
 check "pinned row reached the PR (the null method's pr.sh) and the accept probe" \
   "[[ \$(jq -r '.pr_url' '$PIN_DIR/results.jsonl') == '$FAKE_PR_URL' && \$(jq -r '.accept_pass' '$PIN_DIR/results.jsonl') == true ]]"
 check "pinned scorecard shows the arm" "grep -q '$PIN_ARM (${AT_HEAD:0:7})' '$PIN_DIR/SCORECARD.md'"
 check "unpinned row carries an empty arm" "[[ \$(sed -n 1p '$RESULTS' | jq -r '.arm') == '' ]]"
+check "unpinned row: empty arm_kind, and the reading fields null (no transcript: not measured)" \
+  "sed -n 1p '$RESULTS' | jq -e '.arm_kind == \"\" and .read_files_before_edit == null and .read_bytes_before_edit == null and .readme_bytes_read == null' >/dev/null"
 
 # ── 7. Resuming a cell whose pin died after its worktree was added ────────────
 echo ""
@@ -1088,7 +1156,7 @@ check "... exactly one pin commit is on the branch" "[[ \$(control_pin_commits) 
 check "... the pin commit lists no files (git show --stat)" \
   "[[ -n \"\$(control_pin_commit)\" && -z \"\$(git -C '$REPO' show --stat --format= \"\$(control_pin_commit)\")\" ]]"
 check "... and its tree is its parent's" \
-  "[[ \$(git -C '$REPO' rev-parse \"\$(control_pin_commit)^{tree}\") == \$(git -C '$REPO' rev-parse \"\$(control_pin_commit)^^{tree}\") ]]"
+  "[[ \$(git -C '$REPO' rev-parse \"\$(control_pin_commit)^{tree}\") == \$(git -C '$REPO' rev-parse \"\$(control_pin_commit)~1^{tree}\") ]]"
 check "... agentTooling/ is the real directory the base vendored" \
   "[[ -d '$CONTROL_TREE/agentTooling' && ! -L '$CONTROL_TREE/agentTooling' && -f '$CONTROL_TREE/agentTooling/harness/lib.sh' ]]"
 check "... the ledger row's agent_tooling is the arm's full sha" \
@@ -1100,6 +1168,101 @@ control_again_rc=$?
 check "a further --from setup run exits 0" "(( $control_again_rc == 0 ))"
 check "... and the empty pin commit was found, not made again" \
   "[[ \$(control_pin_commits) -eq $CONTROL_PIN_COMMITS_EXPECTED ]]"
+
+# ── 8b. Base arms: the arms differ by a commit of the measured repository ──────
+echo ""
+echo "=== smoke: base arms ==="
+git -C "$REPO" worktree add -q -b "$BASE_ARM_PREP_BRANCH" "$BASE_ARM_PREP_TREE" "$BASE_SHA" >/dev/null 2>&1
+mkdir -p "$BASE_ARM_PREP_TREE/$(dirname "$BASE_ARM_MARKER_RELPATH")"
+echo "restructured" > "$BASE_ARM_PREP_TREE/$BASE_ARM_MARKER_RELPATH"
+git -C "$BASE_ARM_PREP_TREE" add -A
+git -C "$BASE_ARM_PREP_TREE" commit -q -m "smoke restructure"
+BASE_ARM_NEW_SHA="$(git -C "$BASE_ARM_PREP_TREE" rev-parse HEAD)"
+git -C "$REPO" worktree remove --force "$BASE_ARM_PREP_TREE" >/dev/null 2>&1
+git -C "$REPO" push -q origin "$BASE_ARM_PREP_BRANCH" >/dev/null 2>&1
+check "the restructure commit differs from the smoke base" "[[ -n '$BASE_ARM_NEW_SHA' && '$BASE_ARM_NEW_SHA' != '$BASE_SHA' ]]"
+
+BASE_ARM_DIR="$REPO/plans/experiments/$BASE_ARM_EXPERIMENT"
+"$NEW_EXPERIMENT" "$BASE_ARM_EXPERIMENT" --fixtures "$FIXTURE_NAME" --methods null \
+  --base-arms "$BASE_ARM_OLD=$BASE_SHA,$BASE_ARM_NEW=$BASE_ARM_PREP_BRANCH" \
+  --override "$FIXTURE_NAME=$BASE_ARM_STEM" --no-review --no-rework \
+  --prediction 'the arms differ by a commit of the repository' --consumer "$REPO" > "$WORK/new-base-arms.txt" 2>&1
+check "new-experiment --base-arms exits 0" "(( $? == 0 ))"
+check "base_arms names each arm's full sha (the branch resolved)" \
+  "[[ \$(jq -r '.base_arms.$BASE_ARM_OLD' '$BASE_ARM_DIR/experiment.json') == '$BASE_SHA' && \$(jq -r '.base_arms.$BASE_ARM_NEW' '$BASE_ARM_DIR/experiment.json') == '$BASE_ARM_NEW_SHA' ]]"
+check "the experiment carries no agent_tooling" "[[ \$(jq 'has(\"agent_tooling\")' '$BASE_ARM_DIR/experiment.json') == false ]]"
+check "new-experiment README lists both arm branches" \
+  "grep -q '$BASE_ARM_OLD_BRANCH' '$BASE_ARM_DIR/README.md' && grep -q '$BASE_ARM_NEW_BRANCH' '$BASE_ARM_DIR/README.md'"
+
+base_arm_refusal() {
+  local label="$1" name="$2" stem="$3" text="$4"
+  shift 4
+  local out="$WORK/base-refusal-$name.txt" rc
+  "$NEW_EXPERIMENT" "$name" --fixtures "$FIXTURE_NAME" --methods null "$@" \
+    --override "$FIXTURE_NAME=$stem" --prediction p --consumer "$REPO" > "$out" 2>&1
+  rc=$?
+  check "$label: exits non-zero" "(( $rc != 0 ))"
+  if [[ -n "$text" ]]; then
+    check "$label: names '$text'" "grep -qF -- '$text' '$out'"
+  fi
+}
+base_arm_refusal "--base-arms with a ref that does not resolve" smokeBaseNoRef baseNoRef "$BASE_ARM_REPO_RULE_TEXT" \
+  --base-arms "new=no-such-ref"
+base_arm_refusal "--base-arms with a sha the origin does not have" smokeBaseNoSha baseNoSha "$BASE_ARM_REPO_RULE_TEXT" \
+  --base-arms "new=$BASE_ARM_UNKNOWN_SHA"
+base_arm_refusal "--base-arms with --agent-tooling" smokeBaseBoth baseBoth "$ARM_KINDS_EXCLUSIVE_TEXT" \
+  --base-arms "$BASE_ARM_OLD=$BASE_SHA" --agent-tooling "head=HEAD"
+base_arm_refusal "--base-arms with --programs" smokeBasePrograms basePrograms "$BASE_ARMS_NO_PROGRAMS_TEXT" \
+  --base-arms "$BASE_ARM_OLD=$BASE_SHA" --programs x
+base_arm_refusal "--base-arms with a label that is not bare letters" smokeBaseBadLabel baseBadLabel "" \
+  --base-arms "v2=$BASE_SHA"
+
+# Hand-edited experiments the scaffolder would have refused: the run must refuse them too.
+BASE_BOTH_DIR="$REPO/plans/experiments/smokeBaseBothKinds"
+mkdir -p "$BASE_BOTH_DIR"
+jq --arg name smokeBaseBothKinds --arg head "$BASE_SHA" '.name = $name | .agent_tooling = {head: $head}' \
+  "$BASE_ARM_DIR/experiment.json" > "$BASE_BOTH_DIR/experiment.json"
+"$RUN" "$BASE_BOTH_DIR" --consumer "$REPO" --dry-run > "$WORK/base-both-dry-run.txt" 2>&1
+base_both_rc=$?
+check "an experiment with both arm kinds: the dry run exits non-zero" "(( $base_both_rc != 0 ))"
+check "... resolves no cell (no branch: line)" "! grep -q 'branch:' '$WORK/base-both-dry-run.txt'"
+check "... and names the exclusivity" "grep -qF -- '$ARM_KINDS_EXCLUSIVE_TEXT' '$WORK/base-both-dry-run.txt'"
+BASE_PROGRAMS_DIR="$REPO/plans/experiments/smokeBasePrograms"
+mkdir -p "$BASE_PROGRAMS_DIR"
+jq --arg name smokeBasePrograms '.name = $name | .programs = ["x"]' \
+  "$BASE_ARM_DIR/experiment.json" > "$BASE_PROGRAMS_DIR/experiment.json"
+"$RUN" "$BASE_PROGRAMS_DIR" --consumer "$REPO" --dry-run > "$WORK/base-programs-dry-run.txt" 2>&1
+base_programs_rc=$?
+check "an experiment with base_arms and programs: the dry run exits non-zero" "(( $base_programs_rc != 0 ))"
+check "... resolves no cell (no branch: line)" "! grep -q 'branch:' '$WORK/base-programs-dry-run.txt'"
+check "... and names that programs do not combine" "grep -qF -- '$BASE_ARMS_NO_PROGRAMS_TEXT' '$WORK/base-programs-dry-run.txt'"
+
+"$RUN" "$BASE_ARM_DIR" --consumer "$REPO" --dry-run > "$WORK/base-arms-dry-run.txt" 2>&1
+check "base-arm dry run exits 0" "(( $? == 0 ))"
+check "base-arm dry run names the old arm's branch" "grep -q 'branch:  *$BASE_ARM_OLD_BRANCH' '$WORK/base-arms-dry-run.txt'"
+check "base-arm dry run names the new arm's branch" "grep -q 'branch:  *$BASE_ARM_NEW_BRANCH' '$WORK/base-arms-dry-run.txt'"
+check "base-arm dry run names the arm's base commit" "grep -q 'base:  *arm $BASE_ARM_NEW at $BASE_ARM_NEW_SHA' '$WORK/base-arms-dry-run.txt'"
+check "base-arm dry run has no pin line" "! grep -q 'pinned to upstream' '$WORK/base-arms-dry-run.txt'"
+
+BASE_ARM_OUT="$WORK/base-arms-run.txt"
+"$RUN" "$BASE_ARM_DIR" --consumer "$REPO" --only "$FIXTURE_NAME:null:$BASE_ARM_NEW" --no-cleanup > "$BASE_ARM_OUT" 2>&1
+base_arm_rc=$?
+if (( base_arm_rc != 0 )); then
+  echo "--- run output ---"
+  cat "$BASE_ARM_OUT"
+  echo "------------------"
+fi
+check "the base-arm run exits 0" "(( $base_arm_rc == 0 ))"
+check "... the tree holds the restructure commit's marker file" "[[ -f '$BASE_ARM_TREE/$BASE_ARM_MARKER_RELPATH' ]]"
+check "... the branch descends from the arm's commit" \
+  "git -C '$BASE_ARM_TREE' merge-base --is-ancestor '$BASE_ARM_NEW_SHA' HEAD"
+check "... no pin commit is on the branch" \
+  "! git -C '$REPO' log --format=%s '$BASE_ARM_NEW_SHA..$BASE_ARM_NEW_BRANCH' | grep -qF '$PIN_SUBJECT_PREFIX'"
+check "... agentTooling/ is still the base's symlink" "[[ -L '$BASE_ARM_TREE/agentTooling' ]]"
+check "... the row carries arm, arm_kind, base, an empty agent_tooling and the fixture" \
+  "jq -e '.arm == \"$BASE_ARM_NEW\" and .arm_kind == \"base\" and .base == \"$BASE_ARM_NEW_SHA\" and .agent_tooling == \"\" and .fixture == \"$FIXTURE_NAME\"' '$BASE_ARM_DIR/results.jsonl' >/dev/null"
+check "... the scorecard shows the arm with its base commit" \
+  "grep -qF 'new (base ${BASE_ARM_NEW_SHA:0:7})' '$BASE_ARM_DIR/SCORECARD.md' && grep -qF 'base arms:' '$BASE_ARM_DIR/SCORECARD.md'"
 
 # ── 9. Program cells: the fixtures, the program, the fake orchestrator ─────────
 echo ""
@@ -1440,11 +1603,119 @@ check "priced cell: cost_green_usd == cost_method_usd + cost_review_usd + cost_r
   "priced_cell_row 'def ab: if . < 0 then -. else . end; ((.cost_green_usd - (.cost_method_usd + .cost_review_usd + .cost_rework_usd)) | ab) <= $ARITHMETIC_TOLERANCE'"
 check "priced cell: cost_method_reported_usd is what the fake implementer reported" \
   "priced_cell_row '.cost_method_reported_usd == $PRICED_CELL_REPORTED_USD'"
+check "priced cell: the reading fields are measured (0 — the fake's transcript holds no tool calls)" \
+  "priced_cell_row '.read_files_before_edit == 0 and .read_bytes_before_edit == 0 and .readme_bytes_read == 0'"
 check "priced cell: no unpriced warning (captured is not below what claude reported)" \
   "! grep -q '$PRICED_CELL_UNPRICED_PATTERN' '$PRICED_CELL_OUT'"
 check "priced cell: the capture log exists" "[[ -s '$PRICED_CELL_CAPTURE_LOG' ]]"
 check "priced cell: the capture log has no \"cannot claim\" / launched_elsewhere line" \
   "! grep -qE '$PRICED_CELL_UNCLAIMED_PATTERN' '$PRICED_CELL_CAPTURE_LOG'"
+
+check "priced cell: the method opened the PR itself, so pr_opened_by_harness is false and no intervention is recorded" \
+  "priced_cell_row '.pr_opened_by_harness == false and (.interventions | length) == 0'"
+
+# ── 9c2b. The method built and pushed but opened no PR: the harness opens it ────
+# An August arm's plans/pr.sh cannot open a PR where gh is unauthenticated, so a method can
+# exit 0 with its branch pushed and no PR. The harness opens it with the driver's forge and
+# says so on the row (pr_opened_by_harness, interventions). A method that leaves no commit
+# is still method_failed.
+echo ""
+echo "=== smoke: the harness opens the PR a built branch lacks ==="
+run_direct_variant() {  # $1 experiment name, $2 stem, then env assignments for the fake claude
+  local name="$1" stem="$2" dir out
+  shift 2
+  dir="$REPO/plans/experiments/$name"
+  mkdir -p "$dir"
+  jq --arg name "$name" --arg stem "$stem" --arg fx "$FIXTURE_NAME" \
+    '.name = $name | .methods = ["direct"] | .stages = {review: false, rework: false, accept: true} | .branch_stem_override = {($fx): $stem}' \
+    "$PIN_DIR/experiment.json" > "$dir/experiment.json"
+  out="$WORK/$name-run.txt"
+  env "$@" "$RUN" "$dir" --consumer "$REPO" > "$out" 2>&1
+  echo $?
+}
+HARNESS_PR_DIR="$REPO/plans/experiments/$HARNESS_PR_EXPERIMENT"
+HARNESS_PR_RESULTS="$HARNESS_PR_DIR/results.jsonl"
+harness_pr_rc="$(run_direct_variant "$HARNESS_PR_EXPERIMENT" "$HARNESS_PR_STEM" SMOKE_IMPL_NO_PR=1)"
+harness_pr_row() { jq -e "$1" "$HARNESS_PR_RESULTS" >/dev/null; }
+check "harness-opened PR: run exits 0 (got $harness_pr_rc)" "(( $harness_pr_rc == 0 ))"
+check "harness-opened PR: one row, for the direct cell's branch, not method_failed" \
+  "[[ -s '$HARNESS_PR_RESULTS' && \$(wc -l < '$HARNESS_PR_RESULTS') -eq 1 ]] && harness_pr_row '.branch == \"$HARNESS_PR_BRANCH\" and .method_failed == false'"
+check "harness-opened PR: pr_opened_by_harness is true and pr_url is the one the forge opened" \
+  "harness_pr_row '.pr_opened_by_harness == true and .pr_url == \"https://example.invalid/pr/$HARNESS_PR_BRANCH\"'"
+check "harness-opened PR: ... recorded as an intervention too, never silent" \
+  "harness_pr_row '[.interventions[].what | select(test(\"harness opened\"))] | length == 1'"
+check "harness-opened PR: ... into the harness's base (main)" "[[ \$(cat '$SMOKE_PR_DIR/$HARNESS_PR_BRANCH.base') == main ]]"
+check "harness-opened PR: the rest of the cell still ran (probe passed, capture and record done)" \
+  "harness_pr_row '.accept_pass == true'"
+
+NO_COMMIT_DIR="$REPO/plans/experiments/$NO_COMMIT_EXPERIMENT"
+NO_COMMIT_RESULTS="$NO_COMMIT_DIR/results.jsonl"
+no_commit_rc="$(run_direct_variant "$NO_COMMIT_EXPERIMENT" "$NO_COMMIT_STEM" SMOKE_IMPL_NO_COMMIT=1)"
+no_commit_row() { jq -e "$1" "$NO_COMMIT_RESULTS" >/dev/null; }
+check "no-commit method: the run exits non-zero (got $no_commit_rc: a failed cell) and still writes its row" \
+  "(( $no_commit_rc != 0 )) && [[ -s '$NO_COMMIT_RESULTS' ]]"
+check "no-commit method: method_failed, no PR, and the harness opened none" \
+  "no_commit_row '.method_failed == true and .pr_url == \"\" and .pr_opened_by_harness == false'"
+check "no-commit method: the forge was never asked to open a PR for its branch" "[[ ! -e '$SMOKE_PR_DIR/$NO_COMMIT_BRANCH' ]]"
+
+# ── 9c2c. Resuming a cell recorded method_failed only for want of a PR ──────────
+# The state of vinylCatalogue's exportStorePlansOpusMax2: the method built and pushed, the
+# forge could not open the PR, an older harness recorded `no-pr`/method_failed and removed
+# the worktree. `run.sh <exp> --from review` must check/open the PR and go on, never
+# re-run the method (no model call at all here: review and rework are off).
+echo ""
+echo "=== smoke: --from review resumes a no-pr cell without re-running the method ==="
+RESUME_PR_DIR="$REPO/plans/experiments/$RESUME_PR_EXPERIMENT"
+RESUME_PR_RESULTS="$RESUME_PR_DIR/results.jsonl"
+RESUME_PR_STATE="$RESUME_PR_DIR/state/$RESUME_PR_BRANCH.json"
+resume_first_rc="$(run_direct_variant "$RESUME_PR_EXPERIMENT" "$RESUME_PR_STEM" SMOKE_FORGE_OPEN_FAILS=1)"
+check "resume: the first run fails for want of a PR (rc $resume_first_rc), one method_failed row" \
+  "(( $resume_first_rc != 0 )) && jq -e '.method_failed == true and .pr_url == \"\"' '$RESUME_PR_RESULTS' >/dev/null"
+check "resume: premise: state says no-pr, the branch is pushed, the worktree is gone" \
+  "[[ \$(jq -r '.stages.method.outcome' '$RESUME_PR_STATE') == no-pr ]] && git -C '$REMOTE_URL' show-ref --verify --quiet refs/heads/$RESUME_PR_BRANCH && [[ ! -d '$REPO-$RESUME_PR_BRANCH' ]]"
+# Seed a frozen cost record dated far in the future on the cell's local branch (as the
+# failed run's freeze would be, but unmistakable): no manifest window is later than it, so
+# the stale-freeze rule in capture_one never rebuilds it. Only the resume's own
+# --recapture can — and capture_planning.py prints "already captured" when it is honoured.
+# The record carries the real schema (`cost_usd`, which report.py indexes). The fake
+# sessions price nothing, so the honoured --recapture REFUSES to write a $0 record and the
+# freeze stays on disk: the row's cost_method_usd is this frozen figure either way and
+# cannot tell the mutant apart — the capture log is the only discriminating evidence.
+RESUME_SEED_TREE="$WORK/resume-seed-tree"
+RESUME_FROZEN_USD=5.0
+git -C "$REPO" worktree add -q "$RESUME_SEED_TREE" "$RESUME_PR_BRANCH"
+mkdir -p "$RESUME_SEED_TREE/plans/features/$RESUME_PR_SLUG"
+cat > "$RESUME_SEED_TREE/plans/features/$RESUME_PR_SLUG/planning.json" <<RESUMEFREEZE
+{"captured_at": "2099-01-01T00:00:00+00:00", "cost_usd": {"total": $RESUME_FROZEN_USD}, "sessions": [], "subagents": []}
+RESUMEFREEZE
+git -C "$RESUME_SEED_TREE" add -A
+git -C "$RESUME_SEED_TREE" commit -q -m "smoke: seed a far-future freeze for the resume test"
+git -C "$REPO" worktree remove --force "$RESUME_SEED_TREE"
+RESUME_ARGV="$WORK/resume-argv.log"
+: > "$RESUME_ARGV"
+resume_out="$WORK/resume-pr-run.txt"
+SMOKE_ARGV_LOG="$RESUME_ARGV" "$RUN" "$RESUME_PR_DIR" --consumer "$REPO" --from review > "$resume_out" 2>&1
+resume_rc=$?
+if (( resume_rc != 0 )); then echo "--- run output ---"; cat "$resume_out"; echo "------------------"; fi
+resume_row() { jq -e -s "last | $1" "$RESUME_PR_RESULTS" >/dev/null; }
+check "resume: --from review exits 0 (got $resume_rc)" "(( $resume_rc == 0 ))"
+check "resume: the method was not re-run (no model call at all)" "[[ ! -s '$RESUME_ARGV' ]]"
+check "resume: the new row is not method_failed; the harness opened the PR and says so" \
+  "resume_row '.method_failed == false and .pr_opened_by_harness == true and .pr_url == \"https://example.invalid/pr/$RESUME_PR_BRANCH\"'"
+check "resume: ... with a resume intervention beside the harness-opened one" \
+  "resume_row '[.interventions[].what | select(test(\"resumed from no-pr\"))] | length == 1'"
+# The capture stage says it re-captures the method's slug (and only the method's) with
+# --recapture, and the capture log shows the seeded freeze was not honoured.
+check "resume: the method's cost is re-captured at the driver's rates (capture said so for the method slug)" \
+  "grep -q 'capture: $RESUME_PR_SLUG resumed past a no-pr method — recapturing at the driver' '$resume_out'"
+check "resume: --recapture reached capture_planning.py: the far-future freeze was not honoured ('already captured' absent from the capture log)" \
+  "[[ -s '$RESUME_PR_DIR/logs/$RESUME_PR_BRANCH-capture.log' ]] && ! grep -q '$RESUME_PR_SLUG: already captured' '$RESUME_PR_DIR/logs/$RESUME_PR_BRANCH-capture.log'"
+check "resume: ... and only the method's slug, not the review's or rework's" \
+  "[[ \$(grep -c 'recapturing at the driver' '$resume_out') -eq 1 ]]"
+check "resume: the stage record says the method stage is ok(pr-resumed)" \
+  "[[ \$(jq -r '.stages.method.outcome' '$RESUME_PR_STATE') == 'ok(pr-resumed)' ]]"
+check "resume: the worktree it re-added is removed again, the branch kept" \
+  "[[ ! -d '$REPO-$RESUME_PR_BRANCH' ]] && git -C '$REPO' show-ref --verify --quiet refs/heads/$RESUME_PR_BRANCH"
 
 # ── 9c3. stages {review: false}, as a run ──────────────────────────────────────
 # The dry run above asserts the flags the harness read; this asserts what a run does with

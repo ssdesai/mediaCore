@@ -343,3 +343,14 @@ agentTooling's own, for the harness rather than for a product.
   start although `uv` refused to recreate it.** Repo-owned, not agentTooling's: the seeded
   skeleton prints nothing of the kind. Noted so the next propagation round tells that repo.
   Raised during `cloud-pull-fixes`.
+
+- **Program cells carry no reading metrics.** A program feature's capture does not run
+  `reading_metrics.py`, so neither the program row nor its `features[]` has the reading
+  fields. Assertion: a program row's `features[]` entries carry `read_files_before_edit`,
+  `read_bytes_before_edit` and `readme_bytes_read`, measured over each implementer's window
+  in its feature worktree. Raised by `harness-arm-base`.
+
+- **Base arms do not combine with programs.** A program pins its own `base`, so
+  `base_arms` with `programs` is refused. Assertion: an experiment with `base_arms` and
+  `programs` cuts each program cell's program branch and non-dependent feature branches at
+  the arm's commit instead of `program.json`'s `base`. Raised by `harness-arm-base`.

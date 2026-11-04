@@ -275,10 +275,12 @@ shell_scripts=(
   self/tests/session-share.sh
   self/tests/session-claims.sh
   self/tests/harness-claim-root.sh
+  self/tests/harness-driver-measures.sh
   self/tests/manifest-window.sh
   self/tests/manifest-pin-subagent.sh
   self/tests/manifest-unpin.sh
   self/tests/direct-timing.sh
+  self/tests/direct-bare-pair.sh
   self/tests/stale-failed-sidecars.sh
   self/tests/stream-capture.sh
   self/tests/usage-limit-kill.sh
@@ -327,6 +329,7 @@ shell_scripts=(
   self/tests/review-base.sh
   self/tests/pr-body-refresh.sh
   self/tests/review-report-untrack.sh
+  self/tests/readme-index.sh
   harness/*.sh
   harness/methods/*/run.sh
   harness/tests/*.sh
@@ -375,10 +378,14 @@ record "claims ledger self-test" bash self/tests/claims-ledger.sh
 record "session share self-test" bash self/tests/session-share.sh
 record "session claims self-test" bash self/tests/session-claims.sh
 record "harness claim root self-test" bash self/tests/harness-claim-root.sh
+record "harness driver measures self-test" bash self/tests/harness-driver-measures.sh
 record "manifest window self-test" bash self/tests/manifest-window.sh
 record "manifest pin-subagent self-test" bash self/tests/manifest-pin-subagent.sh
 record "manifest unpin self-test" bash self/tests/manifest-unpin.sh
 record "direct timing self-test" bash self/tests/direct-timing.sh
+# direct-bare is the control arm of direct's procedure steps: its brief must stay direct's
+# minus exactly those steps (harness/methods/direct-bare/README.md).
+record "direct-bare pair self-test" bash self/tests/direct-bare-pair.sh
 record "stale failed sidecars self-test" bash self/tests/stale-failed-sidecars.sh
 record "stream capture self-test" bash self/tests/stream-capture.sh
 record "usage limit kill self-test" bash self/tests/usage-limit-kill.sh
@@ -510,17 +517,26 @@ record "pr body refresh self-test" bash self/tests/pr-body-refresh.sh
 # reviewed at once no longer conflict on it; each round's verdict is committed at
 # features/<slug>/review-report.md (self/features/review-report-never-tracked/).
 record "review report untrack self-test" bash self/tests/review-report-untrack.sh
+# The README-index checker's contract (../check-readme-index.py): tracked files only,
+# direct children only, the recognition rule's boundaries and case, the ignore list, a
+# generated README checked against the repo-owned file its header names, report-only
+# exiting 0, errors exiting 2, and nothing written (self/features/readme-index-check/).
+record "readme index self-test" bash self/tests/readme-index.sh
 
 echo "=== gate: experiment harness ==="
 # harness/ is most of what a harness feature changes, and was covered by nothing here until
 # self/features/harness-cloud-pins (round 2 ruling): its scripts are syntax-checked above
-# and py_compiled below, and its three tests run here. All are offline and need only jq, git
+# and py_compiled below, and its five tests run here. All are offline and need only jq, git
 # and python3. The scorecard tests are seconds; the smoke test drives every stage of a run
 # against a throwaway repo with a fake claude and a fake forge, and takes about 50 seconds.
 record "harness scorecard arms self-test" bash harness/tests/scorecard-arms.sh
 # The program section: kind "program" ledger rows get their own tables and comparison line,
 # and a ledger with none renders byte for byte as before (harness/README.md → "File shapes").
 record "harness scorecard programs self-test" bash harness/tests/scorecard-programs.sh
+# Base arms (experiment.json base_arms): the arm-kind helpers and the scorecard's labels.
+record "harness arm base self-test" bash harness/tests/arm-base.sh
+# Reading metrics: harness/reading_metrics.py on fabricated transcripts, and the scorecard's table.
+record "harness reading metrics self-test" bash harness/tests/reading-metrics.sh
 record "harness smoke test" bash harness/tests/smoke.sh
 
 echo "=== gate: profile confinement ==="
@@ -531,15 +547,24 @@ echo "=== gate: profile confinement ==="
 # design exists to keep out of the lifecycle. Prose (*.md) is exempt.
 record "profile variables confined to the detector and its adapters" bash self/profile-confinement.sh
 
+echo "=== gate: readme index ==="
+# Every tracked folder's README.md names each tracked file and direct subfolder in it
+# (CONVENTIONS.md -> "Keeping READMEs up to date"; the rules are check-readme-index.py's
+# docstring). Blocking: a file no README names is a file whose contracts a reader cannot
+# find. The records that legitimately have no entry are in self/readme-index-ignore,
+# each with its reason. -B: the checker writes nothing, not even a __pycache__.
+record "readme index" python3 -B check-readme-index.py --root "$REPO_DIR" --ignore self/readme-index-ignore
+
 echo "=== gate: python syntax ==="
 # Compiles each file independently — it does NOT exercise the bare cross-imports
 # (`from pricing import …`), which only resolve when a script is run directly and
 # python puts its own directory on sys.path.
 record "py_compile analysis" python3 -m py_compile analysis/*.py
-record "py_compile harness" python3 -m py_compile harness/scorecard.py
+record "py_compile harness" python3 -m py_compile harness/scorecard.py harness/reading_metrics.py
 # The hook keeps a .sh name so its settings.json entry reads as a hook script; it is
 # Python, and this is the one place its syntax is checked without running it.
 record "py_compile hooks" python3 -m py_compile hooks/policy.py hooks/env_profile.py hooks/wire-settings.py hooks/allow-repo-commands.sh
+record "py_compile readme index" python3 -m py_compile check-readme-index.py
 
 echo "=== gate: permission policy ==="
 # This checkout's .claude/settings.json is tracked but not hand-authored:

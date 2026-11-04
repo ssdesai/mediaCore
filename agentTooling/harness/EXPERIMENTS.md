@@ -47,6 +47,16 @@ Two things, in this order, and the first one decides:
    measured at $206 was the largest single line of the program it ran, and no
    per-feature figure saw it.
 
+**Measuring is the driver's, building is the arm's.** Every fixture's `base` is a
+historical commit, so each arm's worktree carries an old vendored `agentTooling/`, pinned
+or not. That copy only does the *building*. The harness — the copy `run.sh` lives in —
+does all the measuring and bookkeeping: cost capture and the cost report run from the
+driver's `analysis/` (`--arm-root <worktree>`), so today's rates price today's models; the
+PR lookup runs the driver's `forge.sh`; and when a method pushed a built branch but could
+not open its PR, the harness opens it and the row says so (`pr_opened_by_harness`, plus an
+intervention) instead of discarding the arm. An old arm's vendored rates once priced a
+$3.26 run at $0 and a $11.62 one at $1.85.
+
 A tie on correctness with a cost difference under ~15% is **noise** at n=1: run-to-run
 executor variance is that large. Either run again or weight the defect lists, which are
 deterministic enough to compare.
@@ -77,8 +87,9 @@ verifies and the three files a person still writes. Three nouns. A **fixture** i
 a pinned spec commit, the toolchain facts handed to every arm, the review brief, an
 acceptance probe — and lives in the consuming repo at
 `plans/experiments/fixtures/<name>/`. A **method** is one way of turning a worktree at
-that base into an open PR, and lives in `harness/methods/<name>/`; `plans` and `direct`
-ship with it. An **experiment** says which cells to run and carries the prediction, at
+that base into an open PR, and lives in `harness/methods/<name>/`; `plans`, `direct` and
+`direct-bare` (`direct` minus its checkpoint, stamp and tests-first steps, the control
+for their cost) ship with it. An **experiment** says which cells to run and carries the prediction, at
 `plans/experiments/<experiment>/`, where the harness appends `results.jsonl` and renders
 `SCORECARD.md`.
 
@@ -112,6 +123,17 @@ git -C ~/dev/agentTooling archive <upstream-commit> | tar -x -C agentTooling   #
 ./agentTooling/sync-plans.sh
 git add -A && git commit -m "EXPERIMENT ARM (revert before merge): pin agentTooling to upstream <commit>"
 ```
+
+To compare two commits of the measured repository instead — a restructure branch's tip
+against the commit it was cut from — use `--base-arms old=<sha>,new=<sha or ref>`. The
+fixture stays the same (its spec, facts, review brief and accept probe); only the commit
+each arm's worktree is cut at differs, with no pin commit. Both commits must be in the
+repository the experiment lives on (an experiment runs from, and lives on, the repository
+it measures), and note that the tree's vendored `agentTooling/` is whatever each commit
+carries, so the arms also differ in that if the two vendor different versions. An experiment
+varies one thing: `--base-arms` and `--agent-tooling` together, or `--base-arms` with
+programs, are refused. The scorecard also reports how much each run read before its first
+edit (`## Reading before the first edit`).
 
 Why `archive | tar` and not `update.sh`: a `git subtree pull --squash` can only move a
 vendored copy forward along upstream's history — the squash commits chain, and merging an

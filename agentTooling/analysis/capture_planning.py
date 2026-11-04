@@ -83,7 +83,8 @@ from pricing import (
     live_price_warning,
 )
 from roots import (
-    SELF_CORPUS_IDENTITY, add_self_flag, all_features_roots, checkout_of,
+    SELF_CORPUS_IDENTITY, add_arm_root_flag, add_self_flag, all_features_roots,
+    apply_arm_root, checkout_of,
     collapse_feature_mentions, feature_mention_key, features_root, session_root,
     worktree_primary,
 )
@@ -4416,7 +4417,9 @@ def main():
         help="with --list-subagents or --list-sessions: only those that started on or after this UTC date",
     )
     add_self_flag(parser)
+    add_arm_root_flag(parser)
     args = parser.parse_args()
+    apply_arm_root(parser, args)
 
     # --for narrows a list of unclaimed delegates to one feature's; on any other run
     # there is nothing for it to narrow, and silently ignoring it would be a filter the

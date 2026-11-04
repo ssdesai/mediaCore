@@ -41,7 +41,8 @@ from typing import NamedTuple
 
 from pricing import HISTORY_FILENAME, RATES_VERIFIED, is_live, is_rates_stale, live_price_warning
 from roots import (
-    add_self_flag, artifact_root, collapse_feature_mentions, features_root, orchestrations_root,
+    add_arm_root_flag, add_self_flag, apply_arm_root, artifact_root,
+    collapse_feature_mentions, features_root, orchestrations_root,
 )
 # `parse_manifest` is routing.py's: the one copy this module, capture_planning.py and
 # routing.py's pinned-session predicate all read a manifest through.
@@ -3492,7 +3493,9 @@ def main():
         "file — what feature-close.sh composes the PR body from",
     )
     add_self_flag(parser)
+    add_arm_root_flag(parser)
     args = parser.parse_args()
+    apply_arm_root(parser, args)
 
     if args.orchestration:
         run_orchestration(args.orchestration)
