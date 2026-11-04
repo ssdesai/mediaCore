@@ -31,7 +31,7 @@ nothing in `plans/` and reported no DRIFT. Nothing under `agentTooling/` is edit
   "base": "main",
   "profile": "cloud",
   "gate": "green",
-  "session_window": {"from": "2026-11-04T02:26:40.069Z", "to": null},
+  "session_window": {"from": "2026-11-04T02:26:40.069Z", "to": "2026-11-04T02:29:11Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": ["31fbf3b1-f6b8-591e-aa0a-390791f5ea31"],
