@@ -34,7 +34,17 @@ commits in the diff.
 - NOTES.md's claims hold: what it says was done is in the diff, and what it says was left
   is not silently half-done.
 
-The coordinator adds this feature's own contracts here before running the review: the
-identifiers, files and outputs the change must keep or produce.
+This feature's own contracts:
+
+- The pull merged agentTooling main at `114e7ea393f8495ec205b942b9216a3e50f738c1`
+  (agentTooling PRs 118–121, range since `0e28a4c`) via `agentTooling/update.sh`: one
+  no-change re-anchor merge commit (the `chain` line was `broken`), then the subtree merge.
+  The `agentTooling/` diff must be the upstream range and nothing else; nothing under
+  `agentTooling/` or `.claude/` was hand-edited.
+- `agentTooling/sync-plans.sh --check` is clean; the sync wrote nothing in `plans/` and
+  printed no DRIFT line.
+- The gate state is in the report below (base gate green at start; post-pull gate in
+  `plans/gate.sh` output). The README-index check (PR 119) is deliberately not opted in.
+- Outside `agentTooling/`, the diff is only this feature's manifest and this review brief.
 
 ## Verdict

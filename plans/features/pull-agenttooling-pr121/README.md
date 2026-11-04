@@ -1,39 +1,24 @@
-# <Feature title>
+# Propagate agentTooling PRs 118–121
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+Brings the vendored `agentTooling/` up to agentTooling main at PR 121's merge, upstream
+sha `114e7ea393f8495ec205b942b9216a3e50f738c1` (the `split` line of `update.sh`). The range
+since this repo's last pull (PR 117, `0e28a4c`) is PR 118 (the experiment harness measures
+cost and finds PRs with its own copy, not the arm's), PR 119 (an opt-in README-index
+checker; this repo does not opt in), PR 120 (a `direct-bare` harness method) and PR 121
+(`harness-arm-base`). The pull re-anchored a broken trailer chain first (base recorded
+split 61cdeb7 while the tree was 0e28a4c's), then merged cleanly; `sync-plans.sh` changed
+nothing in `plans/` and reported no DRIFT. Nothing under `agentTooling/` is edited by hand.
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Review that the `agentTooling/` diff is the upstream range and nothing else, and the sync is clean. |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- Opting in to the README-index check (PR 119): this pull does not opt in.
+- Running any harness experiment.
 
 ## Machine-readable
 
