@@ -1,0 +1,70 @@
+{
+  "slug": "fable-plan-model",
+  "captured_at": "2026-10-28T22:55:08.531826+00:00",
+  "manifest_branches": [
+    "claude/fable-plan-model"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "27931115-9ed6-5c9a-b6b2-e8ff89ffd31d",
+      "git_branch": "claude/fable-plan-model",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-10-28",
+      "started_at": "2026-10-28T22:22:25.683000+00:00",
+      "ended_at": "2026-10-28T22:55:05.313000+00:00",
+      "duration_s": 1959
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "7ff9f36b-8c54-4ffd-9377-c37b309e9680"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "27931115-9ed6-5c9a-b6b2-e8ff89ffd31d",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-10-28",
+      "duration_s": 1959,
+      "tokens": {
+        "input": 180,
+        "output": 28759,
+        "cache_read": 11918122,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 131602
+      },
+      "cost_usd": 4.0123404,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 4.0123404,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 4.0123404,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 1959,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": []
+}

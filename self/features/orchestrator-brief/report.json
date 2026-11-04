@@ -1,0 +1,160 @@
+{
+  "slug": "orchestrator-brief",
+  "generated_at": "2026-10-30T22:22:48.198764+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 1.8053659,
+    "build": 1.8053659,
+    "verify": 0.0,
+    "review": 1.3495274000000002,
+    "total": 3.1548933000000003,
+    "planning_pct": 0.0,
+    "build_pct": 57.22430929756007,
+    "verify_pct": 0.0,
+    "review_pct": 42.775690702439924,
+    "cost_per_plan": 1.5774466500000002,
+    "cost_per_file": 0.4506990428571429,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 1781,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 1781,
+    "build_s": 1781.0,
+    "verify_s": 0.0,
+    "review_s": 164.452,
+    "executor_s": 1945.452,
+    "total_s": 1945.452,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-10-30T22:10:48+00:00",
+      "last_at": "2026-10-30T22:22:47+00:00",
+      "batch_span_s": 719.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 169.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 169.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-10-30T22:22:47+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/109"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 1.8053659,
+      "build_min": 29.683333333333334,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.8587092000000001,
+      "review_min": 1.84505,
+      "review_plan": "01-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/01-review-opus.md"
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.49081820000000004,
+      "review_min": 0.8958166666666667,
+      "review_plan": "02-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 1.8053659
+  },
+  "cold_start_tax_tokens": 97805,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 2,
+      "total_turns": 38,
+      "total_cost_usd": 1.3495274000000002,
+      "total_duration_s": 164.452,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 5,
+      "files_edited": 4,
+      "churn_ratio": 1.25
+    },
+    {
+      "plan": "02-review-opus",
+      "edit_count": 4,
+      "files_edited": 4,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 50,
+      "loc_changed": 100
+    },
+    {
+      "plan": "02-review-opus",
+      "plan_md_lines": 37,
+      "loc_changed": 58
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "README.md",
+        "self/review-report.md",
+        "templates/README.md",
+        "templates/plans/ORCHESTRATOR_BRIEF.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.z5HMXh/scratch/mut.sh",
+        "self/review-report.md",
+        "self/tests/README.md",
+        "self/tests/orchestrator-brief.sh"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": [],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and this feature stamped no `checkpoint` event \u2014 nothing divides it by round, so all of it sits in round 1"
+    }
+  ],
+  "profile": "cloud",
+  "gate": "green"
+}

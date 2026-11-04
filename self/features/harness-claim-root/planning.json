@@ -1,0 +1,108 @@
+{
+  "slug": "harness-claim-root",
+  "captured_at": "2026-10-31T01:45:50.501857+00:00",
+  "manifest_branches": [
+    "claude/harness-claim-root"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "c4a8f27a-fe62-5ac9-bcee-06b9e6638710",
+      "git_branch": "claude/harness-claim-root",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-10-31",
+      "started_at": "2026-10-31T00:34:18.293000+00:00",
+      "ended_at": "2026-10-31T01:45:48.595000+00:00",
+      "duration_s": 4290
+    }
+  ],
+  "subagents": [
+    {
+      "agent_id": "ad6cbbc478ac20a19",
+      "parent_session_id": "c4a8f27a-fe62-5ac9-bcee-06b9e6638710",
+      "date": "2026-10-31",
+      "started_at": "2026-10-31T00:39:58.656000+00:00",
+      "ended_at": "2026-10-31T00:42:17.592000+00:00",
+      "duration_s": 138,
+      "selected_by": "parent",
+      "cross_repo": false
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "76fa3101-185c-43a8-848a-d1a922cd2149"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "c4a8f27a-fe62-5ac9-bcee-06b9e6638710",
+      "agent_id": null,
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": false,
+      "date": "2026-10-31",
+      "duration_s": 4290,
+      "tokens": {
+        "input": 163,
+        "output": 34436,
+        "cache_read": 12344073,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 150771
+      },
+      "cost_usd": 2.1821772999999998,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "c4a8f27a-fe62-5ac9-bcee-06b9e6638710",
+      "agent_id": "ad6cbbc478ac20a19",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-31",
+      "duration_s": 138,
+      "tokens": {
+        "input": 38,
+        "output": 5900,
+        "cache_read": 1203485,
+        "cache_creation_5m": 79471,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 0.378102,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 2.1821772999999998,
+    "sidechain": 0.378102,
+    "subagents": 0.378102,
+    "total": 2.5602793,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 4290,
+    "subagents": 138,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": []
+}

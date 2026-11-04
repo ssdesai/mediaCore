@@ -1,0 +1,105 @@
+{
+  "slug": "experiment-harness",
+  "captured_at": "2026-09-10T03:53:24.449234+00:00",
+  "manifest_branches": [
+    "experimentHarness"
+  ],
+  "manifest_subagents": [
+    "a17a18ebe0d95de63"
+  ],
+  "sessions": [],
+  "subagents": [
+    {
+      "agent_id": "a17a18ebe0d95de63",
+      "parent_session_id": "3f2c9afd-9417-463f-b1e1-655f31c56ce0",
+      "date": "2026-08-29",
+      "started_at": "2026-08-29T16:41:00.473000+00:00",
+      "ended_at": "2026-08-29T17:15:44.163000+00:00",
+      "duration_s": 2083,
+      "selected_by": "pinned",
+      "cross_repo": true
+    }
+  ],
+  "excluded_session_ids": [
+    "018db37a-fbc7-42d5-bfc6-4585c9ecea59",
+    "0745c8b1-3188-4741-a03e-217ff22d3ddb",
+    "0a1c9791-f948-417a-ac0f-4844d9f1c441",
+    "10e9bb82-a9f4-4fee-a4ea-9a980c514564",
+    "11675eec-5e12-4f16-9ab0-58faf6dd3d54",
+    "11eb5f09-0014-41bb-b553-7438697b6cb0",
+    "2370cfd4-0937-4ed6-ae85-aabf38c302a4",
+    "239d99e7-969f-4b3f-aadc-f6c428fb0d56",
+    "2a485894-7422-4e51-b22a-76fe525ceb4a",
+    "2e9ce097-2707-4206-9b1b-448cd112f6f9",
+    "30ee40d4-0dca-4189-8eda-a60c9883daf7",
+    "371a6916-fdc4-428b-b68a-5bb73102629f",
+    "41faf82d-d46d-4e7c-8846-8c19c8cb059b",
+    "480d21a8-62fd-4069-9ceb-ca6782615b2d",
+    "48ccc3a0-a6ab-45a0-8811-7c3f5e48fea4",
+    "4dbfb81c-d588-4b8a-ae6c-585db1231fba",
+    "63e4b311-5584-4004-91ce-5d9a964bb1d4",
+    "6be11f3a-e935-4823-a8d5-0deeee6b61bf",
+    "7513e2cf-3e85-4ce9-98e6-bfface6cd02d",
+    "84c63a83-78d2-4076-96cc-45cbe5874224",
+    "9163e37a-f68c-46e1-9da3-0608b83a305b",
+    "a36adceb-ed95-418e-81d3-63050a1a52f9",
+    "ab17a74a-0268-424a-bf25-420a62959b45",
+    "b1c73a95-043e-4634-9d73-b75a0e6297d2",
+    "b4eb7ce2-e048-4b36-9ff1-58632118e540",
+    "b5e1415e-ecc1-4046-a7c5-720317045ada",
+    "bb605d58-6618-4206-920e-c3fbe33d5835",
+    "c5730b1b-a26d-4085-8fb9-afbcab384477",
+    "c8f61520-3899-45b0-b578-0aba685b28fd",
+    "d5dc1fae-5dce-4873-b473-f467c7f1afd4",
+    "deb4f210-5325-4dd3-957b-c1d989ef9010",
+    "e10f23f4-25bc-4e37-92ed-713a18b33cb3",
+    "e306171f-5858-4264-b6f0-055739e0d199",
+    "ead9f6f1-0636-4692-a41b-99539d168a1a",
+    "f0deb6a9-97bc-4d36-93d0-670c5083975b",
+    "f7179479-64b8-494b-8c86-386adad50a65"
+  ],
+  "excluded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "3f2c9afd-9417-463f-b1e1-655f31c56ce0",
+      "agent_id": "a17a18ebe0d95de63",
+      "model": "claude-opus-5",
+      "is_sidechain": true,
+      "date": "2026-08-29",
+      "duration_s": 2083,
+      "tokens": {
+        "input": 268,
+        "output": 12112,
+        "cache_read": 31690655,
+        "cache_creation_5m": 335259,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 18.24483625,
+      "rates_applied": {
+        "model": "claude-opus-5",
+        "input": 5,
+        "output": 25,
+        "cache_read": 0.5,
+        "cache_creation_5m": 6.25,
+        "cache_creation_1h": 10.0,
+        "tier": "standard"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 0.0,
+    "sidechain": 18.24483625,
+    "subagents": 18.24483625,
+    "total": 18.24483625,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 0,
+    "subagents": 2083,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/pricing.py RATES_VERIFIED=2026-09-04",
+  "warnings": [
+    "branch 'experimentHarness' matched no session in any transcript for this repo, so any planning on it is uncounted. One of three things is true: the name is wrong \u2014 check it against `git branch --list` and record it exactly as git shows it, with no added prefix; or its sessions were launched somewhere other than the primary checkout and this feature's worktree (/Users/sahildesai/dev/agentTooling-experiment-harness) \u2014 launch the coordinator inside the worktree, or pin each session id in `sessions`; or the transcripts have aged out of ~/.claude/projects/, in which case the name is fine and the cost is unrecoverable"
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "slug": "sweep-retirement-and-audit-fixes",
+  "generated_at": "2026-09-17T17:36:57.999175+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 41.144738749999995,
+    "build": 41.144738749999995,
+    "verify": 0.0,
+    "review": 1.5232055,
+    "total": 42.66794425,
+    "planning_pct": 0.0,
+    "build_pct": 96.43009400435315,
+    "verify_pct": 0.0,
+    "review_pct": 3.5699059956468373,
+    "cost_per_plan": 42.66794425,
+    "cost_per_file": 42.66794425,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 0,
+    "planning_subagents_s": 3217,
+    "planning_s": 0.0,
+    "implementer_s": 3217,
+    "build_s": 3217.0,
+    "verify_s": 0.0,
+    "review_s": 94.46,
+    "executor_s": 3311.46,
+    "total_s": 3311.46,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-17T15:31:32+00:00",
+      "last_at": "2026-09-17T17:36:56+00:00",
+      "batch_span_s": 7524.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 103.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 97.0,
+      "plan_runs": 1,
+      "pr_opened_at": "2026-09-17T17:36:56+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/47"
+    },
+    "tests_s": 533.0,
+    "direct_build_s": 6581.0,
+    "gate_s": 217.0
+  },
+  "planning_cost_split": {
+    "subagents": 41.144738749999995,
+    "sessions": 0.0
+  },
+  "cold_start_tax_tokens": 82657,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 19,
+      "total_cost_usd": 1.5232055,
+      "total_duration_s": 94.46,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "109-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "109-review-opus",
+      "plan_md_lines": 116,
+      "loc_changed": 58
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "109-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": []
+}

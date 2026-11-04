@@ -1,0 +1,230 @@
+{
+  "slug": "plan-analytics",
+  "captured_at": "2026-08-27T21:32:00.103562+00:00",
+  "manifest_branches": [
+    "browseImages"
+  ],
+  "manifest_subagents": [
+    "a0a4c47c06f3ac7be",
+    "a818347796243832f",
+    "a9f7a841694e8fc74",
+    "aad99bf9f4de37a30"
+  ],
+  "sessions": [
+    {
+      "session_id": "0e05f584-377e-4c95-ad42-3cf2ca5bdcd2",
+      "git_branch": "browseImages",
+      "date": "2026-07-30",
+      "agent_id": null,
+      "carried_from": "2026-08-05T18:39:53.336521+00:00"
+    },
+    {
+      "session_id": "d396a4d9-2d7b-4150-ac60-d295d6141b26",
+      "git_branch": "browseImages",
+      "date": "2026-07-30",
+      "agent_id": null,
+      "carried_from": "2026-08-05T18:39:53.336521+00:00"
+    }
+  ],
+  "subagents": [
+    {
+      "agent_id": "a0a4c47c06f3ac7be",
+      "parent_session_id": "0e05f584-377e-4c95-ad42-3cf2ca5bdcd2",
+      "date": "2026-07-30",
+      "selected_by": "pinned",
+      "cross_repo": true
+    },
+    {
+      "agent_id": "a818347796243832f",
+      "parent_session_id": "0e05f584-377e-4c95-ad42-3cf2ca5bdcd2",
+      "date": "2026-07-30",
+      "selected_by": "pinned",
+      "cross_repo": true
+    },
+    {
+      "agent_id": "a9f7a841694e8fc74",
+      "parent_session_id": "0e05f584-377e-4c95-ad42-3cf2ca5bdcd2",
+      "date": "2026-07-30",
+      "selected_by": "pinned",
+      "cross_repo": true
+    },
+    {
+      "agent_id": "aad99bf9f4de37a30",
+      "parent_session_id": "0e05f584-377e-4c95-ad42-3cf2ca5bdcd2",
+      "date": "2026-07-30",
+      "selected_by": "pinned",
+      "cross_repo": true
+    }
+  ],
+  "excluded_session_ids": [
+    "0a1c9791-f948-417a-ac0f-4844d9f1c441",
+    "2a485894-7422-4e51-b22a-76fe525ceb4a",
+    "371a6916-fdc4-428b-b68a-5bb73102629f",
+    "41faf82d-d46d-4e7c-8846-8c19c8cb059b",
+    "63e4b311-5584-4004-91ce-5d9a964bb1d4",
+    "ab17a74a-0268-424a-bf25-420a62959b45"
+  ],
+  "priced": [
+    {
+      "session_id": "0e05f584-377e-4c95-ad42-3cf2ca5bdcd2",
+      "agent_id": "a0a4c47c06f3ac7be",
+      "model": "claude-sonnet-5",
+      "is_sidechain": true,
+      "date": "2026-07-30",
+      "tokens": {
+        "input": 8,
+        "output": 351,
+        "cache_read": 156429,
+        "cache_creation_5m": 80954,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 0.35579520000000003,
+      "rates_applied": {
+        "model": "claude-sonnet-5",
+        "input": 3,
+        "output": 15,
+        "cache_read": 0.30000000000000004,
+        "cache_creation_5m": 3.75,
+        "cache_creation_1h": 6.0,
+        "tier": "standard"
+      }
+    },
+    {
+      "session_id": "0e05f584-377e-4c95-ad42-3cf2ca5bdcd2",
+      "agent_id": "a818347796243832f",
+      "model": "claude-sonnet-5",
+      "is_sidechain": true,
+      "date": "2026-07-30",
+      "tokens": {
+        "input": 32,
+        "output": 1041,
+        "cache_read": 838660,
+        "cache_creation_5m": 77492,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 0.557904,
+      "rates_applied": {
+        "model": "claude-sonnet-5",
+        "input": 3,
+        "output": 15,
+        "cache_read": 0.30000000000000004,
+        "cache_creation_5m": 3.75,
+        "cache_creation_1h": 6.0,
+        "tier": "standard"
+      }
+    },
+    {
+      "session_id": "0e05f584-377e-4c95-ad42-3cf2ca5bdcd2",
+      "agent_id": "a9f7a841694e8fc74",
+      "model": "claude-sonnet-5",
+      "is_sidechain": true,
+      "date": "2026-07-30",
+      "tokens": {
+        "input": 18,
+        "output": 1188,
+        "cache_read": 560837,
+        "cache_creation_5m": 65527,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 0.43185135,
+      "rates_applied": {
+        "model": "claude-sonnet-5",
+        "input": 3,
+        "output": 15,
+        "cache_read": 0.30000000000000004,
+        "cache_creation_5m": 3.75,
+        "cache_creation_1h": 6.0,
+        "tier": "standard"
+      }
+    },
+    {
+      "session_id": "0e05f584-377e-4c95-ad42-3cf2ca5bdcd2",
+      "agent_id": "aad99bf9f4de37a30",
+      "model": "claude-sonnet-5",
+      "is_sidechain": true,
+      "date": "2026-07-30",
+      "tokens": {
+        "input": 24,
+        "output": 134,
+        "cache_read": 647200,
+        "cache_creation_5m": 73646,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 0.4724145,
+      "rates_applied": {
+        "model": "claude-sonnet-5",
+        "input": 3,
+        "output": 15,
+        "cache_read": 0.30000000000000004,
+        "cache_creation_5m": 3.75,
+        "cache_creation_1h": 6.0,
+        "tier": "standard"
+      }
+    },
+    {
+      "session_id": "0e05f584-377e-4c95-ad42-3cf2ca5bdcd2",
+      "model": "claude-opus-5",
+      "is_sidechain": false,
+      "date": "2026-07-30",
+      "tokens": {
+        "input": 438,
+        "output": 305110,
+        "cache_read": 31530881,
+        "cache_creation_5m": 1793245,
+        "cache_creation_1h": 305420
+      },
+      "cost_usd": 37.65736175,
+      "rates_applied": {
+        "model": "claude-opus-5",
+        "input": 5,
+        "output": 25,
+        "cache_read": 0.5,
+        "cache_creation_5m": 6.25,
+        "cache_creation_1h": 10.0,
+        "tier": "standard"
+      },
+      "agent_id": null,
+      "carried_from": "2026-08-05T18:39:53.336521+00:00"
+    },
+    {
+      "session_id": "d396a4d9-2d7b-4150-ac60-d295d6141b26",
+      "model": "claude-opus-5",
+      "is_sidechain": false,
+      "date": "2026-07-30",
+      "tokens": {
+        "input": 29,
+        "output": 21616,
+        "cache_read": 725852,
+        "cache_creation_5m": 108340,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 1.580596,
+      "rates_applied": {
+        "model": "claude-opus-5",
+        "input": 5,
+        "output": 25,
+        "cache_read": 0.5,
+        "cache_creation_5m": 6.25,
+        "cache_creation_1h": 10.0,
+        "tier": "standard"
+      },
+      "agent_id": null,
+      "carried_from": "2026-08-05T18:39:53.336521+00:00"
+    }
+  ],
+  "cost_usd": {
+    "main": 39.23795775,
+    "sidechain": 1.81796505,
+    "subagents": 1.81796505,
+    "total": 41.0559228,
+    "total_is_partial": false
+  },
+  "rates_source": "agentTooling/analysis/pricing.py RATES_VERIFIED=2026-08-22",
+  "warnings": [
+    "session_window.from '2026-07-30T15:49:00' has no timezone offset and is being read as UTC. Append 'Z' if that is what you meant; if you copied a local time (git log prints local), write the offset explicitly, e.g. '2026-07-30T15:49:00-04:00'",
+    "session_window.to '2026-07-30T19:03:00' has no timezone offset and is being read as UTC. Append 'Z' if that is what you meant; if you copied a local time (git log prints local), write the offset explicitly, e.g. '2026-07-30T19:03:00-04:00'",
+    "branch 'browseImages' matched no session in any transcript for this repo, so any planning on it is uncounted and reports as $0.00 rather than as an error. Either the name is wrong \u2014 check it against `git branch --list` and record it exactly as git shows it, with no added prefix \u2014 or the transcripts have aged out of ~/.claude/projects/, in which case the name is fine and the cost is simply unrecoverable",
+    "2 entries carried forward from the capture of 2026-08-05T18:39:53.336521+00:00: their transcripts are gone, so the figure is the prior one \u2014 0e05f584-377e-4c95-ad42-3cf2ca5bdcd2, d396a4d9-2d7b-4150-ac60-d295d6141b26"
+  ],
+  "carried_from": "2026-08-05T18:39:53.336521+00:00"
+}

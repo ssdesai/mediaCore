@@ -1,0 +1,56 @@
+{
+  "plan": "02-review-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "179e11f2-17a3-4f13-866b-b980295619be",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 25,
+  "duration_ms": 543044,
+  "total_cost_usd": 0.38935759999999997,
+  "usage": {
+    "input_tokens": 28,
+    "cache_creation_input_tokens": 43680,
+    "cache_read_input_tokens": 588558,
+    "output_tokens": 9687
+  },
+  "model_usage": {
+    "claude-sonnet-5": {
+      "inputTokens": 28,
+      "outputTokens": 9687,
+      "cacheReadInputTokens": 588558,
+      "cacheCreationInputTokens": 43680,
+      "webSearchRequests": 0,
+      "costUSD": 0.38935759999999997,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 4827,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 1,
+  "tool_counts": {
+    "Bash": 16,
+    "Edit": 2,
+    "Grep": 1,
+    "Read": 4,
+    "Write": 1
+  },
+  "files_edited": [
+    "self/BACKLOG.md",
+    "self/review-report.md"
+  ],
+  "edit_count": 3,
+  "attempts": [
+    {
+      "session_id": "179e11f2-17a3-4f13-866b-b980295619be",
+      "outcome": "complete",
+      "total_cost_usd": 0.38935759999999997,
+      "num_turns": 25,
+      "duration_ms": 543044
+    }
+  ]
+}

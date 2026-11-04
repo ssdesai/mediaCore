@@ -1,0 +1,113 @@
+{
+  "slug": "cloud-off-branch-remedy",
+  "captured_at": "2026-10-27T18:22:25.003925+00:00",
+  "manifest_branches": [
+    "claude/cloud-off-branch-remedy"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "6c686a3c-875f-5ab9-8925-e6047b75ed2f",
+      "git_branch": "claude/cloud-off-branch-remedy",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-10-27",
+      "started_at": "2026-10-27T18:14:42.710000+00:00",
+      "ended_at": "2026-10-27T18:22:16.883000+00:00",
+      "duration_s": 454
+    },
+    {
+      "session_id": "2f2ce780-fd83-592d-827e-8c65cfae3f73",
+      "git_branch": "claude/cloud-off-branch-remedy",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-10-27",
+      "started_at": "2026-10-27T14:42:48.559000+00:00",
+      "ended_at": "2026-10-27T18:13:09.200000+00:00",
+      "duration_s": 12620,
+      "agent_id": null,
+      "carried_from": "2026-10-27T18:13:11.437611+00:00"
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "ccbd1218-8555-498c-8391-ef0c06ab5db3"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "6c686a3c-875f-5ab9-8925-e6047b75ed2f",
+      "agent_id": null,
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": false,
+      "date": "2026-10-27",
+      "duration_s": 454,
+      "tokens": {
+        "input": 47,
+        "output": 4324,
+        "cache_read": 2104413,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 50857
+      },
+      "cost_usd": 0.45720330000000003,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "2f2ce780-fd83-592d-827e-8c65cfae3f73",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-10-27",
+      "duration_s": 12620,
+      "tokens": {
+        "input": 179,
+        "output": 44459,
+        "cache_read": 13875687,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 236099
+      },
+      "cost_usd": 5.5538254,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      },
+      "carried_from": "2026-10-27T18:13:11.437611+00:00"
+    }
+  ],
+  "cost_usd": {
+    "main": 6.0110287,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 6.0110287,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 13074,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "1 entry carried forward from the committed planning.json \u2014 this scan cannot reach their transcripts, so each keeps the figure of the capture that priced it (2026-10-27T18:13:11.437611+00:00): 2f2ce780-fd83-592d-827e-8c65cfae3f73. --force rebuilds without them"
+  ],
+  "carried_from": "2026-10-27T18:13:11.437611+00:00"
+}

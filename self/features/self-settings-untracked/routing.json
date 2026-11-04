@@ -1,0 +1,45 @@
+{
+  "captured_at": "2026-09-27T01:24:04Z",
+  "cost_usd": 16.93704,
+  "duration_s": 30391,
+  "ended_at": "2026-09-27T01:24:04Z",
+  "features_started": [
+    {
+      "at": "2026-09-26T17:42:40Z",
+      "slug": "backlog-rulings-2026-09-26"
+    },
+    {
+      "at": "2026-09-26T17:50:31Z",
+      "slug": "manifest-pin-subagent"
+    },
+    {
+      "at": "2026-09-26T19:16:21Z",
+      "slug": "start-takeover"
+    },
+    {
+      "at": "2026-09-27T00:54:49Z",
+      "slug": "hook-pipe-redirect"
+    },
+    {
+      "at": "2026-09-27T00:59:14Z",
+      "slug": "self-settings-untracked"
+    },
+    {
+      "at": "2026-09-27T01:03:43Z",
+      "slug": "rates-tier-check"
+    },
+    {
+      "at": "2026-09-27T01:08:41Z",
+      "slug": "propagation-as-feature"
+    },
+    {
+      "at": "2026-09-27T01:22:02Z",
+      "slug": "runner-sandbox"
+    }
+  ],
+  "git_branch": "HEAD",
+  "launched_in": "/Users/sahildesai/dev",
+  "model": "claude-fable-5-1/claude-opus-5-5",
+  "session_id": "85f7f627-01e8-42df-8c27-d9bcc1fa8c2b",
+  "started_at": "2026-09-26T16:57:33Z"
+}

@@ -1,0 +1,71 @@
+{
+  "slug": "orchestration-records",
+  "captured_at": "2026-10-30T19:01:05.407059+00:00",
+  "manifest_branches": [
+    "claude/orchestration-records"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "1363752c-7de1-50b4-a538-7ca702b73857",
+      "git_branch": "claude/orchestration-records",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-10-30",
+      "started_at": "2026-10-30T18:27:29.028000+00:00",
+      "ended_at": "2026-10-30T19:00:57.701000+00:00",
+      "duration_s": 2008
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "79e5ea78-f8c7-4aa2-9ecb-f0a3ca43e1be",
+    "e73f2810-1c98-42bc-ada8-227296903da0"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "1363752c-7de1-50b4-a538-7ca702b73857",
+      "agent_id": null,
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": false,
+      "date": "2026-10-30",
+      "duration_s": 2008,
+      "tokens": {
+        "input": 168,
+        "output": 64708,
+        "cache_read": 20094589,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 246644
+      },
+      "cost_usd": 3.6434509000000004,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 3.6434509000000004,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 3.6434509000000004,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 2008,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": []
+}

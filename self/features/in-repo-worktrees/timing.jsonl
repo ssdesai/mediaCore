@@ -1,0 +1,9 @@
+{"at":"2026-09-11T14:40:17Z","event":"checkpoint","status":"planned"}
+{"at":"2026-09-11T14:45:31Z","event":"checkpoint","status":"tests-written"}
+{"at":"2026-09-11T14:53:48Z","event":"checkpoint","status":"gating"}
+{"at":"2026-09-11T14:56:03Z","event":"checkpoint","status":"committed"}
+{"at":"2026-09-11T14:57:06Z","event":"pass_start","queue":"review"}
+{"at":"2026-09-11T14:57:07Z","event":"plan_start","plan":"100-review-opus","queue":"review"}
+{"at":"2026-09-11T14:59:56Z","event":"plan_end","plan":"100-review-opus","queue":"review","rc":"0"}
+{"at":"2026-09-11T15:00:03Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/vinylCatalogue/pull/123"}
+{"at":"2026-09-11T15:00:03Z","event":"pass_end","queue":"review","reason":"all review plans complete"}

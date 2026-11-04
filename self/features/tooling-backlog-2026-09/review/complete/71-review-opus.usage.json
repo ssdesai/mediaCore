@@ -1,0 +1,103 @@
+{
+  "plan": "71-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "b4eb7ce2-e048-4b36-9ff1-58632118e540",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 46,
+  "duration_ms": 439275,
+  "total_cost_usd": 3.224151499999999,
+  "usage": {
+    "input_tokens": 66,
+    "cache_creation_input_tokens": 110447,
+    "cache_read_input_tokens": 2654603,
+    "output_tokens": 31523
+  },
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 3885,
+      "outputTokens": 18,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.003975,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5": {
+      "inputTokens": 66,
+      "outputTokens": 31523,
+      "cacheReadInputTokens": 2654603,
+      "cacheCreationInputTokens": 110447,
+      "webSearchRequests": 0,
+      "costUSD": 3.220176499999999,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 20680,
+      "canonicalModel": "claude-opus-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 64,
+    "Edit": 8,
+    "Read": 10,
+    "Write": 1
+  },
+  "files_edited": [
+    "README.md",
+    "self/features/tooling-backlog-2026-09/NOTES.md",
+    "self/review-report.md",
+    "templates/README.md",
+    "templates/plans/.gitignore",
+    "templates/plans/README.md"
+  ],
+  "edit_count": 9,
+  "attempts": [
+    {
+      "session_id": "11675eec-5e12-4f16-9ab0-58faf6dd3d54",
+      "outcome": "killed",
+      "total_cost_usd": null,
+      "num_turns": null,
+      "duration_ms": null,
+      "recovered_cost_usd": 2.6254465,
+      "recovered_tokens": {
+        "claude-opus-5": {
+          "input": 60,
+          "output": 22976,
+          "cache_read": 2110753,
+          "cache_creation_5m": 0,
+          "cache_creation_1h": 99537
+        }
+      },
+      "recovered_from": "transcript",
+      "recovered_at": "2026-09-02T13:16:06.123822+00:00",
+      "rates_applied": {
+        "claude-opus-5": {
+          "model": "claude-opus-5",
+          "input": 5,
+          "output": 25,
+          "cache_read": 0.5,
+          "cache_creation_5m": 6.25,
+          "cache_creation_1h": 10.0,
+          "tier": "standard"
+        }
+      }
+    },
+    {
+      "session_id": "b4eb7ce2-e048-4b36-9ff1-58632118e540",
+      "outcome": "complete",
+      "total_cost_usd": 3.224151499999999,
+      "num_turns": 46,
+      "duration_ms": 439275
+    }
+  ],
+  "recovered_cost_usd": 2.6254465
+}

@@ -1,0 +1,70 @@
+{
+  "slug": "cloud-branch-window-from",
+  "captured_at": "2026-10-26T17:02:05.362568+00:00",
+  "manifest_branches": [
+    "claude/cloud-branch-window-from"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "cc0fce2a-cd94-5369-9b48-a8fe443295a2",
+      "git_branch": "claude/cloud-branch-window-from",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-10-26",
+      "started_at": "2026-10-26T16:40:30.102000+00:00",
+      "ended_at": "2026-10-26T17:02:04.240000+00:00",
+      "duration_s": 1294
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "b436a519-ef7a-4723-a1e8-e661ecc40696"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "cc0fce2a-cd94-5369-9b48-a8fe443295a2",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-10-26",
+      "duration_s": 1294,
+      "tokens": {
+        "input": 131,
+        "output": 30449,
+        "cache_read": 9631811,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 144297
+      },
+      "cost_usd": 3.6902422,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 3.6902422,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 3.6902422,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 1294,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": []
+}

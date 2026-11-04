@@ -1,0 +1,244 @@
+{
+  "slug": "test-first-levels",
+  "generated_at": "2026-09-10T03:44:30.471071+00:00",
+  "cost": {
+    "method": "plans",
+    "planning": 0.0,
+    "implementer": 0.0,
+    "build": 1.8154126999999998,
+    "verify": 1.9882881,
+    "review": 2.82003,
+    "total": 6.6237308,
+    "planning_pct": 0.0,
+    "build_pct": 27.407706545078792,
+    "verify_pct": 30.017646550490852,
+    "review_pct": 42.57464690443036,
+    "cost_per_plan": 1.1039551333333333,
+    "cost_per_file": 0.38963122352941176,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "plans",
+    "planning_sessions_s": 0,
+    "planning_subagents_s": 0,
+    "planning_s": 0,
+    "implementer_s": null,
+    "build_s": 418.826,
+    "verify_s": 342.665,
+    "review_s": 533.166,
+    "executor_s": 1294.6570000000002,
+    "total_s": 1294.6570000000002,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": null
+  },
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 0.0
+  },
+  "cold_start_tax_tokens": 331273,
+  "model_fit": [
+    {
+      "model": "haiku",
+      "plan_count": 1,
+      "total_turns": 24,
+      "total_cost_usd": 0.185859,
+      "total_duration_s": 125.963,
+      "flags": [
+        "plan 67-gate-label-and-skip-haiku took 24 turns on haiku (> 8, may have needed more judgment than haiku gives)"
+      ]
+    },
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 34,
+      "total_cost_usd": 2.82003,
+      "total_duration_s": 533.166,
+      "flags": []
+    },
+    {
+      "model": "sonnet",
+      "plan_count": 4,
+      "total_turns": 102,
+      "total_cost_usd": 3.6178418,
+      "total_duration_s": 635.528,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "65-runner-sentinels-sonnet",
+      "edit_count": 11,
+      "files_edited": 4,
+      "churn_ratio": 2.75
+    },
+    {
+      "plan": "66-batch-level-loop-sonnet",
+      "edit_count": 6,
+      "files_edited": 2,
+      "churn_ratio": 3.0
+    },
+    {
+      "plan": "67-gate-label-and-skip-haiku",
+      "edit_count": 17,
+      "files_edited": 3,
+      "churn_ratio": 5.666666666666667
+    },
+    {
+      "plan": "68-doctrine-levels-sonnet",
+      "edit_count": 7,
+      "files_edited": 4,
+      "churn_ratio": 1.75
+    },
+    {
+      "plan": "69-verify-sonnet",
+      "edit_count": 5,
+      "files_edited": 3,
+      "churn_ratio": 1.6666666666666667
+    },
+    {
+      "plan": "70-review-opus",
+      "edit_count": 7,
+      "files_edited": 5,
+      "churn_ratio": 1.4
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "65-runner-sentinels-sonnet",
+      "plan_md_lines": 175,
+      "loc_changed": 130
+    },
+    {
+      "plan": "66-batch-level-loop-sonnet",
+      "plan_md_lines": 105,
+      "loc_changed": 71
+    },
+    {
+      "plan": "67-gate-label-and-skip-haiku",
+      "plan_md_lines": 105,
+      "loc_changed": 176
+    },
+    {
+      "plan": "68-doctrine-levels-sonnet",
+      "plan_md_lines": 131,
+      "loc_changed": 112
+    },
+    {
+      "plan": "69-verify-sonnet",
+      "plan_md_lines": 53,
+      "loc_changed": 16
+    },
+    {
+      "plan": "70-review-opus",
+      "plan_md_lines": 36,
+      "loc_changed": 175
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/Users/sahildesai/dev/agentTooling/RUNNER.md",
+      "tool": "Read",
+      "plans": [
+        "65-runner-sentinels-sonnet",
+        "70-review-opus"
+      ]
+    },
+    {
+      "target": "/Users/sahildesai/dev/agentTooling/plan-runner-lib.sh",
+      "tool": "Read",
+      "plans": [
+        "65-runner-sentinels-sonnet",
+        "69-verify-sonnet",
+        "70-review-opus"
+      ]
+    },
+    {
+      "target": "/Users/sahildesai/dev/agentTooling/templates/README.md",
+      "tool": "Read",
+      "plans": [
+        "67-gate-label-and-skip-haiku",
+        "70-review-opus"
+      ]
+    },
+    {
+      "target": "/Users/sahildesai/dev/agentTooling/templates/plans/gate.sh",
+      "tool": "Read",
+      "plans": [
+        "67-gate-label-and-skip-haiku",
+        "69-verify-sonnet"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "69-verify-sonnet",
+      "edited_not_listed": [
+        ".gitignore",
+        "plan-runner-lib.sh",
+        "self/features/_scratch-levels/gatetest/gate.sh"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "70-review-opus",
+      "edited_not_listed": [
+        "AGENT_TOOLING_TESTING_RESTRUCTURE.md",
+        "RUNNER.md",
+        "plan-runner-lib.sh",
+        "self/review-report.md",
+        "templates/README.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "plan-runner-lib.sh",
+      "earlier_plan": "65-runner-sentinels-sonnet",
+      "later_plan": "69-verify-sonnet",
+      "overlap_chars": 56
+    },
+    {
+      "file": "plan-runner-lib.sh",
+      "earlier_plan": "65-runner-sentinels-sonnet",
+      "later_plan": "69-verify-sonnet",
+      "overlap_chars": 55
+    },
+    {
+      "file": "plan-runner-lib.sh",
+      "earlier_plan": "65-runner-sentinels-sonnet",
+      "later_plan": "70-review-opus",
+      "overlap_chars": 373
+    },
+    {
+      "file": "RUNNER.md",
+      "earlier_plan": "65-runner-sentinels-sonnet",
+      "later_plan": "70-review-opus",
+      "overlap_chars": 258
+    },
+    {
+      "file": "RUNNER.md",
+      "earlier_plan": "65-runner-sentinels-sonnet",
+      "later_plan": "70-review-opus",
+      "overlap_chars": 184
+    },
+    {
+      "file": "templates/README.md",
+      "earlier_plan": "67-gate-label-and-skip-haiku",
+      "later_plan": "70-review-opus",
+      "overlap_chars": 265
+    }
+  ],
+  "warnings": []
+}

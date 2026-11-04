@@ -1,0 +1,17 @@
+edit: /Users/sahildesai/dev/agentTooling/templates/plans/gate.sh
+edit: /Users/sahildesai/dev/agentTooling/templates/plans/gate.sh
+edit: /Users/sahildesai/dev/agentTooling/templates/plans/gate.sh
+edit: /Users/sahildesai/dev/agentTooling/templates/plans/gate.sh
+edit: /Users/sahildesai/dev/agentTooling/templates/plans/gate.sh
+edit: /Users/sahildesai/dev/agentTooling/templates/plans/gate.sh
+edit: /Users/sahildesai/dev/agentTooling/templates/plans/gate.sh
+edit: /Users/sahildesai/dev/agentTooling/templates/plans/gate.sh
+edit: /Users/sahildesai/dev/agentTooling/self/gate.sh
+edit: /Users/sahildesai/dev/agentTooling/self/gate.sh
+edit: /Users/sahildesai/dev/agentTooling/self/gate.sh
+edit: /Users/sahildesai/dev/agentTooling/self/gate.sh
+edit: /Users/sahildesai/dev/agentTooling/self/gate.sh
+edit: /Users/sahildesai/dev/agentTooling/self/gate.sh
+edit: /Users/sahildesai/dev/agentTooling/self/gate.sh
+edit: /Users/sahildesai/dev/agentTooling/templates/README.md
+edit: /Users/sahildesai/dev/agentTooling/templates/README.md

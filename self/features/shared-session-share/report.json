@@ -1,0 +1,206 @@
+{
+  "slug": "shared-session-share",
+  "generated_at": "2026-09-09T22:11:55.128236+00:00",
+  "cost": {
+    "method": "plans",
+    "planning": 14.429103,
+    "implementer": 0.0,
+    "build": 9.9668402,
+    "verify": 3.1180512,
+    "review": 4.403858,
+    "total": 31.917852399999997,
+    "planning_pct": 45.20699832548885,
+    "build_pct": 31.22653766015912,
+    "verify_pct": 9.768988091441893,
+    "review_pct": 13.797475922910152,
+    "cost_per_plan": 3.9897315499999997,
+    "cost_per_file": 2.455219415384615,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": [
+      {
+        "session_id": "ed76cd6f-477a-4b4e-84fd-c7a340538f14",
+        "cost_usd": 14.429103,
+        "also_claimed_by": [
+          "agentTooling/claim-window-precision"
+        ],
+        "session_cost_usd": 38.48321875
+      }
+    ]
+  },
+  "time": {
+    "method": "plans",
+    "planning_sessions_s": 17868,
+    "planning_subagents_s": 0,
+    "planning_s": 17868,
+    "implementer_s": null,
+    "build_s": 3126.975,
+    "verify_s": 923.3029999999999,
+    "review_s": 656.414,
+    "executor_s": 4706.692,
+    "total_s": 22574.692,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-08T19:15:33+00:00",
+      "last_at": "2026-09-08T23:47:31+00:00",
+      "batch_span_s": 16318.0,
+      "batch_runs": 1,
+      "batch_runs_s": 4580.0,
+      "passes_s": {
+        "auto": 3217.0,
+        "verify": 926.0,
+        "review": 668.0
+      },
+      "gates_s": 261.0,
+      "gate_runs": 3,
+      "plans_s": 4720.0,
+      "plan_runs": 9,
+      "pr_opened_at": "2026-09-08T23:47:31+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/35"
+    }
+  },
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 14.429103
+  },
+  "cold_start_tax_tokens": 1168698,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 60,
+      "total_cost_usd": 4.403858,
+      "total_duration_s": 656.414,
+      "flags": []
+    },
+    {
+      "model": "sonnet",
+      "plan_count": 7,
+      "total_turns": 241,
+      "total_cost_usd": 13.0848914,
+      "total_duration_s": 4050.278,
+      "flags": [
+        "plan 91-share-pricing-sonnet took 64 turns (> 60); scope, not model \u2014 split it next time (AGENT_PLANS.md, 'Sizing plans for executor cost')"
+      ]
+    }
+  ],
+  "churn": [
+    {
+      "plan": "89-share-arithmetic-tests-sonnet",
+      "edit_count": 6,
+      "files_edited": 4,
+      "churn_ratio": 1.5
+    },
+    {
+      "plan": "90-claim-set-tests-sonnet",
+      "edit_count": 5,
+      "files_edited": 3,
+      "churn_ratio": 1.6666666666666667
+    },
+    {
+      "plan": "91-share-pricing-sonnet",
+      "edit_count": 24,
+      "files_edited": 3,
+      "churn_ratio": 8.0
+    },
+    {
+      "plan": "92-level-capture-sonnet",
+      "edit_count": 3,
+      "files_edited": 2,
+      "churn_ratio": 1.5
+    },
+    {
+      "plan": "93-report-tests-sonnet",
+      "edit_count": 3,
+      "files_edited": 2,
+      "churn_ratio": 1.5
+    },
+    {
+      "plan": "94-report-share-sonnet",
+      "edit_count": 10,
+      "files_edited": 4,
+      "churn_ratio": 2.5
+    },
+    {
+      "plan": "96-review-opus",
+      "edit_count": 4,
+      "files_edited": 3,
+      "churn_ratio": 1.3333333333333333
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "89-share-arithmetic-tests-sonnet",
+      "plan_md_lines": 202,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "90-claim-set-tests-sonnet",
+      "plan_md_lines": 127,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "91-share-pricing-sonnet",
+      "plan_md_lines": 260,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "92-level-capture-sonnet",
+      "plan_md_lines": 16,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "93-report-tests-sonnet",
+      "plan_md_lines": 72,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "94-report-share-sonnet",
+      "plan_md_lines": 91,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "95-verify-sonnet",
+      "plan_md_lines": 40,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "96-review-opus",
+      "plan_md_lines": 70,
+      "loc_changed": "not computed: streams unavailable"
+    }
+  ],
+  "re_hunting": "not computed: streams unavailable",
+  "plan_drift": [
+    {
+      "plan": "92-level-capture-sonnet",
+      "edited_not_listed": [
+        "self/tests/session-claims.sh",
+        "self/tests/session-share.sh"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "96-review-opus",
+      "edited_not_listed": [
+        "analysis/README.md",
+        "analysis/report.py",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": "not computed: streams unavailable",
+  "warnings": [
+    "plan 95-verify-sonnet has 0 files_edited; excluded from churn ratio"
+  ]
+}

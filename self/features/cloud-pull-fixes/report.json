@@ -1,0 +1,186 @@
+{
+  "slug": "cloud-pull-fixes",
+  "generated_at": "2026-10-13T00:32:57.337206+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 9.5313631,
+    "build": 9.5313631,
+    "verify": 0.0,
+    "review": 2.8401810000000003,
+    "total": 12.371544100000001,
+    "planning_pct": 0.0,
+    "build_pct": 77.04263124277267,
+    "verify_pct": 0.0,
+    "review_pct": 22.95736875722732,
+    "cost_per_plan": 4.123848033333334,
+    "cost_per_file": 2.061924016666667,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 0,
+    "planning_subagents_s": 2093,
+    "planning_s": 0.0,
+    "implementer_s": 2093,
+    "build_s": 2093.0,
+    "verify_s": 0.0,
+    "review_s": 310.562,
+    "executor_s": 2403.562,
+    "total_s": 2403.562,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-10-12T23:47:40+00:00",
+      "last_at": "2026-10-13T00:32:56+00:00",
+      "batch_span_s": 2716.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 318.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 318.0,
+      "plan_runs": 3,
+      "pr_opened_at": "2026-10-13T00:32:56+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/87"
+    },
+    "tests_s": 163.0,
+    "direct_build_s": null,
+    "gate_s": null
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 9.5313631,
+      "build_min": 34.88333333333333,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.6924944000000002,
+      "review_min": 2.5576333333333334,
+      "review_plan": "01-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/01-review-opus.md"
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.6055536,
+      "review_min": 1.5075833333333333,
+      "review_plan": "02-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/02-review-opus.md"
+    },
+    {
+      "round": 3,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.542133,
+      "review_min": 1.1108166666666668,
+      "review_plan": "03-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 9.5313631,
+    "sessions": 0.0
+  },
+  "cold_start_tax_tokens": 186299,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 3,
+      "total_turns": 67,
+      "total_cost_usd": 2.8401810000000003,
+      "total_duration_s": 310.562,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 4,
+      "files_edited": 4,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "02-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "03-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 101,
+      "loc_changed": 73
+    },
+    {
+      "plan": "02-review-opus",
+      "plan_md_lines": 81,
+      "loc_changed": 74
+    },
+    {
+      "plan": "03-review-opus",
+      "plan_md_lines": 41,
+      "loc_changed": 66
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.jqyTK1/scratch/tv.sh",
+        "LIFECYCLE.md",
+        "self/review-report.md",
+        "update.sh"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md",
+        "self/tests/template-versions.sh"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "03-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md",
+        "self/tests/template-version-bump.sh"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": [],
+  "profile": "cloud",
+  "gate": "green"
+}

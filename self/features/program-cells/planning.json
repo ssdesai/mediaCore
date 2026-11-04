@@ -1,0 +1,294 @@
+{
+  "slug": "program-cells",
+  "captured_at": "2026-10-31T00:03:40.236325+00:00",
+  "manifest_branches": [
+    "claude/program-cells"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "2e6bd575-5a95-5f42-9c8e-8ce6cd8ce0e7",
+      "git_branch": "claude/program-cells",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-10-30",
+      "started_at": "2026-10-30T22:56:22.279000+00:00",
+      "ended_at": "2026-10-31T00:03:32.525000+00:00",
+      "duration_s": 4030
+    }
+  ],
+  "subagents": [
+    {
+      "agent_id": "a0e3a9ec7a616faaf",
+      "parent_session_id": "2e6bd575-5a95-5f42-9c8e-8ce6cd8ce0e7",
+      "date": "2026-10-30",
+      "started_at": "2026-10-30T23:18:17.855000+00:00",
+      "ended_at": "2026-10-30T23:18:49.499000+00:00",
+      "duration_s": 31,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a137bf2297fceb492",
+      "parent_session_id": "2e6bd575-5a95-5f42-9c8e-8ce6cd8ce0e7",
+      "date": "2026-10-30",
+      "started_at": "2026-10-30T23:02:39.935000+00:00",
+      "ended_at": "2026-10-30T23:13:17.233000+00:00",
+      "duration_s": 637,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a19ab002f417aa7c1",
+      "parent_session_id": "2e6bd575-5a95-5f42-9c8e-8ce6cd8ce0e7",
+      "date": "2026-10-30",
+      "started_at": "2026-10-30T23:13:54.772000+00:00",
+      "ended_at": "2026-10-30T23:21:26.912000+00:00",
+      "duration_s": 452,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a44a3921b035127d7",
+      "parent_session_id": "2e6bd575-5a95-5f42-9c8e-8ce6cd8ce0e7",
+      "date": "2026-10-30",
+      "started_at": "2026-10-30T23:02:02.637000+00:00",
+      "ended_at": "2026-10-30T23:06:18.946000+00:00",
+      "duration_s": 256,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a5af87acc15c3f0ee",
+      "parent_session_id": "2e6bd575-5a95-5f42-9c8e-8ce6cd8ce0e7",
+      "date": "2026-10-30",
+      "started_at": "2026-10-30T23:42:08.955000+00:00",
+      "ended_at": "2026-10-30T23:51:10.769000+00:00",
+      "duration_s": 541,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a7d02bfecb618a14d",
+      "parent_session_id": "2e6bd575-5a95-5f42-9c8e-8ce6cd8ce0e7",
+      "date": "2026-10-30",
+      "started_at": "2026-10-30T23:13:54.781000+00:00",
+      "ended_at": "2026-10-30T23:18:06.902000+00:00",
+      "duration_s": 252,
+      "selected_by": "parent",
+      "cross_repo": false
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "b0ed0baf-7396-4916-94a9-8501cc59cb06",
+    "cd632b1c-727f-48c9-b8b8-efb5fc5e4989"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "2e6bd575-5a95-5f42-9c8e-8ce6cd8ce0e7",
+      "agent_id": null,
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": false,
+      "date": "2026-10-30",
+      "duration_s": 4030,
+      "tokens": {
+        "input": 171,
+        "output": 52297,
+        "cache_read": 18089536,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 234325
+      },
+      "cost_usd": 3.2695656,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "2e6bd575-5a95-5f42-9c8e-8ce6cd8ce0e7",
+      "agent_id": "a0e3a9ec7a616faaf",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-30",
+      "duration_s": 31,
+      "tokens": {
+        "input": 14,
+        "output": 4460,
+        "cache_read": 408213,
+        "cache_creation_5m": 30229,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 0.1610218,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "2e6bd575-5a95-5f42-9c8e-8ce6cd8ce0e7",
+      "agent_id": "a137bf2297fceb492",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-30",
+      "duration_s": 637,
+      "tokens": {
+        "input": 64,
+        "output": 83344,
+        "cache_read": 5319472,
+        "cache_creation_5m": 198359,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 1.8614127000000003,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "2e6bd575-5a95-5f42-9c8e-8ce6cd8ce0e7",
+      "agent_id": "a19ab002f417aa7c1",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-30",
+      "duration_s": 452,
+      "tokens": {
+        "input": 128,
+        "output": 52772,
+        "cache_read": 11296048,
+        "cache_creation_5m": 164828,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 2.0696508000000002,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "2e6bd575-5a95-5f42-9c8e-8ce6cd8ce0e7",
+      "agent_id": "a44a3921b035127d7",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-30",
+      "duration_s": 256,
+      "tokens": {
+        "input": 64,
+        "output": 34645,
+        "cache_read": 3247735,
+        "cache_creation_5m": 132982,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 1.0038065,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "2e6bd575-5a95-5f42-9c8e-8ce6cd8ce0e7",
+      "agent_id": "a5af87acc15c3f0ee",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-30",
+      "duration_s": 541,
+      "tokens": {
+        "input": 98,
+        "output": 39705,
+        "cache_read": 7452325,
+        "cache_creation_5m": 186847,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 1.609596,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "2e6bd575-5a95-5f42-9c8e-8ce6cd8ce0e7",
+      "agent_id": "a7d02bfecb618a14d",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-10-30",
+      "duration_s": 252,
+      "tokens": {
+        "input": 74,
+        "output": 31714,
+        "cache_read": 5380185,
+        "cache_creation_5m": 145999,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 1.220304,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 3.2695656,
+    "sidechain": 7.925791800000001,
+    "subagents": 7.925791800000001,
+    "total": 11.1953574,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 4030,
+    "subagents": 2169,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": []
+}

@@ -1,0 +1,60 @@
+{
+  "plan": "50-plan-layout-migration-script-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "aa099f48-ee85-4a78-9c82-84f7a4277e47",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 15,
+  "duration_ms": 191742,
+  "total_cost_usd": 0.7309284,
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 55081,
+    "cache_read_input_tokens": 396263,
+    "output_tokens": 23370
+  },
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 6614,
+      "outputTokens": 17,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.006699,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 18,
+      "outputTokens": 23370,
+      "cacheReadInputTokens": 396263,
+      "cacheCreationInputTokens": 55081,
+      "webSearchRequests": 0,
+      "costUSD": 0.7242294,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Read": 4,
+    "Glob": 3,
+    "Write": 6,
+    "Edit": 1
+  },
+  "files_edited": [
+    "agentTooling/README.md",
+    "agentTooling/migrate-plans-layout.sh",
+    "plans/features/collection-selection/README.md",
+    "plans/features/core-library-and-gui/README.md",
+    "plans/features/extractor-backends/README.md",
+    "plans/features/image-versions-and-copies/README.md",
+    "plans/features/manual-readings-and-browse/README.md"
+  ],
+  "edit_count": 7
+}

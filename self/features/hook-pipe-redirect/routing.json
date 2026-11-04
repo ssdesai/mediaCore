@@ -1,0 +1,93 @@
+{
+  "captured_at": "2026-09-27T06:08:31Z",
+  "cost_usd": 47.857327,
+  "duration_s": 47457,
+  "ended_at": "2026-09-27T06:08:31Z",
+  "features_started": [
+    {
+      "at": "2026-09-26T17:42:40Z",
+      "slug": "backlog-rulings-2026-09-26"
+    },
+    {
+      "at": "2026-09-26T17:50:31Z",
+      "slug": "manifest-pin-subagent"
+    },
+    {
+      "at": "2026-09-26T19:16:21Z",
+      "slug": "start-takeover"
+    },
+    {
+      "at": "2026-09-27T00:54:49Z",
+      "slug": "hook-pipe-redirect"
+    },
+    {
+      "at": "2026-09-27T00:59:14Z",
+      "slug": "self-settings-untracked"
+    },
+    {
+      "at": "2026-09-27T01:03:43Z",
+      "slug": "rates-tier-check"
+    },
+    {
+      "at": "2026-09-27T01:08:41Z",
+      "slug": "propagation-as-feature"
+    },
+    {
+      "at": "2026-09-27T01:22:02Z",
+      "slug": "runner-sandbox"
+    },
+    {
+      "at": "2026-09-27T01:28:13Z",
+      "slug": "pull-agenttooling-pr66"
+    },
+    {
+      "at": "2026-09-27T01:35:42Z",
+      "slug": "records-sort"
+    },
+    {
+      "at": "2026-09-27T01:38:25Z",
+      "slug": "record-lock-all-routes"
+    },
+    {
+      "at": "2026-09-27T01:39:11Z",
+      "slug": "gui-fast-startup"
+    },
+    {
+      "at": "2026-09-27T01:39:41Z",
+      "slug": "keyed-tie-neither"
+    },
+    {
+      "at": "2026-09-27T02:06:15Z",
+      "slug": "resolve-view-flake"
+    },
+    {
+      "at": "2026-09-27T02:23:11Z",
+      "slug": "discogs-client-pacing"
+    },
+    {
+      "at": "2026-09-27T02:38:12Z",
+      "slug": "edit-unpair-drops-kept"
+    },
+    {
+      "at": "2026-09-27T02:41:21Z",
+      "slug": "import-original-year-preview"
+    },
+    {
+      "at": "2026-09-27T02:42:30Z",
+      "slug": "per-track-performer-artist"
+    },
+    {
+      "at": "2026-09-27T05:51:22Z",
+      "slug": "stored-row-fold"
+    },
+    {
+      "at": "2026-09-27T05:51:23Z",
+      "slug": "issue-year-warning"
+    }
+  ],
+  "git_branch": "HEAD",
+  "launched_in": "/Users/sahildesai/dev",
+  "model": "claude-fable-5-1/claude-opus-5-5",
+  "session_id": "85f7f627-01e8-42df-8c27-d9bcc1fa8c2b",
+  "started_at": "2026-09-26T16:57:33Z"
+}

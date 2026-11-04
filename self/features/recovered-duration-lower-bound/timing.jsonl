@@ -1,0 +1,15 @@
+{"at":"2026-09-07T16:18:18Z","event":"checkpoint","status":"planned"}
+{"at":"2026-09-07T16:23:50Z","event":"checkpoint","status":"tests-written"}
+{"at":"2026-09-07T16:24:10Z","event":"checkpoint","status":"implementing"}
+{"at":"2026-09-07T16:37:22Z","event":"checkpoint","status":"gating"}
+{"at":"2026-09-07T16:39:16Z","event":"checkpoint","status":"committed"}
+{"at":"2026-09-07T16:41:55Z","event":"pass_start","queue":"review"}
+{"at":"2026-09-07T16:41:55Z","event":"plan_start","plan":"88-review-opus","queue":"review"}
+{"at":"2026-09-07T16:42:30Z","event":"plan_end","plan":"88-review-opus","queue":"review","rc":"2"}
+{"at":"2026-09-07T16:42:30Z","event":"pass_end","queue":"review","reason":"stopped: Claude usage limit reached on 88-review-opus.md (left in inprogress for next run)"}
+{"at":"2026-09-07T19:23:35Z","event":"pass_start","queue":"review"}
+{"at":"2026-09-07T19:23:35Z","event":"plan_start","plan":"88-review-opus","queue":"review"}
+{"at":"2026-09-07T19:30:01Z","event":"plan_end","plan":"88-review-opus","queue":"review","rc":"0"}
+{"at":"2026-09-07T19:30:08Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/34"}
+{"at":"2026-09-07T19:30:08Z","event":"pass_end","queue":"review","reason":"all review plans complete"}
+{"at":"2026-09-07T19:49:07Z","event":"checkpoint","status":"committed"}

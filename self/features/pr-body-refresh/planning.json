@@ -1,0 +1,141 @@
+{
+  "slug": "pr-body-refresh",
+  "captured_at": "2026-10-27T15:39:16.982579+00:00",
+  "manifest_branches": [
+    "claude/pr-body-refresh"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "2c335de6-0b5a-5f78-9245-564c921d1a3e",
+      "git_branch": "claude/pr-body-refresh",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-10-27",
+      "started_at": "2026-10-27T15:29:19.823000+00:00",
+      "ended_at": "2026-10-27T15:39:10.881000+00:00",
+      "duration_s": 591
+    },
+    {
+      "session_id": "4ffd10e0-60ac-59c8-a56a-9aa2a66e52cc",
+      "git_branch": "claude/pr-body-refresh",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-10-27",
+      "started_at": "2026-10-27T14:32:16.522000+00:00",
+      "ended_at": "2026-10-27T15:13:36.685000+00:00",
+      "duration_s": 2480,
+      "agent_id": null,
+      "carried_from": "2026-10-27T15:13:38.671962+00:00"
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "fd40808b-f928-4673-8182-eb262079e84e"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "2c335de6-0b5a-5f78-9245-564c921d1a3e",
+      "agent_id": null,
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": false,
+      "date": "2026-10-27",
+      "duration_s": 591,
+      "tokens": {
+        "input": 68,
+        "output": 8748,
+        "cache_read": 3370953,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 78936
+      },
+      "cost_usd": 0.7404553,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "4ffd10e0-60ac-59c8-a56a-9aa2a66e52cc",
+      "agent_id": null,
+      "model": "claude-fable-5-1",
+      "is_sidechain": false,
+      "date": "2026-10-27",
+      "duration_s": 2480,
+      "tokens": {
+        "input": 1732,
+        "output": 18340,
+        "cache_read": 10016206,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 190443
+      },
+      "cost_usd": 7.2472315,
+      "rates_applied": {
+        "model": "claude-fable-5-1",
+        "input": 10,
+        "output": 50,
+        "cache_read": 0.25,
+        "cache_creation_5m": 12.5,
+        "cache_creation_1h": 20,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      },
+      "carried_from": "2026-10-27T15:13:38.671962+00:00"
+    },
+    {
+      "session_id": "4ffd10e0-60ac-59c8-a56a-9aa2a66e52cc",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-10-27",
+      "duration_s": 2480,
+      "tokens": {
+        "input": 195,
+        "output": 61993,
+        "cache_read": 26036130,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 282799
+      },
+      "cost_usd": 8.710258,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      },
+      "carried_from": "2026-10-27T15:13:38.671962+00:00"
+    }
+  ],
+  "cost_usd": {
+    "main": 16.6979448,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 16.6979448,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 3071,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "1 entry carried forward from the committed planning.json \u2014 this scan cannot reach their transcripts, so each keeps the figure of the capture that priced it (2026-10-27T15:13:38.671962+00:00): 4ffd10e0-60ac-59c8-a56a-9aa2a66e52cc. --force rebuilds without them"
+  ],
+  "carried_from": "2026-10-27T15:13:38.671962+00:00"
+}

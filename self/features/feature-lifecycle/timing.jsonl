@@ -1,0 +1,12 @@
+{"at":"2026-09-03T18:55:24Z","event":"checkpoint","status":"planned"}
+{"at":"2026-09-03T19:05:09Z","event":"checkpoint","status":"tests-written"}
+{"at":"2026-09-03T19:17:26Z","event":"checkpoint","status":"implementing"}
+{"at":"2026-09-03T19:54:18Z","event":"checkpoint","status":"gating"}
+{"at":"2026-09-03T19:54:18Z","event":"checkpoint","status":"committed"}
+{"at":"2026-09-03T19:54:32Z","event":"pass_start","queue":"review"}
+{"at":"2026-09-03T19:54:32Z","event":"pass_end","queue":"review","reason":"stopped: 72-review-opus.md still contains @@TODO@@ (moved to failed; write the brief and move it back to incomplete/)"}
+{"at":"2026-09-03T19:59:28Z","event":"pass_start","queue":"review"}
+{"at":"2026-09-03T19:59:28Z","event":"plan_start","plan":"72-review-opus","queue":"review"}
+{"at":"2026-09-03T20:06:15Z","event":"plan_end","plan":"72-review-opus","queue":"review","rc":"0"}
+{"at":"2026-09-03T20:06:24Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/28"}
+{"at":"2026-09-03T20:06:24Z","event":"pass_end","queue":"review","reason":"all review plans complete"}

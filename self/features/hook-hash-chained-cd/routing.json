@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-10-02T01:59:00Z",
+  "cost_usd": 24.97215,
+  "duration_s": 13538,
+  "ended_at": "2026-10-02T01:59:00Z",
+  "features_started": [
+    {
+      "at": "2026-10-01T22:13:36Z",
+      "slug": "hook-hash-chained-cd"
+    }
+  ],
+  "git_branch": "main",
+  "launched_in": "/Users/sahildesai/dev/agentTooling",
+  "model": "claude-fable-5-1/claude-opus-5-5",
+  "session_id": "a1dcbf55-2ab0-4dfe-a713-b7d199c9fb95",
+  "started_at": "2026-10-01T22:13:21Z"
+}

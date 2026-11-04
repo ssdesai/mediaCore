@@ -1,0 +1,164 @@
+{
+  "slug": "litellm-pricing",
+  "generated_at": "2026-09-23T16:45:31.639869+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 8.2845558,
+    "build": 8.2845558,
+    "verify": 0.0,
+    "review": 2.5677583999999998,
+    "total": 10.852314199999999,
+    "planning_pct": 0.0,
+    "build_pct": 76.33907061039571,
+    "verify_pct": 0.0,
+    "review_pct": 23.660929389604295,
+    "cost_per_plan": 5.426157099999999,
+    "cost_per_file": 1.3565392749999998,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 3645,
+    "planning_subagents_s": 1464,
+    "planning_s": 0.0,
+    "implementer_s": 5109,
+    "build_s": 5109.0,
+    "verify_s": 0.0,
+    "review_s": 658.524,
+    "executor_s": 5767.524,
+    "total_s": 5767.524,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-09-23T16:03:04+00:00",
+      "last_at": "2026-09-23T16:41:15+00:00",
+      "batch_span_s": 2291.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 663.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 663.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-09-23T16:41:15+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/62"
+    },
+    "tests_s": 299.0,
+    "direct_build_s": 296.0,
+    "gate_s": 658.0
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 8.2845558,
+      "build_min": 85.15,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.3881055999999998,
+      "review_min": 5.648133333333333,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.1796528,
+      "review_min": 5.3272666666666675,
+      "review_plan": "02-review-sonnet",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 5.3685904,
+    "sessions": 2.9159653999999993
+  },
+  "cold_start_tax_tokens": 193278,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 31,
+      "total_cost_usd": 1.3881055999999998,
+      "total_duration_s": 338.888,
+      "flags": []
+    },
+    {
+      "model": "sonnet",
+      "plan_count": 1,
+      "total_turns": 60,
+      "total_cost_usd": 1.1796528,
+      "total_duration_s": 319.636,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 6,
+      "files_edited": 5,
+      "churn_ratio": 1.2
+    },
+    {
+      "plan": "02-review-sonnet",
+      "edit_count": 5,
+      "files_edited": 4,
+      "churn_ratio": 1.25
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 63,
+      "loc_changed": 139
+    },
+    {
+      "plan": "02-review-sonnet",
+      "plan_md_lines": 42,
+      "loc_changed": 98
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "/var/folders/w1/sjvnhgn11ml_fj_s_kch9xv40000gn/T/plan-capture.afsoAY/scratch/parity.py",
+        "analysis/refresh_rates.py",
+        "analysis/transcript.py",
+        "self/review-report.md",
+        "self/tests/timestamps-are-utc.sh"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-sonnet",
+      "edited_not_listed": [
+        "/var/folders/w1/sjvnhgn11ml_fj_s_kch9xv40000gn/T/plan-capture.mUNm22/scratch/wait-gate.sh",
+        "self/review-report.md",
+        "self/tests/README.md",
+        "self/tests/report-footnotes.sh"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": []
+}

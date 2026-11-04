@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-10-26T17:08:31Z",
+  "cost_usd": 2.284361,
+  "duration_s": 1682,
+  "ended_at": "2026-10-26T17:08:31Z",
+  "features_started": [
+    {
+      "at": "2026-10-26T16:40:45Z",
+      "slug": "cloud-wave-sessions"
+    }
+  ],
+  "git_branch": "HEAD",
+  "launched_in": "/home/user/agentTooling",
+  "model": "claude-opus-5-5",
+  "session_id": "e33580ff-b5d0-5f9a-b8c0-185089f2fd5c",
+  "started_at": "2026-10-26T16:40:28Z"
+}

@@ -1,0 +1,75 @@
+{
+  "plan": "77-sync-check-and-update-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "f0deb6a9-97bc-4d36-93d0-670c5083975b",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 27,
+  "duration_ms": 403236,
+  "total_cost_usd": 1.0235910000000001,
+  "usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 101894,
+    "cache_read_input_tokens": 792030,
+    "output_tokens": 45356
+  },
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 3889,
+      "outputTokens": 24,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.004009,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 0,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 20,
+      "outputTokens": 45356,
+      "cacheReadInputTokens": 792030,
+      "cacheCreationInputTokens": 101894,
+      "webSearchRequests": 0,
+      "costUSD": 1.0195820000000002,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 36318,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Edit": 7,
+    "Glob": 5,
+    "Read": 12,
+    "Write": 2
+  },
+  "files_edited": [
+    "README.md",
+    "self/gate.sh",
+    "self/pr.sh",
+    "self/worktree-setup.sh",
+    "sync-plans.sh",
+    "templates/plans/gate.sh",
+    "templates/plans/pr.sh",
+    "templates/plans/worktree-setup.sh",
+    "update.sh"
+  ],
+  "edit_count": 9,
+  "attempts": [
+    {
+      "session_id": "f0deb6a9-97bc-4d36-93d0-670c5083975b",
+      "outcome": "complete",
+      "total_cost_usd": 1.0235910000000001,
+      "num_turns": 27,
+      "duration_ms": 403236
+    }
+  ]
+}

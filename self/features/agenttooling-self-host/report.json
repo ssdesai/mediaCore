@@ -1,0 +1,143 @@
+{
+  "slug": "agenttooling-self-host",
+  "generated_at": "2026-08-05T18:39:52.771637+00:00",
+  "cost": {
+    "planning": 11.3701503,
+    "build": 3.610709499999999,
+    "verify": 1.4520008,
+    "total": 16.432860599999998,
+    "planning_pct": 69.19154599291132,
+    "build_pct": 21.972495160094034,
+    "verify_pct": 8.835958846994663,
+    "cost_per_plan": 3.2865721199999998,
+    "cost_per_file": 0.7825171714285714,
+    "total_is_partial": false,
+    "missing_usage_plans": []
+  },
+  "cold_start_tax_tokens": 313498,
+  "model_fit": [
+    {
+      "model": "haiku",
+      "plan_count": 1,
+      "total_turns": 13,
+      "total_cost_usd": 0.15988009999999997,
+      "flags": [
+        "plan 60-self-corpus-scaffold-haiku took 13 turns on haiku (> 8, may have needed more judgment than haiku gives)"
+      ]
+    },
+    {
+      "model": "sonnet",
+      "plan_count": 4,
+      "total_turns": 142,
+      "total_cost_usd": 4.9028301999999995,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "59-runner-self-mode-sonnet",
+      "edit_count": 18,
+      "files_edited": 7,
+      "churn_ratio": 2.5714285714285716
+    },
+    {
+      "plan": "60-self-corpus-scaffold-haiku",
+      "edit_count": 8,
+      "files_edited": 8,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "61-self-gate-sonnet",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "62-analysis-self-mode-sonnet",
+      "edit_count": 22,
+      "files_edited": 5,
+      "churn_ratio": 4.4
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "59-runner-self-mode-sonnet",
+      "plan_md_lines": 271,
+      "loc_changed": 227
+    },
+    {
+      "plan": "60-self-corpus-scaffold-haiku",
+      "plan_md_lines": 326,
+      "loc_changed": 252
+    },
+    {
+      "plan": "61-self-gate-sonnet",
+      "plan_md_lines": 140,
+      "loc_changed": 161
+    },
+    {
+      "plan": "62-analysis-self-mode-sonnet",
+      "plan_md_lines": 292,
+      "loc_changed": 251
+    },
+    {
+      "plan": "63-verify-sonnet",
+      "plan_md_lines": 93,
+      "loc_changed": 0
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/Users/sahildesai/dev/vinylCatalogue/agentTooling/README.md",
+      "tool": "Read",
+      "plans": [
+        "59-runner-self-mode-sonnet",
+        "63-verify-sonnet"
+      ]
+    },
+    {
+      "target": "/Users/sahildesai/dev/vinylCatalogue/agentTooling/RUNNER.md",
+      "tool": "Read",
+      "plans": [
+        "59-runner-self-mode-sonnet",
+        "63-verify-sonnet"
+      ]
+    },
+    {
+      "target": "/Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/README.md",
+      "tool": "Read",
+      "plans": [
+        "62-analysis-self-mode-sonnet",
+        "63-verify-sonnet"
+      ]
+    },
+    {
+      "target": "/Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/backfill_usage.py",
+      "tool": "Read",
+      "plans": [
+        "62-analysis-self-mode-sonnet",
+        "63-verify-sonnet"
+      ]
+    },
+    {
+      "target": "/Users/sahildesai/dev/vinylCatalogue/agentTooling/analysis/roots.py",
+      "tool": "Read",
+      "plans": [
+        "62-analysis-self-mode-sonnet",
+        "63-verify-sonnet"
+      ]
+    }
+  ],
+  "plan_drift": [],
+  "edit_overlap": [
+    {
+      "file": "plan-runner-lib.sh",
+      "earlier_plan": "59-runner-self-mode-sonnet",
+      "later_plan": "59-runner-self-mode-sonnet",
+      "overlap_chars": 253
+    }
+  ],
+  "warnings": [
+    "plan 63-verify-sonnet has 0 files_edited; excluded from churn ratio"
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "plan": "54-analysis-backfill-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "7b2fc3cd-f0eb-4a01-9f58-83c49c53cb13",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 15,
+  "duration_ms": 121550,
+  "total_cost_usd": 0.5678481000000001,
+  "usage": {
+    "input_tokens": 26,
+    "cache_creation_input_tokens": 39777,
+    "cache_read_input_tokens": 508417,
+    "output_tokens": 11526
+  },
+  "model_usage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 3603,
+      "outputTokens": 18,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0036929999999999997,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty"
+    },
+    "claude-sonnet-5": {
+      "inputTokens": 26,
+      "outputTokens": 11526,
+      "cacheReadInputTokens": 508417,
+      "cacheCreationInputTokens": 39777,
+      "webSearchRequests": 0,
+      "costUSD": 0.5641551,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "canonicalModel": "claude-sonnet-5",
+      "provider": "firstParty"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Read": 8,
+    "Glob": 1,
+    "Grep": 1,
+    "Write": 1,
+    "Edit": 3
+  },
+  "files_edited": [
+    "agentTooling/analysis/README.md",
+    "agentTooling/analysis/backfill_usage.py"
+  ],
+  "edit_count": 4
+}

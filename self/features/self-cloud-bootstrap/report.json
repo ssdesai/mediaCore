@@ -1,0 +1,176 @@
+{
+  "slug": "self-cloud-bootstrap",
+  "generated_at": "2026-10-06T05:33:27.618797+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 34.46230285,
+    "build": 34.46230285,
+    "verify": 0.0,
+    "review": 2.0970206000000005,
+    "total": 36.55932345,
+    "planning_pct": 0.0,
+    "build_pct": 94.26406070432904,
+    "verify_pct": 0.0,
+    "review_pct": 5.735939295670967,
+    "cost_per_plan": 18.279661725,
+    "cost_per_file": 12.18644115,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 26853,
+    "planning_subagents_s": 24539,
+    "planning_s": 0.0,
+    "implementer_s": 51392,
+    "build_s": 51392.0,
+    "verify_s": 0.0,
+    "review_s": 177.755,
+    "executor_s": 51569.755,
+    "total_s": 51569.755,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-10-05T22:14:56+00:00",
+      "last_at": "2026-10-06T05:33:26+00:00",
+      "batch_span_s": 26310.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 182.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 182.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-10-06T05:33:26+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/84"
+    },
+    "tests_s": 254.0,
+    "direct_build_s": null,
+    "gate_s": null
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 34.46230285,
+      "build_min": 856.5333333333333,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.2295908,
+      "review_min": 1.4983333333333335,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.8674298000000003,
+      "review_min": 1.46425,
+      "review_plan": "02-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 20.11229145,
+    "sessions": 14.3500114
+  },
+  "cold_start_tax_tokens": 148871,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 2,
+      "total_turns": 58,
+      "total_cost_usd": 2.0970206000000005,
+      "total_duration_s": 177.755,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "02-review-opus",
+      "edit_count": 3,
+      "files_edited": 3,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 74,
+      "loc_changed": 77
+    },
+    {
+      "plan": "02-review-opus",
+      "plan_md_lines": 45,
+      "loc_changed": 60
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/home/user/agenttooling/self/gate-report.txt",
+      "tool": "Read",
+      "plans": [
+        "01-review-opus",
+        "02-review-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agenttooling/self/tests/README.md",
+      "tool": "Read",
+      "plans": [
+        "01-review-opus",
+        "02-review-opus"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.VpHu74/scratch/markers.sh",
+        "self/gate.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": [],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and its `checkpoint` stamps span rounds 1, 2 \u2014 one figure cannot be divided between them, so all of it sits in round 1"
+    }
+  ],
+  "profile": "cloud",
+  "gate": "skipped"
+}

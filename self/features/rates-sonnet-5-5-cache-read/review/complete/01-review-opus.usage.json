@@ -1,0 +1,54 @@
+{
+  "plan": "01-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "46fcca79-34ff-4066-abee-02fe38defd94",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 15,
+  "duration_ms": 39578,
+  "total_cost_usd": 0.6067045999999999,
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 52960,
+    "cache_read_input_tokens": 553263,
+    "output_tokens": 3615
+  },
+  "model_usage": {
+    "claude-opus-5-5": {
+      "inputTokens": 18,
+      "outputTokens": 3615,
+      "cacheReadInputTokens": 553263,
+      "cacheCreationInputTokens": 52960,
+      "webSearchRequests": 0,
+      "costUSD": 0.6067045999999999,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 819,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 9,
+    "Read": 3,
+    "Write": 2
+  },
+  "files_edited": [
+    "/tmp/plan-capture.HC3lId/scratch/rates.py",
+    "self/review-report.md"
+  ],
+  "edit_count": 2,
+  "attempts": [
+    {
+      "session_id": "46fcca79-34ff-4066-abee-02fe38defd94",
+      "outcome": "complete",
+      "total_cost_usd": 0.6067045999999999,
+      "num_turns": 15,
+      "duration_ms": 39578
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "slug": "program-scorecard",
+  "generated_at": "2026-10-30T22:26:45.526993+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 1.6830969,
+    "build": 1.6830969,
+    "verify": 0.0,
+    "review": 1.5000046,
+    "total": 3.1831015000000003,
+    "planning_pct": 0.0,
+    "build_pct": 52.876004739402745,
+    "verify_pct": 0.0,
+    "review_pct": 47.12399526059725,
+    "cost_per_plan": 3.1831015000000003,
+    "cost_per_file": 0.5305169166666667,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 1163,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 1163,
+    "build_s": 1163.0,
+    "verify_s": 0.0,
+    "review_s": 136.777,
+    "executor_s": 1299.777,
+    "total_s": 1299.777,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-10-30T22:23:38+00:00",
+      "last_at": "2026-10-30T22:26:44+00:00",
+      "batch_span_s": 186.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 139.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 139.0,
+      "plan_runs": 1,
+      "pr_opened_at": "2026-10-30T22:26:44+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/110"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 1.6830969,
+      "build_min": 19.383333333333333,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.5000046,
+      "review_min": 2.2796166666666666,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 1.6830969
+  },
+  "cold_start_tax_tokens": 96151,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 32,
+      "total_cost_usd": 1.5000046,
+      "total_duration_s": 136.777,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 11,
+      "files_edited": 6,
+      "churn_ratio": 1.8333333333333333
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 98,
+      "loc_changed": 150
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.bo9myX/scratch/oldcheck.sh",
+        "harness/README.md",
+        "harness/scorecard.py",
+        "harness/tests/README.md",
+        "harness/tests/scorecard-programs.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": [],
+  "profile": "cloud",
+  "gate": "green"
+}

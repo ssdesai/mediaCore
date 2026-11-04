@@ -1,0 +1,16 @@
+{"at":"2026-10-12T23:47:40Z","event":"checkpoint","status":"planned","round":"1"}
+{"at":"2026-10-12T23:50:23Z","event":"checkpoint","status":"tests-written","round":"1"}
+{"at":"2026-10-12T23:58:09Z","event":"checkpoint","status":"committed","round":"1"}
+{"at":"2026-10-13T00:06:10Z","event":"pass_start","queue":"review","round":"1"}
+{"at":"2026-10-13T00:06:10Z","event":"plan_start","plan":"01-review-opus","queue":"review","round":"1"}
+{"at":"2026-10-13T00:08:46Z","event":"plan_end","plan":"01-review-opus","queue":"review","rc":"0","verdict":"escalated","head":"d27a66b9cd6db06fcc87f91f630a7f9682914aaa","round":"1"}
+{"at":"2026-10-13T00:08:46Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"1"}
+{"at":"2026-10-13T00:19:29Z","event":"pass_start","queue":"review","round":"2"}
+{"at":"2026-10-13T00:19:29Z","event":"plan_start","plan":"02-review-opus","queue":"review","round":"2"}
+{"at":"2026-10-13T00:21:02Z","event":"plan_end","plan":"02-review-opus","queue":"review","rc":"0","verdict":"escalated","head":"497d249eadabc13bcacc2779e6fd6617e179ca86","round":"2"}
+{"at":"2026-10-13T00:21:02Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"2"}
+{"at":"2026-10-13T00:30:56Z","event":"pass_start","queue":"review","round":"3"}
+{"at":"2026-10-13T00:30:56Z","event":"plan_start","plan":"03-review-opus","queue":"review","round":"3"}
+{"at":"2026-10-13T00:32:05Z","event":"plan_end","plan":"03-review-opus","queue":"review","rc":"0","verdict":"clean","head":"28c08c4ad71f7786a0ee818728195a291c8361b4","round":"3"}
+{"at":"2026-10-13T00:32:05Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"3"}
+{"at":"2026-10-13T00:32:56Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/87","round":"3"}

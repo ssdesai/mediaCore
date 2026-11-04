@@ -1,0 +1,9 @@
+edit: /home/user/agentTooling/attach-branch.sh
+edit: /home/user/agentTooling/attach-branch.sh
+edit: /home/user/agentTooling/self/tests/attach-branch.sh
+edit: /home/user/agentTooling/self/tests/attach-branch.sh
+edit: /home/user/agentTooling/plan-runner-roots.sh
+edit: /home/user/agentTooling/plan-runner-roots.sh
+edit: /home/user/agentTooling/self/tests/README.md
+edit: /home/user/agentTooling/README.md
+write: /home/user/agentTooling/self/review-report.md

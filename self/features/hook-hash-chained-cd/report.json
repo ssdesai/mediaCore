@@ -1,0 +1,238 @@
+{
+  "slug": "hook-hash-chained-cd",
+  "generated_at": "2026-10-02T01:59:05.768142+00:00",
+  "cost": {
+    "method": "hand",
+    "planning": 0.0,
+    "implementer": 24.97214975,
+    "build": 24.97214975,
+    "verify": 0.0,
+    "review": 1.5444525999999998,
+    "total": 26.51660235,
+    "planning_pct": 0.0,
+    "build_pct": 94.17552603604963,
+    "verify_pct": 0.0,
+    "review_pct": 5.824473963950362,
+    "cost_per_plan": 6.6291505875,
+    "cost_per_file": 5.30332047,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "hand",
+    "planning_sessions_s": 13538,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 13538,
+    "build_s": 13538.0,
+    "verify_s": 0.0,
+    "review_s": 712.35,
+    "executor_s": 14250.35,
+    "total_s": 14250.35,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-10-01T22:36:49+00:00",
+      "last_at": "2026-10-02T01:59:03+00:00",
+      "batch_span_s": 12134.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 724.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 724.0,
+      "plan_runs": 4,
+      "pr_opened_at": "2026-10-02T01:59:03+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/74"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 24.97214975,
+      "build_min": 225.63333333333333,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.9244216,
+      "review_min": 2.56805,
+      "review_plan": "01-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/01-review-opus.md"
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.1879152,
+      "review_min": 0.6828000000000001,
+      "review_plan": "02-review-sonnet",
+      "verdict": "escalated",
+      "escalations_file": "escalations/02-review-sonnet.md"
+    },
+    {
+      "round": 3,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.17265519999999998,
+      "review_min": 2.9473,
+      "review_plan": "03-review-sonnet",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 4,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.2594606,
+      "review_min": 5.6743500000000004,
+      "review_plan": "04-review-sonnet",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 24.97214975
+  },
+  "cold_start_tax_tokens": 161027,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 19,
+      "total_cost_usd": 0.9244216,
+      "total_duration_s": 154.083,
+      "flags": []
+    },
+    {
+      "model": "sonnet",
+      "plan_count": 3,
+      "total_turns": 31,
+      "total_cost_usd": 0.620031,
+      "total_duration_s": 558.267,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 5,
+      "files_edited": 3,
+      "churn_ratio": 1.6666666666666667
+    },
+    {
+      "plan": "02-review-sonnet",
+      "edit_count": 4,
+      "files_edited": 3,
+      "churn_ratio": 1.3333333333333333
+    },
+    {
+      "plan": "03-review-sonnet",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "04-review-sonnet",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 55,
+      "loc_changed": 132
+    },
+    {
+      "plan": "02-review-sonnet",
+      "plan_md_lines": 38,
+      "loc_changed": 32
+    },
+    {
+      "plan": "03-review-sonnet",
+      "plan_md_lines": 32,
+      "loc_changed": 27
+    },
+    {
+      "plan": "04-review-sonnet",
+      "plan_md_lines": 64,
+      "loc_changed": 60
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "/var/folders/w1/sjvnhgn11ml_fj_s_kch9xv40000gn/T/plan-capture.CnX0x3/scratch/probe.py",
+        "hooks/allow-repo-commands.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-sonnet",
+      "edited_not_listed": [
+        "hooks/allow-repo-commands.sh",
+        "self/review-report.md",
+        "self/tests/allow-repo-commands.sh"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "03-review-sonnet",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "04-review-sonnet",
+      "edited_not_listed": [
+        "/var/folders/w1/sjvnhgn11ml_fj_s_kch9xv40000gn/T/plan-capture.esOI6Q/scratch/probe.py",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "self/review-report.md",
+      "earlier_plan": "01-review-opus",
+      "later_plan": "01-review-opus",
+      "overlap_chars": 347
+    },
+    {
+      "file": "self/tests/allow-repo-commands.sh",
+      "earlier_plan": "02-review-sonnet",
+      "later_plan": "02-review-sonnet",
+      "overlap_chars": 126
+    }
+  ],
+  "warnings": [],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and this feature stamped no `checkpoint` event \u2014 nothing divides it by round, so all of it sits in round 1"
+    }
+  ]
+}
