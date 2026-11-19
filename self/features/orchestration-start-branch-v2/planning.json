@@ -1,0 +1,77 @@
+{
+  "slug": "orchestration-start-branch-v2",
+  "captured_at": "2026-11-19T16:53:57.785705+00:00",
+  "manifest_branches": [
+    "claude/orchestration-start-branch-v2"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "73b3e66d-74ea-5635-adb3-d13aa30a7e6e",
+      "git_branch": "claude/orchestration-start-branch-v2",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-11-18",
+      "started_at": "2026-11-18T18:29:06.653000+00:00",
+      "ended_at": "2026-11-19T16:53:55.015000+00:00",
+      "duration_s": 80688
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "0dbf7a21-be95-4693-ad52-38f8edff696a",
+    "2142dc44-c0e5-4b17-bf1e-a58039cc957a",
+    "2eaeff0a-6e94-4bf5-95bf-7a7f095819ad",
+    "3fccd06c-a281-425a-8792-152917a04b37",
+    "900e8a05-562d-4d5d-847b-997a9ad82379",
+    "979c9aeb-d424-4537-a3ca-cac7867f24af",
+    "ba11195d-80f2-45fd-8ce0-22df86227b50",
+    "c76f1f14-441d-4003-aaf5-ee2dd2682767"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "73b3e66d-74ea-5635-adb3-d13aa30a7e6e",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-18",
+      "duration_s": 80688,
+      "tokens": {
+        "input": 430,
+        "output": 115677,
+        "cache_read": 61091765,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 924512
+      },
+      "cost_usd": 21.929709,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 21.929709,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 21.929709,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 80688,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-11-18",
+  "warnings": []
+}

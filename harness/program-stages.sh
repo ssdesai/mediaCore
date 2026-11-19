@@ -46,7 +46,12 @@ PROGRAM_METHOD_STAGE_ALIAS="method"
 PROGRAM_BRIEFS_ROOT="plans/programs"        # inside the program tree
 PROGRAM_BRIEFS_SUBDIR="briefs"
 PROGRAM_BRIEF_NAME_FORMAT='%02d-%s.md'
-PROGRAM_RECORD_ROOT="agentTooling/self/orchestrations"   # inside the program tree
+# A record lives in the repo that ran it (self/features/orchestration-records-in-repo/):
+# `plans/orchestrations/` of the program tree. An arm pinned to an agentTooling from before
+# that wrote it inside the vendored copy instead, so the old place is read when it is the only
+# one holding the record (`program_record_root`).
+PROGRAM_RECORD_ROOT="plans/orchestrations"                      # inside the program tree
+PROGRAM_RECORD_ROOT_LEGACY="agentTooling/self/orchestrations"   # an arm on an older agentTooling
 PROGRAM_RECORD_NAME="README.md"
 PROGRAM_REPORT_NAME="report.json"
 PROGRAM_START_SCRIPT="orchestration-start.sh"
@@ -124,7 +129,14 @@ program_brief_path() {  # $1 index (0-based)
   name="$(printf "$PROGRAM_BRIEF_NAME_FORMAT" "$(( $1 + 1 ))" "${PF_FIXTURE[$1]}")"
   printf '%s/%s' "$(program_brief_dir)" "$name"
 }
-program_record_relpath() { printf '%s/%s/%s' "$PROGRAM_RECORD_ROOT" "$PSLUG" "$PROGRAM_RECORD_NAME"; }
+program_record_root() {  # the root holding this program's record in the tree; the new one when neither does
+  if [[ ! -d "$PTREE/$PROGRAM_RECORD_ROOT/$PSLUG" && -d "$PTREE/$PROGRAM_RECORD_ROOT_LEGACY/$PSLUG" ]]; then
+    printf '%s' "$PROGRAM_RECORD_ROOT_LEGACY"
+  else
+    printf '%s' "$PROGRAM_RECORD_ROOT"
+  fi
+}
+program_record_relpath() { printf '%s/%s/%s' "$(program_record_root)" "$PSLUG" "$PROGRAM_RECORD_NAME"; }
 program_record_path()    { printf '%s/%s' "$PTREE" "$(program_record_relpath)"; }
 program_fstate()         { printf '%s/%s.json' "$STATE_DIR" "${PF_BRANCH[$1]}"; }   # $1 index
 
@@ -393,12 +405,7 @@ do_program_setup() {
     harness_die "program $PROGRAM cannot run on this agentTooling version (above)"
   fi
 
-  local cmd
-  while IFS= read -r cmd; do
-    [[ -n "$cmd" ]] || continue
-    harness_log "setup: $cmd"
-    ( cd "$PTREE" && eval "$cmd" ) || harness_die "program setup command failed: $cmd"
-  done < <(jq -r '.setup[]? // empty' "$PROGRAM_JSON")
+  harness_fixture_setup "$PTREE" "$PROGRAM_JSON" || harness_die "program setup failed in $PTREE"
 
   local log="$LOG_DIR/$PBRANCH-gate-setup.log"
   harness_run_gate "$PTREE" "$PGATE_COMMAND" "$log"
@@ -796,7 +803,7 @@ program_overhead() {  # prints the orchestrator's cost, priced with the driver's
 
 # The arm's own cross-check of the group cost (ruling 10): best effort, never fatal.
 program_record_report() {
-  local dir="$PTREE/$PROGRAM_RECORD_ROOT/$PSLUG" at="$PTREE/$AGENT_TOOLING_RELPATH" log="$LOG_DIR/$PBRANCH-record-report.log" report
+  local dir="$PTREE/$(program_record_root)/$PSLUG" at="$PTREE/$AGENT_TOOLING_RELPATH" log="$LOG_DIR/$PBRANCH-record-report.log" report
   if [[ -x "$at/$PROGRAM_CAPTURE_SCRIPT" ]]; then
     ( cd "$at" && "./$PROGRAM_CAPTURE_SCRIPT" "$PSLUG" ) >> "$log" 2>&1 \
       || harness_warn "$PROGRAM_CAPTURE_SCRIPT failed in the program tree (see $log)"
@@ -908,8 +915,8 @@ build_program_row() {  # the `record` stage
   row="$(jq -c -n \
     --arg experiment "$EXPERIMENT_NAME" --arg program "$PROGRAM" --argjson repeat "$REPEAT" \
     --arg arm "$ARM" --arg agent_tooling "$(pstate_or agent_tooling "$ARM_SHA")" \
-    --arg branch "$PBRANCH" --arg slug "$PSLUG" --arg base "$PBASE" --arg model "$HARNESS_MODEL" \
-    --arg effort "$HARNESS_EFFORT" \
+    --arg branch "$PBRANCH" --arg slug "$PSLUG" --arg base "$PBASE" --arg model "$HARNESS_MODEL" --arg review_model "$HARNESS_REVIEW_MODEL" \
+    --arg effort "$HARNESS_EFFORT" --arg review_effort "$HARNESS_REVIEW_EFFORT" \
     --argjson sessions "$(jq -c '.orchestrator_sessions // []' "$PSTATE")" \
     --arg record "$(program_record_relpath)" \
     --arg t_setup_start "$(harness_state_get "$PSTATE" t_setup_start)" \
@@ -930,7 +937,9 @@ build_program_row() {  # the `record` stage
     | { kind: $kind, experiment: $experiment, program: $program, method: $orchestrator,
         repeat: $repeat, arm: $arm, agent_tooling: $agent_tooling,
         branch: $branch, slug: $slug, base: $base, model: $model,
+        review_model: $review_model,
         effort: (if $effort == "" then null else $effort end),
+        review_effort: (if $review_effort == "" then null else $review_effort end),
         orchestrator_sessions: $sessions, orchestration_record: $record,
         t_setup_start: $t_setup_start, t_method_start: $t_method_start, t_method_end: $t_method_end,
         cost_overhead_usd: $overhead,
@@ -1001,7 +1010,7 @@ dry_run_program_cell() {
   while IFS= read -r cmd; do
     [[ -n "$cmd" ]] || continue
     dry "cd $PTREE && $cmd"
-  done < <(jq -r '.setup[]? // empty' "$PROGRAM_JSON")
+  done < <(jq -r "$FIXTURE_SETUP_JQ" "$PROGRAM_JSON")
   dry "cd $PTREE && $PGATE_COMMAND      # require: $PGATE_GREEN"
   dry "cd $PTREE/$AGENT_TOOLING_RELPATH && ./$PROGRAM_START_SCRIPT $PSLUG --session <orchestrator session id>"
   dry "git -C $PTREE commit -m '$PSLUG: start the orchestration record'"
@@ -1016,10 +1025,10 @@ dry_run_program_cell() {
   dry "$HARNESS_CLAUDE_BIN -p --output-format json$(harness_effort_dry) --resume <latest orchestrator session> ... <collect request>   (cwd $PTREE)"
   dry "push $PBRANCH (no PR)"
   if [[ "$DO_REVIEW" == true ]]; then
-    dry "per feature: $HARNESS_CLAUDE_BIN -p$(harness_effort_dry) ... --max-budget-usd $REVIEW_BUDGET_USD <review preamble + the fixture's review-brief.md>"
+    dry "per feature: $HARNESS_CLAUDE_BIN -p$(harness_effort_dry "$HARNESS_REVIEW_EFFORT") --model $HARNESS_REVIEW_MODEL ... --max-budget-usd $REVIEW_BUDGET_USD <review preamble + the fixture's review-brief.md>"
   fi
   if [[ "$DO_REWORK" == true ]]; then
-    dry "per feature, only if escalated >= 1: $HARNESS_CLAUDE_BIN -p$(harness_effort_dry) ... --max-budget-usd $REWORK_BUDGET_USD <rework preamble + findings>"
+    dry "per feature, only if escalated >= 1: $HARNESS_CLAUDE_BIN -p$(harness_effort_dry) --model $HARNESS_MODEL ... --max-budget-usd $REWORK_BUDGET_USD <rework preamble + findings>"
   fi
   if [[ "$DO_ACCEPT" == true ]]; then
     dry "per feature: python3 <fixture>/accept/accept.py <tree>; then its gate once more"

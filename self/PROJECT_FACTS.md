@@ -13,7 +13,8 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
 - Shared machinery at the top level: `run-plans.sh`, `run-verify.sh`, `run-review.sh`,
   `run-batch.sh`, `run-escalation-plan.sh`, `plan-runner-lib.sh`, `plan-runner-roots.sh`,
   `check-plans.sh`, `sync-plans.sh`, `update.sh`, `stamp-timing.sh`, `feature-start.sh`,
-  `feature-close.sh`, `feature-capture.sh`, `forge.sh` (the forge adapter `pr.sh`
+  `feature-close.sh`, `feature-capture.sh`, `feature-sync.sh` (merges a moved
+  `origin/<base>` into a started feature's branch), `forge.sh` (the forge adapter `pr.sh`
   calls: `pr-find`, `pr-open`, `pr-edit` over `gh api` REST, and `auto-merge`,
   `reachable` by profile) and `env-profile.sh` (the checkout-layout adapter and the shell's way in to the
   profile detector, sourced: it runs `hooks/env_profile.py` once, the one module that holds
@@ -27,7 +28,8 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
   `AGENT_DIRECT.md`, `ORCHESTRATION.md`, `RUNNER.md`, `README.md`. `EXPERIMENTS.md` lives
   with its tool, under `harness/`.
 - `templates/` — the stubs `sync-plans.sh` writes into a *consuming* repo's `plans/`.
-  Never edited in the consuming repo. Six are generated and overwritten every sync (`ORCHESTRATOR_BRIEF.md` among them);
+  Never edited in the consuming repo. Seven are generated and overwritten every sync (`ORCHESTRATOR_BRIEF.md` for an implementer session and
+  `ORCHESTRATOR_SESSION_BRIEF.md` for the orchestrator's own among them);
   eight are seeded once and then repo-owned (`PROJECT_FACTS.md`, `BACKLOG.md`, `gate.sh`,
   `pr.sh`, `worktree-setup.sh`, `open-session.sh`, and the environment adapters
   `environment.sh` and `cloud-setup.sh`). Nothing repo-specific ever goes in here.
@@ -86,14 +88,25 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
   worktrees whose branches have merged into `origin/main`. A feature started before that layout has the sibling
   `<repo>-<slug>` instead, and captures the same way. `feature-start.sh` refuses to run
   from a worktree.
+- **Pushes (cloud only, `self/features/cloud-checkpoint-push/`).** One function pushes the
+  feature's branch — `push_feature_branch` in `plan-runner-roots.sh` (`git push -q -u
+  origin refs/heads/<branch>:refs/heads/<branch>`, the refspec written out so no name is read
+  as another ref; skipped with no `origin`) — and `feature-capture.sh` (fatal on a
+  failure) and `checkpoint_push` (advisory, one line either way) both call it. Under the
+  `cloud` profile `feature-start.sh` checkpoints after `<slug>: start` and `run-review.sh`
+  (which sources `env-profile.sh` when it sits beside it) after the stamps commit; local
+  runs push nothing. `run-plans.sh` and `run-verify.sh` push nothing. A test that runs a
+  start or a review forces the profile as usual; one that copies `run-review.sh` without
+  `env-profile.sh` runs it as local.
 - Close a feature: `./feature-close.sh --self <slug> [--no-push]`, **from the feature's
   worktree, on its branch** — the manifest fence's `branches[0]`, which is the slug
   locally and the session's assigned `claude/…` branch in a cloud container; no script
   derives the branch from the slug — the only way out, and what `run-batch.sh --self`
   calls on a clean round. It refuses unless the latest completed review's `plan_end` carries
   `verdict=clean` and `HEAD` is the `head` that stamp names (or that sha followed only by
-  `<slug>: cost records` / `<slug>: PR`, or `<slug>: review stamps` touching the feature's
-  `timing.jsonl` alone), then: `self/pr.sh` (through `./forge.sh`, `gh
+  `<slug>: cost records` / `<slug>: PR`, `<slug>: review stamps` touching the feature's
+  `timing.jsonl` alone, or `<slug>: backlog` touching `self/BACKLOG.md` alone — the
+  coordinator filing a clean round's non-blocking findings), then: `self/pr.sh` (through `./forge.sh`, `gh
   api` REST — never `gh pr` or `gh auth status`) → the `pr_opened` stamp →
   `./feature-capture.sh` → `self/pr.sh --merge-request`, in that order. Under `self/pr.sh`
   the merge is never requested (`AUTO_MERGE=0`). See `../LIFECYCLE.md` → step 6.
@@ -152,20 +165,26 @@ filename referenced from a consuming repo's `plans/` stub cannot be renamed unil
   On the cloud profile the rule runs per session: an orchestrator briefs and an implementer
   builds one feature on one branch (`../LIFECYCLE.md` → "Orchestrator and implementer
   sessions"), briefed from `../templates/plans/ORCHESTRATOR_BRIEF.md`; inside the
-  implementer, Sonnet builds and Opus reviews.
+  implementer, Sonnet builds and Opus reviews. The orchestrator itself is started from
+  `../templates/plans/ORCHESTRATOR_SESSION_BRIEF.md`, and its record is its role: once its
+  session id is an orchestration record's `session`, `feature-start.sh`, the four runners
+  and `feature-close.sh` refuse in it and the hook denies them and an `Agent` delegate
+  whose prompt opens `feature: ` (`../hooks/orchestrator_role.py` holds the one rule, over
+  the record locations in `../hooks/shared_rules.py`;
+  `plan-runner-roots.sh` reads it).
 
 ## Tests
 
 **There is no test *runner* here** — no pytest, no framework, nothing to register a test
 with. What `self/gate.sh` runs is:
 
-- `bash -n <script>` parses every shell script, `harness/*.sh`, `harness/methods/*/run.sh`
+- `bash -n <script>` parses every shell script, `harness/*.sh`, `harness/methods/*/*.sh`
   and `harness/tests/*.sh` included.
 - `shellcheck` if it happens to be installed; it is not a dependency and `self/gate.sh`
   skips it when absent.
 - `python3 -m py_compile analysis/*.py`, `harness/scorecard.py`, `harness/reading_metrics.py`,
   `check-readme-index.py`, and `hooks/{policy.py,
-  env_profile.py,wire-settings.py,allow-repo-commands.sh}` — the hook keeps a `.sh` name
+  env_profile.py,wire-settings.py,allow-repo-commands.sh,brief_header.py,shared_rules.py}` — the hook keeps a `.sh` name
   and is Python.
 - `python3 -B check-readme-index.py --root <root> --ignore self/readme-index-ignore` —
   blocking: every tracked folder's `README.md` names each tracked file and direct
@@ -179,7 +198,9 @@ with. What `self/gate.sh` runs is:
   with a stub `claude` and a stub gate, so they assert runner *behaviour* without calling
   a model or the network. See `self/tests/README.md`.
 - `harness/tests/scorecard-arms.sh`, `harness/tests/scorecard-programs.sh`,
-  `harness/tests/arm-base.sh`, `harness/tests/reading-metrics.sh` and
+  `harness/tests/scorecard-accept.sh`,
+  `harness/tests/arm-base.sh`, `harness/tests/arm-spec.sh`, `harness/tests/reading-metrics.sh`,
+  `harness/tests/long-runs.sh` and
   `harness/tests/smoke.sh` — the experiment harness's own tests, recorded the same way
   (offline; they need `jq`, `git` and `python3`). The
   smoke test drives a whole run against a throwaway repo and takes about 50 seconds.
@@ -243,7 +264,18 @@ say to run by hand, along with what "passing" looks like.
 - **The analysis scripts import each other bare** — `from pricing import compute_cost`,
   `from roots import …`. That works because Python puts the *script's own directory* on
   `sys.path`; there is no package, no `__init__.py`, no install step. A new shared module
-  goes in `analysis/` and is imported the same way.
+  goes in `analysis/` and is imported the same way. The exceptions are two modules in
+  `hooks/`: `brief_header.py`, the delegate-brief header's one definition, and
+  `shared_rules.py`, the record roots, fence keys, ledger name, slug pattern and refusal
+  texts the hook shares with `analysis/` and `orchestration-start.sh`. The hook may not
+  import `analysis/`, so `capture_planning.py` appends `<its dir>/../hooks` to `sys.path`
+  and imports the first, `roots.py` the second (`manifest.py`, `routing.py` and the other
+  analysis modules take it from `roots`) — and every test sandbox that copies
+  `capture_planning.py` copies `hooks/brief_header.py` beside it, and one that copies
+  `roots.py` or `orchestration-start.sh` copies `hooks/shared_rules.py` (`tests/README.md`),
+  and one that runs `orchestration-start.sh --self` copies `analysis/roots.py` beside it: the
+  start asks `roots.py self-write <slug>` and refuses when it cannot (consumer-record-guard).
+  A rule shared with the hook is added to `shared_rules.py`, never restated.
 - **Artifact root vs session root.** The two are the same in an ordinary run and diverge
   under `--self`: artifacts are written under `agentTooling/`, but planning transcripts
   are recorded against the enclosing git toplevel. Anything reading

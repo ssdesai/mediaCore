@@ -4,15 +4,24 @@
 |---|---|
 | `smoke.sh` | The whole harness, end to end, against a throwaway git repo under `mktemp -d`: the cell pipeline, the scaffolding, the pins, and the program cell (a program of two fixtures with a dependent second; a failed-implementer program; `--only` and `--from record`; the version-floor refusal; the lib and cost unit checks). No network, no money, nothing touched outside the temp directory. The longest of the three. `--keep` leaves the work directory behind for inspection. |
 | `scorecard-arms.sh` | `scorecard.py`'s arm-aware comparisons on a hand-built `results.jsonl` (fixture `f`, methods `a`/`b`, arms `before`/`after`, then one unpinned row). No repo, no network, nothing outside a `mktemp -d` directory. Reads `scorecard.py`'s `render()` / `compare()` wording, so a change to it is a change here. |
+| `scorecard-time.sh` | `scorecard.py`'s time columns on a hand-built ledger (fixture `f`; method `a` three times, one `method_failed`; method `b` once with no `t_green`): the Runs table's `Wall to PR` / `Wall to green` / `Total` with known minutes, `—` for a missing instant, the Per cell `Mean wall to PR` / `Mean total` with the failed row left out, the footnote line, and no Per cell section for one run per cell. No repo, no network, nothing outside a `mktemp -d` directory. Reads `scorecard.py`'s `render()` / `mean_minutes()`. |
+| `scorecard-accept.sh` | `scorecard.py`'s failed runs, Per cell outcomes and `## Acceptance` section on a hand-built ledger (fixture `f`; method `a` twice good — one with $5 `cost_lost_usd` — and once `method_failed` at $0, the `discogsPrefillStructure` shape; method `b` twice): the failed row out of the means and the band line (a tie, not a drag), `Failed` 1 and `Spend` with the lost dollars, `Mean wall to green`; the pass counts at PR-open (`null` not counted, `—` when no row measured it) and at green; the per-check table with `FAIL → pass` transitions and green-only cells; a PR-open failure under failures; and no section for a ledger with neither field, nor for one whose rows carry the PR-open fields as `null` (the accept stage off). No repo, no network, nothing outside a `mktemp -d` directory. Reads `scorecard.py`'s `render()` / `render_accept()`. |
 | `scorecard-programs.sh` | `scorecard.py`'s program section on a hand-built ledger: two `kind: "program"` rows (program `pr1`, arms `before`/`after`, two features each) beside two ordinary cell rows. Also holds the byte-identity check against `scorecard-programs.cells.md`. No repo, no network, nothing outside a `mktemp -d` directory; needs `jq`. Reads `scorecard.py`'s `render_programs()` / `program_comparisons()` wording, so a change to it is a change here. `--write-expected` rewrites the fixture. |
-| `scorecard-programs.cells.md` | The scorecard `scorecard.py` rendered for `scorecard-programs.sh`'s experiment and its two cell rows alone, before program rows existed — the expected text of the byte-identity check. Not hand-edited; regenerated with `scorecard-programs.sh --write-expected` only when an ordinary cell's rendering is meant to change. |
+| `scorecard-programs.cells.md` | The scorecard `scorecard.py` rendered for `scorecard-programs.sh`'s experiment and its two cell rows alone, with no program row in the ledger — the expected text of the byte-identity check. Not hand-edited; regenerated with `scorecard-programs.sh --write-expected` only when an ordinary cell's rendering is meant to change. |
 | `arm-base.sh` | `lib.sh`'s arm-kind helpers (`harness_experiment_arm_kind`, `harness_experiment_arms`) on hand-written `experiment.json`s — none, `agent_tooling`, `base_arms`, both (refused), malformed — and `scorecard.py`'s base-arm rendering on a hand-built ledger: the header's `base arms:` list, the `<arm> (base <sha7>)` label and the arm and method comparison lines. No repo, no network, nothing outside a `mktemp -d` directory. |
+| `arm-spec.sh` | Arm spec paths, offline: `harness_check_arm_spec_paths` on accepted and refused pairings (a label that is not a base arm, a base arm with no path, absolute or `..` paths); `harness_build_isolation` for each `HARNESS_SPEC_SOURCE` (`arm` fills the own-copy rule and provenance, a bogus value dies naming it); and the shared-spec fill of the method templates and isolation paragraph compared byte for byte with `arm-spec.shared.md`. `--write-expected [--from-ref <ref>]` rewrites that file from the templates at the ref; `--from-ref <ref>` compares against them. No repo, no network, nothing outside a `mktemp -d` directory. |
+| `arm-spec.shared.md` | The prompts a shared-spec cell renders, as they were before arm spec paths existed — the expected text of `arm-spec.sh`'s byte-identity check. Not hand-edited; generated with `arm-spec.sh --write-expected --from-ref <ref>` from that ref's templates. |
 | `reading-metrics.sh` | `reading_metrics.py` on fabricated transcripts under a `mktemp -d` projects root: the window (both ends inclusive), the first edit, a repeated file counted once, an errored read not counted, a subagent's reads counted, README bytes after the edit counted, a sibling `<tree>2` project directory ignored, the no-edit and no-transcript cases, usage errors; then `scorecard.py`'s `## Reading before the first edit` table (grouped digits, `—` for not measured, absent for a ledger without the fields). No repo, no network. |
+| `plans-method.sh` | The `plans` method's batch half (`methods/plans/run.sh`) against a throwaway git tree with a finished corpus, a stub `agentTooling/run-batch.sh` and a fake `claude`: a successful batch exits 0 and leaves the tree clean, its log (appended across runs) under `HARNESS_LOG_DIR`; a non-zero batch with no usage-limit evidence exits 1 after exactly one `run-batch.sh` call, log tail in the warning; the runners' usage-limit and interrupt summaries exit 2 after one call; earlier runs' evidence in the appended log does not count; an escalation wins; a first call runs the architect, and a call with the batch already started (a plan in `inprogress/`) skips it and resumes the batch; and the two evidence strings are still in `plan-runner-lib.sh`. No model, no network, nothing outside a `mktemp -d` directory. |
+| `long-runs.sh` | `run.sh`'s long-run behaviour, black-box, one throwaway consumer per case (method `null`, two repeats, so two cells; a stub `claude` that exits 1, since no case runs a model stage): repeated `--only` (and an unmatched spec refused before any cell starts), `--from` past `setup` on a cell with no worktree refused naming `--reset`, `--time-budget` (exit 75, a `resume: ` line with one `--only` per unstarted cell, the estimate taken from a finished cell's state file), the per-experiment lock under the git common dir (live pid refuses a run or a reset, dead pid is taken over, `--dry-run` ignores it) and `--reset` (worktree and branch renamed `…Killed<ts>`, state moved to `state/killed/`, a fresh state keeping only `cost_lost_usd`, `results.jsonl` untouched; refusals and usage errors). Offline, a few seconds. |
+| `review-model.sh` | `HARNESS_REVIEW_MODEL`, black-box and offline: `lib.sh`'s resolution (unset and empty give `HARNESS_MODEL`, a value is kept whatever `HARNESS_MODEL` is) and `run.sh --dry-run` on a throwaway `direct` consumer under distinct build and review model names: unset, every stage line names the build model; set, only the review line names the review model and the method and rework lines keep the build model. The review call's argv and the ledger row are in `smoke.sh`. |
+| `review-effort.sh` | `HARNESS_REVIEW_EFFORT`, black-box and offline: `lib.sh`'s resolution (unset and empty give `HARNESS_EFFORT`, a value is kept, a bad one is refused naming the variable), the `harness_claude` seam with a stub `claude` that logs its argv (a caller's `--effort` replaces the run-wide one, so exactly one `--effort` reaches the CLI; without one, `HARNESS_EFFORT` is added once; neither, none) and `run.sh --dry-run` on a throwaway `direct` consumer: neither set, no `--effort` anywhere; `HARNESS_EFFORT` alone, every stage line carries it; both set, only the review line carries the review effort and the method and rework lines keep the build effort. The review call's argv and the ledger row are in `smoke.sh`. |
 
-`self/gate.sh` runs all five (steps `harness scorecard arms self-test`,
+`self/gate.sh` runs all twelve (steps `harness plans method self-test`, `harness scorecard arms self-test`,
+`harness scorecard time self-test`, `harness scorecard accept self-test`,
 `harness scorecard programs self-test`, `harness arm base self-test`,
-`harness reading metrics self-test` and `harness smoke test`, under "experiment
-harness"), syntax-checks every `harness/*.sh`, `harness/methods/*/run.sh` and
+`harness arm spec self-test`, `harness reading metrics self-test`, `harness long-runs self-test`, `harness review model self-test`, `harness review effort self-test` and `harness smoke test`, under "experiment
+harness"), syntax-checks every `harness/*.sh`, `harness/methods/*/*.sh` and
 `harness/tests/*.sh`, and compiles `scorecard.py`; a change under `harness/` is covered
 by the gate. To run one alone, from the repo root:
 
@@ -20,8 +29,14 @@ by the gate. To run one alone, from the repo root:
 ./agentTooling/harness/tests/smoke.sh
 ./agentTooling/harness/tests/scorecard-arms.sh
 ./agentTooling/harness/tests/scorecard-programs.sh
+./agentTooling/harness/tests/scorecard-time.sh
+./agentTooling/harness/tests/scorecard-accept.sh
 ./agentTooling/harness/tests/arm-base.sh
+./agentTooling/harness/tests/arm-spec.sh
 ./agentTooling/harness/tests/reading-metrics.sh
+./agentTooling/harness/tests/long-runs.sh
+./agentTooling/harness/tests/review-model.sh
+./agentTooling/harness/tests/review-effort.sh
 ```
 
 ## What it builds
@@ -61,8 +76,20 @@ far-future frozen `planning.json` (`captured_at` 2099, `cost_usd.total` 5.0) ont
 cell's local branch, which no stale-freeze rule would rebuild: the capture log must then
 carry no `<slug>: already captured` line, so dropping `--recapture` from `capture_one`
 fails the suite. The row's `cost_method_usd` is not asserted: the fake sessions price
-nothing, so the honoured `--recapture` refuses to write a $0 record and the freeze stays. Offline unit checks of the
-same seams are `self/tests/harness-driver-measures.sh`.
+nothing, so the honoured `--recapture` refuses to write a $0 record and the freeze stays.
+For the resume alone the `smoke` fixture's `setup[]` is swapped for one that logs its
+`pwd` (restored after): the setup must run exactly once, in the re-added worktree, and
+before the `accept at PR-open` line. A fourth cell (`SMOKE_IMPL_CLOSES_WINDOW=1`, the fake
+stamping its manifest window's `to` as a plans arm's own close does) must exit 0 with no
+`no open session_window` error, an informational line instead, and no "close the manifest
+session window" commit, while the harness-opened-PR cell still carries that commit.
+After the scaffolding's base checks, the **reference check** (`ablation-harness-fixes`):
+the real fixture warns that it names no reference; a derived fixture whose
+`reference.commit` is the `smokeNull` branch (the marker built) passes, having run its
+`setup[]` once in a worktree that is not the consumer and removed it with no ref created
+or moved; one whose reference is the base (no marker) fails quoting the probe's `FAIL`
+line; `--no-reference` skips it; and `--reference <commit>` checks a fixture that names
+none. Offline unit checks of the same seams are `self/tests/harness-driver-measures.sh`.
 
 The fake `claude` reads the prompt on stdin, writes a canned `findings.md`
 with exactly one escalated item when the prompt carries the review preamble's title,
@@ -84,12 +111,30 @@ program cell's orchestrator, implementer, review and rework lines); the second `
 rework` run is made under it and its argv log and row both say `max`; `HARNESS_EFFORT=huge`
 makes the dry run exit non-zero naming the levels.
 
+`HARNESS_REVIEW_MODEL` is asserted in `smoke.sh` too: the full run is made under distinct
+`HARNESS_MODEL` and `HARNESS_REVIEW_MODEL` values with `SMOKE_ARGV_LOG` set, and exactly one
+logged call (the budget-capped review) carries the review model while the method and rework
+calls carry the build model only; its row has `model` and `review_model` as set, and the
+`--from capture` row, made with the review model unset, has `review_model == model`. The
+program cell's dry run under both names puts the review model on the per-feature review line
+only (rework keeps the build model), and its row, made with the review model unset, has
+`review_model == model`.
+
+`HARNESS_REVIEW_EFFORT` is asserted in `smoke.sh` as well: the full run is made with only the
+review effort set (`high`), and exactly one logged call, the review call, carries any
+`--effort`, the rework call none; its row has `review_effort == high` and `effort == null`. The
+`--from capture` row, made with neither set, has both null; the second `--from rework` run,
+made under `HARNESS_EFFORT=max` alone, has `review_effort == max`. The program cell's dry run
+under both variables puts the review effort on the per-feature review line only, and its row,
+made with neither set, has `review_effort == null`.
+
 ## What it asserts
 
 `--dry-run` creates no worktree, no branch and no ledger, and names the branch it would
 create. A full run walks every one of the eight stages (each recorded in the state file),
 writes one ledger row with `review_escalated == 1`, `rework_ran == true`,
-`accept_pass == true` and the PR URL, renders `SCORECARD.md`, leaves no `report.json`
+`accept_pass == true`, `accept_pr_open_pass == true` (the probe also ran on the PR-open
+tree, into its own `-accept-pr-open.txt` log) and the PR URL, renders `SCORECARD.md`, leaves no `report.json`
 behind, and fills every placeholder in the brief. `--from capture` honours a
 seeded freeze postdating its window (only the base repo's committed 2000-01-01 seed —
 never replaced, since capture prices nothing against fake sessions — recaptures) and
@@ -192,6 +237,20 @@ from that commit with no pin commit, `agentTooling/` is still the base's symlink
 carries `arm: "new"`, `arm_kind: "base"`, `base` the restructure sha, an empty
 `agent_tooling` and `fixture: "smoke"`; the scorecard shows `new (base <sha7>)` and a
 `base arms:` line.
+
+Then arm spec paths (section 8c, `smokeArmSpec` experiment, over the same two base arms):
+`new-experiment.sh --base-arms … --arm-spec-path old=SPEC.md,new=<marker file>` writes
+`arm_spec_paths` with each arm's path. It refuses eight shapes, each non-zero and naming the
+reason — `--arm-spec-path` without `--base-arms`, with `--agent-tooling` alone, a label that
+is not a base arm, a base arm left without a path, an absolute path, a `..` component, a path
+absent at the arm's commit, and a file only the other arm's commit has. A hand-edited
+`experiment.json` with `arm_spec_paths` and no `base_arms` makes `run.sh --dry-run` exit
+non-zero, print no `branch:` line and name that it needs base arms. The dry run of the real
+experiment names each arm's spec path "in its own tree" and adds no detached spec worktree. The
+full `new` cell's brief names the marker file inside the cell's own tree, calls it this arm's
+own copy and never mentions the shared spec worktree, and its row carries `spec_source: "arm"`,
+`spec_path` the marker, `arm_kind: "base"`; the earlier ordinary ledger row carries
+`spec_source: "shared"` and `spec_path: "SPEC.md"`.
 
 Then the program cell, in `smoke.sh` too (its fake `claude` also answers the three program
 prompts, matched by their titles `# Harness program brief`, `# Harness program feature` and

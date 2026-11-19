@@ -1,0 +1,75 @@
+{
+  "slug": "ablation-harness-fixes",
+  "captured_at": "2026-11-07T18:57:17.157448+00:00",
+  "manifest_branches": [
+    "claude/ablation-harness-fixes"
+  ],
+  "manifest_subagents": [
+    "a93805d6e49ede750"
+  ],
+  "sessions": [],
+  "subagents": [
+    {
+      "agent_id": "a93805d6e49ede750",
+      "parent_session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "date": "2026-11-07",
+      "started_at": "2026-11-07T16:08:29.688000+00:00",
+      "ended_at": "2026-11-07T16:41:44.941000+00:00",
+      "duration_s": 1995,
+      "selected_by": "pinned",
+      "cross_repo": true
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "063b3da2-14a6-4bd7-8456-0f29f52b0a8e",
+    "a0f9c9f8-b07e-4202-8047-23f9ec95a45d"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "agent_id": "a93805d6e49ede750",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-07",
+      "duration_s": 1995,
+      "tokens": {
+        "input": 242,
+        "output": 60479,
+        "cache_read": 25379355,
+        "cache_creation_5m": 772642,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 10.149629,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 0.0,
+    "sidechain": 10.149629,
+    "subagents": 10.149629,
+    "total": 10.149629,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 0,
+    "subagents": 1995,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "no planning session matched, but 1 excluded session(s) on ['claude/ablation-harness-fixes'] were met \u2014 the branch name is right and the zero is evidenced; their cost is in usage.json or belongs to the feature that excluded them"
+  ]
+}

@@ -1,0 +1,9 @@
+write: /tmp/plan-capture.BoD6v2/scratch/drive.py
+write: /tmp/plan-capture.BoD6v2/scratch/cases.json
+edit: /tmp/plan-capture.BoD6v2/scratch/drive.py
+write: /tmp/plan-capture.BoD6v2/scratch/compare.py
+write: /tmp/plan-capture.BoD6v2/scratch/bashcheck.sh
+write: /tmp/plan-capture.BoD6v2/scratch/cases2.json
+write: /tmp/plan-capture.BoD6v2/scratch/cases3.json
+write: /home/user/agentTooling/self/features/orchestration-record-fixes/audit-report.md
+edit: /home/user/agentTooling/self/features/orchestration-record-fixes/audit-report.md

@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # Refreshes the generated stubs — the READMEs, the feature template, .gitignore and the
-# orchestrator brief template (ORCHESTRATOR_BRIEF.md) — in
+# orchestrator brief templates (ORCHESTRATOR_BRIEF.md for an implementer session,
+# ORCHESTRATOR_SESSION_BRIEF.md for the orchestrator's own) — in
 # the consuming repo's plans/ tree from templates/plans/. Run after `git subtree pull`,
 # and after install in place of copying the template by hand.
 #
@@ -84,7 +85,7 @@ ROUTING_MODULE="$SCRIPT_DIR/analysis/routing.py"
 # missed one — a repo that skipped it committed a per-level gate report every batch. Its
 # patterns are relative to plans/, so a root-level `plans/**/…` pattern from an earlier
 # install is redundant rather than wrong.
-GENERATED=(README.md interactive/README.md features/README.md features/TEMPLATE.md .gitignore ORCHESTRATOR_BRIEF.md)
+GENERATED=(README.md interactive/README.md features/README.md features/TEMPLATE.md .gitignore ORCHESTRATOR_BRIEF.md ORCHESTRATOR_SESSION_BRIEF.md)
 
 # Where a stub that differs from its template came from (stub_origin). Upstream: it is
 # byte-identical to a template version this repo once vendored, so overwriting it loses

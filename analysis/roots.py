@@ -27,9 +27,21 @@ with the consumer's origin and files every agentTooling feature under a repo it 
 not belong to. See SELF_CORPUS_IDENTITY below.
 """
 
+import sys
 from pathlib import Path
 
 AGENT_TOOLING_DIR = Path(__file__).resolve().parents[1]
+
+# The rules the PreToolUse hook shares with this directory (record roots, fence keys, the
+# two refusal texts, how git marks a checkout) have one definition, `hooks/shared_rules.py`
+# (self/features/shared-hook-rules/). The hook may not import `analysis/`, so it lives on the
+# hook's side and is reached here by path — appended, so nothing in `hooks/` can shadow a
+# module of this directory, as `capture_planning.py` reaches `brief_header.py`. Unguarded: a
+# missing definition is an ImportError and the tool writes nothing, never a rule read another way.
+HOOKS_DIR = AGENT_TOOLING_DIR / "hooks"
+if str(HOOKS_DIR) not in sys.path:
+    sys.path.append(str(HOOKS_DIR))
+import shared_rules  # noqa: E402
 
 # Who agentTooling's own corpus belongs to, stated rather than derived. `self/features`
 # can only ever belong to agentTooling, and the vendored copy has no `.git` to ask —
@@ -48,9 +60,9 @@ SELF_CORPUS_IDENTITY = "https://github.com/ssdesai/agentTooling.git"
 # directory holds `commondir`, the path of the common git dir relative to itself. A
 # submodule's `.git` file points into `<super>/.git/modules/<name>`, which has no
 # `commondir`, and is left as the root it always was.
-GIT_ENTRY = ".git"
-GITDIR_PREFIX = "gitdir:"
-COMMONDIR_FILE = "commondir"
+GIT_ENTRY = shared_rules.GIT_ENTRY
+GITDIR_PREFIX = shared_rules.GITDIR_PREFIX
+COMMONDIR_FILE = shared_rules.COMMONDIR_NAME
 
 # A feature MENTION is the display string `<repo_name>/<slug>` a record's
 # `also_claimed_by` and `share_basis[].feature` carry. Its repo half is a display name,
@@ -148,11 +160,173 @@ def features_root(self_mode):
     return artifact_root(False) / "plans" / "features"
 
 
-def orchestrations_root():
-    """Where orchestration records live: agentTooling's own `self/orchestrations/`, in
-    every mode — an orchestrator's record is committed in this repository whatever repos
-    its features were built in, so there is no `--self` to choose by."""
-    return AGENT_TOOLING_DIR / "self" / "orchestrations"
+# Where orchestration records live, per mode (self/features/orchestration-records-in-repo/).
+# A record belongs to the checkout it was started in, as a feature does. The roots, and the
+# two refusal texts below, are shared_rules' (the hook and orchestration-start.sh read the
+# same values); the *_PARTS are those roots split for `Path.joinpath`.
+ORCHESTRATIONS_SELF_PARTS = tuple(shared_rules.ORCHESTRATIONS_SELF_REL.split("/"))
+ORCHESTRATIONS_CONSUMER_PARTS = tuple(shared_rules.ORCHESTRATIONS_CONSUMER_REL.split("/"))
+# The old home of a consuming repo's records: inside the vendored agentTooling/, as seen
+# from the consumer. A record there is moved, never read in place.
+LEGACY_RECORD_MOVE = shared_rules.LEGACY_RECORD_MOVE
+LEGACY_RECORD_REFUSAL = shared_rules.LEGACY_RECORD_REFUSAL
+# A vendored record that is NOT stranded is agentTooling's own, shipped with the subtree
+# (a consumer's `agentTooling/self/orchestrations/` always holds them): never moved.
+OWN_RECORD_NOTE = (
+    "no record at " + shared_rules.ORCHESTRATIONS_CONSUMER_REL + "/{slug}; agentTooling/"
+    + shared_rules.ORCHESTRATIONS_SELF_REL + "/{slug} is "
+    "agentTooling's own record — read it with --self from an agentTooling checkout"
+)
+# Without --self in agentTooling's own checkout there is no consuming repo: the default
+# root would be the checkout's parent, outside any repository. Refused before anything is
+# written. orchestration-start.sh gives the same text, reading it from shared_rules.
+STANDALONE_REFUSAL = shared_rules.STANDALONE_REFUSAL
+# A vendored copy's own `self/orchestrations/` is agentTooling's shipped code: a record tool
+# that WRITES there under `--self` makes a local edit to the subtree, which is how the
+# consuming repos' stranded records got there (self/features/consumer-record-guard/). Every
+# writer refuses it before any write, with this one text; reading a shipped record is not
+# refused. agentTooling's own checkout writes there as before.
+VENDORED_SELF_WRITE_REFUSAL = (
+    "this agentTooling is vendored in a consuming repo, so --self would write agentTooling/"
+    + shared_rules.ORCHESTRATIONS_SELF_REL + "/{slug}/ — a local edit to code that ships to "
+    "every repo. A record this repo runs lives at " + shared_rules.ORCHESTRATIONS_CONSUMER_REL
+    + "/{slug}/: run the same command without --self (an agentTooling feature is listed there "
+    "with repo=agentTooling)"
+)
+# The features list a record's last fence carries, and a feature's repo key
+ORCH_FEATURES_KEY = shared_rules.FEATURES_KEY
+ORCH_FEATURE_REPO_KEY = shared_rules.FEATURE_REPO_KEY
+# The shell's way into the classifier: `python3 roots.py stranded <slug>`
+CLI_STRANDED = "stranded"
+CLI_ARGC = 3
+CLI_STRANDED_RC = 0
+CLI_NOT_STRANDED_RC = 1
+CLI_USAGE_RC = 2
+# ... and into the write guard: `python3 roots.py self-write <slug>` exits 0 when a `--self`
+# record write is allowed here, else prints VENDORED_SELF_WRITE_REFUSAL and exits 1 — so a
+# crash (also 1, printing no text) fails closed in orchestration-start.sh
+CLI_SELF_WRITE = "self-write"
+CLI_SELF_WRITE_OK_RC = 0
+CLI_SELF_WRITE_REFUSED_RC = 1
+
+
+def orchestrations_root(self_mode):
+    """Where orchestration records live: `--self` → agentTooling's own
+    `self/orchestrations/`; otherwise the consuming repo's `plans/orchestrations/`, the
+    sibling of `plans/features/` (`--arm-root` applies as it does to `features_root`)."""
+    if self_mode:
+        return AGENT_TOOLING_DIR.joinpath(*ORCHESTRATIONS_SELF_PARTS)
+    return artifact_root(False).joinpath(*ORCHESTRATIONS_CONSUMER_PARTS)
+
+
+def legacy_orchestrations_root():
+    """The vendored location a consuming repo's records used to be written to."""
+    return AGENT_TOOLING_DIR.joinpath(*ORCHESTRATIONS_SELF_PARTS)
+
+
+def is_standalone_checkout():
+    """True when the tooling directory is itself a checkout root (`.git` in it): agentTooling's
+    own checkout, with no consuming repo above it. `--arm-root` names a consuming repo
+    explicitly, so it is never standalone."""
+    return _arm_root is None and checkout_of(AGENT_TOOLING_DIR) == AGENT_TOOLING_DIR
+
+
+def standalone_refusal(self_mode):
+    """`STANDALONE_REFUSAL` for a no-`--self` run in agentTooling's own checkout, else None."""
+    if not self_mode and is_standalone_checkout():
+        return STANDALONE_REFUSAL
+    return None
+
+
+def orchestration_home_repo(self_mode):
+    """The repo name a record's own features carry in `features[].repo`: agentTooling under
+    `--self` (the declared corpus identity), else the consuming repo's, as the brief header
+    names it (`capture_planning.corpus_identity` → `repo_display_name`). Imported lazily:
+    capture_planning imports this module."""
+    from capture_planning import corpus_identity, repo_display_name
+    return repo_display_name(corpus_identity(features_root(self_mode)))
+
+
+def is_stranded_record(slug):
+    """True when the legacy vendored record `slug` is the consuming repo's own: its LAST fence
+    lists a feature whose `repo` equals the consuming repo's name, case-insensitively (the
+    name `orchestration_home_repo(False)` gives). A record with no such feature — agentTooling's
+    shipped ones, a record with no features yet — is not: it carries no claim, so it is left
+    where it is. The one classifier every record tool and orchestration-start.sh uses."""
+    from routing import parse_manifest
+    try:
+        record = parse_manifest(legacy_orchestrations_root() / slug / shared_rules.RECORD_NAME)
+    except (OSError, ValueError):
+        return False
+    features = record.get(ORCH_FEATURES_KEY) if isinstance(record, dict) else None
+    if not isinstance(features, list):
+        return False
+    home = orchestration_home_repo(False).lower()
+    return any(isinstance(f, dict) and str(f.get(ORCH_FEATURE_REPO_KEY, "")).lower() == home
+               for f in features)
+
+
+def record_refusal(self_mode, slug):
+    """The refusal text for a record tool run without `--self`, or None. In order: agentTooling's
+    own checkout (`STANDALONE_REFUSAL`); `slug` with no record in the consuming repo but one at
+    the legacy vendored place — `LEGACY_RECORD_REFUSAL` (the `git mv`) when stranded,
+    `OWN_RECORD_NOTE` when it is agentTooling's own. One message for every tool."""
+    if self_mode:
+        return None
+    standalone = standalone_refusal(self_mode)
+    if standalone:
+        return standalone
+    if (orchestrations_root(False) / slug).exists():
+        return None
+    if (legacy_orchestrations_root() / slug).exists():
+        template = LEGACY_RECORD_REFUSAL if is_stranded_record(slug) else OWN_RECORD_NOTE
+        return template.format(slug=slug)
+    return None
+
+
+def self_record_write_allowed():
+    """True when a `--self` record write is allowed from this copy: it is agentTooling's own
+    standalone checkout, not a copy vendored in a consuming repo. The one predicate
+    `record_write_refusal` and the coordinator advisory's wording both ask
+    (self/features/consumer-record-guard/)."""
+    return is_standalone_checkout()
+
+
+def record_write_refusal(self_mode, slug):
+    """The refusal text for a tool about to WRITE into a record folder, or None:
+    `record_refusal`'s, and under `--self` in a copy that is not a standalone checkout —
+    vendored in a consuming repo — `VENDORED_SELF_WRITE_REFUSAL`. The vendored test is
+    `self_record_write_allowed` (`is_standalone_checkout`), the one place this module decides
+    it. A read calls `record_refusal` alone, so a shipped record stays readable with `--self`."""
+    if self_mode and not self_record_write_allowed():
+        return VENDORED_SELF_WRITE_REFUSAL.format(slug=slug)
+    return record_refusal(self_mode, slug)
+
+
+def all_orchestrations_roots():
+    """Both places a record can sit, self first — for reading only (the role guard's
+    mirror, the coordinator advisory). From agentTooling's own checkout only the first: its
+    parent is no consuming repo, as hooks/orchestrator_role.py's `record_roots` holds."""
+    if is_standalone_checkout():
+        return [orchestrations_root(True)]
+    return [orchestrations_root(True), orchestrations_root(False)]
+
+
+# An orchestration record's fence `kind`: absent on an orchestrator's record (read as
+# ORCH_KIND_ORCHESTRATOR), `"coordinator"` on a coordinator record — a cost record that is
+# no role (self/features/coordinator-cost-records/). The key and the coordinator value are
+# shared_rules' (the role rule skips such a record).
+ORCH_KIND_KEY = shared_rules.KIND_KEY
+ORCH_KIND_COORDINATOR = shared_rules.KIND_COORDINATOR
+ORCH_KIND_ORCHESTRATOR = "orchestrator"
+
+
+def orchestration_kind(record):
+    """The kind of an orchestration record's parsed fence: `ORCH_KIND_COORDINATOR` when it
+    says so, else `ORCH_KIND_ORCHESTRATOR`."""
+    if isinstance(record, dict) and record.get(ORCH_KIND_KEY) == ORCH_KIND_COORDINATOR:
+        return ORCH_KIND_COORDINATOR
+    return ORCH_KIND_ORCHESTRATOR
 
 
 def all_features_roots():
@@ -221,3 +395,20 @@ def worktree_primary(checkout):
     if common.name != GIT_ENTRY:
         return None
     return common.parent
+
+
+if __name__ == "__main__":
+    import sys
+
+    # `roots.py stranded <slug>`: exit 0 when the legacy vendored record is stranded, and
+    # `roots.py self-write <slug>`: exit 0 when a `--self` record write is allowed here
+    # (orchestration-start.sh asks these instead of re-implementing either decision)
+    if len(sys.argv) != CLI_ARGC or sys.argv[1] not in (CLI_STRANDED, CLI_SELF_WRITE):
+        sys.exit(CLI_USAGE_RC)
+    if sys.argv[1] == CLI_SELF_WRITE:
+        refusal = record_write_refusal(True, sys.argv[2])
+        if refusal:
+            print(refusal)
+            sys.exit(CLI_SELF_WRITE_REFUSED_RC)
+        sys.exit(CLI_SELF_WRITE_OK_RC)
+    sys.exit(CLI_STRANDED_RC if is_stranded_record(sys.argv[2]) else CLI_NOT_STRANDED_RC)

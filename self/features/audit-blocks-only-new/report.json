@@ -1,0 +1,226 @@
+{
+  "slug": "audit-blocks-only-new",
+  "generated_at": "2026-11-16T22:45:53.894761+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 3.0248523000000005,
+    "build": 3.0248523000000005,
+    "verify": 0.0,
+    "review": 2.4796114000000005,
+    "total": 5.5044637000000005,
+    "planning_pct": 0.0,
+    "build_pct": 54.95271592035388,
+    "verify_pct": 0.0,
+    "review_pct": 45.047284079646126,
+    "cost_per_plan": 1.3761159250000001,
+    "cost_per_file": 0.5504463700000001,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 5529,
+    "planning_subagents_s": 1779,
+    "planning_s": 0.0,
+    "implementer_s": 7308,
+    "build_s": 7308.0,
+    "verify_s": 0.0,
+    "review_s": 430.711,
+    "executor_s": 7738.711,
+    "total_s": 7738.711,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-16T22:37:28+00:00",
+      "last_at": "2026-11-16T22:45:35+00:00",
+      "batch_span_s": 487.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 442.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 611.0,
+      "plan_runs": 4,
+      "pr_opened_at": "2026-11-16T22:45:35+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/154"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 3.0248523000000005,
+      "build_min": 121.8,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.2372279000000002,
+      "review_min": 3.03725,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.2423835,
+      "review_min": 4.141266666666667,
+      "review_plan": "02-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.8499449,
+    "sessions": 2.1749074000000004
+  },
+  "cold_start_tax_tokens": 163318,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 4,
+      "total_turns": 77,
+      "total_cost_usd": 2.4796114,
+      "total_duration_s": 430.711,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "01-audit-opus",
+      "edit_count": 8,
+      "files_edited": 5,
+      "churn_ratio": 1.6
+    },
+    {
+      "plan": "02-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "02-audit-opus",
+      "edit_count": 4,
+      "files_edited": 4,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 56,
+      "loc_changed": 57
+    },
+    {
+      "plan": "01-audit-opus",
+      "plan_md_lines": 78,
+      "loc_changed": 297
+    },
+    {
+      "plan": "02-review-opus",
+      "plan_md_lines": 53,
+      "loc_changed": 70
+    },
+    {
+      "plan": "02-audit-opus",
+      "plan_md_lines": 78,
+      "loc_changed": 227
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/home/user/agentTooling/templates/SECURITY_AUDIT.md",
+      "tool": "Read",
+      "plans": [
+        "01-review-opus",
+        "02-review-opus"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md",
+        "templates/SECURITY_AUDIT.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "01-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.2k4lYZ/scratch/audit.sh",
+        "/tmp/plan-capture.2k4lYZ/scratch/check.sh",
+        "/tmp/plan-capture.2k4lYZ/scratch/one.sh",
+        "/tmp/plan-capture.2k4lYZ/scratch/reports.sh",
+        "self/features/audit-blocks-only-new/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.IQZ83S/scratch/hook.py",
+        "/tmp/plan-capture.IQZ83S/scratch/reports.sh",
+        "/tmp/plan-capture.IQZ83S/scratch/setup.sh",
+        "self/features/audit-blocks-only-new/audit-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "/tmp/plan-capture.2k4lYZ/scratch/audit.sh",
+      "earlier_plan": "01-audit-opus",
+      "later_plan": "01-audit-opus",
+      "overlap_chars": 88
+    },
+    {
+      "file": "/tmp/plan-capture.2k4lYZ/scratch/audit.sh",
+      "earlier_plan": "01-audit-opus",
+      "later_plan": "01-audit-opus",
+      "overlap_chars": 87
+    },
+    {
+      "file": "/tmp/plan-capture.2k4lYZ/scratch/audit.sh",
+      "earlier_plan": "01-audit-opus",
+      "later_plan": "01-audit-opus",
+      "overlap_chars": 56
+    }
+  ],
+  "warnings": [],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and this feature stamped no `checkpoint` event \u2014 nothing divides it by round, so all of it sits in round 1"
+    }
+  ],
+  "profile": "cloud",
+  "gate": "green"
+}

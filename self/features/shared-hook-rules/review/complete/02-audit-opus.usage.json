@@ -1,0 +1,76 @@
+{
+  "plan": "02-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "b2ddf72a-0fd8-4f47-a1f2-b90c26960577",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 25,
+  "duration_ms": 463287,
+  "total_cost_usd": 1.4336381,
+  "usage": {
+    "input_tokens": 36,
+    "cache_creation_input_tokens": 80664,
+    "cache_read_input_tokens": 1341462,
+    "output_tokens": 25979
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 2987,
+      "outputTokens": 22,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.00030970000000000005,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 36,
+      "outputTokens": 25979,
+      "cacheReadInputTokens": 1341462,
+      "cacheCreationInputTokens": 80664,
+      "webSearchRequests": 0,
+      "costUSD": 1.4333283999999997,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 8776,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 80664,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 16,
+    "Read": 2,
+    "Write": 6
+  },
+  "files_edited": [
+    "/tmp/plan-capture.n2Yb6W/scratch/ostart.sh",
+    "/tmp/plan-capture.n2Yb6W/scratch/probe.py",
+    "/tmp/plan-capture.n2Yb6W/scratch/probe2.py",
+    "/tmp/plan-capture.n2Yb6W/scratch/setup.sh",
+    "/tmp/plan-capture.n2Yb6W/scratch/wire.py",
+    "self/features/shared-hook-rules/audit-report.md"
+  ],
+  "edit_count": 6,
+  "attempts": [
+    {
+      "session_id": "b2ddf72a-0fd8-4f47-a1f2-b90c26960577",
+      "outcome": "complete",
+      "total_cost_usd": 1.4336381,
+      "num_turns": 25,
+      "duration_ms": 463287
+    }
+  ]
+}

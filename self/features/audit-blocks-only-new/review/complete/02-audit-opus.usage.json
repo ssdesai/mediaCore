@@ -1,0 +1,74 @@
+{
+  "plan": "02-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "48aaecda-7eba-4b62-ace9-22916a06cace",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 16,
+  "duration_ms": 126247,
+  "total_cost_usd": 0.5734026,
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 39251,
+    "cache_read_input_tokens": 473035,
+    "output_tokens": 8211
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 3856,
+      "outputTokens": 220,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0004956,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 197,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 18,
+      "outputTokens": 8211,
+      "cacheReadInputTokens": 473035,
+      "cacheCreationInputTokens": 39251,
+      "webSearchRequests": 0,
+      "costUSD": 0.5729069999999999,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 438,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 39251,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 10,
+    "Read": 1,
+    "Write": 4
+  },
+  "files_edited": [
+    "/tmp/plan-capture.IQZ83S/scratch/hook.py",
+    "/tmp/plan-capture.IQZ83S/scratch/reports.sh",
+    "/tmp/plan-capture.IQZ83S/scratch/setup.sh",
+    "self/features/audit-blocks-only-new/audit-report.md"
+  ],
+  "edit_count": 4,
+  "attempts": [
+    {
+      "session_id": "48aaecda-7eba-4b62-ace9-22916a06cace",
+      "outcome": "complete",
+      "total_cost_usd": 0.5734026,
+      "num_turns": 16,
+      "duration_ms": 126247
+    }
+  ]
+}

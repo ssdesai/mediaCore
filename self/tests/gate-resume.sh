@@ -243,13 +243,14 @@ scenarios self self/gate.sh self/gate-report.txt self/gate-state \
 # (run_level_gate, from run-plans.sh on a level sentinel) in a consuming-repo layout:
 # <repo>/agentTooling/ (the runner), <repo>/plans/gate.sh (the stubbed template gate),
 # <repo>/plans/features/lvl/ (the feature directory, which stamp_timing needs to write).
-RUNNER_SCRIPTS="run-plans.sh plan-runner-lib.sh plan-runner-roots.sh"
+# the role reader refuses a copy without its two modules (hook-silent-allow-sweep, item 7)
+RUNNER_SCRIPTS="run-plans.sh plan-runner-lib.sh plan-runner-roots.sh hooks/orchestrator_role.py hooks/shared_rules.py"
 RUNNER_SLUG=lvl
 RUNNER_LEVEL=05
 RR="$TMP/runner"
 RAT="$RR/agentTooling"
 RF="$RR/plans/features/$RUNNER_SLUG"
-mkdir -p "$RAT" "$RR/plans" "$TMP/bin"
+mkdir -p "$RAT/hooks" "$RR/plans" "$TMP/bin"
 for f in $RUNNER_SCRIPTS; do cp "$HERE/$f" "$RAT/$f"; done
 chmod +x "$RAT/run-plans.sh"
 cat > "$TMP/bin/claude" <<'CLAUDE'

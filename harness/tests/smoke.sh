@@ -125,6 +125,24 @@ BASE_ARM_UNKNOWN_SHA="0000000000000000000000000000000000000000"
 BASE_ARM_REPO_RULE_TEXT="runs from, and lives on"
 ARM_KINDS_EXCLUSIVE_TEXT="never both"
 BASE_ARMS_NO_PROGRAMS_TEXT="does not combine with programs"
+# The arm-spec-path run: the base-arm experiment again, each arm reading its spec from its
+# own tree — `old` the fixture's SPEC.md, `new` the restructure commit's marker file.
+ARM_SPEC_EXPERIMENT="smokeArmSpec"
+ARM_SPEC_STEM="smokeArmSpecced"
+ARM_SPEC_OLD_PATH="SPEC.md"
+ARM_SPEC_NEW_BRANCH="smokeArmSpeccedNullNew"
+ARM_SPEC_NEW_TREE="$REPO-$ARM_SPEC_NEW_BRANCH"
+ARM_SPEC_NEEDS_BASE_ARMS_TEXT="needs base_arms"
+ARM_SPEC_NOT_BASE_ARM_TEXT="is not a base arm"
+ARM_SPEC_NO_PATH_TEXT="has no spec path"
+ARM_SPEC_BAD_PATH_TEXT="must be a file path relative to the tree"
+ARM_SPEC_ABSENT_TEXT="does not exist at"
+ARM_SPEC_ABSENT_RELPATH="plans/no-such-spec.md"
+ARM_SPEC_OWN_TREE_TEXT="own tree"
+ARM_SPEC_OWN_COPY_TEXT="this arm's own copy"
+ARM_SPEC_SHARED_WORDING="The read-only spec worktree at"
+ARM_SPEC_SOURCE_ARM="arm"
+ARM_SPEC_SOURCE_SHARED="shared"
 # The repository rule (an experiment runs from, and lives on, the repository it measures):
 # a fixture naming the consumer's own URL, one naming another repository, a spec that lives
 # in an external repository (reached by `spec.url`, or by the legacy `spec.repo` path), and a
@@ -242,6 +260,10 @@ RESUME_PR_EXPERIMENT="smokeResumePr"
 RESUME_PR_STEM="smokeResumePr"
 RESUME_PR_BRANCH="smokeResumePrDirectHead"
 RESUME_PR_SLUG="smoke-resume-pr-direct-head"
+CLOSED_WINDOW_EXPERIMENT="smokeClosedWindow"
+CLOSED_WINDOW_STEM="smokeClosedWindow"
+CLOSED_WINDOW_BRANCH="smokeClosedWindowDirectHead"
+CLOSED_WINDOW_SLUG="smoke-closed-window-direct-head"
 NO_REVIEW_RUN_EXPERIMENT="smokeNoReviewRun"
 NO_REVIEW_RUN_STEM="smokeNoReviewRun"
 NO_REVIEW_RUN_BRANCH="smokeNoReviewRunNullHead"
@@ -453,7 +475,16 @@ case "\$prompt" in
     # SMOKE_IMPL_NO_COMMIT=1: exits 0 having built nothing (no commit, no push, no PR).
     # SMOKE_IMPL_NO_PR=1: builds, commits and pushes, but its own PR hook could not open
     # the PR (an August arm's pr.sh with gh unauthenticated) — the harness opens it.
+    # SMOKE_IMPL_CLOSES_WINDOW=1: its own close stamps the manifest window's \`to\`, as a
+    # plans arm's feature-close.sh does, so the harness's PR step finds no open window.
     if [ -z "\${SMOKE_IMPL_NO_COMMIT:-}" ]; then
+      if [ -n "\${SMOKE_IMPL_CLOSES_WINDOW:-}" ]; then
+        for manifest in plans/features/*/README.md; do
+          [ -f "\$manifest" ] || continue
+          sed "s/\"to\": null/\"to\": \"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\"/" "\$manifest" > "\$manifest.closed"
+          mv "\$manifest.closed" "\$manifest"
+        done
+      fi
       printf 'built by the fake direct implementer\n' > "$NULL_MARKER_RELPATH"
       git add -A && git commit -q -m "build \$branch"
       git push -q -u origin "\$branch" 2>/dev/null
@@ -591,7 +622,16 @@ check "... naming the value and the levels" \
 echo ""
 echo "=== smoke: full run ==="
 FULL_OUT="$WORK/full-run.txt"
-"$RUN" "$EXPERIMENT_DIR" --consumer "$REPO" --no-cleanup > "$FULL_OUT" 2>&1
+# The full run names a review model apart from the build model (HARNESS_REVIEW_MODEL), and
+# logs every call's argv, so the review call and the build calls can be told apart below.
+BUILD_MODEL_NAME="buildmodel"
+REVIEW_MODEL_NAME="reviewmodel"
+REVIEW_BUDGET_DEFAULT="7.00"
+MODEL_ARGV_LOG="$WORK/model-argv.log"
+REVIEW_EFFORT_LEVEL="high"   # distinct from EFFORT_LEVEL, so a mix-up shows
+SMOKE_ARGV_LOG="$MODEL_ARGV_LOG" HARNESS_MODEL="$BUILD_MODEL_NAME" HARNESS_REVIEW_MODEL="$REVIEW_MODEL_NAME" \
+  HARNESS_REVIEW_EFFORT="$REVIEW_EFFORT_LEVEL" \
+  "$RUN" "$EXPERIMENT_DIR" --consumer "$REPO" --no-cleanup > "$FULL_OUT" 2>&1
 full_rc=$?
 if (( full_rc != 0 )); then
   echo "--- run output ---"
@@ -608,8 +648,26 @@ check "ledger has exactly one row" "[[ \$(wc -l < '$RESULTS') -eq 1 ]]"
 check "row: review_escalated == 1" "[[ \$(jq -r '.review_escalated' '$RESULTS') == 1 ]]"
 check "row: rework_ran == true" "[[ \$(jq -r '.rework_ran' '$RESULTS') == true ]]"
 check "row: accept_pass == true" "[[ \$(jq -r '.accept_pass' '$RESULTS') == true ]]"
+check "row: accept_pr_open_pass == true and its lines are the probe's (accept ran on the PR-open tree too)" \
+  "jq -e '.accept_pr_open_pass == true and (.accept_pr_open_lines | length) == 1' '$RESULTS' >/dev/null"
+check "accept at PR-open wrote its own log, before the review" \
+  "[[ -s '$EXPERIMENT_DIR/logs/$EXPECTED_BRANCH-accept-pr-open.txt' ]] && grep -q 'accept at PR-open' '$FULL_OUT'"
 check "row: method_failed == false" "[[ \$(jq -r '.method_failed' '$RESULTS') == false ]]"
 check "row: effort is null when HARNESS_EFFORT is unset" "jq -e '.effort == null' '$RESULTS' >/dev/null"
+check "row: model is the build model" "[[ \$(jq -r '.model' '$RESULTS') == '$BUILD_MODEL_NAME' ]]"
+check "row: review_model is the review model" "[[ \$(jq -r '.review_model' '$RESULTS') == '$REVIEW_MODEL_NAME' ]]"
+check "exactly one call carried --model $REVIEW_MODEL_NAME, and it is the review call (budget-capped)" \
+  "[[ \$(grep -c -- '--model $REVIEW_MODEL_NAME' '$MODEL_ARGV_LOG') -eq 1 ]] && grep -- '--model $REVIEW_MODEL_NAME' '$MODEL_ARGV_LOG' | grep -q -- '--max-budget-usd $REVIEW_BUDGET_DEFAULT'"
+# The fake logs the harness's own stage calls (review, rework); the method's call is made by
+# its run.sh and is covered by the dry-run assertions in review-model.sh.
+check "the rework call carries --model $BUILD_MODEL_NAME (and its budget) and never the review model" \
+  "[[ \$(grep -c -- '--model $BUILD_MODEL_NAME' '$MODEL_ARGV_LOG') -ge 1 ]] && ! grep -- '--model $BUILD_MODEL_NAME' '$MODEL_ARGV_LOG' | grep -q '$REVIEW_MODEL_NAME'"
+check "row: review_effort is the review effort, and effort stays null (HARNESS_EFFORT unset)" \
+  "jq -e '.review_effort == \"$REVIEW_EFFORT_LEVEL\" and .effort == null' '$RESULTS' >/dev/null"
+check "exactly one call carried --effort $REVIEW_EFFORT_LEVEL, and it is the review call" \
+  "[[ \$(grep -c -- '--effort' '$MODEL_ARGV_LOG') -eq 1 ]] && grep -- '--effort $REVIEW_EFFORT_LEVEL' '$MODEL_ARGV_LOG' | grep -q -- '--model $REVIEW_MODEL_NAME'"
+check "the rework call carries no --effort (HARNESS_EFFORT unset; rework is building)" \
+  "! grep -- '--model $BUILD_MODEL_NAME' '$MODEL_ARGV_LOG' | grep -q -- '--effort'"
 check "row: pr_url recorded" "[[ \$(jq -r '.pr_url' '$RESULTS') == '$FAKE_PR_URL' ]]"
 check "row: capture priced nothing (0)" "jq -e '.cost_green_usd == 0' '$RESULTS' >/dev/null"
 check "row: stale freeze on the branch was rebuilt, not reported" "jq -e '.cost_method_usd == 0' '$RESULTS' >/dev/null"
@@ -658,6 +716,10 @@ check "--from capture honoured the freeze postdating its window" \
   "! grep -q '$EXPECTED_SLUG-rework carries a freeze' '$FROMCAP_OUT'"
 check "--from capture row carries the review counts from the state file" \
   "[[ \$(sed -n 2p '$RESULTS' | jq -r '.review_escalated') == 1 ]]"
+check "--from capture row (HARNESS_REVIEW_MODEL unset): review_model equals model" \
+  "sed -n 2p '$RESULTS' | jq -e '.review_model == .model' >/dev/null"
+check "--from capture row (HARNESS_REVIEW_EFFORT unset): review_effort is null like effort" \
+  "sed -n 2p '$RESULTS' | jq -e '.review_effort == null and .effort == null' >/dev/null"
 
 # ── 3. Re-entry at a later stage, from the saved state ───────────────────────
 echo ""
@@ -727,6 +789,8 @@ check "run under HARNESS_EFFORT=$EFFORT_LEVEL: the claude call carried --effort 
   "grep -q -- '--effort $EFFORT_LEVEL' '$EFFORT_ARGV_LOG'"
 check "... and its row records effort == $EFFORT_LEVEL" \
   "[[ \$(sed -n 4p '$RESULTS' | jq -r '.effort') == '$EFFORT_LEVEL' ]]"
+check "... and review_effort follows it (HARNESS_REVIEW_EFFORT unset)" \
+  "[[ \$(sed -n 4p '$RESULTS' | jq -r '.review_effort') == '$EFFORT_LEVEL' ]]"
 check "worktree removed after cleanup" "[[ ! -d '$TREE' ]]"
 
 # ── 4. Scaffolding: new-fixture, check-fixture, new-experiment, publish ──────
@@ -856,6 +920,39 @@ derived_fixture "smokeNoBaseFixture" "smokeNoBase" ".base = \"$UNFETCHABLE_BASE\
 "$CHECK_FIXTURE" "smokeNoBaseFixture" --consumer "$REPO" > "$WORK/check-no-base.txt" 2>&1
 check "check-fixture still fails a base no remote has: 'base does not resolve'" \
   "(( $? != 0 )) && grep -q 'base does not resolve' '$WORK/check-no-base.txt'"
+
+# The accept probe against a reference build (ablation-harness-fixes): fixture.json's
+# `reference.commit` names a commit where the feature is built — the smokeNull cell's
+# branch, which carries the marker — and check-fixture runs the probe there, in a
+# throwaway detached worktree given the fixture's setup (logged to a file outside it), then
+# removes it. The base, which has no marker, is a reference the probe fails at.
+check "check-fixture warns when a fixture names no reference build" \
+  "grep -q 'names no reference.commit' '$WORK/check-fixture-real.txt'"
+REF_GOOD_SHA="$(git -C "$REPO" rev-parse "$EXPECTED_BRANCH")"
+REF_SETUP_LOG="$WORK/reference-setup.log"
+: > "$REF_SETUP_LOG"
+REF_WORKTREES_BEFORE="$(git -C "$REPO" worktree list --porcelain | grep -c '^worktree ')"
+REF_REFS_BEFORE="$(git -C "$REPO" for-each-ref)"
+derived_fixture "smokeRefGood" "smokeRefGood" ".reference = {commit: \"$REF_GOOD_SHA\"} | .setup = [\"pwd >> $REF_SETUP_LOG\"]"
+"$CHECK_FIXTURE" "smokeRefGood" --consumer "$REPO" > "$WORK/check-ref-good.txt" 2>&1
+check "check-fixture passes a fixture whose probe passes at its reference build" \
+  "(( $? == 0 )) && grep -q 'accept probe passes at the reference build ($REF_GOOD_SHA)' '$WORK/check-ref-good.txt'"
+check "... having run the fixture's setup once, in a worktree that is not the consumer" \
+  "[[ \$(wc -l < '$REF_SETUP_LOG') -eq 1 ]] && ! grep -qxF '$REPO' '$REF_SETUP_LOG'"
+check "... and removed that worktree, creating or moving no ref" \
+  "[[ \$(git -C '$REPO' worktree list --porcelain | grep -c '^worktree ') -eq $REF_WORKTREES_BEFORE && ! -d \"\$(cat '$REF_SETUP_LOG')\" && \"\$(git -C '$REPO' for-each-ref)\" == '$REF_REFS_BEFORE' ]]"
+derived_fixture "smokeRefBad" "smokeRefBad" ".reference = {commit: \"$BASE_SHA\"}"
+"$CHECK_FIXTURE" "smokeRefBad" --consumer "$REPO" > "$WORK/check-ref-bad.txt" 2>&1
+check "check-fixture fails a fixture whose probe fails at its reference build, quoting the probe" \
+  "(( $? != 0 )) && grep -q 'accept probe FAILS at the reference build ($BASE_SHA)' '$WORK/check-ref-bad.txt' && grep -q 'FAIL marker' '$WORK/check-ref-bad.txt'"
+"$CHECK_FIXTURE" "smokeRefBad" --consumer "$REPO" --no-reference > "$WORK/check-ref-skip.txt" 2>&1
+check "check-fixture --no-reference skips the reference check (exits 0)" \
+  "(( $? == 0 )) && grep -q 'reference check skipped' '$WORK/check-ref-skip.txt'"
+"$CHECK_FIXTURE" "$FIXTURE_NAME" --consumer "$REPO" --reference "$REF_GOOD_SHA" > "$WORK/check-ref-arg.txt" 2>&1
+check "check-fixture --reference <commit> runs the check for a fixture that names none" \
+  "(( $? == 0 )) && grep -q 'accept probe passes at the reference build ($REF_GOOD_SHA)' '$WORK/check-ref-arg.txt'"
+check "... and the worktrees it added are all gone" \
+  "[[ \$(git -C '$REPO' worktree list --porcelain | grep -c '^worktree ') -eq $REF_WORKTREES_BEFORE ]]"
 "$RUN" "$REPO/plans/experiments/$OWN_URL_EXPERIMENT" --consumer "$REPO" --dry-run > "$WORK/dry-run-own-url.txt" 2>&1
 check "run --dry-run accepts a fixture whose repo.url is the consumer's own origin" "(( $? == 0 )) && grep -q 'repo:  *$REPO\$' '$WORK/dry-run-own-url.txt'"
 "$NEW_EXPERIMENT" smokeOwnUrlNew --fixtures "$OWN_URL_FIXTURE" --methods null --prediction p --override "$OWN_URL_FIXTURE=$OWN_URL_STEM" \
@@ -1264,6 +1361,94 @@ check "... the row carries arm, arm_kind, base, an empty agent_tooling and the f
 check "... the scorecard shows the arm with its base commit" \
   "grep -qF 'new (base ${BASE_ARM_NEW_SHA:0:7})' '$BASE_ARM_DIR/SCORECARD.md' && grep -qF 'base arms:' '$BASE_ARM_DIR/SCORECARD.md'"
 
+# ── 8c. Arm spec paths: each base arm reads its spec from its own tree ─────────
+echo ""
+echo "=== smoke: arm spec paths ==="
+ARM_SPEC_DIR="$REPO/plans/experiments/$ARM_SPEC_EXPERIMENT"
+ARM_SPEC_BASE_ARMS="$BASE_ARM_OLD=$BASE_SHA,$BASE_ARM_NEW=$BASE_ARM_PREP_BRANCH"
+"$NEW_EXPERIMENT" "$ARM_SPEC_EXPERIMENT" --fixtures "$FIXTURE_NAME" --methods null \
+  --base-arms "$ARM_SPEC_BASE_ARMS" \
+  --arm-spec-path "$BASE_ARM_OLD=$ARM_SPEC_OLD_PATH,$BASE_ARM_NEW=$BASE_ARM_MARKER_RELPATH" \
+  --override "$FIXTURE_NAME=$ARM_SPEC_STEM" --no-review --no-rework \
+  --prediction 'each arm reads its spec from its own tree' --consumer "$REPO" > "$WORK/new-arm-spec.txt" 2>&1
+check "new-experiment --arm-spec-path exits 0" "(( $? == 0 ))"
+check "arm_spec_paths names each arm's path" \
+  "[[ \$(jq -r '.arm_spec_paths.$BASE_ARM_OLD' '$ARM_SPEC_DIR/experiment.json') == '$ARM_SPEC_OLD_PATH' && \$(jq -r '.arm_spec_paths.$BASE_ARM_NEW' '$ARM_SPEC_DIR/experiment.json') == '$BASE_ARM_MARKER_RELPATH' ]]"
+
+# Refusals: each must exit non-zero and name what is wrong.
+arm_spec_refusal() {
+  local label="$1" name="$2" stem="$3" text="$4"
+  shift 4
+  local out="$WORK/arm-spec-refusal-$name.txt" rc
+  "$NEW_EXPERIMENT" "$name" --fixtures "$FIXTURE_NAME" --methods null "$@" \
+    --override "$FIXTURE_NAME=$stem" --prediction p --consumer "$REPO" > "$out" 2>&1
+  rc=$?
+  check "$label: exits non-zero" "(( $rc != 0 ))"
+  check "$label: names '$text'" "grep -qF -- '$text' '$out'"
+}
+arm_spec_refusal "--arm-spec-path without --base-arms" smokeSpecNoBase specNoBase "$ARM_SPEC_NEEDS_BASE_ARMS_TEXT" \
+  --arm-spec-path "$BASE_ARM_NEW=$ARM_SPEC_OLD_PATH"
+arm_spec_refusal "--arm-spec-path with --agent-tooling and no --base-arms" smokeSpecAgentTooling specAgentTooling "$ARM_SPEC_NEEDS_BASE_ARMS_TEXT" \
+  --agent-tooling "head=HEAD" --arm-spec-path "head=$ARM_SPEC_OLD_PATH"
+arm_spec_refusal "--arm-spec-path with a label that is not a base arm" smokeSpecMid specMid "$ARM_SPEC_NOT_BASE_ARM_TEXT" \
+  --base-arms "$ARM_SPEC_BASE_ARMS" \
+  --arm-spec-path "$BASE_ARM_OLD=$ARM_SPEC_OLD_PATH,$BASE_ARM_NEW=$BASE_ARM_MARKER_RELPATH,mid=$ARM_SPEC_OLD_PATH"
+arm_spec_refusal "--arm-spec-path leaving a base arm without a path" smokeSpecMissing specMissing "$ARM_SPEC_NO_PATH_TEXT" \
+  --base-arms "$ARM_SPEC_BASE_ARMS" --arm-spec-path "$BASE_ARM_OLD=$ARM_SPEC_OLD_PATH"
+arm_spec_refusal "--arm-spec-path with an absolute path" smokeSpecAbs specAbs "$ARM_SPEC_BAD_PATH_TEXT" \
+  --base-arms "$ARM_SPEC_BASE_ARMS" --arm-spec-path "$BASE_ARM_OLD=$ARM_SPEC_OLD_PATH,$BASE_ARM_NEW=/abs/x.md"
+arm_spec_refusal "--arm-spec-path with a .. component" smokeSpecDotDot specDotDot "$ARM_SPEC_BAD_PATH_TEXT" \
+  --base-arms "$ARM_SPEC_BASE_ARMS" --arm-spec-path "$BASE_ARM_OLD=$ARM_SPEC_OLD_PATH,$BASE_ARM_NEW=sub/../x.md"
+arm_spec_refusal "--arm-spec-path with a path absent at the arm's commit" smokeSpecAbsent specAbsent "$ARM_SPEC_ABSENT_TEXT" \
+  --base-arms "$ARM_SPEC_BASE_ARMS" --arm-spec-path "$BASE_ARM_OLD=$ARM_SPEC_OLD_PATH,$BASE_ARM_NEW=$ARM_SPEC_ABSENT_RELPATH"
+arm_spec_refusal "--arm-spec-path naming a file only the other arm's commit has" smokeSpecOtherArm specOtherArm "$ARM_SPEC_ABSENT_TEXT" \
+  --base-arms "$ARM_SPEC_BASE_ARMS" --arm-spec-path "$BASE_ARM_OLD=$BASE_ARM_MARKER_RELPATH,$BASE_ARM_NEW=$BASE_ARM_MARKER_RELPATH"
+
+# A hand-edited experiment: arm_spec_paths without base_arms must be refused by the run too.
+ARM_SPEC_NO_BASE_DIR="$REPO/plans/experiments/smokeArmSpecNoBase"
+mkdir -p "$ARM_SPEC_NO_BASE_DIR"
+jq --arg name smokeArmSpecNoBase '.name = $name | del(.base_arms)' \
+  "$ARM_SPEC_DIR/experiment.json" > "$ARM_SPEC_NO_BASE_DIR/experiment.json"
+"$RUN" "$ARM_SPEC_NO_BASE_DIR" --consumer "$REPO" --dry-run > "$WORK/arm-spec-no-base-dry-run.txt" 2>&1
+arm_spec_no_base_rc=$?
+check "an experiment with arm_spec_paths and no base_arms: the dry run exits non-zero" "(( $arm_spec_no_base_rc != 0 ))"
+check "... resolves no cell (no branch: line)" "! grep -q 'branch:' '$WORK/arm-spec-no-base-dry-run.txt'"
+check "... and names that it needs base_arms" "grep -qF -- '$ARM_SPEC_NEEDS_BASE_ARMS_TEXT' '$WORK/arm-spec-no-base-dry-run.txt'"
+
+# Dry run: the spec comes from each cell's own tree, so no spec worktree is added.
+ARM_SPEC_DRY="$WORK/arm-spec-dry-run.txt"
+"$RUN" "$ARM_SPEC_DIR" --consumer "$REPO" --dry-run > "$ARM_SPEC_DRY" 2>&1
+check "arm-spec dry run exits 0" "(( $? == 0 ))"
+check "arm-spec dry run: arm new names the marker path in its own tree" \
+  "grep -q 'spec:.*$BASE_ARM_MARKER_RELPATH.*$ARM_SPEC_OWN_TREE_TEXT.*arm $BASE_ARM_NEW' '$ARM_SPEC_DRY'"
+check "arm-spec dry run: arm old names SPEC.md in its own tree" \
+  "grep -q 'spec:.*$ARM_SPEC_OLD_PATH.*$ARM_SPEC_OWN_TREE_TEXT.*arm $BASE_ARM_OLD' '$ARM_SPEC_DRY'"
+check "arm-spec dry run adds no detached spec worktree" "! grep -q 'worktree add --detach' '$ARM_SPEC_DRY'"
+
+# Full run of the new cell.
+ARM_SPEC_OUT="$WORK/arm-spec-run.txt"
+"$RUN" "$ARM_SPEC_DIR" --consumer "$REPO" --only "$FIXTURE_NAME:null:$BASE_ARM_NEW" --no-cleanup > "$ARM_SPEC_OUT" 2>&1
+arm_spec_rc=$?
+if (( arm_spec_rc != 0 )); then
+  echo "--- run output ---"
+  cat "$ARM_SPEC_OUT"
+  echo "------------------"
+fi
+check "the arm-spec run exits 0" "(( $arm_spec_rc == 0 ))"
+ARM_SPEC_BRIEF="$WORK/arm-spec-brief.md"
+cat "$ARM_SPEC_NEW_TREE"/plans/features/*/BRIEF.md > "$ARM_SPEC_BRIEF" 2>/dev/null
+check "... the brief names the spec inside the cell's tree" \
+  "grep -qF -- '$ARM_SPEC_NEW_TREE/$BASE_ARM_MARKER_RELPATH' '$ARM_SPEC_BRIEF'"
+check "... the brief calls it this arm's own copy" "grep -qF -- \"$ARM_SPEC_OWN_COPY_TEXT\" '$ARM_SPEC_BRIEF'"
+check "... and does not mention the shared spec worktree" "! grep -qF -- '$ARM_SPEC_SHARED_WORDING' '$ARM_SPEC_BRIEF'"
+check "... the row carries spec_source arm, the marker spec_path, arm_kind base and arm new" \
+  "tail -n 1 '$ARM_SPEC_DIR/results.jsonl' | jq -e '.spec_source == \"$ARM_SPEC_SOURCE_ARM\" and .spec_path == \"$BASE_ARM_MARKER_RELPATH\" and .arm_kind == \"base\" and .arm == \"$BASE_ARM_NEW\"' >/dev/null"
+[[ -d "$ARM_SPEC_NEW_TREE" ]] && git -C "$REPO" worktree remove --force "$ARM_SPEC_NEW_TREE" >/dev/null 2>&1
+
+# Ordinary experiments keep the shared spec worktree and say so in the ledger.
+check "the earlier ordinary ledger's last row has spec_source shared and spec_path SPEC.md" \
+  "tail -n 1 '$RESULTS' | jq -e '.spec_source == \"$ARM_SPEC_SOURCE_SHARED\" and .spec_path == \"$ARM_SPEC_OLD_PATH\"' >/dev/null"
+
 # ── 9. Program cells: the fixtures, the program, the fake orchestrator ─────────
 echo ""
 echo "=== smoke: program cells (setup) ==="
@@ -1445,6 +1630,20 @@ HARNESS_EFFORT="$EFFORT_LEVEL" "$RUN" "$PROGRAM_EXP_DIR" --consumer "$REPO" --dr
 check "program dry run under HARNESS_EFFORT=$EFFORT_LEVEL exits 0" "(( $? == 0 ))"
 check "... shows --effort $EFFORT_LEVEL on the orchestrator, implementer, review and rework lines" \
   "[[ \$(grep -c -- '--effort $EFFORT_LEVEL' '$WORK/program-dry-run-effort.txt') -ge 6 ]]"
+HARNESS_MODEL="$BUILD_MODEL_NAME" HARNESS_REVIEW_MODEL="$REVIEW_MODEL_NAME" \
+  "$RUN" "$PROGRAM_EXP_DIR" --consumer "$REPO" --dry-run > "$WORK/program-dry-run-review-model.txt" 2>&1
+check "program dry run under HARNESS_REVIEW_MODEL exits 0" "(( $? == 0 ))"
+check "... the per-feature review line names the review model" \
+  "grep 'review preamble' '$WORK/program-dry-run-review-model.txt' | grep -q -- '--model $REVIEW_MODEL_NAME '"
+check "... and no other line does (orchestrator, implementers and rework keep the build model)" \
+  "[[ \$(grep -c -- '$REVIEW_MODEL_NAME' '$WORK/program-dry-run-review-model.txt') -eq 1 ]] && grep 'rework preamble' '$WORK/program-dry-run-review-model.txt' | grep -q -- '--model $BUILD_MODEL_NAME '"
+HARNESS_EFFORT="$EFFORT_LEVEL" HARNESS_REVIEW_EFFORT="$REVIEW_EFFORT_LEVEL" \
+  "$RUN" "$PROGRAM_EXP_DIR" --consumer "$REPO" --dry-run > "$WORK/program-dry-run-review-effort.txt" 2>&1
+check "program dry run under HARNESS_REVIEW_EFFORT exits 0" "(( $? == 0 ))"
+check "... the per-feature review line shows --effort $REVIEW_EFFORT_LEVEL and no other line does" \
+  "grep 'review preamble' '$WORK/program-dry-run-review-effort.txt' | grep -q -- '--effort $REVIEW_EFFORT_LEVEL' && [[ \$(grep -c -- '--effort $REVIEW_EFFORT_LEVEL' '$WORK/program-dry-run-review-effort.txt') -eq 1 ]]"
+check "... rework keeps the build effort" \
+  "grep 'rework preamble' '$WORK/program-dry-run-review-effort.txt' | grep -q -- '--effort $EFFORT_LEVEL'"
 
 # ── 9b. An unpinned program is refused: its agentTooling/ is a symlink ─────────
 echo ""
@@ -1494,6 +1693,8 @@ program_row() { jq -e "$1" "$PROGRAM_RESULTS_ONE" >/dev/null; }
 check "program run exits 0" "(( $program_rc == 0 ))"
 check "ledger has exactly one row" "[[ -s '$PROGRAM_RESULTS_ONE' && \$(wc -l < '$PROGRAM_RESULTS_ONE') -eq 1 ]]"
 check "program row: effort is null when HARNESS_EFFORT is unset" "program_row '.effort == null'"
+check "program row: review_model equals model when HARNESS_REVIEW_MODEL is unset" "program_row '.review_model == .model'"
+check "program row: review_effort is null when neither effort variable is set" "program_row '.review_effort == null'"
 check "row: kind program, method orchestrator, the program, the branch and slug" \
   "program_row '.kind == \"program\" and .method == \"$PROGRAM_METHOD_NAME\" and .program == \"$PROGRAM_NAME\" and .branch == \"$PROGRAM_BRANCH_ONE\" and .slug == \"$PROGRAM_SLUG_ONE\"'"
 check "row: the arm and the agentTooling commit" \
@@ -1551,7 +1752,7 @@ check "feature 1's branch lacks feature 2's marker" \
 check "the program branch carries the briefs, committed" \
   "git -C '$REMOTE_URL' cat-file -e '$PROGRAM_BRANCH_ONE:plans/programs/$PROGRAM_SLUG_ONE/briefs/01-$PROGRAM_FIXTURE_ONE.md' && git -C '$REMOTE_URL' cat-file -e '$PROGRAM_BRANCH_ONE:plans/programs/$PROGRAM_SLUG_ONE/briefs/02-$PROGRAM_FIXTURE_TWO.md'"
 check "the pushed orchestration record names both features" \
-  "git -C '$REMOTE_URL' show '$PROGRAM_BRANCH_ONE:agentTooling/self/orchestrations/$PROGRAM_SLUG_ONE/README.md' | grep -q '$PROGRAM_FEATURE_SLUG_A' && git -C '$REMOTE_URL' show '$PROGRAM_BRANCH_ONE:agentTooling/self/orchestrations/$PROGRAM_SLUG_ONE/README.md' | grep -q '$PROGRAM_FEATURE_SLUG_B'"
+  "git -C '$REMOTE_URL' show '$PROGRAM_BRANCH_ONE:plans/orchestrations/$PROGRAM_SLUG_ONE/README.md' | grep -q '$PROGRAM_FEATURE_SLUG_A' && git -C '$REMOTE_URL' show '$PROGRAM_BRANCH_ONE:plans/orchestrations/$PROGRAM_SLUG_ONE/README.md' | grep -q '$PROGRAM_FEATURE_SLUG_B'"
 check "the pinned copy's pin commit is on the program branch" \
   "git -C '$REPO' log --format=%s '$BASE_SHA..$PROGRAM_BRANCH_ONE' | grep -qF '$PIN_SUBJECT_PREFIX ${AT_HEAD:0:7}'"
 check "SCORECARD.md has a Programs section naming the program" \
@@ -1658,6 +1859,22 @@ check "no-commit method: method_failed, no PR, and the harness opened none" \
   "no_commit_row '.method_failed == true and .pr_url == \"\" and .pr_opened_by_harness == false'"
 check "no-commit method: the forge was never asked to open a PR for its branch" "[[ ! -e '$SMOKE_PR_DIR/$NO_COMMIT_BRANCH' ]]"
 
+# A method that closed its own manifest window (ablation-harness-fixes): a plans arm's
+# feature-close.sh stamps `to`, and the harness's PR step used to try again and log
+# "ERROR: no open session_window.to". It now leaves the bound as written and says so.
+CLOSED_WINDOW_DIR="$REPO/plans/experiments/$CLOSED_WINDOW_EXPERIMENT"
+CLOSED_WINDOW_RESULTS="$CLOSED_WINDOW_DIR/results.jsonl"
+closed_window_rc="$(run_direct_variant "$CLOSED_WINDOW_EXPERIMENT" "$CLOSED_WINDOW_STEM" SMOKE_IMPL_CLOSES_WINDOW=1)"
+closed_window_out="$WORK/$CLOSED_WINDOW_EXPERIMENT-run.txt"
+check "closed window: the run exits 0 (got $closed_window_rc) with a row that is not method_failed" \
+  "(( $closed_window_rc == 0 )) && jq -e '.method_failed == false' '$CLOSED_WINDOW_RESULTS' >/dev/null"
+check "closed window: no ERROR about the window; an informational line says it was left as written" \
+  "! grep -q 'no open session_window' '$closed_window_out' && grep -q '$CLOSED_WINDOW_SLUG: the manifest has no open session window' '$closed_window_out'"
+check "closed window: no 'close the manifest session window' commit on the branch" \
+  "! git -C '$REPO' log --format=%s '$CLOSED_WINDOW_BRANCH' | grep -q 'close the manifest session window'"
+check "an open window is still closed and committed at PR-open (the harness-opened-PR cell)" \
+  "git -C '$REPO' log --format=%s '$HARNESS_PR_BRANCH' | grep -q 'close the manifest session window at PR-open'"
+
 # ── 9c2c. Resuming a cell recorded method_failed only for want of a PR ──────────
 # The state of vinylCatalogue's exportStorePlansOpusMax2: the method built and pushed, the
 # forge could not open the PR, an older harness recorded `no-pr`/method_failed and removed
@@ -1694,8 +1911,20 @@ git -C "$REPO" worktree remove --force "$RESUME_SEED_TREE"
 RESUME_ARGV="$WORK/resume-argv.log"
 : > "$RESUME_ARGV"
 resume_out="$WORK/resume-pr-run.txt"
+# The fixture's setup, for the resume only, logs where it ran (ablation-harness-fixes): the
+# re-added worktree is a bare checkout, and the accept probe at PR-open crashed for want of
+# the `.venv` setup would have made. Restored straight after the run.
+RESUME_SETUP_LOG="$WORK/resume-setup.log"
+: > "$RESUME_SETUP_LOG"
+cp "$FIXTURE_DIR/fixture.json" "$WORK/fixture.json.before-resume"
+jq --arg log "$RESUME_SETUP_LOG" '.setup = ["pwd >> " + $log]' "$WORK/fixture.json.before-resume" > "$FIXTURE_DIR/fixture.json"
 SMOKE_ARGV_LOG="$RESUME_ARGV" "$RUN" "$RESUME_PR_DIR" --consumer "$REPO" --from review > "$resume_out" 2>&1
 resume_rc=$?
+cp "$WORK/fixture.json.before-resume" "$FIXTURE_DIR/fixture.json"
+check "resume: the fixture's setup ran once, in the re-added worktree" \
+  "[[ \$(wc -l < '$RESUME_SETUP_LOG') -eq 1 && \"\$(cat '$RESUME_SETUP_LOG')\" == '$REPO-$RESUME_PR_BRANCH' ]]"
+check "resume: ... before the accept probe at PR-open" \
+  "awk '/=== harness: setup: pwd/ {s=NR} /accept at PR-open/ {a=NR} END {exit !(s && a && s < a)}' '$resume_out'"
 if (( resume_rc != 0 )); then echo "--- run output ---"; cat "$resume_out"; echo "------------------"; fi
 resume_row() { jq -e -s "last | $1" "$RESUME_PR_RESULTS" >/dev/null; }
 check "resume: --from review exits 0 (got $resume_rc)" "(( $resume_rc == 0 ))"

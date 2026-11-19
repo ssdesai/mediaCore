@@ -1,0 +1,9 @@
+write: /tmp/plan-capture.arUdwf/scratch/build.sh
+write: /tmp/plan-capture.arUdwf/scratch/hook.py
+write: /tmp/plan-capture.arUdwf/scratch/cases1.json
+edit: /tmp/plan-capture.arUdwf/scratch/cases1.json
+write: /tmp/plan-capture.arUdwf/scratch/cases2.json
+write: /tmp/plan-capture.arUdwf/scratch/start.sh
+edit: /tmp/plan-capture.arUdwf/scratch/start.sh
+write: /tmp/plan-capture.arUdwf/scratch/start-all.sh
+write: /home/user/agentTooling/self/features/orchestration-start-branch-v2/audit-report.md

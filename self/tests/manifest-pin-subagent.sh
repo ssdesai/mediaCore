@@ -25,9 +25,10 @@ set -uo pipefail
 #       session-UUID id is refused with a plain 1, and the file is byte-identical;
 #   P5. a fence with no `subagents` key gains one;
 #   P6. the consuming-repo layout (no --self, plans/features/) works the same way;
-#   P7. a capture then claims the pinned delegate — one spawned from a coordinator on
-#       `main`, which no branch route can ever reach — as `pinned`, where before the pin
-#       it claimed nothing;
+#   P7. a capture claims the delegate — one spawned from a coordinator on `main`, which no
+#       branch route can ever reach — as `pinned`: its brief names this feature, so the
+#       capture writes the pin itself through this command (self/features/
+#       delegate-cost-claims), and a hand pin after it is the already-pinned no-op;
 #   P8. `--list-subagents --unclaimed --for` names this command in its advice line, and
 #       drops the delegate once it is pinned;
 #   P9. capture_planning has no parse_manifest of its own: it IS routing.parse_manifest.
@@ -46,6 +47,8 @@ TMP="$(cd "$TMP" && pwd -P)"
 AT="$TMP/agentTooling"
 CONSUMER="$TMP/consumer"
 mkdir -p "$AT/analysis" "$AT/self/features" "$CONSUMER/agentTooling/analysis" "$CONSUMER/plans/features"
+mkdir -p "$AT/hooks" && cp "$HERE/hooks/shared_rules.py" "$AT/hooks/"  # roots.py imports it
+mkdir -p "$CONSUMER/agentTooling/hooks" && cp "$HERE/hooks/shared_rules.py" "$CONSUMER/agentTooling/hooks/"  # roots.py imports it
 
 # manifest.py and capture_planning.py both import routing, which imports pricing, roots
 # and transcript; pricing loads rates_history.json from beside itself.
@@ -55,6 +58,10 @@ for f in "${ANALYSIS_FILES[@]}"; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f"
   cp "$HERE/analysis/$f" "$CONSUMER/agentTooling/analysis/$f"
 done
+# capture_planning.py reads the brief header from ../hooks/brief_header.py (README.md).
+mkdir -p "$AT/hooks" "$CONSUMER/agentTooling/hooks"
+cp "$HERE/hooks/brief_header.py" "$AT/hooks/brief_header.py"
+cp "$HERE/hooks/brief_header.py" "$CONSUMER/agentTooling/hooks/brief_header.py"
 # session_root() walks up for the nearest ancestor holding .git; without one it would
 # escape the sandbox and resolve to a real repo above it.
 mkdir -p "$AT/.git" "$CONSUMER/.git"
@@ -205,9 +212,13 @@ mkdir -p "$PROJECTS/$SESSION_M/subagents"
 
 out8a="$(list_unclaimed)"
 capture > "$TMP/out7a.txt"
-check "P7. before the pin the capture matches nothing, refuses the \$0.00 record and writes none" \
-  "grep -q 'no session and no subagent matched' '$TMP/out7a.txt' && [ ! -e '$PLANNING' ]"
-pin "$AGENT_1" > /dev/null
+# The delegate's brief names this feature, so the capture claims it itself, through this
+# same command (self/features/delegate-cost-claims): before delegate-cost-claims it matched
+# nothing and refused the $0.00 record. The hand pin after it is then a no-op.
+check "P7. a capture with no hand pin auto-claims the delegate briefed for this feature, writing the pin to the fence" \
+  "grep -q 'auto-claim pinned delegate $AGENT_1' '$TMP/out7a.txt' && [ \"\$(fence_of '$README' \"d['subagents']\")\" = \"['$AGENT_1']\" ]"
+check "P7a. ... so a hand pin after it is the already-pinned no-op" \
+  "[ \"\$(pin "$AGENT_1")\" = 'subagents already pins $AGENT_1' ]"
 capture > "$TMP/out7b.txt"; rc7=$?
 check "P7b. after it, the capture exits 0 (got $rc7)" "[ $rc7 -eq 0 ]"
 check "P7c. and claims the delegate as pinned, under its real parent" \

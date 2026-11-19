@@ -1,0 +1,82 @@
+{
+  "plan": "12-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "d242105d-84c0-454f-8857-20382836527e",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 51,
+  "duration_ms": 447979,
+  "total_cost_usd": 2.2338848,
+  "usage": {
+    "input_tokens": 56,
+    "cache_creation_input_tokens": 105226,
+    "cache_read_input_tokens": 2568373,
+    "output_tokens": 43894
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 2862,
+      "outputTokens": 24,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.00029820000000000004,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 56,
+      "outputTokens": 43894,
+      "cacheReadInputTokens": 2568373,
+      "cacheCreationInputTokens": 105226,
+      "webSearchRequests": 0,
+      "costUSD": 2.2335865999999998,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 22746,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 105226,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 2,
+  "tool_counts": {
+    "Bash": 28,
+    "Read": 9,
+    "Write": 13
+  },
+  "files_edited": [
+    "/tmp/plan-capture.WAcSDk/scratch/bashcheck.sh",
+    "/tmp/plan-capture.WAcSDk/scratch/build.json",
+    "/tmp/plan-capture.WAcSDk/scratch/build2.json",
+    "/tmp/plan-capture.WAcSDk/scratch/chdir.json",
+    "/tmp/plan-capture.WAcSDk/scratch/direct.py",
+    "/tmp/plan-capture.WAcSDk/scratch/flow-build.json",
+    "/tmp/plan-capture.WAcSDk/scratch/flow.json",
+    "/tmp/plan-capture.WAcSDk/scratch/git.json",
+    "/tmp/plan-capture.WAcSDk/scratch/run.py",
+    "/tmp/plan-capture.WAcSDk/scratch/setup.sh",
+    "/tmp/plan-capture.WAcSDk/scratch/unr/.git",
+    "self/features/orchestration-record-fixes/audit-report.md"
+  ],
+  "edit_count": 13,
+  "attempts": [
+    {
+      "session_id": "d242105d-84c0-454f-8857-20382836527e",
+      "outcome": "complete",
+      "total_cost_usd": 2.2338848,
+      "num_turns": 51,
+      "duration_ms": 447979
+    }
+  ]
+}

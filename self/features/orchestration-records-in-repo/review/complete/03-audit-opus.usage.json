@@ -1,0 +1,58 @@
+{
+  "plan": "03-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "f1eb64e2-4740-477c-bf40-11ed8be7959a",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 31,
+  "duration_ms": 278700,
+  "total_cost_usd": 1.5788244000000002,
+  "usage": {
+    "input_tokens": 56,
+    "cache_creation_input_tokens": 77102,
+    "cache_read_input_tokens": 2142622,
+    "output_tokens": 26663
+  },
+  "model_usage": {
+    "claude-opus-5-5": {
+      "inputTokens": 56,
+      "outputTokens": 26663,
+      "cacheReadInputTokens": 2142622,
+      "cacheCreationInputTokens": 77102,
+      "webSearchRequests": 0,
+      "costUSD": 1.5788244000000002,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 11941,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 77102,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 19,
+    "Edit": 2,
+    "Read": 6,
+    "Write": 3
+  },
+  "files_edited": [
+    "/tmp/plan-capture.nNNFCJ/scratch/audit.py",
+    "/tmp/plan-capture.nNNFCJ/scratch/audit2.py",
+    "self/features/orchestration-records-in-repo/audit-report.md"
+  ],
+  "edit_count": 5,
+  "attempts": [
+    {
+      "session_id": "f1eb64e2-4740-477c-bf40-11ed8be7959a",
+      "outcome": "complete",
+      "total_cost_usd": 1.5788244000000002,
+      "num_turns": 31,
+      "duration_ms": 278700
+    }
+  ]
+}

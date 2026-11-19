@@ -25,6 +25,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/plan-runner-roots.sh"
 resolve_roots "${1:-}"
 if (( SELF_MODE )); then shift; fi
+refuse_orchestrator_session "${CLAUDE_CODE_SESSION_ID:-}"   # an orchestrator builds nothing
 QUEUE="auto"
 PLAN_KIND="plan"
 SUMMARY_TITLE="Run summary"

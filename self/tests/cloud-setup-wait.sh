@@ -80,6 +80,7 @@ consumer() {
   local repo="$TMP/$1" at f
   at="$repo/agentTooling"
   mkdir -p "$at/analysis" "$at/hooks" "$at/templates/plans/features" "$repo/plans/features"
+  mkdir -p "$at/hooks" && cp "$HERE/hooks/shared_rules.py" "$at/hooks/"  # roots.py imports it
   for f in feature-start.sh plan-runner-roots.sh env-profile.sh; do
     cp "$HERE/$f" "$at/$f"
   done

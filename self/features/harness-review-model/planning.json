@@ -1,0 +1,70 @@
+{
+  "slug": "harness-review-model",
+  "captured_at": "2026-11-05T04:36:53.421674+00:00",
+  "manifest_branches": [
+    "claude/harness-review-model"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "74d73998-f9b6-58ba-ba54-d197e1b109be",
+      "git_branch": "claude/harness-review-model",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-11-05",
+      "started_at": "2026-11-05T04:01:20.695000+00:00",
+      "ended_at": "2026-11-05T04:36:51.228000+00:00",
+      "duration_s": 2130
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "89d224e5-2b25-4689-9f68-0b4e96bf5dcd"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "74d73998-f9b6-58ba-ba54-d197e1b109be",
+      "agent_id": null,
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-05",
+      "duration_s": 2130,
+      "tokens": {
+        "input": 118,
+        "output": 29189,
+        "cache_read": 9022554,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 132095
+      },
+      "cost_usd": 1.7227614,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 1.7227614,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 1.7227614,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 2130,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": []
+}

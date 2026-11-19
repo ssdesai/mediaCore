@@ -17,14 +17,23 @@ it.
      no-op, and the run would score a method that never built anything as one that built
      something badly;
   3. `./agentTooling/run-batch.sh <slug>` from the tree, output **appended** to
-     `plans/batch.log` — `>>`, because `>` lost one WP7 arm's first run when the batch
-     was resumed.
+     `$HARNESS_LOG_DIR/<branch>-plans-batch.log` — `>>`, because `>` lost one WP7 arm's
+     first run when the batch was resumed. The log is **outside the tree**: a log inside it
+     is a dirty path, and `feature-close.sh` refuses to close over one (both
+     `exportStoreMethodEffortDefault` cells ended with no PR that way).
 
 On a non-zero batch exit: if `escalations/` holds anything or a plan sits in any queue's
 `failed/`, that is a tier-3 stop or a mis-scoped plan and the method exits 1 without
-retrying. Otherwise the stop is a usage limit or an interrupt, both of which leave the
-plan in `inprogress/`, so the batch is re-run once (it resumes) and the method exits 2 if
-it still has not finished.
+retrying. Otherwise the method exits 2 (resumable) **only on positive evidence** in the
+output this batch invocation appended: the runners' closing summary naming a usage limit
+(`stopped: Claude usage limit reached on …`) or an interrupt (`interrupted by signal …`),
+both printed by `plan-runner-lib.sh` when a plan is left in `inprogress/`. Any other
+non-zero exit — a close refusal included — exits 1 at once with the last lines of the log
+in the warning, and the batch is not re-run. The harness waits and calls the method again
+on exit 2, and that call resumes the batch: when any plan already sits in an `inprogress/`
+or `complete/` queue the architect and the incomplete-queue assertions are skipped, since
+the batch has by then drained the queues the architect filled. `harness/tests/plans-method.sh` pins all of
+this, and that the two strings are still in `plan-runner-lib.sh`.
 
 The batch's own review plan and `plans/pr.sh` are part of this method, not of the
 harness: the harness's review stage runs afterwards, from the same preamble every other
@@ -37,6 +46,5 @@ on this install but is not what the runners do: the plans on disk are the durabl
 and a session id is not (`RUNNER.md` → "How resume works"). The batch half resumes on its
 own, from `inprogress/`.
 
-`plans/batch.log` is inside the tree, so `pr.sh`'s `git add -A` commits it — that is
-deliberate, it is the arm's process record. In a repo whose `.gitignore` covers `*.log`
-it will not be committed, and the log then lives only on the machine that ran it.
+The batch log is no longer part of the arm's committed record; it lives with the cell's
+other harness logs on the machine that ran it.

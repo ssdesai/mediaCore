@@ -106,6 +106,7 @@ SEED_HISTORY="$FIXTURES/rates-history-2026-09-22.json"
 # pricing.py and refresh_rates.py import it).
 sandbox() {
   mkdir -p "$TMP/$1/analysis"
+  mkdir -p "$TMP/$1/hooks" && cp "$HERE/hooks/shared_rules.py" "$TMP/$1/hooks/"  # roots.py imports it
   local f
   for f in pricing.py litellm_prices.py refresh_rates.py roots.py; do
     cp "$HERE/analysis/$f" "$TMP/$1/analysis/$f" 2>/dev/null || true
@@ -638,9 +639,12 @@ SLUG9="live-cap"
 SID9="1111aaaa-0000-0000-0000-000000000009"
 HOME9="$TMPP/home"
 mkdir -p "$R9/analysis" "$R9/self/features/$SLUG9" "$R9/.git"
+mkdir -p "$R9/hooks" && cp "$HERE/hooks/shared_rules.py" "$R9/hooks/"  # roots.py imports it
 for f in pricing.py litellm_prices.py roots.py transcript.py capture_planning.py routing.py report.py manifest.py; do
   cp "$HERE/analysis/$f" "$R9/analysis/$f" 2>/dev/null || true
 done
+# capture_planning.py reads the brief header from ../hooks/brief_header.py (README.md).
+mkdir -p "$R9/hooks" && cp "$HERE/hooks/brief_header.py" "$R9/hooks/brief_header.py"
 cp "$SEED_HISTORY" "$R9/analysis/rates_history.json" 2>/dev/null || true
 printf '# %s\n\nTest fixture only.\n\n```json\n{"slug": "%s", "method": "direct", "plans": [], "branches": ["%s"], "base": "main", "session_window": {"from": "2026-06-01T00:00:00Z", "to": "2026-06-02T00:00:00Z"}, "exclude_sessions": [], "exclude_subagents": [], "sessions": [], "subagents": []}\n```\n' \
   "$SLUG9" "$SLUG9" "$SLUG9" > "$R9/self/features/$SLUG9/README.md"

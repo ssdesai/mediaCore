@@ -1,0 +1,72 @@
+{
+  "slug": "backlog-cleanup",
+  "captured_at": "2026-11-17T15:28:07.762939+00:00",
+  "manifest_branches": [
+    "claude/backlog-cleanup"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "cfa66ab4-b7e8-506f-a0a9-5180c487af09",
+      "git_branch": "claude/backlog-cleanup",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-11-17",
+      "started_at": "2026-11-17T14:36:13.130000+00:00",
+      "ended_at": "2026-11-17T15:28:06.339000+00:00",
+      "duration_s": 3113
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "098372b9-b1ce-47ff-96e7-0a283af8ddbe"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "cfa66ab4-b7e8-506f-a0a9-5180c487af09",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-17",
+      "duration_s": 3113,
+      "tokens": {
+        "input": 128,
+        "output": 27202,
+        "cache_read": 9365768,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 123467
+      },
+      "cost_usd": 3.4054416,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 3.4054416,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 3.4054416,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 3113,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "rate history is stale (checked 2026-10-13); refresh analysis/rates_history.json with analysis/refresh_rates.py in an agentTooling self feature"
+  ]
+}

@@ -1,0 +1,15 @@
+write: /tmp/plan-capture.s5rBl2/scratch/setup.sh
+write: /tmp/plan-capture.s5rBl2/scratch/drive.py
+write: /tmp/plan-capture.s5rBl2/scratch/cases1.json
+write: /tmp/plan-capture.s5rBl2/scratch/one.sh
+edit: /tmp/plan-capture.s5rBl2/scratch/drive.py
+write: /tmp/plan-capture.s5rBl2/scratch/date-probe.sh
+write: /tmp/plan-capture.s5rBl2/scratch/audit-paths.sh
+write: /tmp/plan-capture.s5rBl2/scratch/cases2.json
+write: /tmp/plan-capture.s5rBl2/scratch/plant.sh
+write: /tmp/plan-capture.s5rBl2/scratch/effects.sh
+write: /tmp/plan-capture.s5rBl2/scratch/textplant.sh
+write: /tmp/plan-capture.s5rBl2/scratch/deep.sh
+write: /tmp/plan-capture.s5rBl2/scratch/deep2.sh
+write: /tmp/plan-capture.s5rBl2/scratch/cases3.json
+write: /home/user/agentTooling-delegate-cost-claims/self/features/hook-role-hardening/audit-report.md

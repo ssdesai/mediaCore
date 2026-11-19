@@ -1,0 +1,142 @@
+{
+  "slug": "harness-ablation-methods",
+  "generated_at": "2026-11-05T17:18:52.545255+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 18.1083508,
+    "build": 18.1083508,
+    "verify": 0.0,
+    "review": 1.8777711,
+    "total": 19.9861219,
+    "planning_pct": 0.0,
+    "build_pct": 90.60462500231222,
+    "verify_pct": 0.0,
+    "review_pct": 9.39537499768777,
+    "cost_per_plan": 19.9861219,
+    "cost_per_file": 3.3310203166666668,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 0,
+    "planning_subagents_s": 1996,
+    "planning_s": 0.0,
+    "implementer_s": 1996,
+    "build_s": 1996.0,
+    "verify_s": 0.0,
+    "review_s": 191.045,
+    "executor_s": 2187.045,
+    "total_s": 2187.045,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-05T17:15:15+00:00",
+      "last_at": "2026-11-05T17:18:41+00:00",
+      "batch_span_s": 206.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 193.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 193.0,
+      "plan_runs": 1,
+      "pr_opened_at": "2026-11-05T17:18:41+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/130"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 18.1083508,
+      "build_min": 33.266666666666666,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.8777711,
+      "review_min": 3.184083333333333,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 18.1083508,
+    "sessions": 0.0
+  },
+  "cold_start_tax_tokens": 116804,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 41,
+      "total_cost_usd": 1.8777711,
+      "total_duration_s": 191.045,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 11,
+      "files_edited": 6,
+      "churn_ratio": 1.8333333333333333
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 82,
+      "loc_changed": 103
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "harness/scorecard.py",
+        "harness/tests/README.md",
+        "harness/tests/scorecard-accept.sh",
+        "self/review-report.md",
+        "self/tests/README.md",
+        "self/tests/vanilla-pair.sh"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "self/tests/vanilla-pair.sh",
+      "earlier_plan": "01-review-opus",
+      "later_plan": "01-review-opus",
+      "overlap_chars": 133
+    },
+    {
+      "file": "self/tests/vanilla-pair.sh",
+      "earlier_plan": "01-review-opus",
+      "later_plan": "01-review-opus",
+      "overlap_chars": 182
+    },
+    {
+      "file": "self/tests/README.md",
+      "earlier_plan": "01-review-opus",
+      "later_plan": "01-review-opus",
+      "overlap_chars": 68
+    }
+  ],
+  "warnings": [],
+  "profile": "cloud",
+  "gate": "green"
+}

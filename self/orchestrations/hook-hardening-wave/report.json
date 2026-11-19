@@ -1,0 +1,38 @@
+{
+  "slug": "hook-hardening-wave",
+  "kind": "coordinator",
+  "generated_at": "2026-11-16T01:37:04Z",
+  "session": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+  "agent_tooling": "08f42556ae06671b796fdac6641a850ecf4830ca",
+  "agent_tooling_short": "08f4255",
+  "session_window": {
+    "from": "2026-11-11T14:06:53Z",
+    "to": "2026-11-15T14:33:19Z"
+  },
+  "features": [
+    {
+      "repo": "agentTooling",
+      "slug": "hook-role-hardening",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/140",
+      "total_usd": 179.89469315,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "orchestration-record-fixes",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/139",
+      "total_usd": 67.033626,
+      "unpriced_reason": null
+    }
+  ],
+  "overhead": {
+    "usd": 34.0354264,
+    "unpriced_reason": null,
+    "total_is_partial": false
+  },
+  "features_total_usd": 246.92831915,
+  "priced_count": 2,
+  "unpriced_count": 0,
+  "group_total_usd": 280.96374555,
+  "overhead_pct": 12.11381430489333
+}

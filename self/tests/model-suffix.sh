@@ -28,6 +28,7 @@ trap 'rm -rf "$TMP"' EXIT
 TMP="$(cd "$TMP" && pwd -P)"
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features" "$AT/.git" "$TMP/home"
+mkdir -p "$AT/hooks" && cp "$HERE/hooks/shared_rules.py" "$AT/hooks/"  # roots.py imports it
 export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
 export HOME="$TMP/home"
 

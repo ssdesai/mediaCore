@@ -1,0 +1,74 @@
+{
+  "plan": "02-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "2897207c-3b6b-4e78-8058-73e3aa6ba46e",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 26,
+  "duration_ms": 235564,
+  "total_cost_usd": 1.2701413000000001,
+  "usage": {
+    "input_tokens": 36,
+    "cache_creation_input_tokens": 65357,
+    "cache_read_input_tokens": 1292608,
+    "output_tokens": 24411
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 3902,
+      "outputTokens": 19,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.00039970000000000007,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 36,
+      "outputTokens": 24411,
+      "cacheReadInputTokens": 1292608,
+      "cacheCreationInputTokens": 65357,
+      "webSearchRequests": 0,
+      "costUSD": 1.2697416000000001,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 9129,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 65357,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 16,
+    "Edit": 3,
+    "Read": 4,
+    "Write": 2
+  },
+  "files_edited": [
+    "/tmp/plan-capture.10p3zO/scratch/attack.sh",
+    "/tmp/plan-capture.10p3zO/scratch/headfix/feature-close.sh",
+    "self/features/close-after-filing/audit-report.md"
+  ],
+  "edit_count": 5,
+  "attempts": [
+    {
+      "session_id": "2897207c-3b6b-4e78-8058-73e3aa6ba46e",
+      "outcome": "complete",
+      "total_cost_usd": 1.2701413000000001,
+      "num_turns": 26,
+      "duration_ms": 235564
+    }
+  ]
+}

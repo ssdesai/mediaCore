@@ -1,0 +1,11 @@
+edit: /home/user/agentTooling/harness/scorecard.py
+edit: /home/user/agentTooling/harness/tests/scorecard-accept.sh
+edit: /home/user/agentTooling/harness/tests/README.md
+edit: /home/user/agentTooling/self/tests/vanilla-pair.sh
+edit: /home/user/agentTooling/self/tests/vanilla-pair.sh
+edit: /home/user/agentTooling/self/tests/vanilla-pair.sh
+edit: /home/user/agentTooling/self/tests/README.md
+edit: /home/user/agentTooling/self/tests/vanilla-pair.sh
+edit: /home/user/agentTooling/self/tests/vanilla-pair.sh
+edit: /home/user/agentTooling/self/tests/README.md
+write: /home/user/agentTooling/self/review-report.md

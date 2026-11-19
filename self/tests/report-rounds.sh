@@ -69,6 +69,7 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/report-rounds.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
+mkdir -p "$AT/hooks" && cp "$HERE/hooks/shared_rules.py" "$AT/hooks/"  # roots.py imports it
 
 export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
 for f in pricing.py litellm_prices.py rates_history.json roots.py transcript.py report.py routing.py; do

@@ -1,0 +1,75 @@
+{
+  "plan": "02-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "ca36d55a-ffca-41a9-812a-cb0c5ee62068",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 31,
+  "duration_ms": 208548,
+  "total_cost_usd": 1.5469422999999998,
+  "usage": {
+    "input_tokens": 50,
+    "cache_creation_input_tokens": 87962,
+    "cache_read_input_tokens": 2209536,
+    "output_tokens": 20029
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 5486,
+      "outputTokens": 21,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0005591000000000001,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 50,
+      "outputTokens": 20029,
+      "cacheReadInputTokens": 2209536,
+      "cacheCreationInputTokens": 87962,
+      "webSearchRequests": 0,
+      "costUSD": 1.5463832,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 10883,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 87962,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 1,
+  "tool_counts": {
+    "Bash": 18,
+    "Edit": 2,
+    "Read": 6,
+    "Write": 4
+  },
+  "files_edited": [
+    "/tmp/plan-capture.ZpsxqO/scratch/probe.py",
+    "/tmp/plan-capture.ZpsxqO/scratch/probe2.py",
+    "/tmp/plan-capture.ZpsxqO/scratch/probe3.py",
+    "self/review-report.md"
+  ],
+  "edit_count": 6,
+  "attempts": [
+    {
+      "session_id": "ca36d55a-ffca-41a9-812a-cb0c5ee62068",
+      "outcome": "complete",
+      "total_cost_usd": 1.5469422999999998,
+      "num_turns": 31,
+      "duration_ms": 208548
+    }
+  ]
+}

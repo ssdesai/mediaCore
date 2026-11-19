@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -uo pipefail
-# template-version: 7
+# template-version: 8
 
 # This is what `sync-plans.sh --check` compares a seeded copy against to report drift.
 # Bump it whenever the body below the marker changes in a way seeded copies must
@@ -33,7 +33,18 @@ set -uo pipefail
 #     argv[2]            path to the PR body (may not exist; treat as optional)
 #     cwd                repo root
 #     FORGE_SCRIPT       env: the forge adapter's path, exported by feature-close.sh
-#     exit 0             PR opened, already open with its body refreshed from argv[2],
+#     CONFORMANCE_SCRIPT env, optional (template-version 8): agentTooling's conformance.py,
+#                        exported by feature-close.sh. Set, this script composes the body
+#                        through it — `## Acceptance` first, `## Deviations from the brief`
+#                        second — and titles the PR `[deviations] <slug>` when that section is
+#                        not None. Unset (an older caller), the body is argv[2] as it was and
+#                        the title is the slug.
+#     CONFORMANCE_REPORT env, optional: the conformance check's report at the judged head,
+#                        whose out-of-scope files the deviations section lists. Exported only
+#                        when the feature has an owner brief, so it is also the signal that
+#                        a report with NO deviations section is marked: without it a missing
+#                        section is not (self/features/brief-conformance-checks/NOTES.md R17)
+#     exit 0            PR opened, already open with its body refreshed from argv[2],
 #                        or deliberately skipped — and skipped ONLY where there is no
 #                        forge CLI at all: a forge that is there and refused (the
 #                        refresh included) is a failure, never a skip
@@ -90,6 +101,15 @@ FALLBACK_BASE="main"
 FORGE_SCRIPT_FALLBACKS=(./agentTooling/forge.sh ./forge.sh)
 # The body when the review wrote no report.
 FALLBACK_BODY_TEMPLATE="pr-body.XXXXXX"
+# The composed body (CONFORMANCE_SCRIPT, below), and the mark a PR with a non-empty
+# deviations section carries in its title — a prefix, because a label needs the label to
+# exist on the repository and a title is set by the same REST call in both profiles. What
+# conformance.py's `deviations` prints for an empty section.
+COMPOSED_BODY_TEMPLATE="pr-body-composed.XXXXXX"
+DEVIATIONS_TITLE_PREFIX="[deviations] "
+DEVIATIONS_NONE_WORD="none"
+# The flag that tells conformance.py a missing deviations section is non-empty
+OWNER_BRIEF_FLAG="--owner-brief-present"
 # The AUTO_MERGE value that turns auto-merge on. HOW the forge is asked — a merge commit,
 # never a squash, by `gh pr merge` on a laptop and the proxy's REST route in a cloud
 # container — is forge.sh's `auto-merge`, which picks by profile.
@@ -209,8 +229,38 @@ fi
 body_file="$REPORT"
 if [[ -z "$REPORT" || ! -f "$REPORT" ]]; then
   body_file="$(mktemp "${TMPDIR:-/tmp}/$FALLBACK_BODY_TEMPLATE")" || exit 1
-  trap 'rm -f "$body_file"' EXIT
+  fallback_file="$body_file"
+  trap 'rm -f "${fallback_file:-}" "${composed_file:-}"' EXIT
   echo "Built, verified and reviewed by the agentTooling batch for \`$SLUG\`. No review report was written." > "$body_file"
+fi
+
+# The brief-conformance checks (LIFECYCLE.md → "The owner's brief and the conformance
+# check"): with the helper exported, the body becomes the report with its Acceptance table
+# first and its deviations section second, and a non-empty deviations section — or none at
+# all, which is read as non-empty only when the feature has an owner brief (CONFORMANCE_REPORT
+# is set) — puts `[deviations] ` in front of the title. Without it nothing here changes. The title travels on pr-edit too, so a re-close sets or clears the
+# mark on a PR an earlier round opened.
+PR_TITLE="$SLUG"
+title_args=()
+if [[ -n "${CONFORMANCE_SCRIPT:-}" && -f "$CONFORMANCE_SCRIPT" ]]; then
+  conformance_args=()
+  owner_brief_args=()
+  if [[ -n "${CONFORMANCE_REPORT:-}" && -f "$CONFORMANCE_REPORT" ]]; then
+    conformance_args=(--conformance "$CONFORMANCE_REPORT")
+    owner_brief_args=("$OWNER_BRIEF_FLAG")
+  fi
+  composed_file="$(mktemp "${TMPDIR:-/tmp}/$COMPOSED_BODY_TEMPLATE")" || exit 1
+  trap 'rm -f "${fallback_file:-}" "${composed_file:-}"' EXIT
+  if python3 -B "$CONFORMANCE_SCRIPT" pr-body "$body_file" ${conformance_args[@]+"${conformance_args[@]}"} > "$composed_file"; then
+    body_file="$composed_file"
+    if [[ "$(python3 -B "$CONFORMANCE_SCRIPT" deviations "$body_file" ${owner_brief_args[@]+"${owner_brief_args[@]}"} 2>/dev/null)" != "$DEVIATIONS_NONE_WORD" ]]; then
+      PR_TITLE="$DEVIATIONS_TITLE_PREFIX$SLUG"
+      echo "  mark    deviations from the brief are listed — the PR is titled '$PR_TITLE'; an orchestrator never merges it without the owner's word"
+    fi
+  else
+    echo "  warn    $CONFORMANCE_SCRIPT pr-body failed — the PR body is the report as written, and its title is not marked"
+  fi
+  title_args=("$PR_TITLE")
 fi
 
 # Already open: a previous round's close opened it. The body is the CURRENT review's
@@ -219,7 +269,7 @@ fi
 # refresh that changes nothing costs one API call. A refusal is a failure: the PR would
 # go on describing a tree the reviewers are no longer looking at.
 if [[ -n "$existing" ]]; then
-  if ! "$FORGE" pr-edit "$existing" "$body_file" >/dev/null; then
+  if ! "$FORGE" pr-edit "$existing" "$body_file" ${title_args[@]+"${title_args[@]}"} >/dev/null; then
     echo "  pr      already open, body NOT refreshed: $existing"
     echo "  fail  $FORGE pr-edit failed — the PR is open but its body still describes an earlier round"
     exit 1
@@ -228,7 +278,7 @@ if [[ -n "$existing" ]]; then
   exit 0
 fi
 
-if ! url="$("$FORGE" pr-open "$current_branch" "$BASE_BRANCH" "$SLUG" "$body_file")"; then
+if ! url="$("$FORGE" pr-open "$current_branch" "$BASE_BRANCH" "$PR_TITLE" "$body_file")"; then
   echo "  fail  $FORGE pr-open $current_branch into $BASE_BRANCH failed — no PR opened"
   exit 1
 fi

@@ -48,8 +48,10 @@ TMP="$(cd "$TMP" && pwd -P)"
 copy_tooling() {
   local dest="$1"
   mkdir -p "$dest/analysis" "$dest/templates/plans/features"
+  mkdir -p "$dest/hooks" && cp "$HERE/hooks/shared_rules.py" "$dest/hooks/"  # roots.py imports it
   local f
-  for f in feature-start.sh plan-runner-roots.sh env-profile.sh; do
+  # the role reader refuses a copy without its two modules (hook-silent-allow-sweep, item 7)
+  for f in feature-start.sh plan-runner-roots.sh env-profile.sh hooks/orchestrator_role.py hooks/shared_rules.py; do
     cp "$HERE/$f" "$dest/$f" 2>/dev/null || true
   done
   # The detector env-profile.sh asks, where it looks for it

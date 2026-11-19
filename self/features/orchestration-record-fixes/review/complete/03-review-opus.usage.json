@@ -1,0 +1,81 @@
+{
+  "plan": "03-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "ca9dcbae-345a-442f-a721-512425b11e02",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 33,
+  "duration_ms": 227304,
+  "total_cost_usd": 1.410709,
+  "usage": {
+    "input_tokens": 50,
+    "cache_creation_input_tokens": 74306,
+    "cache_read_input_tokens": 2055534,
+    "output_tokens": 20224
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 4617,
+      "outputTokens": 25,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0004742,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 50,
+      "outputTokens": 20224,
+      "cacheReadInputTokens": 2055534,
+      "cacheCreationInputTokens": 74306,
+      "webSearchRequests": 0,
+      "costUSD": 1.4102348,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 10448,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 74306,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 3,
+  "tool_counts": {
+    "Bash": 18,
+    "Edit": 4,
+    "Read": 2,
+    "Write": 8
+  },
+  "files_edited": [
+    "/tmp/plan-capture.t8jhTg/scratch/base.py",
+    "/tmp/plan-capture.t8jhTg/scratch/cmds1.txt",
+    "/tmp/plan-capture.t8jhTg/scratch/cmds2.txt",
+    "/tmp/plan-capture.t8jhTg/scratch/cmds3.txt",
+    "/tmp/plan-capture.t8jhTg/scratch/cmds4.txt",
+    "/tmp/plan-capture.t8jhTg/scratch/cmds5.txt",
+    "/tmp/plan-capture.t8jhTg/scratch/probe.py",
+    "hooks/allow-repo-commands.sh",
+    "self/features/orchestration-record-fixes/README.md",
+    "self/review-report.md"
+  ],
+  "edit_count": 12,
+  "attempts": [
+    {
+      "session_id": "ca9dcbae-345a-442f-a721-512425b11e02",
+      "outcome": "complete",
+      "total_cost_usd": 1.410709,
+      "num_turns": 33,
+      "duration_ms": 227304
+    }
+  ]
+}

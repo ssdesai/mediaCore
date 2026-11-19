@@ -1,0 +1,73 @@
+{
+  "slug": "lifecycle-t5-brief",
+  "captured_at": "2026-11-17T18:13:26.964661+00:00",
+  "manifest_branches": [
+    "claude/lifecycle-t5-brief"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "490129ea-4f1c-59e1-ae61-6f824489b8b9",
+      "git_branch": "claude/lifecycle-t5-brief",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-11-17",
+      "started_at": "2026-11-17T17:23:03.411000+00:00",
+      "ended_at": "2026-11-17T18:13:24.885000+00:00",
+      "duration_s": 3021
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "7d2ecddf-de9c-488e-9273-538ee6f2717d",
+    "a8e6ee22-5c7e-4acf-b4b5-de75ab184a07"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "490129ea-4f1c-59e1-ae61-6f824489b8b9",
+      "agent_id": null,
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-17",
+      "duration_s": 3021,
+      "tokens": {
+        "input": 106,
+        "output": 10745,
+        "cache_read": 6291077,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 91451
+      },
+      "cost_usd": 1.1025737000000002,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 1.1025737000000002,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 1.1025737000000002,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 3021,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "rate history is stale (checked 2026-10-13); refresh analysis/rates_history.json with analysis/refresh_rates.py in an agentTooling self feature"
+  ]
+}

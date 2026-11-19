@@ -1,0 +1,8 @@
+edit: /home/user/agentTooling/harness/README.md
+edit: /home/user/agentTooling/harness/README.md
+edit: /home/user/agentTooling/harness/SPEC.md
+edit: /home/user/agentTooling/harness/EXPERIMENTS.md
+edit: /home/user/agentTooling/LIFECYCLE.md
+edit: /home/user/agentTooling/self/PROJECT_FACTS.md
+edit: /home/user/agentTooling/harness/SPEC.md
+edit: /home/user/agentTooling/self/BACKLOG.md

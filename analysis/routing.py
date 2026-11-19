@@ -89,7 +89,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from pricing import compute_cost
-from roots import add_self_flag, checkout_of, features_root
+from roots import add_self_flag, checkout_of, features_root, shared_rules
 from transcript import add_usage, iter_billable_messages, to_utc
 
 # Where a record lives: inside the feature directory it links, one copy per feature, so
@@ -169,7 +169,7 @@ START_BARE_FLAGS = frozenset(["--self", "--no-gate", "--no-pin", "--pin", "--ope
 FLAG_PREFIX = "-"
 # The slug pattern feature-start.sh itself refuses on; a token that fails it is not a
 # slug, and a record must not invent one.
-SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+SLUG_RE = shared_rules.SLUG_RE
 
 # Router detection (design §3.4): launched in the primary checkout — not in one of its
 # worktrees — on `main`, with at least one `feature-start.sh` call in the transcript.

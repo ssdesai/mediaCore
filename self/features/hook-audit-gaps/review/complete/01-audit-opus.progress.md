@@ -1,0 +1,15 @@
+write: /tmp/plan-capture.jxnxd2/scratch/setup.sh
+write: /tmp/plan-capture.jxnxd2/scratch/attack.py
+write: /tmp/plan-capture.jxnxd2/scratch/c1.json
+write: /tmp/plan-capture.jxnxd2/scratch/cloud.py
+write: /tmp/plan-capture.jxnxd2/scratch/broken-main/.git
+write: /tmp/plan-capture.jxnxd2/scratch/c2.json
+write: /tmp/plan-capture.jxnxd2/scratch/funcs.py
+write: /tmp/plan-capture.jxnxd2/scratch/c3.json
+write: /tmp/plan-capture.jxnxd2/scratch/c4.json
+write: /tmp/plan-capture.jxnxd2/scratch/c5.json
+write: /tmp/plan-capture.jxnxd2/scratch/orch.py
+write: /tmp/plan-capture.jxnxd2/scratch/c6.json
+write: /tmp/plan-capture.jxnxd2/scratch/c7.json
+write: /tmp/plan-capture.jxnxd2/scratch/table.py
+write: /home/user/agentTooling/self/features/hook-audit-gaps/audit-report.md

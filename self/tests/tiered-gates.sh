@@ -38,7 +38,9 @@ mkdir -p "$AT/self/features" "$TMP/bin"
 # lint with `-x`, so a sandbox missing it silently skips the corpus lint through every
 # escalation and resume phase below — the omission that let the escalation-vs-plans[]
 # defect ship green. With it here, the fixture corpus must be one the lint accepts.
-for f in run-plans.sh run-verify.sh run-review.sh run-batch.sh run-escalation-plan.sh check-plans.sh plan-runner-lib.sh plan-runner-roots.sh; do
+# the role reader refuses a copy without its two modules (hook-silent-allow-sweep, item 7)
+mkdir -p "$AT/hooks"
+for f in run-plans.sh run-verify.sh run-review.sh run-batch.sh run-escalation-plan.sh check-plans.sh plan-runner-lib.sh plan-runner-roots.sh hooks/orchestrator_role.py hooks/shared_rules.py; do
   cp "$HERE/$f" "$AT/$f"
 done
 chmod +x "$AT"/*.sh

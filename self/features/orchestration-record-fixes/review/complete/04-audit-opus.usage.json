@@ -1,0 +1,77 @@
+{
+  "plan": "04-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "6e0f314d-ec4c-43c0-a070-419bcef7383d",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 31,
+  "duration_ms": 353205,
+  "total_cost_usd": 1.6820369999999998,
+  "usage": {
+    "input_tokens": 48,
+    "cache_creation_input_tokens": 83803,
+    "cache_read_input_tokens": 1785302,
+    "output_tokens": 32703
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 2871,
+      "outputTokens": 27,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0003006,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 48,
+      "outputTokens": 32703,
+      "cacheReadInputTokens": 1785302,
+      "cacheCreationInputTokens": 83803,
+      "webSearchRequests": 0,
+      "costUSD": 1.6817363999999997,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 14130,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 83803,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 22,
+    "Read": 1,
+    "Write": 7
+  },
+  "files_edited": [
+    "/tmp/plan-capture.MMZErn/scratch/bashcheck.sh",
+    "/tmp/plan-capture.MMZErn/scratch/driver.py",
+    "/tmp/plan-capture.MMZErn/scratch/malformed.py",
+    "/tmp/plan-capture.MMZErn/scratch/p1.json",
+    "/tmp/plan-capture.MMZErn/scratch/p2.json",
+    "/tmp/plan-capture.MMZErn/scratch/p3.json",
+    "self/features/orchestration-record-fixes/audit-report.md"
+  ],
+  "edit_count": 7,
+  "attempts": [
+    {
+      "session_id": "6e0f314d-ec4c-43c0-a070-419bcef7383d",
+      "outcome": "complete",
+      "total_cost_usd": 1.6820369999999998,
+      "num_turns": 31,
+      "duration_ms": 353205
+    }
+  ]
+}

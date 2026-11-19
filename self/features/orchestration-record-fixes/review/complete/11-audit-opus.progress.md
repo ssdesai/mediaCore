@@ -1,0 +1,11 @@
+write: /tmp/plan-capture.J0fADf/scratch/setup.sh
+write: /tmp/plan-capture.J0fADf/scratch/driver.py
+write: /tmp/plan-capture.J0fADf/scratch/run_one.py
+edit: /tmp/plan-capture.J0fADf/scratch/driver.py
+write: /tmp/plan-capture.J0fADf/scratch/build.txt
+write: /tmp/plan-capture.J0fADf/scratch/bashcheck.sh
+write: /tmp/plan-capture.J0fADf/scratch/fdcheck.sh
+write: /tmp/plan-capture.J0fADf/scratch/git.txt
+write: /tmp/plan-capture.J0fADf/scratch/more.txt
+write: /home/user/agentTooling/self/features/orchestration-record-fixes/audit-report.md
+edit: /home/user/agentTooling/self/features/orchestration-record-fixes/audit-report.md

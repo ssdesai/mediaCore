@@ -76,10 +76,13 @@ check() { if eval "$2"; then ok "$1"; else fail "$1"; fi; }
 pj() { python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2]))" "$1" "$2" 2>/dev/null; }
 
 mkdir -p "$R/analysis" "$R/self/features"
+mkdir -p "$R/hooks" && cp "$HERE/hooks/shared_rules.py" "$R/hooks/"  # roots.py imports it
 export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
 for f in pricing.py litellm_prices.py rates_history.json roots.py transcript.py capture_planning.py routing.py; do
   cp "$HERE/analysis/$f" "$R/analysis/$f" 2>/dev/null || true
 done
+# capture_planning.py reads the brief header from ../hooks/brief_header.py (README.md).
+mkdir -p "$R/hooks" && cp "$HERE/hooks/brief_header.py" "$R/hooks/brief_header.py"
 printf '__pycache__/\n' > "$R/.gitignore"
 git -C "$R" init -q
 git -C "$R" symbolic-ref HEAD refs/heads/main

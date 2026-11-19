@@ -17,5 +17,4 @@ including work already finished. These are not preferences.
   for every other arm alike.
 - **Do not edit `@@AGENT_TOOLING@@`** — it is vendored from a shared repo and a change
   there ships to every repo that pulls it.
-- The read-only spec worktree at `@@SPEC_TREE@@` is reference material, checked out
-  detached at a pinned commit. Read it; never write to it.
+@@SPEC_RULE@@

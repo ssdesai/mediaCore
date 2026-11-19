@@ -1,0 +1,73 @@
+{
+  "slug": "audit-round-cap",
+  "captured_at": "2026-11-17T18:40:29.283627+00:00",
+  "manifest_branches": [
+    "claude/audit-round-cap"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "0766452c-5de8-5d71-9fed-1f4bf7280a5e",
+      "git_branch": "claude/audit-round-cap",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-11-17",
+      "started_at": "2026-11-17T17:23:03.276000+00:00",
+      "ended_at": "2026-11-17T18:40:26.760000+00:00",
+      "duration_s": 4643
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "7f54b1a2-7ff6-44cd-a39d-80dcfd40ef1f",
+    "9a2904f4-5361-44b2-b47f-527817478266"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "0766452c-5de8-5d71-9fed-1f4bf7280a5e",
+      "agent_id": null,
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-17",
+      "duration_s": 4643,
+      "tokens": {
+        "input": 83,
+        "output": 9697,
+        "cache_read": 3633901,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 61183
+      },
+      "cost_usd": 0.7052581000000001,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 0.7052581000000001,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 0.7052581000000001,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 4643,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "rate history is stale (checked 2026-10-13); refresh analysis/rates_history.json with analysis/refresh_rates.py in an agentTooling self feature"
+  ]
+}

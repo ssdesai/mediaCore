@@ -1,0 +1,484 @@
+{
+  "slug": "hook-audit-gaps",
+  "captured_at": "2026-11-16T03:50:02.005794+00:00",
+  "manifest_branches": [
+    "claude/hook-audit-gaps"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "git_branch": "claude/hook-audit-gaps",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-11-14",
+      "started_at": "2026-11-14T02:24:10.435000+00:00",
+      "ended_at": "2026-11-16T03:50:00.574000+00:00",
+      "duration_s": 177950
+    }
+  ],
+  "subagents": [
+    {
+      "agent_id": "a110d2bd2d3c88af9",
+      "parent_session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "date": "2026-11-15",
+      "started_at": "2026-11-15T03:58:50.689000+00:00",
+      "ended_at": "2026-11-15T14:47:12.125000+00:00",
+      "duration_s": 38901,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a17ca24563e736478",
+      "parent_session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "date": "2026-11-14",
+      "started_at": "2026-11-14T13:28:54.277000+00:00",
+      "ended_at": "2026-11-14T13:31:44.961000+00:00",
+      "duration_s": 170,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a2d9dc0f9f9170df5",
+      "parent_session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "date": "2026-11-15",
+      "started_at": "2026-11-15T15:56:27.644000+00:00",
+      "ended_at": "2026-11-15T20:01:41.649000+00:00",
+      "duration_s": 14714,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a2ec467d12d3aab49",
+      "parent_session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "date": "2026-11-14",
+      "started_at": "2026-11-14T13:32:11.466000+00:00",
+      "ended_at": "2026-11-14T21:58:56.619000+00:00",
+      "duration_s": 30405,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a735359a40aec22a6",
+      "parent_session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "date": "2026-11-14",
+      "started_at": "2026-11-14T02:41:27.867000+00:00",
+      "ended_at": "2026-11-14T02:48:52.019000+00:00",
+      "duration_s": 444,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a82f219d530473f20",
+      "parent_session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "date": "2026-11-16",
+      "started_at": "2026-11-16T02:10:12.623000+00:00",
+      "ended_at": "2026-11-16T03:19:26.694000+00:00",
+      "duration_s": 4154,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a93096e204352e5ea",
+      "parent_session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "date": "2026-11-15",
+      "started_at": "2026-11-15T21:02:01.445000+00:00",
+      "ended_at": "2026-11-15T23:24:49.487000+00:00",
+      "duration_s": 8568,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a99ef090b3c2cfc99",
+      "parent_session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "date": "2026-11-16",
+      "started_at": "2026-11-16T00:01:29.901000+00:00",
+      "ended_at": "2026-11-16T01:44:21.090000+00:00",
+      "duration_s": 6171,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "abd2a6d9f93e37e3d",
+      "parent_session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "date": "2026-11-14",
+      "started_at": "2026-11-14T22:32:20.754000+00:00",
+      "ended_at": "2026-11-15T01:14:23.455000+00:00",
+      "duration_s": 9722,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "adf81bb1bbbe9265f",
+      "parent_session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "date": "2026-11-14",
+      "started_at": "2026-11-14T03:54:46.260000+00:00",
+      "ended_at": "2026-11-14T13:14:12.605000+00:00",
+      "duration_s": 33566,
+      "selected_by": "parent",
+      "cross_repo": false
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "0206726d-f8e9-474d-8f4d-810eb7cec37f",
+    "0360a9ba-4687-4f82-9198-d13f186a8f7f",
+    "0cac5a7c-de6e-45eb-93e1-7189919ddb13",
+    "1230e2ed-8636-4778-9f1e-f7f76714f5b2",
+    "36b307f1-e7cc-4527-9b64-420a3ad78ef6",
+    "4e145f9a-a0d5-44ed-8419-882ac9f1db14",
+    "7776bfe3-df69-4789-aebb-4525ae092fbf",
+    "95e1b0be-ab1c-4d8f-a95a-d6dfd6908465",
+    "bc365082-aa6a-4f82-8833-7dee3cd83a63",
+    "bfdee4ec-3822-48e0-846f-bd597b2f1f8d",
+    "ca36d55a-ffca-41a9-812a-cb0c5ee62068",
+    "ddf30e07-095f-4d01-a03f-948eb3f2b9e0",
+    "e7114cfd-545e-4f32-8bf1-8c2a0bfb1c06",
+    "e98ef07d-a201-4bac-9a87-1b46ed320351"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "agent_id": null,
+      "model": "claude-fable-5-2",
+      "is_sidechain": false,
+      "date": "2026-11-14",
+      "duration_s": 177950,
+      "tokens": {
+        "input": 112,
+        "output": 22830,
+        "cache_read": 7022519,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 575997
+      },
+      "cost_usd": 11.534551800000001,
+      "rates_applied": {
+        "model": "claude-fable-5-2",
+        "input": 8,
+        "output": 40,
+        "cache_read": 0.2,
+        "cache_creation_5m": 10,
+        "cache_creation_1h": 16,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm-live"
+      }
+    },
+    {
+      "session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-14",
+      "duration_s": 177950,
+      "tokens": {
+        "input": 572,
+        "output": 102715,
+        "cache_read": 38938130,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 1412863
+      },
+      "cost_usd": 21.147118,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "agent_id": "a110d2bd2d3c88af9",
+      "model": "claude-fable-5-2",
+      "is_sidechain": true,
+      "date": "2026-11-15",
+      "duration_s": 38901,
+      "tokens": {
+        "input": 272,
+        "output": 228569,
+        "cache_read": 45243162,
+        "cache_creation_5m": 4035688,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 58.5504484,
+      "rates_applied": {
+        "model": "claude-fable-5-2",
+        "input": 8,
+        "output": 40,
+        "cache_read": 0.2,
+        "cache_creation_5m": 10,
+        "cache_creation_1h": 16,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm-live"
+      }
+    },
+    {
+      "session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "agent_id": "a17ca24563e736478",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-14",
+      "duration_s": 170,
+      "tokens": {
+        "input": 44,
+        "output": 13819,
+        "cache_read": 2538644,
+        "cache_creation_5m": 156041,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 0.7822449,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "agent_id": "a2d9dc0f9f9170df5",
+      "model": "claude-fable-5-2",
+      "is_sidechain": true,
+      "date": "2026-11-15",
+      "duration_s": 14714,
+      "tokens": {
+        "input": 224,
+        "output": 138583,
+        "cache_read": 28918083,
+        "cache_creation_5m": 1674958,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 28.0783086,
+      "rates_applied": {
+        "model": "claude-fable-5-2",
+        "input": 8,
+        "output": 40,
+        "cache_read": 0.2,
+        "cache_creation_5m": 10,
+        "cache_creation_1h": 16,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm-live"
+      }
+    },
+    {
+      "session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "agent_id": "a2ec467d12d3aab49",
+      "model": "claude-fable-5-2",
+      "is_sidechain": true,
+      "date": "2026-11-14",
+      "duration_s": 30405,
+      "tokens": {
+        "input": 290,
+        "output": 337297,
+        "cache_read": 62100464,
+        "cache_creation_5m": 3768953,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 63.603822799999996,
+      "rates_applied": {
+        "model": "claude-fable-5-2",
+        "input": 8,
+        "output": 40,
+        "cache_read": 0.2,
+        "cache_creation_5m": 10,
+        "cache_creation_1h": 16,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm-live"
+      }
+    },
+    {
+      "session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "agent_id": "a735359a40aec22a6",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-14",
+      "duration_s": 444,
+      "tokens": {
+        "input": 66,
+        "output": 16524,
+        "cache_read": 3723887,
+        "cache_creation_5m": 133550,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 0.8716356999999999,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "agent_id": "a82f219d530473f20",
+      "model": "claude-fable-5-2",
+      "is_sidechain": true,
+      "date": "2026-11-16",
+      "duration_s": 4154,
+      "tokens": {
+        "input": 204,
+        "output": 116907,
+        "cache_read": 24607197,
+        "cache_creation_5m": 1563791,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 25.237261399999998,
+      "rates_applied": {
+        "model": "claude-fable-5-2",
+        "input": 8,
+        "output": 40,
+        "cache_read": 0.2,
+        "cache_creation_5m": 10,
+        "cache_creation_1h": 16,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm-live"
+      }
+    },
+    {
+      "session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "agent_id": "a93096e204352e5ea",
+      "model": "claude-fable-5-2",
+      "is_sidechain": true,
+      "date": "2026-11-15",
+      "duration_s": 8568,
+      "tokens": {
+        "input": 160,
+        "output": 85599,
+        "cache_read": 15954401,
+        "cache_creation_5m": 1630082,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 22.9169402,
+      "rates_applied": {
+        "model": "claude-fable-5-2",
+        "input": 8,
+        "output": 40,
+        "cache_read": 0.2,
+        "cache_creation_5m": 10,
+        "cache_creation_1h": 16,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm-live"
+      }
+    },
+    {
+      "session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "agent_id": "a99ef090b3c2cfc99",
+      "model": "claude-fable-5-2",
+      "is_sidechain": true,
+      "date": "2026-11-16",
+      "duration_s": 6171,
+      "tokens": {
+        "input": 202,
+        "output": 72007,
+        "cache_read": 15468764,
+        "cache_creation_5m": 1993530,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 25.9109488,
+      "rates_applied": {
+        "model": "claude-fable-5-2",
+        "input": 8,
+        "output": 40,
+        "cache_read": 0.2,
+        "cache_creation_5m": 10,
+        "cache_creation_1h": 16,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm-live"
+      }
+    },
+    {
+      "session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "agent_id": "abd2a6d9f93e37e3d",
+      "model": "claude-fable-5-2",
+      "is_sidechain": true,
+      "date": "2026-11-14",
+      "duration_s": 9722,
+      "tokens": {
+        "input": 416,
+        "output": 302890,
+        "cache_read": 91032435,
+        "cache_creation_5m": 3372557,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 64.050985,
+      "rates_applied": {
+        "model": "claude-fable-5-2",
+        "input": 8,
+        "output": 40,
+        "cache_read": 0.2,
+        "cache_creation_5m": 10,
+        "cache_creation_1h": 16,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm-live"
+      }
+    },
+    {
+      "session_id": "75d30dd7-ed59-5255-81db-de0e75ce4af4",
+      "agent_id": "adf81bb1bbbe9265f",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-14",
+      "duration_s": 33566,
+      "tokens": {
+        "input": 154,
+        "output": 83448,
+        "cache_read": 14487688,
+        "cache_creation_5m": 958750,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 4.6804318,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 32.6816698,
+    "sidechain": 294.6830276,
+    "subagents": 294.6830276,
+    "total": 327.3646974,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 177950,
+    "subagents": 146815,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "priced from LiteLLM live (litellm-live), not from analysis/rates_history.json: claude-fable-5-2 \u2014 refresh the history with analysis/refresh_rates.py in an agentTooling self feature, then capture_planning.py --recapture this feature",
+    "rate history is stale (checked 2026-10-13); refresh analysis/rates_history.json with analysis/refresh_rates.py in an agentTooling self feature"
+  ]
+}

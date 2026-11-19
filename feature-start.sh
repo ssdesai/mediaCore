@@ -3,7 +3,13 @@ set -uo pipefail
 
 # Start a feature: feature-start.sh [--self] <slug> [--method direct|plans|hand]
 #   [--base <branch>] [--branch <name>] [--no-gate] [--pin] [--session <id>]
-#   [--orchestration <slug>] [--open]
+#   [--orchestration <slug>] [--owner-brief <file>] [--open]
+#
+# `--owner-brief <file>` copies the file — the repository owner's request, written before the
+# start — byte for byte into the feature directory as OWNER_BRIEF.md, so the `<slug>: start`
+# commit carries it and every review is judged against it (LIFECYCLE.md → "The owner's brief
+# and the conformance check"). A path that is not a readable, non-empty regular file is
+# refused before anything is written.
 #
 # `--orchestration <slug>` records, in the fence's optional `orchestration` key, the
 # orchestration record (orchestration-start.sh) this feature belongs to — both profiles,
@@ -257,6 +263,8 @@ GATE_RECORD_SKIPPED="skipped"
 # name it writes it under inside the feature directory (analysis/routing.py's
 # RECORD_NAME; this script only prints it, and the two move together).
 ROUTING_MODULE="analysis/routing.py"
+# The advisory naming a coordinator outside this checkout that no record claims
+COORDINATOR_CHECK_MODULE="analysis/coordinator_check.py"
 ROUTING_RECORD_NAME="routing.json"
 # The consuming repo's cloud step (session-start.sh's REPO_CLOUD_SETUP_REL; the two move
 # together) and the flag that blocks until its background setup is done
@@ -277,7 +285,7 @@ SELF_FLAG=()
 if [[ "${1:-}" == "--self" ]]; then SELF_FLAG=(--self); shift; fi
 
 usage() {
-  echo "usage: feature-start.sh [--self] <slug> [--method direct|plans|hand] [--base <branch>] [--branch <name>] [--no-gate] [--pin] [--session <id>] [--orchestration <slug>] [--open]" >&2
+  echo "usage: feature-start.sh [--self] <slug> [--method direct|plans|hand] [--base <branch>] [--branch <name>] [--no-gate] [--pin] [--session <id>] [--orchestration <slug>] [--owner-brief <file>] [--open]" >&2
   exit "$USAGE_RC"
 }
 # This run's start lock, once step 4 has written it; empty before that and after step 9.
@@ -302,6 +310,9 @@ BRANCH_OPT=""
 # fence's optional `orchestration` key. Only the slug's shape is checked: the record may
 # live in another repository.
 ORCHESTRATION_OPT=""
+# The owner's request, a file the start copies byte for byte into the feature directory as
+# OWNER_BRIEF.md (header; LIFECYCLE.md → "The owner's brief and the conformance check")
+OWNER_BRIEF_OPT=""
 while (( $# )); do
   # Every value-taking flag checks its arity first: `shift 2` with one argument left
   # returns non-zero WITHOUT shifting, and there is no `set -e` here to stop on it, so a
@@ -317,6 +328,7 @@ while (( $# )); do
     --no-pin)  shift ;;
     --session) (( $# >= 2 )) || usage; SESSION_OPT="$2"; shift 2 ;;
     --orchestration) (( $# >= 2 )) || usage; ORCHESTRATION_OPT="$2"; shift 2 ;;
+    --owner-brief) (( $# >= 2 )) || usage; OWNER_BRIEF_OPT="$2"; shift 2 ;;
     --open)    OPEN=1; shift ;;
     *) usage ;;
   esac
@@ -327,6 +339,20 @@ if [[ -n "$ORCHESTRATION_OPT" && ! "$ORCHESTRATION_OPT" =~ $SLUG_PATTERN ]]; the
   refuse "--orchestration '$ORCHESTRATION_OPT' must match $SLUG_PATTERN — kebab-case, no slash, no prefix"
 fi
 [[ -n "$BASE" ]] || usage
+# The owner brief is judged here, before the profile line and before anything is written: a
+# path that is not a readable, non-empty regular file is refused with the tree untouched.
+# Made absolute now — the start changes directory later and the caller's path is relative to
+# where it ran.
+if [[ -n "$OWNER_BRIEF_OPT" ]]; then
+  if [[ ! -f "$OWNER_BRIEF_OPT" ]]; then
+    refuse "--owner-brief '$OWNER_BRIEF_OPT' is not a regular file — pass the file holding the owner's request, written before the start"
+  elif [[ ! -r "$OWNER_BRIEF_OPT" ]]; then
+    refuse "--owner-brief '$OWNER_BRIEF_OPT' is not readable"
+  elif [[ -z "$(tr -d '[:space:]' < "$OWNER_BRIEF_OPT")" ]]; then
+    refuse "--owner-brief '$OWNER_BRIEF_OPT' is empty — an owner brief with nothing in it would be a yardstick of nothing"
+  fi
+  OWNER_BRIEF_OPT="$(cd "$(dirname "$OWNER_BRIEF_OPT")" && pwd)/$(basename "$OWNER_BRIEF_OPT")"
+fi
 if ! profile_why="$(profile_check)"; then refuse "$profile_why"; fi
 echo "  profile   $(profile_describe)"
 if [[ -n "$BRANCH_OPT" ]] && ! profile_is_cloud; then
@@ -339,7 +365,9 @@ fi
 # consuming repo when vendored). Everything else is a path relative to that.
 PRIMARY="$(git -C "$REPO_DIR" rev-parse --show-toplevel 2>/dev/null)" || refuse "$REPO_DIR is not inside a git repository"
 if [[ "$(git -C "$PRIMARY" rev-parse --git-dir)" != "$(git -C "$PRIMARY" rev-parse --git-common-dir)" ]]; then
-  refuse "this copy is inside a worktree ($PRIMARY); run the primary checkout's feature-start.sh — it is $(dirname "$(git -C "$PRIMARY" rev-parse --git-common-dir)")/${SCRIPT_DIR#"$PRIMARY"/}"
+  PRIMARY_TOP="$(dirname "$(git -C "$PRIMARY" rev-parse --path-format=absolute --git-common-dir)")"
+  PRIMARY_REL_AT="${SCRIPT_DIR#"$PRIMARY"}"; PRIMARY_REL_AT="${PRIMARY_REL_AT#/}"   # "" or agentTooling
+  refuse "this copy is inside a worktree ($PRIMARY); run the primary checkout's feature-start.sh — it is $PRIMARY_TOP${PRIMARY_REL_AT:+/$PRIMARY_REL_AT}/feature-start.sh"
 fi
 REL_REPO="${REPO_DIR#"$PRIMARY"}"; REL_REPO="${REL_REPO#/}"          # "" or agentTooling
 REL_AT="${SCRIPT_DIR#"$PRIMARY"}"; REL_AT="${REL_AT#/}"              # "" or agentTooling
@@ -365,6 +393,10 @@ REPO_NAME="$(feature_repo_name "$PRIMARY")"
 # The session that ran this script. Without --pin it is the router and names the routing
 # record; under --pin it is the manifest's pin and names no record — never both.
 ROUTER_SESSION="${SESSION_OPT:-${CLAUDE_CODE_SESSION_ID:-}}"
+# An orchestrator session builds nothing (plan-runner-roots.sh → "The orchestrator role"):
+# refused here, before the exclude-file write, the fetch and the lock, with the session
+# --session names as well as the one the environment does.
+refuse_orchestrator_session "$ROUTER_SESSION"
 
 # ── Half-starts: the readers the takeover and the prune share ─────────────────
 # branch_creation <branch> — the commit <branch> was created at, from the oldest entry of
@@ -926,6 +958,14 @@ elif ! python3 -B "$WT_AT/analysis/manifest.py" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"
   refuse "could not write the manifest; the worktree is left at $WORKTREE"
 fi
 mkdir -p "$FEATURE_DIR/review/incomplete"
+# The owner's request, byte for byte (`cp`, never through a model), into the directory the
+# commit below adds — so the `<slug>: start` commit carries it and every review reads the
+# same bytes. A resumed start overwrites it with the same file or leaves it when none is given.
+if [[ -n "$OWNER_BRIEF_OPT" ]]; then
+  cp "$OWNER_BRIEF_OPT" "$FEATURE_DIR/$OWNER_BRIEF_NAME" \
+    || refuse "could not copy the owner brief into ${FEATURE_DIR#"$WORKTREE"/}"
+  echo "  owner     ${FEATURE_DIR#"$WORKTREE"/}/$OWNER_BRIEF_NAME  (the owner's request, copied byte for byte from $OWNER_BRIEF_OPT)"
+fi
 # The review brief. Planned and direct builds get the stub, whose $TODO_MARKER the runner
 # refuses, because their brief must be written BEFORE the build, from the spec, by someone
 # other than the builder (LIFECYCLE.md step 3). A HAND build has no delegate to brief and
@@ -1045,6 +1085,18 @@ elif [[ -n "$ROUTER_SESSION" ]]; then
 else
   echo "  routing   none (no session id in \$CLAUDE_CODE_SESSION_ID and no --session)"
 fi
+# A "coordinator" that is really a wave coordinator elsewhere (self/features/
+# coordinator-cost-records/): when the start is run by a delegate, the session id is its
+# parent's, and a parent working outside this checkout is claimed by no branch. Advisory:
+# analysis/coordinator_check.py prints the lines (or nothing) and never fails the start;
+# a --self start hands it --self, so the advisory's orchestration-start.sh command carries it.
+# Cloud only (every cloud start takes the coordinator path; a local one launched on the
+# feature's branch is in its checkout by construction).
+if profile_is_cloud && [[ -n "$ROUTER_SESSION" ]]; then
+  while IFS= read -r coordinator_warning; do
+    echo "  warn      $coordinator_warning"
+  done < <(python3 -B "$WT_AT/$COORDINATOR_CHECK_MODULE" "$ROUTER_SESSION" "$WORKTREE" ${SELF_FLAG[@]+"${SELF_FLAG[@]}"} 2>/dev/null)
+fi
 
 # The commit is limited to the feature directory by pathspec: whatever else is staged or
 # modified in the tree (a resumed start keeps a hand fix) is as it was after the commit.
@@ -1055,6 +1107,14 @@ echo "  commit    $SLUG: start"
 # No longer a half-start: the branch has moved, which is what every reader checks first.
 rm -f "$START_LOCK"
 START_LOCK=""
+
+# A cloud container is reclaimed with whatever it never pushed, so the start commit is a
+# checkpoint (self/features/cloud-checkpoint-push/): pushed once, advisory — a failure is
+# one warning line and the start's exit status stays as it was. Local: nothing, not even
+# a line.
+if profile_is_cloud; then
+  checkpoint_push "$WORKTREE" "$FEATURE_BRANCH"
+fi
 
 # ── Open the coordinator session inside the worktree ──────────────────────────
 # The repo owns how a session is opened — a terminal, a tab, an editor — so this runs
@@ -1076,8 +1136,7 @@ fi
 echo ""
 echo "Next, in this order:"
 if grep -q "^$TODO_MARKER" "$REVIEW_BRIEF" 2>/dev/null; then
-  echo "  1. Replace $TODO_MARKER in review/incomplete/$STEM.md with the review brief, from the spec —"
-  echo "     what the feature was supposed to do, the diff to read, the contracts to hold it to."
+  echo "  1. Fill the review brief before you build — the file and its sections are the last lines below."
   echo "     run-review.sh refuses the brief while the marker is there."
 elif [[ "$METHOD" == "hand" ]]; then
   echo "  1. Write the manifest's opening paragraph — the spec review/incomplete/$STEM.md reviews"
@@ -1114,3 +1173,15 @@ echo "  4. Review: run-review.sh ${SELF_FLAG[@]+"${SELF_FLAG[@]} "}$SLUG records
 echo "     clean verdict, run feature-close.sh ${SELF_FLAG[@]+"${SELF_FLAG[@]} "}$SLUG from the worktree — it opens"
 echo "     the PR, captures the cost on the branch, and requests the merge last."
 echo "     Merge the PR — that is the last step; nothing runs after it."
+# The last lines, so nobody reaches run-review.sh's refusal by surprise: exactly which file
+# is still a stub and what goes in it (AGENT_PLANS.md → "Review plans"), written from the
+# spec before the build and never from a builder's report. Only while the marker is there.
+if grep -q "^$TODO_MARKER" "$REVIEW_BRIEF" 2>/dev/null; then
+  echo ""
+  echo "Fill this file before the build (it still carries $TODO_MARKER, which run-review.sh refuses):"
+  echo "  ${REVIEW_BRIEF#"$WORKTREE"/}"
+  echo "  Replace the $TODO_MARKER paragraph, and write under each heading, from the spec:"
+  echo "    ## What the feature was supposed to do   the behaviours the spec names, and what it excludes"
+  echo "    ## Contracts to hold it to               identifiers, files, outputs and tests the diff must keep or add"
+  echo "  Keep ## The diff as written, and say that \"no findings\" is a legitimate verdict."
+fi

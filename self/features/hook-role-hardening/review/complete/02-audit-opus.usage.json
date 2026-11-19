@@ -1,0 +1,85 @@
+{
+  "plan": "02-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "8cdeb739-e5ba-45be-a370-c01755b8b522",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 50,
+  "duration_ms": 407116,
+  "total_cost_usd": 2.1693865,
+  "usage": {
+    "input_tokens": 62,
+    "cache_creation_input_tokens": 105591,
+    "cache_read_input_tokens": 2866202,
+    "output_tokens": 37543
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 3006,
+      "outputTokens": 19,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.00031010000000000006,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 62,
+      "outputTokens": 37543,
+      "cacheReadInputTokens": 2866202,
+      "cacheCreationInputTokens": 105591,
+      "webSearchRequests": 0,
+      "costUSD": 2.1690764,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 20102,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 105591,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 28,
+    "Edit": 1,
+    "Read": 6,
+    "Write": 14
+  },
+  "files_edited": [
+    "/tmp/plan-capture.s5rBl2/scratch/audit-paths.sh",
+    "/tmp/plan-capture.s5rBl2/scratch/cases1.json",
+    "/tmp/plan-capture.s5rBl2/scratch/cases2.json",
+    "/tmp/plan-capture.s5rBl2/scratch/cases3.json",
+    "/tmp/plan-capture.s5rBl2/scratch/date-probe.sh",
+    "/tmp/plan-capture.s5rBl2/scratch/deep.sh",
+    "/tmp/plan-capture.s5rBl2/scratch/deep2.sh",
+    "/tmp/plan-capture.s5rBl2/scratch/drive.py",
+    "/tmp/plan-capture.s5rBl2/scratch/effects.sh",
+    "/tmp/plan-capture.s5rBl2/scratch/one.sh",
+    "/tmp/plan-capture.s5rBl2/scratch/plant.sh",
+    "/tmp/plan-capture.s5rBl2/scratch/setup.sh",
+    "/tmp/plan-capture.s5rBl2/scratch/textplant.sh",
+    "self/features/hook-role-hardening/audit-report.md"
+  ],
+  "edit_count": 15,
+  "attempts": [
+    {
+      "session_id": "8cdeb739-e5ba-45be-a370-c01755b8b522",
+      "outcome": "complete",
+      "total_cost_usd": 2.1693865,
+      "num_turns": 50,
+      "duration_ms": 407116
+    }
+  ]
+}

@@ -1,0 +1,163 @@
+{
+  "slug": "branch-sync-and-fanout-docs",
+  "generated_at": "2026-11-18T19:18:58.568868+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 3.168926,
+    "build": 3.168926,
+    "verify": 0.0,
+    "review": 1.4019329000000003,
+    "total": 4.5708589,
+    "planning_pct": 0.0,
+    "build_pct": 69.32889571366991,
+    "verify_pct": 0.0,
+    "review_pct": 30.671104286330085,
+    "cost_per_plan": 2.28542945,
+    "cost_per_file": 0.6529798428571428,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 2990,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 2990,
+    "build_s": 2990.0,
+    "verify_s": 0.0,
+    "review_s": 186.399,
+    "executor_s": 3176.399,
+    "total_s": 3176.399,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-18T19:15:20+00:00",
+      "last_at": "2026-11-18T19:18:58+00:00",
+      "batch_span_s": 218.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 192.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 282.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-11-18T19:18:58+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/166"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 3.168926,
+      "build_min": 49.833333333333336,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.4019329000000003,
+      "review_min": 3.10665,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 3.168926
+  },
+  "cold_start_tax_tokens": 96092,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 2,
+      "total_turns": 39,
+      "total_cost_usd": 1.4019329000000003,
+      "total_duration_s": 186.399,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 5,
+      "files_edited": 3,
+      "churn_ratio": 1.6666666666666667
+    },
+    {
+      "plan": "01-audit-opus",
+      "edit_count": 7,
+      "files_edited": 4,
+      "churn_ratio": 1.75
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 84,
+      "loc_changed": 107
+    },
+    {
+      "plan": "01-audit-opus",
+      "plan_md_lines": 78,
+      "loc_changed": 196
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/home/user/agentTooling/self/tests/feature-sync.sh",
+      "tool": "Read",
+      "plans": [
+        "01-audit-opus",
+        "01-review-opus"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "LIFECYCLE.md",
+        "feature-sync.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "01-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.vnRyG9/scratch/audit.sh",
+        "/tmp/plan-capture.vnRyG9/scratch/decision.py",
+        "/tmp/plan-capture.vnRyG9/scratch/payload.py",
+        "self/features/branch-sync-and-fanout-docs/audit-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "/tmp/plan-capture.vnRyG9/scratch/audit.sh",
+      "earlier_plan": "01-audit-opus",
+      "later_plan": "01-audit-opus",
+      "overlap_chars": 86
+    },
+    {
+      "file": "/tmp/plan-capture.vnRyG9/scratch/audit.sh",
+      "earlier_plan": "01-audit-opus",
+      "later_plan": "01-audit-opus",
+      "overlap_chars": 285
+    }
+  ],
+  "warnings": [],
+  "profile": "cloud",
+  "gate": "green"
+}

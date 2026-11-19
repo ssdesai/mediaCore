@@ -7,6 +7,9 @@ set -uo pipefail
 #   harness/run.sh <experiment-dir> [--only <fixture>[:<method>[:<arm>][:<n>]]]
 #                  [--only <program>[:orchestrator[:<arm>][:<n>]]] [--from <stage>]
 #                  [--dry-run] [--no-cleanup] [--consumer <path>]
+#                  [--time-budget <minutes>]   (--only repeats; 0 disables the budget)
+#   harness/run.sh <experiment-dir> --reset <fixture>:<method>[:<arm>]:<n>   [--consumer <path>]
+#                  (alone: moves a killed cell aside with a Killed<UTC ts> suffix; deletes nothing)
 #
 # Run from the consuming repo root. The experiment directory may be absolute or
 # relative to that root. See harness/SPEC.md for the design and harness/README.md for
@@ -26,22 +29,31 @@ source "$SCRIPT_DIR/lib.sh"
 READING_METRICS_SCRIPT="reading_metrics.py"
 READING_FIELDS="read_files_before_edit read_bytes_before_edit readme_bytes_read"
 
+# Accept at PR-open (do_accept_pr_open): the probe's log, beside the accept stage's -accept.txt
+ACCEPT_PR_OPEN_LOG_SUFFIX="-accept-pr-open.txt"
+
 # ── Arguments ────────────────────────────────────────────────────────────────
 EXPERIMENT_ARG=""
-ONLY=""
+ONLY_SPECS=()
+SPEC_HITS=()
 FROM_STAGE=""
 DRY_RUN=0
 NO_CLEANUP=0
 CONSUMER_ROOT="$DEFAULT_CONSUMER_ROOT"
+TIME_BUDGET_MIN="$HARNESS_TIME_BUDGET_MINUTES_DEFAULT"
+TIME_BUDGET_GIVEN=0
+RESET_SPEC=""
 
 usage() {
-  sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,23p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-1}"
 }
 
 while (( $# > 0 )); do
   case "$1" in
-    --only)      ONLY="${2:?--only needs <fixture or program>[:<method>[:<arm>][:<n>]]}"; shift 2 ;;
+    --only)      ONLY_SPECS+=("${2:?--only needs <fixture or program>[:<method>[:<arm>][:<n>]]}"); shift 2 ;;
+    --time-budget) TIME_BUDGET_MIN="${2:?--time-budget needs minutes}"; TIME_BUDGET_GIVEN=1; shift 2 ;;
+    --reset)     RESET_SPEC="${2:?--reset needs <fixture>:<method>[:<arm>]:<n>}"; shift 2 ;;
     --from)      FROM_STAGE="${2:?--from needs a stage}"; shift 2 ;;
     --consumer)  CONSUMER_ROOT="$(cd "${2:?--consumer needs a path}" && pwd)"; shift 2 ;;
     --dry-run)   DRY_RUN=1; shift ;;
@@ -54,6 +66,14 @@ while (( $# > 0 )); do
 done
 
 [[ -n "$EXPERIMENT_ARG" ]] || usage 1
+[[ "$TIME_BUDGET_MIN" =~ ^[0-9]+$ ]] || harness_die "--time-budget needs whole minutes, got: $TIME_BUDGET_MIN"
+if [[ -n "$RESET_SPEC" ]]; then
+  if (( ${#ONLY_SPECS[@]} > 0 )) || [[ -n "$FROM_STAGE" ]] || (( DRY_RUN )) || (( TIME_BUDGET_GIVEN )); then
+    harness_die "--reset stands alone: it takes no --only, --from, --dry-run or --time-budget (usage: $0 <experiment-dir> --reset <fixture>:<method>[:<arm>]:<n>)"
+  fi
+  ONLY_SPECS=("$RESET_SPEC")
+fi
+RUN_START_EPOCH="$(date -u +%s)"
 harness_require_own_driver
 
 if [[ "$EXPERIMENT_ARG" == /* ]]; then
@@ -81,6 +101,8 @@ fi
 (( DRY_RUN )) && HARNESS_REQUIRED_TOOLS="jq git python3"
 # A dry run names the clone a run would make rather than making it.
 (( DRY_RUN )) && export HARNESS_RESOLVE_NO_CLONE=1
+# A reset names paths; it never clones.
+[[ -n "$RESET_SPEC" ]] && export HARNESS_RESOLVE_NO_CLONE=1
 harness_require_tools
 
 # ── Experiment ───────────────────────────────────────────────────────────────
@@ -98,6 +120,7 @@ ARM=""; ARM_SHA=""; AT_CHECKOUT=""
 EXPERIMENT_ARM_KIND=""; ARM_BASE=""; FIXTURE_BASE=""
 FIXTURE_DIR=""; FIXTURE_JSON=""; REPO_PATH=""; REMOTE=""; BASE=""
 SPEC_REPO=""; SPEC_COMMIT=""; SPEC_PATH=""; SPEC_SECTIONS=""; SPEC_TREE=""
+SPEC_SOURCE=""; ARM_SPEC_PATHS_JSON='{}'
 GATE_COMMAND=""; GATE_GREEN=""; GATE_MINUTES=""; BRIEF_FILE=""
 METHOD_FAILED=false; PR_URL=""; PR_OPENED_BY_HARNESS=false; RECAPTURE_METHOD=false
 COST_METHOD=0; COST_METHOD_REPORTED=0; COST_REVIEW=0; COST_REWORK=0
@@ -168,6 +191,14 @@ resolve_cell() {
   SLUG="$(harness_slug_of_branch "$BRANCH")"
   TREE="$(harness_worktree_path "$REPO_PATH" "$BRANCH")"
   SPEC_TREE="$(harness_spec_worktree_path "$SPEC_REPO" "$FIXTURE")"
+  SPEC_SOURCE="$HARNESS_SPEC_SOURCE_SHARED"
+  if [[ -n "$ARM_BASE" ]]; then
+    local arm_spec_path
+    arm_spec_path="$(harness_arm_spec_path_for "$ARM_SPEC_PATHS_JSON" "$ARM")"
+    if [[ -n "$arm_spec_path" ]]; then
+      SPEC_SOURCE="$HARNESS_SPEC_SOURCE_ARM"; SPEC_TREE="$TREE"; SPEC_PATH="$arm_spec_path"
+    fi
+  fi
   STATE="$STATE_DIR/$BRANCH.json"
   BRIEF_FILE="$TREE/plans/features/$SLUG/BRIEF.md"
 
@@ -206,6 +237,7 @@ reset_cell_results() {
 # review preamble and the rework preamble all draw from this one set, so `--from review`
 # fills exactly what `--from setup` would have.
 set_template_vars() {
+  HARNESS_SPEC_SOURCE="$SPEC_SOURCE"
   harness_build_isolation "$REPO_PATH" "$TREE"
   HARNESS_BRANCH="$BRANCH"; HARNESS_BASE="$BASE"; HARNESS_SLUG="$SLUG"
   HARNESS_SPEC_TREE="$SPEC_TREE"; HARNESS_SPEC_PATH="$SPEC_PATH"
@@ -288,12 +320,7 @@ setup_tree() {
   fi
   harness_state_set_str "$STATE" agent_tooling "$ARM_SHA"
 
-  local cmd
-  while IFS= read -r cmd; do
-    [[ -n "$cmd" ]] || continue
-    harness_log "setup: $cmd"
-    ( cd "$TREE" && eval "$cmd" ) || harness_die "fixture setup command failed: $cmd"
-  done < <(jq -r '.setup[]? // empty' "$FIXTURE_JSON")
+  harness_fixture_setup "$TREE" "$FIXTURE_JSON" || harness_die "fixture setup failed in $TREE"
 
   local log="$LOG_DIR/$BRANCH-gate-setup.log"
   harness_run_gate "$TREE" "$GATE_COMMAND" "$log"
@@ -312,7 +339,9 @@ setup_tree() {
   fi
   harness_state_set_str "$STATE" gate_counts_base "$(harness_gate_counts "$TREE")"
 
-  if [[ ! -d "$SPEC_TREE" ]]; then
+  if [[ "$SPEC_SOURCE" == "$HARNESS_SPEC_SOURCE_ARM" ]]; then
+    [[ -f "$TREE/$SPEC_PATH" ]] || harness_die "arm $ARM: spec $SPEC_PATH is not in the cell's tree at $BASE"
+  elif [[ ! -d "$SPEC_TREE" ]]; then
     git -C "$SPEC_REPO" fetch -q origin 2>/dev/null || true
     git -C "$SPEC_REPO" worktree add --detach "$SPEC_TREE" "$SPEC_COMMIT" \
       || harness_die "could not add the read-only spec worktree at $SPEC_TREE"
@@ -383,13 +412,44 @@ settle_pr() {
   harness_state_set_str "$STATE" pr_url "$PR_URL"
   harness_state_set_str "$STATE" t_pr_open "$(harness_utc_now)"
 
-  harness_close_manifest_window "$TREE" "$SLUG" "$(harness_utc_now)"
-  harness_commit_all "$TREE" "$SLUG: close the manifest session window at PR-open" \
-    || harness_warn "nothing to commit for the manifest window"
+  # A method whose own close already shut the window (a plans arm's feature-close.sh
+  # stamps `to`) leaves nothing to close: closing it again is an ERROR from
+  # harness_close_manifest_window, so the harness says so and leaves the bound as written.
+  # A manifest that is missing altogether is not that case: it still reaches the close,
+  # which warns "no manifest at …" as it always has.
+  if [[ ! -f "$TREE/plans/features/$SLUG/README.md" || -n "$(open_manifest_window_of "$SLUG")" ]]; then
+    harness_close_manifest_window "$TREE" "$SLUG" "$(harness_utc_now)"
+    harness_commit_all "$TREE" "$SLUG: close the manifest session window at PR-open" \
+      || harness_warn "nothing to commit for the manifest window"
+  else
+    harness_log "$SLUG: the manifest has no open session window (the method's own close stamped it) — left as written"
+  fi
   harness_push "$TREE" "$BRANCH"
 
   GATE_COUNTS_PR_OPEN="$(harness_gate_counts "$TREE")"
   harness_state_set_str "$STATE" gate_counts_pr_open "$GATE_COUNTS_PR_OPEN"
+  do_accept_pr_open
+}
+
+# The fixture's acceptance probe on $TREE, its output to $1. Sets ACCEPT_PROBE_PASS
+# (true|false) and ACCEPT_PROBE_LINES (a JSON list, one entry per non-empty output line).
+run_accept_probe() {
+  local out="$1"
+  if harness_run_accept_probe "$FIXTURE_DIR" "$TREE" "$out"; then ACCEPT_PROBE_PASS=true; else ACCEPT_PROBE_PASS=false; fi
+  ACCEPT_PROBE_LINES="$(jq -R -s 'split("\n") | map(select(length > 0))' < "$out")"
+}
+
+# Accept at PR-open: the same probe on the tree the method handed over, before the harness
+# review or rework touches it — the correctness the method reached on its own, which the
+# accept stage after rework cannot show. Part of the PR step (settle_pr), so a no-pr resume
+# measures it too; skipped with the accept stage. The probe builds its collection in a
+# temp directory and writes nothing into the tree.
+do_accept_pr_open() {
+  [[ "$DO_ACCEPT" == true ]] || return 0
+  run_accept_probe "$LOG_DIR/$BRANCH$ACCEPT_PR_OPEN_LOG_SUFFIX"
+  harness_state_set "$STATE" accept_pr_open_pass "$ACCEPT_PROBE_PASS"
+  harness_state_set "$STATE" accept_pr_open_lines "$ACCEPT_PROBE_LINES"
+  harness_log "accept at PR-open: $( [[ "$ACCEPT_PROBE_PASS" == true ]] && echo pass || echo fail )"
 }
 
 # A cell whose method built and pushed but was recorded method_failed ("no-pr") only
@@ -430,7 +490,14 @@ ensure_resume_trees() {
       harness_die "cannot resume $BRANCH: it is on no local branch and not on $REMOTE"
     fi
   fi
-  if [[ ! -d "$SPEC_TREE" ]]; then
+  # The fixture's environment, before the PR step's probe or any later gate: a re-added
+  # worktree is a bare checkout (no `.venv`, nothing installed), and the accept probe at
+  # PR-open crashed on it. Run on a tree that survived too — the setup commands are the
+  # setup stage's own and are expected to be re-runnable.
+  harness_fixture_setup "$TREE" "$FIXTURE_JSON" || harness_die "fixture setup failed in $TREE for the resume"
+  if [[ "$SPEC_SOURCE" == "$HARNESS_SPEC_SOURCE_ARM" ]]; then
+    [[ -f "$TREE/$SPEC_PATH" ]] || harness_die "arm $ARM: spec $SPEC_PATH is not in the cell's tree at $BASE"
+  elif [[ ! -d "$SPEC_TREE" ]]; then
     git -C "$SPEC_REPO" worktree add --detach "$SPEC_TREE" "$SPEC_COMMIT" \
       || harness_die "could not add the read-only spec worktree at $SPEC_TREE"
   fi
@@ -477,15 +544,22 @@ if m:
 PY
 }
 
+# Close an open orphaned window of $1 slug in $TREE and print what it cost.
+price_open_window() {
+  local slug="$1" lost
+  harness_close_manifest_window "$TREE" "$slug" "$(harness_utc_now)" || true
+  rm -f "$TREE/plans/features/$slug/planning.json"
+  lost="$(capture_one "$slug")"
+  # Drop the freeze this pricing wrote: the stage's own capture must not honour it.
+  rm -f "$TREE/plans/features/$slug/planning.json"
+  printf '%s' "$lost"
+}
+
 write_stage_manifest() {  # $1 slug, $2 title — price any orphaned open window first
   local slug="$1" title="$2" orphan_from lost
   orphan_from="$(open_manifest_window_of "$slug")"
   if [[ -n "$orphan_from" ]]; then
-    harness_close_manifest_window "$TREE" "$slug" "$(harness_utc_now)" || true
-    rm -f "$TREE/plans/features/$slug/planning.json"
-    lost="$(capture_one "$slug")"
-    # Drop the freeze this pricing wrote: the stage's own capture must not honour it.
-    rm -f "$TREE/plans/features/$slug/planning.json"
+    lost="$(price_open_window "$slug")"
     COST_LOST="$(awk -v a="$(num "$COST_LOST")" -v b="$(num "$lost")" 'BEGIN{printf "%.4f", a + b}')"
     harness_state_set_str "$STATE" cost_lost_usd "$COST_LOST"
     harness_state_intervention "$STATE" \
@@ -508,16 +582,21 @@ do_review() {
   local result="$LOG_DIR/$BRANCH-review-result.json"
   harness_fill_template "$HARNESS_TEMPLATES_DIR/review-preamble.md" > "$prompt"
 
-  harness_claude "$result" "$prompt" "$TREE" \
-    --model "$HARNESS_MODEL" --max-budget-usd "$REVIEW_BUDGET_USD" \
+  # The review effort rides on this call and its retry only (empty = no flag: HARNESS_EFFORT
+  # is then empty too, since the review effort falls back to it).
+  local review_effort_args=()
+  [[ -z "$HARNESS_REVIEW_EFFORT" ]] || review_effort_args=(--effort "$HARNESS_REVIEW_EFFORT")
+
+  harness_claude "$result" "$prompt" "$TREE" ${review_effort_args[@]+"${review_effort_args[@]}"} \
+    --model "$HARNESS_REVIEW_MODEL" --max-budget-usd "$REVIEW_BUDGET_USD" \
     --permission-mode acceptEdits --allowedTools Bash
   local rc=$?
   COST_REVIEW="$(harness_claude_cost "$result")"
   if (( rc != 0 )) && harness_stopped_on_usage_limit "$result"; then
     harness_state_intervention "$STATE" "review stopped on a usage limit; waited and retried once"
     harness_wait_for_usage_reset "$result"
-    harness_claude "$result" "$prompt" "$TREE" \
-      --model "$HARNESS_MODEL" --max-budget-usd "$REVIEW_BUDGET_USD" \
+    harness_claude "$result" "$prompt" "$TREE" ${review_effort_args[@]+"${review_effort_args[@]}"} \
+      --model "$HARNESS_REVIEW_MODEL" --max-budget-usd "$REVIEW_BUDGET_USD" \
       --permission-mode acceptEdits --allowedTools Bash
     rc=$?
     COST_REVIEW="$(harness_claude_cost "$result")"
@@ -576,12 +655,8 @@ do_rework() {
 do_accept() {
   [[ "$DO_ACCEPT" == true ]] || { harness_log "accept stage disabled"; return 0; }
   stage_begin accept
-  local probe="$FIXTURE_DIR/accept/accept.py"
-  local out="$LOG_DIR/$BRANCH-accept.txt"
-  python3 "$probe" "$TREE" > "$out" 2>&1
-  local rc=$?
-  if (( rc == 0 )); then ACCEPT_PASS=true; else ACCEPT_PASS=false; fi
-  ACCEPT_LINES="$(jq -R -s 'split("\n") | map(select(length > 0))' < "$out")"
+  run_accept_probe "$LOG_DIR/$BRANCH-accept.txt"
+  ACCEPT_PASS="$ACCEPT_PROBE_PASS"; ACCEPT_LINES="$ACCEPT_PROBE_LINES"
   harness_state_set "$STATE" accept_pass "$ACCEPT_PASS"
   harness_state_set "$STATE" accept_lines "$ACCEPT_LINES"
 
@@ -591,7 +666,7 @@ do_accept() {
   harness_gate_is_green "$log" "$GATE_GREEN" || harness_warn "gate is not green after rework (see $log)"
   harness_state_set_str "$STATE" gate_counts_green "$GATE_COUNTS_GREEN"
   harness_state_set_str "$STATE" t_green "$(harness_utc_now)"
-  stage_end accept "$( (( rc == 0 )) && echo pass || echo fail )"
+  stage_end accept "$( [[ "$ACCEPT_PASS" == true ]] && echo pass || echo fail )"
 }
 
 # Measuring is the driver's, building is the arm's: cost capture runs from the DRIVER's
@@ -701,7 +776,9 @@ state_or() {  # $1 state key, $2 fallback
 }
 
 state_json_or_null() {  # $1 state key: its JSON value, or null when the state lacks it
-  jq -c --arg k "$1" '.[$k] // null' "$STATE" 2>/dev/null || printf 'null'
+  # has(), never `// null`: jq's `//` replaces a stored false too, and accept_pr_open_pass
+  # false must reach the row as false.
+  jq -c --arg k "$1" 'if has($k) then .[$k] else null end' "$STATE" 2>/dev/null || printf 'null'
 }
 
 build_ledger_row() {  # the `record` stage: one appended results.jsonl row + scorecard render
@@ -733,9 +810,11 @@ build_ledger_row() {  # the `record` stage: one appended results.jsonl row + sco
     --arg experiment "$EXPERIMENT_NAME" --arg fixture "$FIXTURE" --arg method "$METHOD" \
     --argjson repeat "$REPEAT" --arg branch "$BRANCH" --arg slug "$SLUG" \
     --arg pr_url "$PR_URL" --arg base "$BASE" --arg spec_commit "$SPEC_COMMIT" \
-    --arg model "$HARNESS_MODEL" --arg effort "$HARNESS_EFFORT" --arg arm "$ARM" \
+    --arg model "$HARNESS_MODEL" --arg review_model "$HARNESS_REVIEW_MODEL" \
+    --arg effort "$HARNESS_EFFORT" --arg review_effort "$HARNESS_REVIEW_EFFORT" --arg arm "$ARM" \
     --arg agent_tooling "$(state_or agent_tooling "$ARM_SHA")" \
     --arg arm_kind "$(cell_arm_kind)" \
+    --arg spec_source "$SPEC_SOURCE" --arg spec_path "$SPEC_PATH" \
     --arg t_setup_start "$(harness_state_get "$STATE" t_setup_start)" \
     --arg t_method_start "$(harness_state_get "$STATE" t_method_start)" \
     --arg t_pr_open "$(harness_state_get "$STATE" t_pr_open)" \
@@ -758,6 +837,8 @@ build_ledger_row() {  # the `record` stage: one appended results.jsonl row + sco
     --arg gate_counts_green "$GATE_COUNTS_GREEN" \
     --argjson accept_pass "$ACCEPT_PASS" \
     --argjson accept_lines "$ACCEPT_LINES" \
+    --argjson accept_pr_open_pass "$(state_json_or_null accept_pr_open_pass)" \
+    --argjson accept_pr_open_lines "$(state_json_or_null accept_pr_open_lines)" \
     --argjson method_failed "$METHOD_FAILED" \
     --argjson pr_opened_by_harness "$PR_OPENED_BY_HARNESS" \
     --argjson interventions "$(jq -c '.interventions // []' "$STATE")" \
@@ -766,8 +847,10 @@ build_ledger_row() {  # the `record` stage: one appended results.jsonl row + sco
       arm: $arm, agent_tooling: $agent_tooling,
       arm_kind: $arm_kind,
       branch: $branch, slug: $slug, pr_url: $pr_url, base: $base,
-      spec_commit: $spec_commit, model: $model,
+      spec_commit: $spec_commit, spec_source: $spec_source, spec_path: $spec_path, model: $model,
+      review_model: $review_model,
       effort: (if $effort == "" then null else $effort end),
+      review_effort: (if $review_effort == "" then null else $review_effort end),
       t_setup_start: $t_setup_start, t_method_start: $t_method_start,
       t_pr_open: $t_pr_open, t_review_end: $t_review_end,
       t_rework_end: $t_rework_end, t_green: $t_green,
@@ -781,6 +864,7 @@ build_ledger_row() {  # the `record` stage: one appended results.jsonl row + sco
       rework_ran: $rework_ran,
       gate_counts_pr_open: $gate_counts_pr_open, gate_counts_green: $gate_counts_green,
       accept_pass: $accept_pass, accept_lines: $accept_lines,
+      accept_pr_open_pass: $accept_pr_open_pass, accept_pr_open_lines: $accept_pr_open_lines,
       method_failed: $method_failed, pr_opened_by_harness: $pr_opened_by_harness,
       interventions: $interventions,
       harness_version: $harness_version}')"
@@ -810,7 +894,11 @@ dry_run_cell() {
   say "  slug:          $SLUG"
   say "  repo:          $REPO_PATH"
   say "  worktree:      $TREE"
-  say "  spec worktree: $SPEC_TREE  (detached at $SPEC_COMMIT, read-only; $(harness_spec_source_label "$FIXTURE_JSON"))"
+  if [[ "$SPEC_SOURCE" == "$HARNESS_SPEC_SOURCE_ARM" ]]; then
+    say "  spec:          $SPEC_PATH in the cell's own tree (arm $ARM; reference only, never edited)"
+  else
+    say "  spec worktree: $SPEC_TREE  (detached at $SPEC_COMMIT, read-only; $(harness_spec_source_label "$FIXTURE_JSON"))"
+  fi
   [[ -z "$ARM_SHA" ]] || say "  agentTooling:  pinned to upstream $ARM_SHA (arm $ARM)"
   [[ -z "$ARM_BASE" ]] || say "  base:          arm $ARM at $ARM_BASE (the fixture's own base $FIXTURE_BASE is not used)"
   say "  state file:    $STATE"
@@ -828,15 +916,20 @@ dry_run_cell() {
   while IFS= read -r cmd; do
     [[ -n "$cmd" ]] || continue
     dry "cd $TREE && $cmd"
-  done < <(jq -r '.setup[]? // empty' "$FIXTURE_JSON")
+  done < <(jq -r "$FIXTURE_SETUP_JQ" "$FIXTURE_JSON")
   dry "cd $TREE && $GATE_COMMAND      # require: $GATE_GREEN"
-  dry "git -C $SPEC_REPO worktree add --detach $SPEC_TREE $SPEC_COMMIT"
+  if [[ "$SPEC_SOURCE" != "$HARNESS_SPEC_SOURCE_ARM" ]]; then
+    dry "git -C $SPEC_REPO worktree add --detach $SPEC_TREE $SPEC_COMMIT"
+  fi
   dry "write $TREE/plans/features/$SLUG/README.md   (manifest skeleton, session_window.from = now)"
   dry "fill $HARNESS_METHODS_DIR/$METHOD/template.md -> $BRIEF_FILE"
   dry "$HARNESS_METHODS_DIR/$METHOD/run.sh $TREE $BRIEF_FILE $SLUG   (its claude call: --model $HARNESS_MODEL$(harness_effort_dry))"
   dry "${HARNESS_FORGE_BIN:-$DRIVER_FORGE} pr-find $BRANCH   (the driver's forge, FORGE_CHECKOUT=$TREE; none open, branch pushed with commits: pr-open $BRANCH $HARNESS_PR_BASE)"
+  if [[ "$DO_ACCEPT" == true ]]; then
+    dry "python3 $FIXTURE_DIR/accept/accept.py $TREE   (accept at PR-open, before the review)"
+  fi
   if [[ "$DO_REVIEW" == true ]]; then
-    dry "$HARNESS_CLAUDE_BIN -p --output-format json$(harness_effort_dry) --model $HARNESS_MODEL --max-budget-usd $REVIEW_BUDGET_USD --permission-mode acceptEdits --allowedTools Bash <review preamble + $FIXTURE_DIR/review-brief.md>   (cwd $TREE)"
+    dry "$HARNESS_CLAUDE_BIN -p --output-format json$(harness_effort_dry "$HARNESS_REVIEW_EFFORT") --model $HARNESS_REVIEW_MODEL --max-budget-usd $REVIEW_BUDGET_USD --permission-mode acceptEdits --allowedTools Bash <review preamble + $FIXTURE_DIR/review-brief.md>   (cwd $TREE)"
   fi
   if [[ "$DO_REWORK" == true ]]; then
     dry "$HARNESS_CLAUDE_BIN -p --output-format json$(harness_effort_dry) --model $HARNESS_MODEL --max-budget-usd $REWORK_BUDGET_USD --permission-mode acceptEdits --allowedTools Bash <rework preamble + $(harness_findings_path "$TREE" "$SLUG")>   (only if escalated >= 1)"
@@ -863,6 +956,8 @@ run_cell() {
   harness_state_set "$STATE" repeat "$REPEAT"
   harness_state_set_str "$STATE" arm "$ARM"
   harness_state_set_str "$STATE" arm_kind "$(cell_arm_kind)"
+  harness_state_set_str "$STATE" spec_source "$SPEC_SOURCE"
+  harness_state_set_str "$STATE" spec_path "$SPEC_PATH"
   harness_state_set_str "$STATE" base "$BASE"
   harness_state_set_str "$STATE" branch "$BRANCH"
   harness_state_set_str "$STATE" slug "$SLUG"
@@ -897,12 +992,11 @@ run_cell() {
 
 # --only <fixture>[:<method>[:<arm>][:<n>]] — the arm is letters, the repeat digits, so
 # the two trailing parts are told apart by shape.
-cell_selected() {
-  local fixture="$1" method="$2" repeat="$3" arm="$4" want_f want_m want_a want_n rest part
-  [[ -n "$ONLY" ]] || return 0
-  want_f="${ONLY%%:*}"; want_m=""; want_a=""; want_n=""
-  if [[ "$ONLY" == *:* ]]; then
-    rest="${ONLY#*:}"
+spec_matches() {  # $1 spec, then fixture method repeat arm
+  local spec="$1" fixture="$2" method="$3" repeat="$4" arm="$5" want_f want_m want_a want_n rest part
+  want_f="${spec%%:*}"; want_m=""; want_a=""; want_n=""
+  if [[ "$spec" == *:* ]]; then
+    rest="${spec#*:}"
     want_m="${rest%%:*}"
     rest="${rest#"$want_m"}"; rest="${rest#:}"
     while [[ -n "$rest" ]]; do
@@ -917,6 +1011,79 @@ cell_selected() {
   return 0
 }
 
+# True when no --only was given or any spec matches; marks each matching spec in SPEC_HITS.
+# Runs in the main shell (never in a $(…)), or the marks are lost.
+cell_selected() {
+  local i=0 matched=0
+  if (( ${#ONLY_SPECS[@]} == 0 )); then return 0; fi
+  while (( i < ${#ONLY_SPECS[@]} )); do
+    if spec_matches "${ONLY_SPECS[$i]}" "$@"; then SPEC_HITS[$i]=1; matched=1; fi
+    i=$(( i + 1 ))
+  done
+  (( matched ))
+}
+
+# The --only spec that selects exactly one cell: <fixture>:<method>[:<arm>]:<repeat>.
+cell_spec() {  # kind fixture method repeat arm_label
+  if [[ "$5" == "-" ]]; then
+    printf '%s:%s:%s' "$2" "$3" "$4"
+  else
+    printf '%s:%s:%s:%s' "$2" "$3" "$5" "$4"
+  fi
+}
+
+# Seconds the longest finished cell took: the sum of its stage durations (a --from resume
+# rewrites only the stages it re-ran, so record.end - setup.start would count the gap).
+cell_estimate_seconds() {
+  local default=$(( HARNESS_CELL_ESTIMATE_MINUTES_DEFAULT * 60 )) files out
+  files=( "$STATE_DIR"/*.json )
+  if [[ ! -f "${files[0]}" ]]; then printf '%s' "$default"; return 0; fi
+  if ! out="$(jq -s --arg ok "$HARNESS_STAGE_OK" \
+      '[.[] | select(.stages.record.outcome == $ok)
+        | [.stages[] | select(.start and .end and .start != "" and .end != "")
+           | (.end|fromdateiso8601) - (.start|fromdateiso8601)] | add // 0]
+       | max // empty' "${files[@]}" 2>/dev/null)"; then
+    harness_warn "a state file under $STATE_DIR does not parse — estimating a cell at the default" >&2
+    printf '%s' "$default"; return 0
+  fi
+  if [[ "$out" =~ ^[0-9]+$ ]]; then printf '%s' "$out"; else printf '%s' "$default"; fi
+}
+
+# Returns 0 when cell <i> fits the budget, or when it is the invocation's first cell (warns if
+# it does not fit); otherwise says so, prints the resume line, exits 75.
+budget_allows_cell() {
+  local i="$1" elapsed estimate budget_s j line="" word
+  local cell_kind cell_name cell_method cell_repeat cell_arm cell_sha
+  if (( TIME_BUDGET_MIN == 0 )); then return 0; fi
+  elapsed=$(( $(date -u +%s) - RUN_START_EPOCH ))
+  estimate="$(cell_estimate_seconds)"
+  budget_s=$(( TIME_BUDGET_MIN * 60 ))
+  if (( elapsed + estimate <= budget_s )); then return 0; fi
+
+  # The first cell of an invocation always starts, so every invocation makes progress and a
+  # resume line never repeats the invocation that printed it.
+  if (( i == 0 )); then
+    harness_warn "the estimate for a cell ($(( (estimate + 59) / 60 ))m: longest finished cell, or the default) exceeds the budget (${TIME_BUDGET_MIN}m); starting the first cell anyway. It may be killed; a fresh invocation per cell is the most time any cell can get." >&2
+    return 0
+  fi
+
+  say "time budget: $(( (elapsed + 59) / 60 ))m elapsed + $(( (estimate + 59) / 60 ))m (longest finished cell, or the default) > ${TIME_BUDGET_MIN}m — starting nothing more"
+  if (( failures > 0 )); then say "$failures cell(s) did not finish"; fi
+  local words=( "$0" "$EXPERIMENT_ARG" --consumer "$CONSUMER_ROOT" )
+  if [[ -n "$FROM_STAGE" ]]; then words+=(--from "$FROM_STAGE"); fi
+  if (( NO_CLEANUP )); then words+=(--no-cleanup); fi
+  if (( TIME_BUDGET_GIVEN )); then words+=(--time-budget "$TIME_BUDGET_MIN"); fi
+  j="$i"
+  while (( j < ${#CELLS[@]} )); do
+    read -r cell_kind cell_name cell_method cell_repeat cell_arm cell_sha <<<"${CELLS[$j]}"
+    words+=(--only "$(cell_spec "$cell_kind" "$cell_name" "$cell_method" "$cell_repeat" "$cell_arm")")
+    j=$(( j + 1 ))
+  done
+  for word in "${words[@]}"; do line+="$(printf '%q' "$word") "; done
+  say "${HARNESS_RESUME_LINE_PREFIX}${line% }"
+  exit "$HARNESS_BUDGET_STOP_RC"
+}
+
 say "########## experiment: $EXPERIMENT_NAME ##########"
 say "prediction: $PREDICTION"
 (( DRY_RUN )) && say "(dry run — nothing below is executed)"
@@ -926,8 +1093,16 @@ EXPERIMENT_ARM_KIND="$(harness_experiment_arm_kind "$EXPERIMENT_JSON")" || exit 
 if [[ "$EXPERIMENT_ARM_KIND" == "$HARNESS_ARM_KIND_BASE" && -n "$(jq -r '.programs[]?' "$EXPERIMENT_JSON")" ]]; then
   harness_die "$EXPERIMENT_JSON: $HARNESS_BASE_ARMS_NO_PROGRAMS_MSG"
 fi
+ARM_SPEC_PATHS_JSON="$(jq -c ".$HARNESS_ARM_SPEC_PATHS_KEY // {}" "$EXPERIMENT_JSON")" || exit 1
+harness_check_arm_spec_paths "$(jq -c '.base_arms // {}' "$EXPERIMENT_JSON")" "$ARM_SPEC_PATHS_JSON" || exit 1
 # One "<label> <sha>" per arm, or "- -" when the experiment names no arms.
 ARMS="$(harness_experiment_arms "$EXPERIMENT_JSON")" || exit 1
+
+# Enumerate every selected cell before running any:
+# "<kind> <fixture-or-program> <method> <repeat> <arm_label> <arm_sha>".
+CELLS=()
+spec_i=0
+while (( spec_i < ${#ONLY_SPECS[@]} )); do SPEC_HITS[$spec_i]=0; spec_i=$(( spec_i + 1 )); done
 for fixture in $(jq -r '.fixtures[]?' "$EXPERIMENT_JSON"); do
   for method in $(jq -r '.methods[]?' "$EXPERIMENT_JSON"); do
     # Read on its own descriptor: the stages below run programs that may read stdin.
@@ -935,12 +1110,7 @@ for fixture in $(jq -r '.fixtures[]?' "$EXPERIMENT_JSON"); do
       [[ -n "$arm_label" ]] || continue
       for repeat in $(seq 1 "$REPEATS"); do
         cell_selected "$fixture" "$method" "$repeat" "${arm_label#-}" || continue
-        resolve_cell "$fixture" "$method" "$repeat" "$arm_label" "$arm_sha"
-        if (( DRY_RUN )); then
-          dry_run_cell
-        else
-          run_cell || failures=$(( failures + 1 ))
-        fi
+        CELLS+=("fixture $fixture $method $repeat $arm_label $arm_sha")
       done
     done 3<<<"$ARMS"
   done
@@ -953,14 +1123,223 @@ for program in $(jq -r '.programs[]?' "$EXPERIMENT_JSON"); do
     [[ -n "$arm_label" ]] || continue
     for repeat in $(seq 1 "$REPEATS"); do
       cell_selected "$program" "$HARNESS_PROGRAM_METHOD" "$repeat" "${arm_label#-}" || continue
-      resolve_program_cell "$program" "$repeat" "$arm_label" "$arm_sha"
-      if (( DRY_RUN )); then
-        dry_run_program_cell
-      else
-        run_program_cell || failures=$(( failures + 1 ))
-      fi
+      CELLS+=("program $program $HARNESS_PROGRAM_METHOD $repeat $arm_label $arm_sha")
     done
   done 3<<<"$ARMS"
+done
+
+# A spec that selects nothing is a typo, not an empty run.
+unmatched=""
+spec_i=0
+while (( spec_i < ${#ONLY_SPECS[@]} )); do
+  if [[ "${SPEC_HITS[$spec_i]}" != 1 ]]; then unmatched+=" ${ONLY_SPECS[$spec_i]}"; fi
+  spec_i=$(( spec_i + 1 ))
+done
+[[ -z "$unmatched" ]] || harness_die "--only matches no cell:$unmatched"
+
+# ── Experiment lock ──────────────────────────────────────────────────────────
+# Under the git common dir (state/ is committed with the ledger, the lock must not be).
+experiment_lock_dir() {
+  local common
+  common="$(git -C "$CONSUMER_ROOT" rev-parse --git-common-dir)" \
+    || harness_die "$CONSUMER_ROOT is not a git repository — no place for the experiment lock"
+  [[ "$common" == /* ]] || common="$CONSUMER_ROOT/$common"
+  common="$(cd "$common" && pwd)" || harness_die "cannot resolve the git common dir $common"
+  printf '%s/%s/%s.lock' "$common" "$HARNESS_LOCK_DIR_NAME" "$(basename "$EXPERIMENT_DIR")"
+}
+
+take_experiment_lock() {
+  harness_lock_acquire "$(experiment_lock_dir)"
+  trap harness_lock_release EXIT
+}
+
+# ── Reset ────────────────────────────────────────────────────────────────────
+# Stop in the middle of the moves: say what moved and what did not. No rollback.
+reset_stop() {  # $1 what failed
+  say "reset stopped: $1 failed" >&2
+  say "  moved:     ${RESET_MOVED:-(nothing)}" >&2
+  say "  not moved: ${RESET_PENDING:-(nothing)}" >&2
+  say "  nothing was deleted, rolled back or pushed — finish by hand or investigate" >&2
+  exit 1
+}
+
+reset_cell() {
+  local kind name method repeat arm_label arm_sha cell_i spec
+  if (( ${#CELLS[@]} == 0 )); then harness_die "no cell matches --reset $RESET_SPEC"; fi
+  if (( ${#CELLS[@]} > 1 )); then
+    local listing=""
+    cell_i=0
+    while (( cell_i < ${#CELLS[@]} )); do
+      read -r kind name method repeat arm_label arm_sha <<<"${CELLS[$cell_i]}"
+      cell_i=$(( cell_i + 1 ))
+      spec="$(cell_spec "$kind" "$name" "$method" "$repeat" "$arm_label")"
+      if [[ "$kind" == fixture ]]; then
+        resolve_cell "$name" "$method" "$repeat" "$arm_label" "$arm_sha"
+        listing+="  $spec  (branch $BRANCH)"$'\n'
+      else
+        listing+="  $spec  (program cell)"$'\n'
+      fi
+    done
+    harness_die "--reset $RESET_SPEC matches several cells; name exactly one:
+${listing%$'\n'}"
+  fi
+  read -r kind name method repeat arm_label arm_sha <<<"${CELLS[0]}"
+  [[ "$kind" == fixture ]] || harness_die "reset of a program cell is not supported ($RESET_SPEC)"
+  resolve_cell "$name" "$method" "$repeat" "$arm_label" "$arm_sha"
+  local cell_name_spec
+  cell_name_spec="$(cell_spec "$kind" "$name" "$method" "$repeat" "$arm_label")"
+  take_experiment_lock
+
+  # A finished cell is never touched; earlier failed rows stay as history.
+  if [[ -f "$RESULTS_FILE" ]]; then
+    jq -e -s --arg b "$BRANCH" 'any(.[]; .branch == $b and .method_failed != true)' "$RESULTS_FILE" >/dev/null 2>&1
+    case $? in
+      0) harness_die "$BRANCH has a completed record row in $RESULTS_FILE; a reset never touches a finished cell" ;;
+      1) ;;
+      *) harness_die "cannot read $RESULTS_FILE to tell whether $BRANCH finished — fix the ledger first" ;;
+    esac
+  fi
+
+  local have_tree=0 have_branch=0 have_state=0 worktrees
+  [[ -d "$TREE" ]] && have_tree=1
+  git -C "$REPO_PATH" show-ref --verify --quiet "refs/heads/$BRANCH" && have_branch=1
+  [[ -f "$STATE" ]] && have_state=1
+  if (( ! have_tree && ! have_branch && ! have_state )); then
+    harness_die "nothing to reset for $BRANCH: no worktree at $TREE, no local branch, no state at $STATE"
+  fi
+
+  local ts new_branch new_tree new_state
+  ts="$(date -u "$HARNESS_KILLED_TS_FORMAT")"
+  new_branch="$BRANCH$HARNESS_KILLED_SUFFIX$ts"
+  new_tree="$(harness_worktree_path "$REPO_PATH" "$new_branch")"
+  new_state="$STATE_DIR/$HARNESS_KILLED_STATE_SUBDIR/$new_branch.json"
+  if [[ -e "$new_tree" ]]; then harness_die "$new_tree already exists — wait a second and retry"; fi
+  if git -C "$REPO_PATH" show-ref --verify --quiet "refs/heads/$new_branch"; then
+    harness_die "branch $new_branch already exists — wait a second and retry"
+  fi
+  if [[ -e "$new_state" ]]; then harness_die "$new_state already exists — wait a second and retry"; fi
+  if (( have_tree )); then
+    worktrees="$(git -C "$REPO_PATH" worktree list --porcelain)" \
+      || harness_die "git worktree list failed in $REPO_PATH"
+    if ! grep -qxF "worktree $TREE" <<<"$worktrees"; then
+      harness_die "$TREE exists but is not a worktree of $REPO_PATH — nothing was moved"
+    fi
+  fi
+
+  # Price before moving: transcripts are filed under the tree's path.
+  mkdir -p "$LOG_DIR"
+  local carried priced_note="" slug_i lost
+  carried="$(num "$(harness_state_get "$STATE" cost_lost_usd)")"
+  if (( have_tree )); then
+    for slug_i in "$SLUG" "$SLUG-review" "$SLUG-rework"; do
+      [[ -n "$(open_manifest_window_of "$slug_i")" ]] || continue
+      lost="$(price_open_window "$slug_i")"
+      if [[ "$lost" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+        carried="$(awk -v a="$carried" -v b="$lost" 'BEGIN{printf "%.4f", a + b}')"
+        priced_note+=" $slug_i's open window priced at \$$lost;"
+      else
+        harness_warn "could not price the open window of $slug_i — adding 0 to cost_lost_usd"
+        priced_note+=" $slug_i's open window could not be priced (added 0);"
+      fi
+    done
+  fi
+
+  # Move, in order, each only if present. No rollback, nothing deleted.
+  RESET_MOVED=""; RESET_PENDING=""
+  (( have_tree ))   && RESET_PENDING+="worktree $TREE -> $new_tree; "
+  (( have_branch )) && RESET_PENDING+="branch $BRANCH -> $new_branch; "
+  (( have_state ))  && RESET_PENDING+="state $STATE -> $new_state; "
+  if (( have_tree )); then
+    git -C "$REPO_PATH" worktree move "$TREE" "$new_tree" || reset_stop "worktree move"
+    RESET_MOVED+="worktree $TREE -> $new_tree; "
+    RESET_PENDING="${RESET_PENDING#"worktree $TREE -> $new_tree; "}"
+  fi
+  if (( have_branch )); then
+    git -C "$REPO_PATH" branch -m "$BRANCH" "$new_branch" || reset_stop "branch rename"
+    RESET_MOVED+="branch $BRANCH -> $new_branch; "
+    RESET_PENDING="${RESET_PENDING#"branch $BRANCH -> $new_branch; "}"
+  fi
+  if (( have_state )); then
+    { mkdir -p "$STATE_DIR/$HARNESS_KILLED_STATE_SUBDIR" && mv "$STATE" "$new_state"; } || reset_stop "state move"
+    RESET_MOVED+="state $STATE -> $new_state; "
+    RESET_PENDING=""
+  fi
+
+  # A fresh state with no setup start, so setup's first-setup path runs next time.
+  harness_state_init "$STATE"
+  harness_state_set "$STATE" cost_lost_usd "$carried"
+  harness_state_intervention "$STATE" \
+    "reset after a kill: worktree -> $new_tree, branch -> $new_branch, state -> $new_state;${priced_note} cost_lost_usd carried $carried"
+
+  say "reset $BRANCH:"
+  (( have_tree ))   && say "  worktree: $TREE -> $new_tree"
+  (( have_branch )) && say "  branch:   $BRANCH -> $new_branch"
+  (( have_state ))  && say "  state:    $STATE -> $new_state"
+  say "  cost_lost_usd carried into the fresh state: \$$carried"
+  say "nothing was deleted or pushed"
+  if git -C "$REPO_PATH" show-ref --verify --quiet "refs/remotes/$REMOTE/$BRANCH"; then
+    say "note: refs/remotes/$REMOTE/$BRANCH exists and was left alone. Setup's branch-collision guard"
+    say "  will refuse the next run (the cell has no state and no worktree) unless you set"
+    say "  \"branch_stem_override\" in $EXPERIMENT_JSON or pass HARNESS_ALLOW_EXISTING_BRANCH=1;"
+    say "  with the latter, setup cuts a fresh local $BRANCH from $BASE, not from the remote branch."
+  fi
+  say "next: $0 $EXPERIMENT_ARG --consumer $CONSUMER_ROOT --only $cell_name_spec"
+  exit 0
+}
+
+if [[ -n "$RESET_SPEC" ]]; then reset_cell; fi
+
+# --from past setup needs the cell's earlier outputs; nothing is created by this pass.
+if (( ! DRY_RUN )) && [[ -n "$FROM_STAGE" && "$FROM_STAGE" != setup ]]; then
+  from_problems=""
+  cell_i=0
+  while (( cell_i < ${#CELLS[@]} )); do
+    read -r cell_kind cell_name method repeat arm_label arm_sha <<<"${CELLS[$cell_i]}"
+    cell_i=$(( cell_i + 1 ))
+    [[ "$cell_kind" == fixture ]] || continue
+    resolve_cell "$cell_name" "$method" "$repeat" "$arm_label" "$arm_sha"
+    missing=""
+    if [[ ! -f "$STATE" ]]; then
+      missing="no state file at $STATE"
+    elif [[ -z "$(harness_state_get "$STATE" t_setup_start)" ]]; then
+      missing="its state records no setup start"
+    elif [[ ! -d "$TREE" ]]; then
+      # record rebuilds the row from the state file alone (its cleanup only warns on a
+      # missing tree), and a finished cell's record stage has already removed the tree.
+      if [[ "$FROM_STAGE" == record ]]; then :
+      elif [[ "$FROM_STAGE" == review ]] && resume_no_pr; then :; else missing="no worktree at $TREE"; fi
+    fi
+    if [[ -n "$missing" ]]; then
+      from_problems+="  $BRANCH: $missing"$'\n'
+      from_problems+="    reset it with: $0 $EXPERIMENT_ARG --consumer $CONSUMER_ROOT --reset $(cell_spec "$cell_kind" "$cell_name" "$method" "$repeat" "$arm_label"), or run it from setup (drop --from)"$'\n'
+    fi
+  done
+  [[ -z "$from_problems" ]] || harness_die "--from $FROM_STAGE needs the earlier stages' outputs:
+${from_problems%$'\n'}"
+fi
+
+if (( ! DRY_RUN )); then take_experiment_lock; fi
+
+cell_i=0
+while (( cell_i < ${#CELLS[@]} )); do
+  read -r cell_kind cell_name method repeat arm_label arm_sha <<<"${CELLS[$cell_i]}"
+  if (( ! DRY_RUN )); then budget_allows_cell "$cell_i"; fi
+  cell_i=$(( cell_i + 1 ))
+  if [[ "$cell_kind" == program ]]; then
+    resolve_program_cell "$cell_name" "$repeat" "$arm_label" "$arm_sha"
+    if (( DRY_RUN )); then
+      dry_run_program_cell
+    else
+      run_program_cell || failures=$(( failures + 1 ))
+    fi
+  else
+    resolve_cell "$cell_name" "$method" "$repeat" "$arm_label" "$arm_sha"
+    if (( DRY_RUN )); then
+      dry_run_cell
+    else
+      run_cell || failures=$(( failures + 1 ))
+    fi
+  fi
 done
 
 if (( DRY_RUN )); then

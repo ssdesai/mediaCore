@@ -1,0 +1,27 @@
+{"at":"2026-11-04T22:11:02Z","event":"batch_start","round":"1"}
+{"at":"2026-11-04T22:11:02Z","event":"pass_start","queue":"auto","round":"1"}
+{"at":"2026-11-04T22:11:02Z","event":"plan_start","plan":"01-tests-long-runs-sonnet","queue":"auto","round":"1"}
+{"at":"2026-11-04T22:12:23Z","event":"plan_end","plan":"01-tests-long-runs-sonnet","queue":"auto","rc":"0","round":"1"}
+{"at":"2026-11-04T22:12:23Z","event":"plan_start","plan":"02-run-cells-budget-sonnet","queue":"auto","round":"1"}
+{"at":"2026-11-04T22:13:42Z","event":"plan_end","plan":"02-run-cells-budget-sonnet","queue":"auto","rc":"0","round":"1"}
+{"at":"2026-11-04T22:13:42Z","event":"plan_start","plan":"03-run-reset-lock-sonnet","queue":"auto","round":"1"}
+{"at":"2026-11-04T22:15:34Z","event":"plan_end","plan":"03-run-reset-lock-sonnet","queue":"auto","rc":"0","round":"1"}
+{"at":"2026-11-04T22:15:34Z","event":"plan_start","plan":"04-docs-long-runs-sonnet","queue":"auto","round":"1"}
+{"at":"2026-11-04T22:16:34Z","event":"plan_end","plan":"04-docs-long-runs-sonnet","queue":"auto","rc":"0","round":"1"}
+{"at":"2026-11-04T22:16:34Z","event":"pass_end","queue":"auto","reason":"all plans complete","round":"1"}
+{"at":"2026-11-04T22:16:34Z","event":"gate_start","level":"final","round":"1"}
+{"at":"2026-11-04T22:27:14Z","event":"gate_end","level":"final","rc":"0","green":"true","round":"1"}
+{"at":"2026-11-04T22:27:14Z","event":"pass_start","queue":"verify","round":"1"}
+{"at":"2026-11-04T22:27:14Z","event":"plan_start","plan":"05-verify-sonnet","queue":"verify","round":"1"}
+{"at":"2026-11-04T22:28:16Z","event":"plan_end","plan":"05-verify-sonnet","queue":"verify","rc":"0","round":"1"}
+{"at":"2026-11-04T22:28:16Z","event":"pass_end","queue":"verify","reason":"all verify plans complete","round":"1"}
+{"at":"2026-11-04T22:28:16Z","event":"pass_start","queue":"review","round":"1"}
+{"at":"2026-11-04T22:28:16Z","event":"plan_start","plan":"06-review-opus","queue":"review","round":"1"}
+{"at":"2026-11-04T22:30:54Z","event":"plan_end","plan":"06-review-opus","queue":"review","rc":"0","verdict":"escalated","head":"e09cf922c5bcf0b8686d2d6073d1059cec756e28","round":"1"}
+{"at":"2026-11-04T22:30:54Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"1"}
+{"at":"2026-11-04T22:30:54Z","event":"batch_end","rc":"1","round":"2"}
+{"at":"2026-11-04T22:47:12Z","event":"pass_start","queue":"review","round":"2"}
+{"at":"2026-11-04T22:47:12Z","event":"plan_start","plan":"07-review-opus","queue":"review","round":"2"}
+{"at":"2026-11-04T22:48:28Z","event":"plan_end","plan":"07-review-opus","queue":"review","rc":"0","verdict":"clean","head":"ddbe185b4e144057ca110c6b248b400814f892e1","round":"2"}
+{"at":"2026-11-04T22:48:28Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"2"}
+{"at":"2026-11-04T22:48:50Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/125","round":"2"}

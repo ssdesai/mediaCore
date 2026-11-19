@@ -1,0 +1,14 @@
+write: /tmp/plan-capture.1N7PKN/scratch/setup.sh
+write: /tmp/plan-capture.1N7PKN/scratch/drive.py
+write: /tmp/plan-capture.1N7PKN/scratch/oracle.py
+edit: /tmp/plan-capture.1N7PKN/scratch/drive.py
+write: /tmp/plan-capture.1N7PKN/scratch/c1.py
+edit: /tmp/plan-capture.1N7PKN/scratch/drive.py
+edit: /tmp/plan-capture.1N7PKN/scratch/drive.py
+edit: /tmp/plan-capture.1N7PKN/scratch/drive.py
+write: /tmp/plan-capture.1N7PKN/scratch/c2.py
+write: /tmp/plan-capture.1N7PKN/scratch/c3.py
+write: /tmp/plan-capture.1N7PKN/scratch/c4.py
+write: /tmp/plan-capture.1N7PKN/scratch/fakegit.sh
+write: /tmp/plan-capture.1N7PKN/scratch/c5.py
+write: /home/user/agentTooling/self/features/hook-audit-gaps/audit-report.md

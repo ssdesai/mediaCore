@@ -2,17 +2,29 @@
 set -uo pipefail
 
 # Self-test for hooks/wire-settings.py, the merge that sync-plans.sh runs to put the
-# PreToolUse hook entry, the Edit and Bash deny rules and the hooks/ ask rule into a
+# PreToolUse hook entry, the Edit and Bash deny rules and the vendored-tree and
+# orchestration-records ask rules (ASK, SELF_ASK below) into a
 # consuming repo's .claude/settings.json (hooks/README.md). Run by self/gate.sh, or by
 # hand: bash self/tests/hook-wiring.sh
 #
-# Builds thirty-one throwaway repos under mktemp -d, one per starting state of the settings
+# The hook is wired twice (self/features/orchestrator-role-guard): a `Bash` entry and an
+# `Agent` entry running the same script. Every complete fixture carries both; a file with
+# the Bash entry and not the Agent one reports UNWIRED naming `Agent hook entry`, and the
+# write adds exactly that entry after the repo's own (a repo's customized entry for a
+# matcher is kept, nothing is doubled on a second write); `--self --write` writes two
+# guarded entries.
+#
+# Builds thirty-four throwaway repos under mktemp -d, one per starting state of the settings
 # file — absent, unrelated content only, hook only, deny rules only, a partial deny list
 # with a repo's own rule in it, the hook and the Edit rules but no Bash rules, everything
-# but the ask rule, everything but the sandbox block, complete, complete plus a RETIRED
+# but the ask rules, everything but the sandbox block, complete, complete plus a RETIRED
 # rule (`Bash(git stash:*)`, which the write removes and nothing else with it), complete
 # plus the retired `Edit(**/agentTooling/hooks/**)` deny beside the ask rule that replaced
-# it (the deny removed, the ask kept — deny beat ask wherever both stood), a sandbox
+# it (the deny removed, the ask kept — deny beat ask wherever both stood), the retired
+# narrow vendored asks (`agentTooling/hooks/**`, `agentTooling/self/orchestrations/**`,
+# self/features/vendored-edit-ask) with and without the tree-wide `agentTooling/**` ask
+# beside them (the two removed by exact string, the broad rule appended, a repo's own ask
+# rule kept), a sandbox
 # block carrying the repo's own domain, denyRead path and excludedCommands, a sandbox
 # switched off by hand, the complete block with only `enabled` flipped against the
 # generator's switch, a different hook, and twelve malformed shapes (three of them an
@@ -80,6 +92,13 @@ import policy
 HOOK_ENTRY = {"matcher": "Bash", "hooks": [{"type": "command",
               "command": "/custom/path/allow-repo-commands.sh"}]}
 HOOK_COMMAND = "${CLAUDE_PROJECT_DIR}/agentTooling/hooks/allow-repo-commands.sh"
+# The second matcher (self/features/orchestrator-role-guard): the same script also runs
+# before the `Agent` tool, which denies an implementer delegate in an orchestrator session.
+# A repo's own customized entry for a matcher is kept, so the complete fixtures carry both.
+AGENT_ENTRY = {"matcher": "Agent", "hooks": [{"type": "command",
+               "command": "/custom/path/allow-repo-commands.sh"}]}
+BOTH_ENTRIES = [HOOK_ENTRY, AGENT_ENTRY]
+HOOK_MATCHERS = ["Bash", "Agent"]
 # agentTooling's own command is guarded: the file is tracked and ships with the subtree,
 # so where the script is absent (a consuming repo's root) it must be a silent exit 0.
 SELF_HOOK_PATH = "${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh"
@@ -106,7 +125,7 @@ SHARED_SESSION_ENTRY = {"hooks": [{"type": "command", "command": "/x/warm-cache.
 # A repo's own spelling of a cloud-setup.sh hook is not the helper's to remove
 CUSTOM_CLOUD_SETUP = {"hooks": [{"type": "command", "command": "bash plans/cloud-setup.sh"}]}
 # Both hook entries, as a complete file carries them
-WIRED_HOOKS = {"PreToolUse": [HOOK_ENTRY], "SessionStart": [SESSION_ENTRY]}
+WIRED_HOOKS = {"PreToolUse": list(BOTH_ENTRIES), "SessionStart": [SESSION_ENTRY]}
 # The Edit deny rules, then the Bash rules rendered from the table. The policy's own
 # rule is no longer among them: hooks/ is an ASK rule now, so an attended session is
 # prompted and a headless executor, which cannot answer, is refused.
@@ -122,7 +141,20 @@ RETIRED = list(policy.retired_bash_deny_rules())
 # The Edit deny the ask rule replaced: deny wins over ask, so a repo carrying both was
 # refused where it should have been asked. Retired, so the merge removes it.
 RETIRED_EDIT = ["Edit(**/agentTooling/hooks/**)"]
-ASK = ["Edit(**/agentTooling/hooks/**)"]
+# The policy and the orchestration records (self/features/hook-role-hardening/, F1): a record
+# naming a session is that session's orchestrator role, so editing one is asked, like hooks/.
+# (Consumer layout only: the --self spelling was dropped — hook-role-hardening's NOTES.md,
+# "Dropped: the `--self` ask rule (F9)".) A consumer's records live in plans/orchestrations/
+# (self/features/orchestration-records-in-repo/), a legacy one under the vendored self/: both.
+# The vendored tree is asked as a whole (self/features/vendored-edit-ask): the orchestrator
+# allowlist runs vendored entry points silently, so an Edit to any file under agentTooling/
+# is code that would then run unprompted; subtree pulls write through git, which no Edit
+# rule sees. The records rule stays: they live outside the vendored tree.
+ASK = ["Edit(**/agentTooling/**)", "Edit(**/plans/orchestrations/**)"]
+# The two narrower vendored asks that rule subsumes: retired, removed by exact string
+RETIRED_ASK = ["Edit(**/agentTooling/hooks/**)", "Edit(**/agentTooling/self/orchestrations/**)"]
+# A repo's own ask rule, which a merge never touches
+OWN_ASK = "Edit(/secrets-ask/**)"
 SELF_ASK = ["Edit(**/hooks/**)", "Edit(/hooks/**)"]
 OK_WRITE = ("created", "wired", "kept")
 SETTINGS_FILE = "settings.json"
@@ -215,6 +247,20 @@ CASES = {
                                       "ask": list(ASK)},
                       "sandbox": sandbox_with()},
                      "UNWIRED", "wired"),
+    # Every consuming repo's shape before vendored-edit-ask: the two narrow vendored asks
+    # (and the records ask) stand, the broad rule is absent, and the repo has an ask rule of
+    # its own. The write drops exactly the two narrow ones and appends the broad rule.
+    "retired-ask":  ({"hooks": dict(WIRED_HOOKS),
+                      "permissions": {"deny": list(ALL_DENY),
+                                      "ask": RETIRED_ASK + [OWN_ASK, "Edit(**/plans/orchestrations/**)"]},
+                      "sandbox": sandbox_with()},
+                     "UNWIRED", "wired"),
+    # The narrow asks beside the broad rule: nothing missing, only the retired to remove
+    "retired-ask-with-broad": ({"hooks": dict(WIRED_HOOKS),
+                                "permissions": {"deny": list(ALL_DENY),
+                                                "ask": list(ASK) + RETIRED_ASK},
+                                "sandbox": sandbox_with()},
+                               "UNWIRED", "wired"),
     "sandbox-own":  ({"hooks": dict(WIRED_HOOKS),
                       "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
                       "sandbox": CONSUMER_SANDBOX},
@@ -233,30 +279,36 @@ CASES = {
     # The SessionStart entry (design §7): complete but for it, a repo's own customized
     # spelling of it (kept, never doubled), and a repo's own unrelated SessionStart hook
     # (kept where it stood, ours appended after it).
-    "no-session":   ({"hooks": {"PreToolUse": [HOOK_ENTRY]},
+    # The Agent matcher (orchestrator-role-guard): a file with the Bash entry and everything
+    # else but the Agent entry; the write adds exactly that one entry, after the repo's own
+    "no-agent":     ({"hooks": {"PreToolUse": [HOOK_ENTRY], "SessionStart": [SESSION_ENTRY]},
                       "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
                       "sandbox": sandbox_with()},
                      "UNWIRED", "wired"),
-    "session-custom": ({"hooks": {"PreToolUse": [HOOK_ENTRY], "SessionStart": [SESSION_CUSTOM]},
+    "no-session":   ({"hooks": {"PreToolUse": list(BOTH_ENTRIES)},
+                      "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
+                      "sandbox": sandbox_with()},
+                     "UNWIRED", "wired"),
+    "session-custom": ({"hooks": {"PreToolUse": list(BOTH_ENTRIES), "SessionStart": [SESSION_CUSTOM]},
                         "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
                         "sandbox": sandbox_with()},
                        "in-sync", "kept"),
-    "session-other": ({"hooks": {"PreToolUse": [HOOK_ENTRY], "SessionStart": [OTHER_SESSION]},
+    "session-other": ({"hooks": {"PreToolUse": list(BOTH_ENTRIES), "SessionStart": [OTHER_SESSION]},
                        "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
                        "sandbox": sandbox_with()},
                       "UNWIRED", "wired"),
     # A repo wired before session-start.sh: the retired direct entry goes, ours replaces it
-    "session-retired": ({"hooks": {"PreToolUse": [HOOK_ENTRY],
+    "session-retired": ({"hooks": {"PreToolUse": list(BOTH_ENTRIES),
                                    "SessionStart": [RETIRED_SESSION_ENTRY]},
                          "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
                          "sandbox": sandbox_with()},
                         "UNWIRED", "wired"),
-    "session-shared": ({"hooks": {"PreToolUse": [HOOK_ENTRY],
+    "session-shared": ({"hooks": {"PreToolUse": list(BOTH_ENTRIES),
                                   "SessionStart": [SHARED_SESSION_ENTRY]},
                         "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
                         "sandbox": sandbox_with()},
                        "UNWIRED", "wired"),
-    "session-own-setup": ({"hooks": {"PreToolUse": [HOOK_ENTRY],
+    "session-own-setup": ({"hooks": {"PreToolUse": list(BOTH_ENTRIES),
                                      "SessionStart": [CUSTOM_CLOUD_SETUP]},
                            "permissions": {"deny": list(ALL_DENY), "ask": list(ASK)},
                            "sandbox": sandbox_with()},
@@ -353,6 +405,14 @@ for name, (content, want_check, want_write) in CASES.items():
               SESSION_MARKER in message and "SessionStart" in message
               and "rule(s)" not in message and "sandbox" not in message
               and "allow-repo-commands" not in message, message)
+    if name == "no-agent":
+        check("no-agent: --check names the missing Agent hook entry and nothing else",
+              "no Agent hook entry" in message and "Bash hook" not in message
+              and "rule(s)" not in message and "sandbox" not in message
+              and "SessionStart" not in message, message)
+    if name == "hook-only":
+        check("hook-only: --check names the Agent entry among the gaps, not the Bash one",
+              "Agent hook entry" in message and "Bash hook" not in message, message)
     if name == "retired":
         check("retired: --check names the retired rule to remove and nothing else",
               ("%d retired Bash deny rule(s)" % len(RETIRED)) in message
@@ -364,6 +424,16 @@ for name, (content, want_check, want_write) in CASES.items():
               ("%d retired Edit deny rule(s) (" % len(RETIRED_EDIT)) in message
               and "no " not in message and "retired Bash" not in message
               and "SessionStart" not in message, message)
+    if name == "retired-ask":
+        check("retired-ask: --check names the missing broad rule and the retired asks, nothing else",
+              "no 1 Edit ask rule(s)" in message
+              and ("%d retired Edit ask rule(s) (" % len(RETIRED_ASK)) in message
+              and "deny" not in message and "SessionStart" not in message
+              and "sandbox" not in message, message)
+    if name == "retired-ask-with-broad":
+        check("retired-ask-with-broad: --check names only the retired asks to remove",
+              ("%d retired Edit ask rule(s) (" % len(RETIRED_ASK)) in message
+              and "no " not in message, message)
     check("%s: --check writes nothing" % name,
           (raw(repo) if content is not None else None) == before_raw)
     status, message, rc = run(repo, "--write")
@@ -442,10 +512,35 @@ for name, (content, want_check, want_write) in CASES.items():
     if name == "retired-edit":
         check("retired-edit: --write removed the retired Edit deny and kept the ask rule",
               deny == ALL_DENY and ask == ASK, "got %s / %s" % (deny, ask))
+    check("%s: no retired ask rule is left" % name,
+          not any(r in ask for r in RETIRED_ASK),
+          "got %s" % [r for r in RETIRED_ASK if r in ask])
+    if name == "retired-ask":
+        check("retired-ask: --write dropped the two narrow asks, kept the repo's own and the "
+              "records ask, and appended the broad rule",
+              ask == [OWN_ASK, "Edit(**/plans/orchestrations/**)", "Edit(**/agentTooling/**)"],
+              "got %s" % ask)
+    if name == "retired-ask-with-broad":
+        check("retired-ask-with-broad: --write left exactly the wanted asks, in place",
+              ask == ASK, "got %s" % ask)
     marked = [h for e in after["hooks"]["PreToolUse"] for h in e["hooks"]
               if "allow-repo-commands.sh" in h["command"]]
-    check("%s: exactly one hook entry names the script" % name, len(marked) == 1,
-          "%d entries" % len(marked))
+    entries = after["hooks"]["PreToolUse"]
+    check("%s: exactly one hook entry per matcher (%s) names the script" % (name, "+".join(HOOK_MATCHERS)),
+          len(marked) == len(HOOK_MATCHERS)
+          and all(len([e for e in entries if e.get("matcher") == m
+                       and any("allow-repo-commands.sh" in h["command"] for h in e["hooks"])]) == 1
+                  for m in HOOK_MATCHERS),
+          "%d entries: %s" % (len(marked), entries))
+    if name == "no-agent":
+        check("no-agent: --write appended exactly the Agent entry after the repo's own Bash entry",
+              entries == [HOOK_ENTRY, {"matcher": "Agent",
+                                       "hooks": [{"type": "command", "command": HOOK_COMMAND}]}],
+              "got %s" % entries)
+    if name == "fresh":
+        check("fresh: --write writes the Bash entry then the Agent entry, one command",
+              entries == [{"matcher": m, "hooks": [{"type": "command", "command": HOOK_COMMAND}]}
+                          for m in HOOK_MATCHERS], "got %s" % entries)
     session = after["hooks"].get("SessionStart") or []
     session_marked = [h for e in session for h in e["hooks"]
                       if SESSION_MARKER in h["command"]]
@@ -476,6 +571,9 @@ for name, (content, want_check, want_write) in CASES.items():
                         if k not in ("hooks", "permissions", "sandbox"))
         kept_deny = all(r in deny for r in (content.get("permissions") or {}).get("deny") or []
                         if r not in RETIRED + RETIRED_EDIT)
+        kept_ask = all(r in ask for r in (content.get("permissions") or {}).get("ask") or []
+                       if r not in RETIRED_ASK)
+        kept_deny = kept_deny and kept_ask
         kept_allow = all(r in after["permissions"].get("allow", [])
                          for r in (content.get("permissions") or {}).get("allow") or [])
         # An entry holding the retired command is changed by design, and checked above
@@ -513,14 +611,23 @@ def hook_commands(settings):
     return [h["command"] for e in settings["hooks"]["PreToolUse"] for h in e["hooks"]]
 
 
-check("--self writes the self hook command, guarded", hook_commands(s) == [SELF_HOOK_COMMAND],
+check("--self writes two guarded entries, one per matcher, each the self hook command",
+      hook_commands(s) == [SELF_HOOK_COMMAND] * len(HOOK_MATCHERS)
+      and [e["matcher"] for e in s["hooks"]["PreToolUse"]] == HOOK_MATCHERS,
       "got %s" % hook_commands(s))
-check("an ordinary run still writes the vendored hook command",
-      hook_commands(v) == [HOOK_COMMAND], "got %s" % hook_commands(v))
+check("an ordinary run still writes the vendored hook command, once per matcher",
+      hook_commands(v) == [HOOK_COMMAND] * len(HOOK_MATCHERS)
+      and [e["matcher"] for e in v["hooks"]["PreToolUse"]] == HOOK_MATCHERS,
+      "got %s" % hook_commands(v))
 check("--self writes the any-depth and root-anchored ask rules",
       s["permissions"]["ask"] == SELF_ASK, "got %s" % s["permissions"].get("ask"))
-check("an ordinary run writes the vendored ask rule",
-      v["permissions"]["ask"] == ASK, "got %s" % v["permissions"].get("ask"))
+check("an ordinary run writes the vendored-tree ask rule and the records rule, and no "
+      "retired narrow one",
+      v["permissions"]["ask"] == ASK
+      and not any(r in v["permissions"]["ask"] for r in RETIRED_ASK),
+      "got %s" % v["permissions"].get("ask"))
+check("--self writes none of the vendored spellings, retired or broad",
+      not any(r in s["permissions"]["ask"] for r in RETIRED_ASK + ASK))
 check("neither mode denies hooks/ any more — the prompt is the point",
       not any("hooks/**" in r for r in v["permissions"]["deny"] + s["permissions"]["deny"]))
 check("the deny rules are the same in both modes",
@@ -537,7 +644,8 @@ check("--self writes the guarded --self SessionStart command",
                                                      "command": SELF_SESSION_COMMAND}]}],
       "got %r" % s["hooks"].get("SessionStart"))
 swapped = json.loads(json.dumps(v))
-swapped["hooks"]["PreToolUse"][0]["hooks"][0]["command"] = SELF_HOOK_COMMAND
+for entry in swapped["hooks"]["PreToolUse"]:
+    entry["hooks"][0]["command"] = SELF_HOOK_COMMAND
 swapped["hooks"]["SessionStart"][0]["hooks"][0]["command"] = SELF_SESSION_COMMAND
 swapped["permissions"]["ask"] = SELF_ASK
 check("--self differs in the two hook commands and the ask rules and nothing else",

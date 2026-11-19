@@ -1,0 +1,9 @@
+write: /tmp/plan-capture.UwT9lj/scratch/wire_attack.py
+edit: /tmp/plan-capture.UwT9lj/scratch/wire_attack.py
+write: /tmp/plan-capture.UwT9lj/scratch/hook_attack.py
+edit: /tmp/plan-capture.UwT9lj/scratch/hook_attack.py
+edit: /tmp/plan-capture.UwT9lj/scratch/hook_attack.py
+write: /tmp/plan-capture.UwT9lj/scratch/hook_attack2.py
+edit: /tmp/plan-capture.UwT9lj/scratch/hook_attack2.py
+edit: /tmp/plan-capture.UwT9lj/scratch/hook_attack.py
+write: /home/user/agentTooling/self/features/vendored-edit-ask/audit-report.md

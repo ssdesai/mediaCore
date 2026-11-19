@@ -70,7 +70,7 @@ SETTINGS_REL=".claude/settings.json"
 LOCAL_REL=".claude/settings.local.json"
 SETTINGS_DIR_REL=".claude"
 SETTINGS_NAME="settings.json"
-HOOK_FILES=(policy.py env_profile.py wire-settings.py allow-repo-commands.sh)
+HOOK_FILES=(policy.py env_profile.py shared_rules.py wire-settings.py allow-repo-commands.sh)
 SELF_SCRIPTS=(worktree-setup.sh gate.sh)
 # The tracked hook command, as the brief fixed it: a no-op where the script is absent, the
 # script itself otherwise (it reads the payload on stdin, which `test` leaves alone).
@@ -168,7 +168,9 @@ if what == "shape":
 elif what == "hook-command":
     commands = [h.get("command") for e in hooks.get("PreToolUse") or []
                 for h in (e or {}).get("hooks") or []]
-    if len(commands) == 1:
+    # One command, shared by every matcher entry (Bash and Agent: self/features/
+    # orchestrator-role-guard/); two different commands print nothing
+    if commands and len(set(commands)) == 1:
         print(commands[0])
 PY
 }
@@ -186,7 +188,7 @@ check "0b. ... and nothing else: $SETTINGS_DIR_REL/ holds that one file (got '$(
 check "0c. it carries no permissions.allow, and the PreToolUse hook and the session-start.sh SessionStart entry (got '$(settings_field "$EXPECTED" shape)')" \
   '[[ "$(settings_field "$EXPECTED" shape)" == "allow=False sessionstart=True events=PreToolUse,SessionStart" ]]'
 HOOK_CMD="$(settings_field "$EXPECTED" hook-command)"
-check "0d. its one PreToolUse command is the guarded one (got '$HOOK_CMD')" \
+check "0d. its PreToolUse entries (Bash and Agent) all run the one guarded command (got '$HOOK_CMD')" \
   '[[ "$HOOK_CMD" == "$HOOK_GUARDED_COMMAND" ]]'
 
 # ── A. a fresh standalone worktree is born wired, and the setup hook writes nothing

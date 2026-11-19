@@ -39,7 +39,10 @@ set -uo pipefail
 #     3. recovers what the CLI never priced, over this feature only
 #        (`recover_attempts.py --for <slug>`) — reported, never fatal;
 #     4. captures (`capture_planning.py <slug>`, with --recapture once a record exists on
-#        the branch, since that record is provisional too) and reports (`report.py`), and
+#        the branch, since that record is provisional too) — which first pins every
+#        unclaimed delegate whose brief opens `feature: <repo>/<slug>` through manifest.py
+#        pin-subagent and says so (self/features/delegate-cost-claims), the dirty manifest
+#        riding the commit below — and reports (`report.py`), and
 #        prints what planning.json claims. A record already on the branch is the BASELINE
 #        the capture merges into: a row whose transcript this checkout cannot reach — an
 #        earlier round's container, in the cloud, where each round runs in a new one and
@@ -61,7 +64,9 @@ set -uo pipefail
 #        router's record;
 #     7. warns — never refuses — about a delegate whose brief names <repo>/<slug> and that
 #        neither route claims: asked AFTER the capture, when the ledger holds this
-#        capture's own claims, so a delegate claimed through its parent is not listed;
+#        capture's own claims, so a delegate claimed through its parent, or pinned by the
+#        capture's auto-claim, is not listed — what is left is one the auto-claim refused
+#        (another feature pins it, this one excludes it, its brief is ambiguous);
 #     8. prints the RESIDUE — the rate history's checked date and staleness, its
 #        `refresh_rates.py --check` against LiteLLM (news only; the capture never writes
 #        the history), one `tiers` line from `refresh_rates.py --tiers` (does any model
@@ -126,13 +131,15 @@ COST_COMMIT_SUFFIX=": cost records"
 # The subject feature-start.sh gives a feature's first commit (LIFECYCLE.md → step 2):
 # with both branch refs gone, the only thing left in history saying it was started here.
 START_COMMIT_SUFFIX=": start"
-ORIGIN_REMOTE="origin"
 UTC_STAMP_FORMAT='+%Y-%m-%dT%H:%M:%SZ'
 SNAPSHOT_TEMPLATE="feature-capture.XXXXXX"
 CAPTURE_SCRIPT_NAME="feature-capture.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/plan-runner-roots.sh"
+# The remote the branch is pushed to, and merged copies are read from: the push function's
+# remote (plan-runner-roots.sh's PUSH_REMOTE), so the two can never name different ones
+ORIGIN_REMOTE="$PUSH_REMOTE"
 resolve_roots "${1:-}"
 SELF_FLAG=()
 if [[ "${1:-}" == "--self" ]]; then SELF_FLAG=(--self); shift; fi
@@ -478,12 +485,14 @@ fi
 
 if (( ! PUSH )); then
   echo "  push      skipped (--no-push) — $FEATURE_BRANCH is ahead of $ORIGIN_REMOTE"
-elif ! git -C "$CHECKOUT" remote get-url "$ORIGIN_REMOTE" >/dev/null 2>&1; then
-  echo "  push      skipped — this repository has no $ORIGIN_REMOTE"
-elif git -C "$CHECKOUT" push -q -u "$ORIGIN_REMOTE" "$FEATURE_BRANCH"; then
-  echo "  push      $FEATURE_BRANCH -> $ORIGIN_REMOTE"
 else
-  refuse "could not push $FEATURE_BRANCH; the cost commit is on the branch locally — push it by hand"
+  # The shared push (plan-runner-roots.sh); the checkpoints use the same one
+  push_feature_branch "$CHECKOUT" "$FEATURE_BRANCH"; push_rc=$?
+  case "$push_rc" in
+    0) echo "  push      $FEATURE_BRANCH -> $ORIGIN_REMOTE" ;;
+    "$PUSH_RC_NO_REMOTE") echo "  push      skipped — this repository has no $ORIGIN_REMOTE" ;;
+    *) refuse "could not push $FEATURE_BRANCH; the cost commit is on the branch locally — push it by hand" ;;
+  esac
 fi
 
 echo ""
