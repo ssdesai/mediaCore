@@ -12,6 +12,8 @@ No change to `src/` or `tests/`, so the mediaCore contract in `INTEGRATION.md` i
 |---|---|
 | `review/incomplete/01-review-opus.md` | Reviews the repo-owned diff of the pull against the paragraph above. |
 | `review/incomplete/01-audit-opus.md` | Security audit, since the pull changes `.claude/settings.json` hook wiring. |
+| `review/incomplete/02-review-opus.md` | Round 2 review, after round 1 escalated on the placeholder opening paragraph. |
+| `review/incomplete/02-audit-opus.md` | Round 2 security audit alongside the round 2 review. |
 
 ## Deliberately excluded
 
@@ -24,7 +26,7 @@ No change to `src/` or `tests/`, so the mediaCore contract in `INTEGRATION.md` i
 {
   "slug": "pull-agenttooling-pr169",
   "method": "hand",
-  "plans": ["01-review-opus", "01-audit-opus", "02-review-opus"],
+  "plans": ["01-review-opus", "01-audit-opus", "02-review-opus", "02-audit-opus"],
   "branches": ["claude/pull-agenttooling-pr169"],
   "base": "main",
   "profile": "cloud",
