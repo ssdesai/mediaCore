@@ -13,6 +13,18 @@ to the machinery is made once and pulled everywhere.
 
 - `features/` — one directory per feature: its manifest plus its own `auto/`,
   `verify/`, `review/`, and `interactive/`. See `features/README.md` for the full shape.
+- `orchestrations/` — one directory per **orchestration record**: the group of features one
+  orchestrator or coordinator session ran in this repo, with its own transcript's cost
+  (`planning.json`) and the group report (`report.md`, `report.json`). Written by
+  `../agentTooling/orchestration-start.sh <slug>` (no `--self`: a record lives in the repo
+  that ran it, beside `features/`, never inside the vendored `agentTooling/`), edited with
+  `manifest.py --orchestration <slug>`; each feature's `report` path is relative to this
+  repo's root. See `../agentTooling/LIFECYCLE.md` → "Orchestration records". Absent until
+  the repo starts one. A record of this repo's own left at the old place,
+  `agentTooling/self/orchestrations/<slug>` (its last fence lists a feature of this repo), is
+  moved with
+  `git mv agentTooling/self/orchestrations/<slug> plans/orchestrations/<slug>`; the other
+  records there are agentTooling's own, shipped with the subtree, and stay.
 - `interactive/` — standing runbooks that outlive any one feature (e.g. first-run
   setup). A feature's own bash-heavy steps live in `features/<slug>/interactive/`
   instead.
@@ -27,6 +39,13 @@ to the machinery is made once and pulled everywhere.
   feature. It names the branch outright (`--branch claude/<slug>`); the session it briefs
   has no assigned one (`../agentTooling/LIFECYCLE.md` → "Orchestrator and implementer
   sessions"). Copy it, never edit it here.
+- `ORCHESTRATOR_SESSION_BRIEF.md` — *generated, overwritten every sync* — the template a
+  human copies and fills in to brief the orchestrator session itself: it opens the
+  orchestration record (`orchestration-start.sh`, written to `orchestrations/`), spawns one implementer session per
+  feature from `ORCHESTRATOR_BRIEF.md`, and builds nothing — the lifecycle scripts refuse
+  and the hook denies the build commands in a session that opened a record
+  (`../agentTooling/LIFECYCLE.md` → "Orchestrator and implementer sessions"). Copy it,
+  never edit it here.
 - `PROJECT_FACTS.md` — repo-specific facts every plan must pin, and this repo's own
   entries for this folder (anything here that is not listed in this file). Read this
   before authoring. *Seeded once and never overwritten.*

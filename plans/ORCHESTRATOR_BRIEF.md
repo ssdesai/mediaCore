@@ -1,26 +1,30 @@
 <!-- Generated from agentTooling/templates/ by agentTooling/sync-plans.sh and overwritten on
 every pull — never edit it. An orchestrator session copies it, fills it in for ONE feature
 and sends the copy as the implementer session's first message. Every <placeholder> must be
-replaced, and each [optional] in the start line kept without its brackets or dropped; a
-brief that still carries either is not sent. `<tooling>` is where the scripts sit relative
-to the repo root: `.` in agentTooling itself, `./agentTooling` in a consuming repo. Write
-the Why and Items sections yourself; the rest is fixed. -->
-
+replaced (`<scratchpad>` stays as written), and each [optional] in the start line kept without
+its brackets or dropped; a brief that still carries either is not sent. `<tooling>` is where
+the scripts sit relative to the repo root: `.` in agentTooling itself, `./agentTooling` in a
+consuming repo. Write Why and Items yourself, the owner's words unchanged under "Owner's request". -->
 <repo> feature `<slug>` — implementer brief
 
 ## Role
 
 You are the implementer session for ONE feature, `<slug>`, in `<repo>`, start to close.
-An orchestrator session created you, and no branch was given to you at creation. The orchestrator
-reads your final report and forwards anything you need from the repository owner: if you
-are blocked, say exactly what you need and stop. Sibling sessions may be building other
-features; never do their work.
+An orchestrator session created you, and no branch was given to you at creation. The
+orchestrator reads your final report and forwards anything you need from the repository
+owner: if you are blocked, say exactly what you need and stop. Sibling sessions may be
+building other features; never do their work.
+
+## Owner's request (verbatim)
+
+Before the start, write this text, unchanged, to `<scratchpad>/OWNER_BRIEF.md` with the Write tool (the owner's items stay numbered, as `### N.` headings or a top-level `1.` list, so each is checked separately):
+<the repository owner's words, unchanged>
 
 ## Branch
 
 Your first command in the repo is exactly:
 
-    <tooling>/feature-start.sh [--self] <slug> --method <method> --branch claude/<slug> [--orchestration <orchestration>]
+    <tooling>/feature-start.sh [--self] <slug> --method <method> --branch claude/<slug> [--orchestration <orchestration>] --owner-brief <scratchpad>/OWNER_BRIEF.md
 
 Run it in the background, its output captured to a file in your scratchpad, and wait for
 its exit notification before you read or edit anything in the tree: the start runs the base
@@ -38,8 +42,14 @@ refuses, report the refusal verbatim and stop.
 
 ## Lifecycle
 
+- Before you build anything, fill the review brief the start names in its last lines
+  (`review/incomplete/01-review-opus.md`, still an `@@TODO@@` stub): from the Items below,
+  what the feature must do and the contracts to hold it to. `run-review.sh` refuses the stub.
 - Build the items below, directly or through subagents; the gate, the review and the
   close are yours.
+- Never move bytes through a model. Copy a file between repos with git (`git show
+  <rev>:<path> > <dest>`, `git archive`, a fetch), inside the session that owns the
+  destination repo — never by retyping, pasting or base64 in a prompt.
 - Run the gate (`<gate command>`) in the background with its output captured to a file in
   your scratchpad, and wait for its exit notification: no `sleep`, no polling. Fix
   failures in the code, never by weakening a check.
@@ -58,11 +68,9 @@ refuses, report the refusal verbatim and stop.
 ## Items
 
 ### 1. <item>
-
 <what changes, by file, and what the test asserts>
 
 ### 2. <item>
-
 <what changes, by file, and what the test asserts>
 
 ## Report, terse
