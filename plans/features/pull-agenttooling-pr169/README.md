@@ -31,7 +31,7 @@ No change to `src/` or `tests/`, so the mediaCore contract in `INTEGRATION.md` i
   "base": "main",
   "profile": "cloud",
   "gate": "green",
-  "session_window": {"from": "2026-11-19T17:46:17.029Z", "to": null},
+  "session_window": {"from": "2026-11-19T17:46:17.029Z", "to": "2026-11-19T18:54:13Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],
