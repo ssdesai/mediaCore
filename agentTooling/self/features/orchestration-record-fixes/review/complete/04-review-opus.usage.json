@@ -1,0 +1,80 @@
+{
+  "plan": "04-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "97c9a597-9434-4c26-8732-944dc1fa9d28",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 61,
+  "duration_ms": 293798,
+  "total_cost_usd": 2.1537895000000002,
+  "usage": {
+    "input_tokens": 70,
+    "cache_creation_input_tokens": 111364,
+    "cache_read_input_tokens": 3659261,
+    "output_tokens": 26514
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 4553,
+      "outputTokens": 20,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.00046530000000000003,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 70,
+      "outputTokens": 26514,
+      "cacheReadInputTokens": 3659261,
+      "cacheCreationInputTokens": 111364,
+      "webSearchRequests": 0,
+      "costUSD": 2.1533242,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 10949,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 111364,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 3,
+  "tool_counts": {
+    "Bash": 33,
+    "Edit": 6,
+    "Read": 13,
+    "Write": 8
+  },
+  "files_edited": [
+    "/tmp/plan-capture.JFyHkf/scratch/assign.py",
+    "/tmp/plan-capture.JFyHkf/scratch/build_judge.py",
+    "/tmp/plan-capture.JFyHkf/scratch/cmds.txt",
+    "/tmp/plan-capture.JFyHkf/scratch/cmds2.txt",
+    "/tmp/plan-capture.JFyHkf/scratch/cmds3.txt",
+    "/tmp/plan-capture.JFyHkf/scratch/extract.py",
+    "/tmp/plan-capture.JFyHkf/scratch/probe.py",
+    "hooks/README.md",
+    "self/review-report.md"
+  ],
+  "edit_count": 14,
+  "attempts": [
+    {
+      "session_id": "97c9a597-9434-4c26-8732-944dc1fa9d28",
+      "outcome": "complete",
+      "total_cost_usd": 2.1537895000000002,
+      "num_turns": 61,
+      "duration_ms": 293798
+    }
+  ]
+}

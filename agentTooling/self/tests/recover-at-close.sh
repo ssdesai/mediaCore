@@ -159,8 +159,9 @@ echo "recover at close"
 # what is under test is the field a real `claude -p` stream produces, and the runner is
 # what decides the outcome from the exit code.
 RA="$TMP/runner/agentTooling"
-mkdir -p "$RA/self/features" "$RA/self"
-for f in run-plans.sh plan-runner-lib.sh plan-runner-roots.sh; do
+mkdir -p "$RA/self/features" "$RA/self" "$RA/hooks"
+# the role reader refuses a copy without its two modules (hook-silent-allow-sweep, item 7)
+for f in run-plans.sh plan-runner-lib.sh plan-runner-roots.sh hooks/orchestrator_role.py hooks/shared_rules.py; do
   cp "$HERE/$f" "$RA/$f" 2>/dev/null || true
 done
 chmod +x "$RA"/*.sh 2>/dev/null || true
@@ -233,6 +234,7 @@ check "A8. a leftover stream from a killed run is harvested as a 'killed' attemp
 # ── B. recover_attempts.py --for <slug> ──────────────────────────────────────
 CA="$TMP/recover/agentTooling"
 mkdir -p "$CA/analysis" "$CA/self/features"
+mkdir -p "$CA/hooks" && cp "$HERE/hooks/shared_rules.py" "$CA/hooks/"  # roots.py imports it
 export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
 for f in pricing.py litellm_prices.py rates_history.json roots.py transcript.py recover_attempts.py; do
   cp "$HERE/analysis/$f" "$CA/analysis/$f" 2>/dev/null || true
@@ -277,7 +279,9 @@ check "B5. without --for the whole-tree walk is unchanged — the corpus-wide re
 LA="$TMP/close/agentTooling"
 LORIGIN="$TMP/close/origin.git"
 mkdir -p "$LA/analysis" "$LA/self/features" "$LA/templates/plans/features"
-for f in feature-start.sh feature-capture.sh plan-runner-roots.sh plan-runner-lib.sh stamp-timing.sh env-profile.sh; do
+mkdir -p "$LA/hooks" && cp "$HERE/hooks/shared_rules.py" "$LA/hooks/"  # roots.py imports it
+# the role reader refuses a copy without its two modules (hook-silent-allow-sweep, item 7)
+for f in feature-start.sh feature-capture.sh plan-runner-roots.sh plan-runner-lib.sh stamp-timing.sh env-profile.sh hooks/orchestrator_role.py hooks/shared_rules.py; do
   cp "$HERE/$f" "$LA/$f" 2>/dev/null || true
 done
 # The detector env-profile.sh asks, where it looks for it
@@ -288,6 +292,8 @@ export AGENTTOOLING_PROFILE=local
 for f in pricing.py litellm_prices.py rates_history.json refresh_rates.py roots.py transcript.py capture_planning.py report.py manifest.py recover_attempts.py routing.py; do
   cp "$HERE/analysis/$f" "$LA/analysis/$f" 2>/dev/null || true
 done
+# capture_planning.py reads the brief header from ../hooks/brief_header.py (README.md).
+mkdir -p "$LA/hooks" && cp "$HERE/hooks/brief_header.py" "$LA/hooks/brief_header.py"
 cp "$HERE/templates/plans/features/TEMPLATE.md" "$LA/templates/plans/features/TEMPLATE.md" 2>/dev/null || true
 cp "$HERE/self/pr.sh" "$LA/self/pr.sh" 2>/dev/null || true
 printf '#!/usr/bin/env bash\nexit 0\n' > "$LA/self/worktree-setup.sh"
@@ -505,6 +511,8 @@ check "D5. QUEUE_COST_BUCKETS covers exactly QUEUE_DIRS (got $d5)" '[[ "$d5" == 
 # fourth queue in QUEUE_DIRS and nothing added to the dict must refuse to import.
 mkdir -p "$TMP/drift"
 cp "$LA/analysis"/*.py "$LA/analysis/rates_history.json" "$TMP/drift/"
+# The drift directory stands where analysis/ does, so its modules look for hooks/ beside it, in $TMP
+mkdir -p "$TMP/hooks" && cp "$LA/hooks"/*.py "$TMP/hooks/"
 sed -i.bak 's/^QUEUE_DIRS = {"auto", "verify", "review"}$/QUEUE_DIRS = {"auto", "verify", "review", "escalate"}/' "$TMP/drift/report.py"
 drift_out="$(python3 -B -c "import sys; sys.path.insert(0, sys.argv[1]); import report" "$TMP/drift" 2>&1)"; drift_rc=$?
 check "D6. ... and a queue added to QUEUE_DIRS but not to the dict fails at import (got $drift_rc)" '[[ $drift_rc -ne 0 ]] && grep -q "QUEUE_COST_BUCKETS" <<<"$drift_out" && grep -q "escalate" <<<"$drift_out"'

@@ -1,0 +1,66 @@
+{
+  "slug": "tooling-wave-2026-11-17",
+  "captured_at": "2026-11-18T14:11:21.197726+00:00",
+  "orchestration": true,
+  "kind": "orchestrator",
+  "agent_tooling": "19f8d9795600af68d19f24a8737ad5faa9683e81",
+  "session_window": {
+    "from": "2026-11-17T17:20:57Z",
+    "to": "2026-11-18T14:11:20Z"
+  },
+  "sessions": [
+    {
+      "session_id": "2fec175d-1543-582c-9f4f-1132527f84d6",
+      "git_branch": null,
+      "selected_by": "orchestration",
+      "cwd": null,
+      "date": "2026-11-17",
+      "started_at": "2026-11-17T17:11:54.140000+00:00",
+      "ended_at": "2026-11-18T14:11:20.807000+00:00",
+      "duration_s": 75019
+    }
+  ],
+  "subagents": [],
+  "priced": [
+    {
+      "session_id": "2fec175d-1543-582c-9f4f-1132527f84d6",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-17",
+      "tokens": {
+        "input": 864,
+        "output": 198710,
+        "cache_read": 97213855,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 1221170
+      },
+      "cost_usd": 33.189787,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 33.189787,
+    "sidechain": 0,
+    "subagents": 0,
+    "total": 33.189787,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 75019,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "warnings": [],
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-11-18"
+}

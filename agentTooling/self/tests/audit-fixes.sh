@@ -48,10 +48,13 @@ echo "audit-fixes"
 # ── A. report.py --all fills the missing reports ──────────────────────────────
 AT="$TMP/a/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
+mkdir -p "$AT/hooks" && cp "$HERE/hooks/shared_rules.py" "$AT/hooks/"  # roots.py imports it
 export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
 for f in "$HERE"/analysis/*.py "$HERE"/analysis/rates_history.json; do
   cp "$f" "$AT/analysis/$(basename "$f")" 2>/dev/null || true
 done
+# capture_planning.py reads the brief header from ../hooks/brief_header.py (README.md).
+mkdir -p "$AT/hooks" && cp "$HERE/hooks/brief_header.py" "$AT/hooks/brief_header.py"
 git -C "$AT" init -q
 git -C "$AT" symbolic-ref HEAD refs/heads/main
 git -C "$AT" config user.email test@example.invalid
@@ -97,9 +100,11 @@ check "A7. ... and still printing the row" 'grep -q "^| $SLUG_A |" <<<"$out"'
 # ── B. run-batch.sh lints an inferred slug ────────────────────────────────────
 REPO="$TMP/b"
 BT="$REPO/agentTooling"
-mkdir -p "$BT" "$REPO/plans/features" "$TMP/bin"
+mkdir -p "$BT/hooks" "$REPO/plans/features" "$TMP/bin"
+# the role reader refuses a copy without its two modules (hook-silent-allow-sweep, item 7)
 for f in run-batch.sh run-plans.sh run-verify.sh run-review.sh run-escalation-plan.sh \
-         plan-runner-lib.sh plan-runner-roots.sh stamp-timing.sh check-plans.sh; do
+         plan-runner-lib.sh plan-runner-roots.sh stamp-timing.sh check-plans.sh \
+         hooks/orchestrator_role.py hooks/shared_rules.py; do
   cp "$HERE/$f" "$BT/$f" 2>/dev/null || true
 done
 chmod +x "$BT"/*.sh 2>/dev/null || true

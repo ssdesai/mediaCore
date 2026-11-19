@@ -1,0 +1,11 @@
+write: /tmp/plan-capture.WQPPAi/scratch/setup.sh
+write: /tmp/plan-capture.WQPPAi/scratch/run.py
+write: /tmp/plan-capture.WQPPAi/scratch/driver.py
+write: /tmp/plan-capture.WQPPAi/scratch/build_cases.json
+write: /tmp/plan-capture.WQPPAi/scratch/build_cases2.json
+edit: /tmp/plan-capture.WQPPAi/scratch/run.py
+write: /tmp/plan-capture.WQPPAi/scratch/build_cases3.json
+write: /tmp/plan-capture.WQPPAi/scratch/dbg.py
+write: /tmp/plan-capture.WQPPAi/scratch/build_cases4.json
+write: /tmp/plan-capture.WQPPAi/scratch/git_cases.json
+write: /home/user/agentTooling/self/features/orchestration-record-fixes/audit-report.md

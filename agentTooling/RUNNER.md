@@ -100,6 +100,18 @@ code itself — the defects that are still there while every check is green.
   own model note reserves for opus. `run-review.sh` reads the model from
   `NN-review-MODEL.md` exactly as the other runners do, so `NN-review-fable.md` runs the
   pass on Claude Fable 5.1 — the CLI's `fable` alias, passed as-is like the other three.
+- **Three plan kinds in one review queue.** `NN-review-MODEL.md` is the round;
+  `NN-audit-MODEL.md` (a hook change, `LIFECYCLE.md` → "The security audit") and
+  `NN-conformance-MODEL.md` are queued by the runner beside it with the review's NN and
+  sort before it, so the review runs last and its `plan_end` is the one stamped with the
+  verdict. Neither is a round. The conformance plan exists only when the feature has an
+  `OWNER_BRIEF.md` (one queued without it, or not as the review's `NN-conformance-MODEL`,
+  is refused before anything runs: delete it); its prompt is composed by the runner from git (never from the plan
+  body), and it is launched through the per-plan hook `executor_args_for_plan`
+  (`plan-runner-lib.sh`) with `--tools ""` and the prompt on stdin — the one plan whose
+  launch differs. The runner writes its answer from the stream's `result` event to
+  `conformance-report.md` before the round commit (`LIFECYCLE.md` → "The owner's brief and
+  the conformance check").
 - **Budgeted separately.** `--max-budget-usd` defaults to `$7.00`
   (`REVIEW_BUDGET_USD`), higher than verify's `$3.00` because the default model is more
   expensive. It supersedes a starting estimate that no measured run fitted inside: the

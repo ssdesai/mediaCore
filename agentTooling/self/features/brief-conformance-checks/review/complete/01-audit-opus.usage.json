@@ -1,0 +1,82 @@
+{
+  "plan": "01-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "595f028f-605a-479b-8a67-69ad8b2eaf52",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 53,
+  "duration_ms": 604377,
+  "total_cost_usd": 3.1600373,
+  "usage": {
+    "input_tokens": 74,
+    "cache_creation_input_tokens": 149782,
+    "cache_read_input_tokens": 4003102,
+    "output_tokens": 58023
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 3934,
+      "outputTokens": 23,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.00040490000000000003,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 74,
+      "outputTokens": 58023,
+      "cacheReadInputTokens": 4003102,
+      "cacheCreationInputTokens": 149782,
+      "webSearchRequests": 0,
+      "costUSD": 3.1596323999999996,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 29414,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 149782,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 1,
+  "tool_counts": {
+    "Bash": 30,
+    "Edit": 1,
+    "Read": 9,
+    "Write": 12
+  },
+  "files_edited": [
+    "/tmp/plan-capture.WJVVuQ/scratch/conf.py",
+    "/tmp/plan-capture.WJVVuQ/scratch/envfunc.sh",
+    "/tmp/plan-capture.WJVVuQ/scratch/hookone.sh",
+    "/tmp/plan-capture.WJVVuQ/scratch/hookpy.sh",
+    "/tmp/plan-capture.WJVVuQ/scratch/hookrun.py",
+    "/tmp/plan-capture.WJVVuQ/scratch/roots.sh",
+    "/tmp/plan-capture.WJVVuQ/scratch/selftest.sh",
+    "/tmp/plan-capture.WJVVuQ/scratch/setup.sh",
+    "/tmp/plan-capture.WJVVuQ/scratch/stray.sh",
+    "/tmp/plan-capture.WJVVuQ/scratch/stub-claude",
+    "self/features/brief-conformance-checks/audit-report.md"
+  ],
+  "edit_count": 13,
+  "attempts": [
+    {
+      "session_id": "595f028f-605a-479b-8a67-69ad8b2eaf52",
+      "outcome": "complete",
+      "total_cost_usd": 3.1600373,
+      "num_turns": 53,
+      "duration_ms": 604377
+    }
+  ]
+}

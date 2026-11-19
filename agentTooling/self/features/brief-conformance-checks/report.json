@@ -1,0 +1,291 @@
+{
+  "slug": "brief-conformance-checks",
+  "generated_at": "2026-11-19T13:14:11.443617+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 18.7162443,
+    "build": 18.7162443,
+    "verify": 0.0,
+    "review": 9.2568682,
+    "total": 27.9731125,
+    "planning_pct": 0.0,
+    "build_pct": 66.907979224693,
+    "verify_pct": 0.0,
+    "review_pct": 33.092020775307,
+    "cost_per_plan": 4.6621854166666665,
+    "cost_per_file": 1.2715051136363635,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 35791,
+    "planning_subagents_s": 1534,
+    "planning_s": 0.0,
+    "implementer_s": 37325,
+    "build_s": 37325.0,
+    "verify_s": 0.0,
+    "review_s": 1318.5259999999998,
+    "executor_s": 38643.526,
+    "total_s": 38643.526,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-19T04:57:28+00:00",
+      "last_at": "2026-11-19T13:14:10+00:00",
+      "batch_span_s": 29802.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 1520.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 1851.0,
+      "plan_runs": 6,
+      "pr_opened_at": "2026-11-19T13:14:10+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/167"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 18.7162443,
+      "build_min": 622.0833333333334,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 4.4928391,
+      "review_min": 12.822983333333333,
+      "review_plan": "01-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/01-review-opus.md"
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.9324639,
+      "review_min": 7.423283333333333,
+      "review_plan": "02-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/02-review-opus.md"
+    },
+    {
+      "round": 3,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.8315652,
+      "review_min": 1.7291666666666665,
+      "review_plan": "03-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 8.6824067,
+    "sessions": 10.0338376
+  },
+  "cold_start_tax_tokens": 464980,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 6,
+      "total_turns": 149,
+      "total_cost_usd": 9.2568682,
+      "total_duration_s": 1318.5259999999998,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "01-audit-opus",
+      "edit_count": 13,
+      "files_edited": 11,
+      "churn_ratio": 1.1818181818181819
+    },
+    {
+      "plan": "02-review-opus",
+      "edit_count": 3,
+      "files_edited": 2,
+      "churn_ratio": 1.5
+    },
+    {
+      "plan": "02-audit-opus",
+      "edit_count": 7,
+      "files_edited": 6,
+      "churn_ratio": 1.1666666666666667
+    },
+    {
+      "plan": "03-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "03-audit-opus",
+      "edit_count": 5,
+      "files_edited": 5,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 97,
+      "loc_changed": 93
+    },
+    {
+      "plan": "01-audit-opus",
+      "plan_md_lines": 84,
+      "loc_changed": 581
+    },
+    {
+      "plan": "02-review-opus",
+      "plan_md_lines": 51,
+      "loc_changed": 74
+    },
+    {
+      "plan": "02-audit-opus",
+      "plan_md_lines": 84,
+      "loc_changed": 480
+    },
+    {
+      "plan": "03-review-opus",
+      "plan_md_lines": 42,
+      "loc_changed": 45
+    },
+    {
+      "plan": "03-audit-opus",
+      "plan_md_lines": 84,
+      "loc_changed": 315
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/home/user/agentTooling/conformance.py",
+      "tool": "Read",
+      "plans": [
+        "01-audit-opus",
+        "01-review-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/self/features/brief-conformance-checks/audit-report.md",
+      "tool": "Read",
+      "plans": [
+        "02-audit-opus",
+        "03-audit-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/self/tests/brief-conformance.sh",
+      "tool": "Read",
+      "plans": [
+        "01-review-opus",
+        "02-audit-opus",
+        "03-review-opus"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "01-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.WJVVuQ/scratch/conf.py",
+        "/tmp/plan-capture.WJVVuQ/scratch/envfunc.sh",
+        "/tmp/plan-capture.WJVVuQ/scratch/hookone.sh",
+        "/tmp/plan-capture.WJVVuQ/scratch/hookpy.sh",
+        "/tmp/plan-capture.WJVVuQ/scratch/hookrun.py",
+        "/tmp/plan-capture.WJVVuQ/scratch/roots.sh",
+        "/tmp/plan-capture.WJVVuQ/scratch/selftest.sh",
+        "/tmp/plan-capture.WJVVuQ/scratch/setup.sh",
+        "/tmp/plan-capture.WJVVuQ/scratch/stray.sh",
+        "/tmp/plan-capture.WJVVuQ/scratch/stub-claude",
+        "self/features/brief-conformance-checks/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-opus",
+      "edited_not_listed": [
+        "conformance.py",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.86antU/scratch/attack.sh",
+        "/tmp/plan-capture.86antU/scratch/close.sh",
+        "/tmp/plan-capture.86antU/scratch/conf.sh",
+        "/tmp/plan-capture.86antU/scratch/extract.sh",
+        "/tmp/plan-capture.86antU/scratch/hook.py",
+        "self/features/brief-conformance-checks/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "03-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "03-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.0SLVsA/scratch/all.sh",
+        "/tmp/plan-capture.0SLVsA/scratch/attack.sh",
+        "/tmp/plan-capture.0SLVsA/scratch/conf.sh",
+        "/tmp/plan-capture.0SLVsA/scratch/hook.py",
+        "self/features/brief-conformance-checks/audit-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "/tmp/plan-capture.WJVVuQ/scratch/hookrun.py",
+      "earlier_plan": "01-audit-opus",
+      "later_plan": "01-audit-opus",
+      "overlap_chars": 74
+    }
+  ],
+  "warnings": [],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and this feature stamped no `checkpoint` event \u2014 nothing divides it by round, so all of it sits in round 1"
+    }
+  ],
+  "profile": "cloud",
+  "gate": "green"
+}

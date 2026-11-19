@@ -89,7 +89,12 @@ acceptance probe — and lives in the consuming repo at
 `plans/experiments/fixtures/<name>/`. A **method** is one way of turning a worktree at
 that base into an open PR, and lives in `harness/methods/<name>/`; `plans`, `direct` and
 `direct-bare` (`direct` minus its checkpoint, stamp and tests-first steps, the control
-for their cost) ship with it. An **experiment** says which cells to run and carries the prediction, at
+for their cost) ship with it, and so do `vanilla-conv` (a minimal brief carrying no
+doctrine) and `vanilla` (that brief with the conventions and the command hook also taken out
+of the tree for the build): with them the methods are a ladder, `vanilla` → `vanilla-conv`
+→ `direct-bare` → `direct` → `plans`, one layer of agentTooling per rung. Accept runs twice
+per cell — on the PR-open tree and on the green one — so what the shared review and rework
+add to correctness is measured, not assumed. An **experiment** says which cells to run and carries the prediction, at
 `plans/experiments/<experiment>/`, where the harness appends `results.jsonl` and renders
 `SCORECARD.md`.
 
@@ -155,6 +160,11 @@ defaulting to the usual values so a bare run behaves as before; `templates/plans
 shows the shape. Rehearse it once — two trees, both gates simultaneously, both green
 with different port lines in their reports — before trusting a red arm.
 
+Comparing two shapes of a repo's spec (a monolith against a split) needs base arms *and*
+`--arm-spec-path <label>=<path>,…`: without it both arms read the fixture's one spec from the
+shared spec worktree, and the arms differ only in the code they start from. With it each cell
+reads the spec at its own path in its own tree, and is told never to edit it.
+
 The **prep commit** carries anything both arms need that is not the feature: a gate fix,
 a `.gitignore` line, a dependency. It must not carry any of the feature, or the arm that
 would have built that part is no longer being measured.
@@ -194,6 +204,17 @@ cd ../repo-<arm> && (nohup ./agentTooling/run-batch.sh <slug> > <slug>-batch.log
 Log every intervention with a timestamp and what it cost: a re-queue, a raised cap, a
 usage-limit wait, a hand-opened PR. Those are process findings and go in the scorecard
 — the first pilot's were the whole list of harness fixes that followed.
+
+## Long cells
+
+When a cell runs close to an hour, run one `run.sh` invocation per cell or per arm
+(`--only` each), so a background command's 2-hour kill takes at most one. A budget stop
+exits 75 and its `resume:` line is the next command. The first cell of an invocation always
+starts, even when its estimate exceeds the budget (a warning says it may be killed), so a
+cell longer than the budget needs its own invocation and gets no more time than that. A cell killed anyway is reset with
+`run.sh <exp> --reset <spec>` and re-run with `--only <spec>` — never resumed on its partial
+tree (that invalidates the reading metrics), and never cleaned up with hand-run git
+(`harness/README.md` → "Resetting a killed cell").
 
 ## Scoring
 

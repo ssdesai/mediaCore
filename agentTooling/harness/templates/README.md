@@ -6,7 +6,7 @@ tree of an experiment, whatever built it.
 
 | File | What it is |
 |---|---|
-| `isolation.md` | The isolation paragraph pasted into every brief and both preambles at `@@ISOLATION@@`. Names the one worktree the delegate may write in, every sibling worktree of the consuming (measured) repo it must not read (computed per run from `git worktree list`), the experiments directory holding the scoring instruments, and the vendored `agentTooling/`. |
+| `isolation.md` | The isolation paragraph pasted into every brief and both preambles at `@@ISOLATION@@`. Names the one worktree the delegate may write in, every sibling worktree of the consuming (measured) repo it must not read (computed per run from `git worktree list`), the experiments directory holding the scoring instruments, and the vendored `agentTooling/`. Its last bullet is `@@SPEC_RULE@@`, filled by `harness_build_isolation` by spec source: the read-only shared spec worktree, or (an arm-spec cell) the arm's own copy in its tree, never to be edited. |
 | `review-preamble.md` | The review stage's prompt. Titled `# Harness review pass`, which is also what tells a run apart in a transcript. Says how to review — establish the diff first, look for what stays green, fix what is local and escalate the rest — and pins the exact shape of `review/findings.md`. The fixture's own `review-brief.md`, which says *what* to check, is appended at `@@REVIEW_BRIEF@@`. |
 | `rework-preamble.md` | The rework stage's prompt, titled `# Harness rework pass`. Fix every escalated item and nothing else, one commit, gate green, push. The findings file is appended at `@@FINDINGS_TEXT@@` and is the **only** input: no other tree is read, which is the isolation failure this harness exists to rule out. |
 | `program-brief.md` | A program cell's first orchestrator prompt, titled `# Harness program brief`. Gives the orchestrator its role (decide, brief, read reports, write the record; never build, never run the start/close scripts), the arm, the ordered feature list (`@@FEATURES@@`), the implementer-brief template to copy (`@@BRIEF_TEMPLATE@@`) with the start line and close step to replace, the isolation paragraph and where briefs go (`@@BRIEF_DIR@@`); ends by asking for the reply `ready` and no writing yet. |
@@ -34,7 +34,8 @@ Two facts these files depend on that are not visible from reading them:
   scope (every feature-specific placeholder emptied), `program-feature.md` with one
   feature's values loaded. Their `@@BRIEF_TEMPLATE@@` is
   `<program tree>/agentTooling/templates/plans/ORCHESTRATOR_BRIEF.md` and `@@RECORD_PATH@@`
-  is `<program tree>/agentTooling/self/orchestrations/<PSLUG>/README.md`, the layout
+  is `<program tree>/plans/orchestrations/<PSLUG>/README.md` (`<program tree>/agentTooling/
+  self/orchestrations/<PSLUG>/README.md` for an arm on an older agentTooling), the layout
   `orchestration-start.sh` writes; both come from the arm's pinned copy.
 - The findings shape in `review-preamble.md` is parsed by `harness_findings_count`
   (`../lib.sh`), which reads the `fixed:` / `escalated:` counts and falls back to

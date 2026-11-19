@@ -1,0 +1,122 @@
+{
+  "slug": "harness-review-model",
+  "generated_at": "2026-11-05T04:36:53.552731+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 1.7227614,
+    "build": 1.7227614,
+    "verify": 0.0,
+    "review": 1.1443948000000002,
+    "total": 2.8671562,
+    "planning_pct": 0.0,
+    "build_pct": 60.08606716299586,
+    "verify_pct": 0.0,
+    "review_pct": 39.91393283700414,
+    "cost_per_plan": 2.8671562,
+    "cost_per_file": 0.57343124,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 2130,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 2130,
+    "build_s": 2130.0,
+    "verify_s": 0.0,
+    "review_s": 32.629,
+    "executor_s": 2162.629,
+    "total_s": 2162.629,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-05T04:32:04+00:00",
+      "last_at": "2026-11-05T04:36:52+00:00",
+      "batch_span_s": 288.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 274.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 273.0,
+      "plan_runs": 1,
+      "pr_opened_at": "2026-11-05T04:36:52+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/127"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 1.7227614,
+      "build_min": 35.5,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.1443948000000002,
+      "review_min": 0.5438166666666666,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 1.7227614
+  },
+  "cold_start_tax_tokens": 3502,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 4,
+      "total_cost_usd": 1.1443948000000002,
+      "total_duration_s": 32.629,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 7,
+      "files_edited": 5,
+      "churn_ratio": 1.4
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 64,
+      "loc_changed": 104
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "harness/README.md",
+        "harness/tests/README.md",
+        "harness/tests/review-model.sh",
+        "harness/tests/smoke.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": [],
+  "profile": "cloud",
+  "gate": "green"
+}

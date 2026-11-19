@@ -7,17 +7,27 @@ Each holds three files:
 
 - `template.md` — the delegate brief, with the placeholders `run.sh` (the harness's, not
   the method's) fills: `@@TREE@@`, `@@BRANCH@@`, `@@BASE@@`, `@@SLUG@@`, `@@SPEC_TREE@@`,
-  `@@SPEC_PATH@@`, `@@SPEC_SECTIONS@@`, `@@FACTS@@`, `@@GATE_COMMAND@@`,
+  `@@SPEC_PATH@@`, `@@SPEC_SECTIONS@@`, `@@SPEC_PROVENANCE@@` (the clause after "read-only"
+  in the spec line: where the spec was checked out from, or, for an arm-spec cell, that it is
+  never to be edited; set by `harness_build_isolation` from `HARNESS_SPEC_SOURCE`), `@@FACTS@@`, `@@GATE_COMMAND@@`,
   `@@GATE_MINUTES@@`, `@@FIXTURE@@` and `@@ISOLATION@@`. An unfilled placeholder aborts
   the run rather than reaching a model.
 - `run.sh <tree> <brief> <slug>` — the method itself.
 - `README.md` — what this method is and what it costs.
+
+A method with two sessions still has one `template.md`: `split-tests/` carries both briefs
+in it, split at a marker line its `run.sh` cuts at, because the harness fills only that one
+file and exports none of the placeholder values to the method's process
+(`split-tests/README.md`).
 
 | Method | What it does |
 |---|---|
 | `plans/` | An opus architect authors the plan corpus and `NOTES.md`, then `run-batch.sh` drains it (build → gate → verify → review → PR). The batch's own review plan and `pr.sh` are part of the method; the harness review still runs afterwards. |
 | `direct/` | One opus implementer builds the feature, gates it green, commits, pushes and opens the PR — through the tree's `agentTooling/forge.sh pr-open`, which works in a cloud container where `gh pr create` does not. One shot, no resume. |
 | `direct-bare/` | The control for `direct`'s procedure steps: `direct`'s brief with the `CHECKPOINT.md`, the `stamp-timing.sh` calls and the acceptance-tests-first commit removed, and nothing else changed. Exists to measure what those steps cost; `self/tests/direct-bare-pair.sh` fails the gate if the two briefs drift apart. No checkpoint stamps, so no tests/build/gate split in its Time table. |
+| `vanilla-conv/` | The tooling-ablation control for the doctrine in the brief: a minimal brief (spec, facts, gate green, commit, push, open the PR) with no agentTooling doctrine, in a tree whose `CLAUDE.md` conventions and command hook load as usual. `run.sh` is `direct`'s, renamed. |
+| `vanilla/` | `vanilla-conv`'s brief byte for byte, with the doctrine the session loads taken away too: for the length of the build every tracked `CLAUDE.md` loses its `CONVENTIONS.md` import lines and `.claude/settings.json` its `hooks` and `permissions` (`neutralize.sh`, skip-worktree so no commit carries it, restored on exit, a commit that touched them fails the method). `self/tests/vanilla-pair.sh` holds the pair. |
+| `split-tests/` | `vanilla-conv` plus an independent test author: a fresh session writes the black-box acceptance tests the spec implies and commits them alone (`<slug>: acceptance tests`, no implementation, no push), then a second fresh session gets `vanilla-conv`'s brief byte for byte plus one paragraph — make that commit's tests pass, change one only where it contradicts the spec or guesses an open name or seam, and list each change under "Test changes" in the PR body. Exit 1 if the author commits nothing or anything but tests and the `README.md` of a folder holding one of them. What the implementer did to the tests is `<experiment>/logs/<branch>-test-diff.txt`. `self/tests/split-tests-pair.sh` holds the pair. |
 | `null/` | The harness's own test double: no model at all. Writes a marker file, commits, and opens the "PR" through the repo's `plans/pr.sh`. Used by `harness/tests/smoke.sh`. |
 
 **`orchestrator` is a reserved name.** It is the method of a program cell (an orchestrator
@@ -29,6 +39,16 @@ directory here; do not add `methods/orchestrator/`. A program feature may pin
 same way, one top-level `claude -p` with the orchestrator's brief as its prompt, and
 records the name in the feature's `method`; what the method name changes is what the
 orchestrator wrote into the brief.
+
+With `vanilla` and `vanilla-conv` the methods form a ladder, each rung one layer more of
+agentTooling than the one below: `vanilla` (nothing) → `vanilla-conv` (the conventions and
+the hook, loaded by the session) → `direct-bare` (the doctrine in the brief) → `direct`
+(its procedure steps) → `plans` (the plan workflow). `split-tests` is not a rung: it sits
+beside `vanilla-conv` as "`vanilla-conv` plus an independent test author", the one added
+layer being a second session that writes the tests the implementer must pass, so
+`split-tests` vs `vanilla-conv` measures that author and nothing else. A method directory may carry a
+helper it sources beside its three files (`vanilla/neutralize.sh`); `self/gate.sh`
+syntax-checks every `methods/*/*.sh`.
 
 `direct-bare` is the first such variant. Expected next, none of them written yet: `direct-selfreview` (the same brief plus a
 self-review pass against the spec), `direct-sonnet` (the same brief at `--model sonnet`),

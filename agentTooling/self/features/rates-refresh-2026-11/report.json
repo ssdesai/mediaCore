@@ -1,0 +1,151 @@
+{
+  "slug": "rates-refresh-2026-11",
+  "generated_at": "2026-11-18T13:16:19.699380+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 2.2337848,
+    "build": 2.2337848,
+    "verify": 0.0,
+    "review": 1.3846398,
+    "total": 3.6184246,
+    "planning_pct": 0.0,
+    "build_pct": 61.73362849677731,
+    "verify_pct": 0.0,
+    "review_pct": 38.2663715032227,
+    "cost_per_plan": 1.8092123,
+    "cost_per_file": 0.90460615,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 2995,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 2995,
+    "build_s": 2995.0,
+    "verify_s": 0.0,
+    "review_s": 181.018,
+    "executor_s": 3176.018,
+    "total_s": 3176.018,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-18T13:12:58+00:00",
+      "last_at": "2026-11-18T13:16:19+00:00",
+      "batch_span_s": 201.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 187.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 216.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-11-18T13:16:19+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/163"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 2.2337848,
+      "build_min": 49.916666666666664,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.3846398,
+      "review_min": 3.0169666666666664,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 2.2337848
+  },
+  "cold_start_tax_tokens": 101545,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 2,
+      "total_turns": 35,
+      "total_cost_usd": 1.3846398,
+      "total_duration_s": 181.018,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "01-audit-opus",
+      "edit_count": 5,
+      "files_edited": 3,
+      "churn_ratio": 1.6666666666666667
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 46,
+      "loc_changed": 45
+    },
+    {
+      "plan": "01-audit-opus",
+      "plan_md_lines": 78,
+      "loc_changed": 265
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "01-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.zWHuF2/scratch/audit.py",
+        "/tmp/plan-capture.zWHuF2/scratch/rates_checks.sh",
+        "self/features/rates-refresh-2026-11/audit-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "/tmp/plan-capture.zWHuF2/scratch/audit.py",
+      "earlier_plan": "01-audit-opus",
+      "later_plan": "01-audit-opus",
+      "overlap_chars": 217
+    },
+    {
+      "file": "/tmp/plan-capture.zWHuF2/scratch/audit.py",
+      "earlier_plan": "01-audit-opus",
+      "later_plan": "01-audit-opus",
+      "overlap_chars": 86
+    }
+  ],
+  "warnings": [],
+  "profile": "cloud",
+  "gate": "green"
+}

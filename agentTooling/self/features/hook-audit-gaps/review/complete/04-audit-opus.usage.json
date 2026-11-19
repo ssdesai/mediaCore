@@ -1,0 +1,85 @@
+{
+  "plan": "04-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "1230e2ed-8636-4778-9f1e-f7f76714f5b2",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 54,
+  "duration_ms": 553234,
+  "total_cost_usd": 2.7099792,
+  "usage": {
+    "input_tokens": 68,
+    "cache_creation_input_tokens": 132544,
+    "cache_read_input_tokens": 3440408,
+    "output_tokens": 48049
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 2836,
+      "outputTokens": 20,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.00029360000000000003,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 68,
+      "outputTokens": 48049,
+      "cacheReadInputTokens": 3440408,
+      "cacheCreationInputTokens": 132544,
+      "webSearchRequests": 0,
+      "costUSD": 2.7096856,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 15413,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 132544,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 1,
+  "tool_counts": {
+    "Bash": 30,
+    "Edit": 4,
+    "Read": 5,
+    "Write": 14
+  },
+  "files_edited": [
+    "/tmp/plan-capture.gWC4xo/scratch/a8.cmd",
+    "/tmp/plan-capture.gWC4xo/scratch/a8.sh",
+    "/tmp/plan-capture.gWC4xo/scratch/c1.py",
+    "/tmp/plan-capture.gWC4xo/scratch/c2.py",
+    "/tmp/plan-capture.gWC4xo/scratch/c3.py",
+    "/tmp/plan-capture.gWC4xo/scratch/c4.py",
+    "/tmp/plan-capture.gWC4xo/scratch/dbg.py",
+    "/tmp/plan-capture.gWC4xo/scratch/filt.py",
+    "/tmp/plan-capture.gWC4xo/scratch/gen.py",
+    "/tmp/plan-capture.gWC4xo/scratch/h.py",
+    "/tmp/plan-capture.gWC4xo/scratch/orch.py",
+    "/tmp/plan-capture.gWC4xo/scratch/own.py",
+    "/tmp/plan-capture.gWC4xo/scratch/setup.sh",
+    "self/features/hook-audit-gaps/audit-report.md"
+  ],
+  "edit_count": 18,
+  "attempts": [
+    {
+      "session_id": "1230e2ed-8636-4778-9f1e-f7f76714f5b2",
+      "outcome": "complete",
+      "total_cost_usd": 2.7099792,
+      "num_turns": 54,
+      "duration_ms": 553234
+    }
+  ]
+}

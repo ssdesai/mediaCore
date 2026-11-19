@@ -1,0 +1,82 @@
+{
+  "plan": "01-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "ba11195d-80f2-45fd-8ce0-22df86227b50",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 37,
+  "duration_ms": 494737,
+  "total_cost_usd": 2.2315182000000005,
+  "usage": {
+    "input_tokens": 56,
+    "cache_creation_input_tokens": 112704,
+    "cache_read_input_tokens": 2601794,
+    "output_tokens": 40445
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 3904,
+      "outputTokens": 26,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0004034,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 56,
+      "outputTokens": 40445,
+      "cacheReadInputTokens": 2601794,
+      "cacheCreationInputTokens": 112704,
+      "webSearchRequests": 0,
+      "costUSD": 2.2311148000000003,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 16367,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 112704,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 18,
+    "Edit": 2,
+    "Read": 5,
+    "Write": 11
+  },
+  "files_edited": [
+    "/tmp/plan-capture.ykpPzB/scratch/cases1.json",
+    "/tmp/plan-capture.ykpPzB/scratch/cases2.json",
+    "/tmp/plan-capture.ykpPzB/scratch/cases3.json",
+    "/tmp/plan-capture.ykpPzB/scratch/hook.py",
+    "/tmp/plan-capture.ykpPzB/scratch/m59.sh",
+    "/tmp/plan-capture.ykpPzB/scratch/m59b.sh",
+    "/tmp/plan-capture.ykpPzB/scratch/setup.sh",
+    "/tmp/plan-capture.ykpPzB/scratch/start-all.sh",
+    "/tmp/plan-capture.ykpPzB/scratch/start.sh",
+    "/tmp/plan-capture.ykpPzB/scratch/start2.sh",
+    "self/features/orchestration-start-branch-v2/audit-report.md"
+  ],
+  "edit_count": 13,
+  "attempts": [
+    {
+      "session_id": "ba11195d-80f2-45fd-8ce0-22df86227b50",
+      "outcome": "complete",
+      "total_cost_usd": 2.2315182000000005,
+      "num_turns": 37,
+      "duration_ms": 494737
+    }
+  ]
+}

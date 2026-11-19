@@ -1,0 +1,208 @@
+{
+  "slug": "orchestration-record-fixes",
+  "captured_at": "2026-11-16T01:36:55.192942+00:00",
+  "manifest_branches": [
+    "claude/orchestration-record-fixes"
+  ],
+  "manifest_subagents": [
+    "a2fa373c49d38d706"
+  ],
+  "sessions": [
+    {
+      "session_id": "b7ef6380-199a-5ad7-9099-7f21375174e7",
+      "git_branch": "claude/orchestration-record-fixes",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-11-13",
+      "started_at": "2026-11-13T13:30:26.687000+00:00",
+      "ended_at": "2026-11-14T03:33:26.727000+00:00",
+      "duration_s": 50580,
+      "agent_id": null,
+      "carried_from": "2026-11-14T03:33:31.131127+00:00"
+    },
+    {
+      "session_id": "5cc043bd-e89d-5013-92b3-b646992881c2",
+      "git_branch": "claude/orchestration-record-fixes",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-11-11",
+      "started_at": "2026-11-11T13:49:26.827000+00:00",
+      "ended_at": "2026-11-11T16:23:23.401000+00:00",
+      "duration_s": 9236,
+      "agent_id": null,
+      "carried_from": "2026-11-11T16:23:25.346010+00:00"
+    }
+  ],
+  "subagents": [
+    {
+      "agent_id": "a2fa373c49d38d706",
+      "parent_session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "date": "2026-11-11",
+      "started_at": "2026-11-11T22:15:38.230000+00:00",
+      "ended_at": "2026-11-11T22:29:26.708000+00:00",
+      "duration_s": 828,
+      "selected_by": "pinned",
+      "cross_repo": true
+    },
+    {
+      "agent_id": "a7287e796606ebb40",
+      "parent_session_id": "5cc043bd-e89d-5013-92b3-b646992881c2",
+      "date": "2026-11-11",
+      "started_at": "2026-11-11T14:07:33.584000+00:00",
+      "ended_at": "2026-11-11T14:12:47.891000+00:00",
+      "duration_s": 314,
+      "selected_by": "parent",
+      "cross_repo": false,
+      "carried_from": "2026-11-11T16:23:25.346010+00:00"
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "13e7b30d-fc65-4cf5-9526-0d47638c4a08",
+    "44ab45b4-fd8e-41c4-a1b9-94b195cd8b78",
+    "489fc0df-dd3d-440c-a4f5-43a6b801fa75",
+    "5d25b685-51de-445d-beb5-a0ff520a746b",
+    "733c7890-65ca-4089-8b40-2c9e722541ff",
+    "75a9e9df-0a77-4edb-95d1-7b42f3f92423",
+    "795554ca-aa14-4298-8ebb-435eaeb3d1bb",
+    "8a131145-5df0-44af-8626-98f9321f266b",
+    "8cdeb739-e5ba-45be-a370-c01755b8b522",
+    "d42856bf-1f54-41f1-9dd5-5f55c994ca77",
+    "ffcb5c01-817a-4614-bcbf-e5ba76814615"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "agent_id": "a2fa373c49d38d706",
+      "model": "claude-fable-5-2",
+      "is_sidechain": true,
+      "date": "2026-11-11",
+      "duration_s": 828,
+      "tokens": {
+        "input": 52,
+        "output": 40612,
+        "cache_read": 3494725,
+        "cache_creation_5m": 188386,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 4.207701,
+      "rates_applied": {
+        "model": "claude-fable-5-2",
+        "input": 8,
+        "output": 40,
+        "cache_read": 0.2,
+        "cache_creation_5m": 10,
+        "cache_creation_1h": 16,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm-live"
+      }
+    },
+    {
+      "session_id": "b7ef6380-199a-5ad7-9099-7f21375174e7",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-13",
+      "duration_s": 50580,
+      "tokens": {
+        "input": 490,
+        "output": 142459,
+        "cache_read": 67021421,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 977673
+      },
+      "cost_usd": 24.076808200000002,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      },
+      "carried_from": "2026-11-14T03:33:31.131127+00:00"
+    },
+    {
+      "session_id": "5cc043bd-e89d-5013-92b3-b646992881c2",
+      "agent_id": null,
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-11",
+      "duration_s": 9236,
+      "tokens": {
+        "input": 213,
+        "output": 40336,
+        "cache_read": 15659416,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 260695
+      },
+      "cost_usd": 3.0125076,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      },
+      "carried_from": "2026-11-11T16:23:25.346010+00:00"
+    },
+    {
+      "session_id": "5cc043bd-e89d-5013-92b3-b646992881c2",
+      "agent_id": "a7287e796606ebb40",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-11",
+      "duration_s": 314,
+      "tokens": {
+        "input": 38,
+        "output": 26501,
+        "cache_read": 1763420,
+        "cache_creation_5m": 119742,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 1.481566,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      },
+      "carried_from": "2026-11-11T16:23:25.346010+00:00"
+    }
+  ],
+  "cost_usd": {
+    "main": 27.0893158,
+    "sidechain": 5.689267,
+    "subagents": 5.689267,
+    "total": 32.7785828,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 59816,
+    "subagents": 1142,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "branch 'claude/orchestration-record-fixes' matched no session in any transcript for this repo, so any planning on it is uncounted. One of three things is true: the name is wrong \u2014 check it against `git branch --list` and record it exactly as git shows it, with no added prefix; or its sessions were launched somewhere other than the primary checkout (other features' worktrees under it excluded) and this feature's worktree (/home/user/agentTooling-delegate-cost-claims/.worktrees/orchestration-record-fixes) \u2014 launch the coordinator inside the worktree, or pin each session id in `sessions`; or the transcripts have aged out of ~/.claude/projects/, in which case the name is fine and the cost is unrecoverable",
+    "3 entries carried forward from the committed planning.json \u2014 this scan cannot reach their transcripts, so each keeps the figure of the capture that priced it (2026-11-11T16:23:25.346010+00:00, 2026-11-14T03:33:31.131127+00:00): 5cc043bd-e89d-5013-92b3-b646992881c2, b7ef6380-199a-5ad7-9099-7f21375174e7, agent-a7287e796606ebb40. --force rebuilds without them",
+    "priced from LiteLLM live (litellm-live), not from analysis/rates_history.json: claude-fable-5-2 \u2014 refresh the history with analysis/refresh_rates.py in an agentTooling self feature, then capture_planning.py --recapture this feature",
+    "rate history is stale (checked 2026-10-13); refresh analysis/rates_history.json with analysis/refresh_rates.py in an agentTooling self feature"
+  ],
+  "carried_from": "2026-11-11T16:23:25.346010+00:00"
+}

@@ -1,0 +1,141 @@
+{
+  "slug": "hook-planted-gitdir",
+  "generated_at": "2026-11-17T19:06:28.898716+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 4.5848694000000005,
+    "build": 4.5848694000000005,
+    "verify": 0.0,
+    "review": 1.6960422,
+    "total": 6.2809116000000005,
+    "planning_pct": 0.0,
+    "build_pct": 72.99687835122532,
+    "verify_pct": 0.0,
+    "review_pct": 27.003121648774673,
+    "cost_per_plan": 3.1404558000000002,
+    "cost_per_file": 0.8972730857142858,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 6203,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 6203,
+    "build_s": 6203.0,
+    "verify_s": 0.0,
+    "review_s": 323.217,
+    "executor_s": 6526.217,
+    "total_s": 6526.217,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-17T19:00:26+00:00",
+      "last_at": "2026-11-17T19:06:28+00:00",
+      "batch_span_s": 362.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 330.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 453.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-11-17T19:06:28+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/161"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 4.5848694000000005,
+      "build_min": 103.38333333333334,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.6960422,
+      "review_min": 5.38695,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 4.5848694000000005
+  },
+  "cold_start_tax_tokens": 98555,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 2,
+      "total_turns": 35,
+      "total_cost_usd": 1.6960422,
+      "total_duration_s": 323.217,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "01-audit-opus",
+      "edit_count": 7,
+      "files_edited": 6,
+      "churn_ratio": 1.1666666666666667
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 74,
+      "loc_changed": 83
+    },
+    {
+      "plan": "01-audit-opus",
+      "plan_md_lines": 79,
+      "loc_changed": 425
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "01-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.tQbAoJ/scratch/one.py",
+        "/tmp/plan-capture.tQbAoJ/scratch/prove.sh",
+        "/tmp/plan-capture.tQbAoJ/scratch/run.py",
+        "/tmp/plan-capture.tQbAoJ/scratch/run2.py",
+        "/tmp/plan-capture.tQbAoJ/scratch/setup.sh",
+        "self/features/hook-planted-gitdir/audit-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": [],
+  "profile": "cloud",
+  "gate": "green"
+}

@@ -1,0 +1,73 @@
+{
+  "plan": "10-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "cc68ddb0-2efe-4d45-8008-edb4628e306b",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 24,
+  "duration_ms": 95778,
+  "total_cost_usd": 0.7619172999999998,
+  "usage": {
+    "input_tokens": 38,
+    "cache_creation_input_tokens": 45054,
+    "cache_read_input_tokens": 1087063,
+    "output_tokens": 9173
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 4477,
+      "outputTokens": 26,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.00046070000000000003,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 38,
+      "outputTokens": 9173,
+      "cacheReadInputTokens": 1087063,
+      "cacheCreationInputTokens": 45054,
+      "webSearchRequests": 0,
+      "costUSD": 0.7614565999999997,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 2130,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 45054,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 1,
+  "tool_counts": {
+    "Bash": 15,
+    "Read": 5,
+    "Write": 3
+  },
+  "files_edited": [
+    "/tmp/plan-capture.8kx58o/scratch/drive.py",
+    "/tmp/plan-capture.8kx58o/scratch/judge.py",
+    "self/review-report.md"
+  ],
+  "edit_count": 3,
+  "attempts": [
+    {
+      "session_id": "cc68ddb0-2efe-4d45-8008-edb4628e306b",
+      "outcome": "complete",
+      "total_cost_usd": 0.7619172999999998,
+      "num_turns": 24,
+      "duration_ms": 95778
+    }
+  ]
+}

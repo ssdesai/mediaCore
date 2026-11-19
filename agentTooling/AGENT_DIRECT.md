@@ -47,7 +47,8 @@ Every direct brief carries these, in this order. Point at files and sections; do
 paste the spec.
 
 1. **`feature: <repo>/<slug>`** on the first line, before anything else
-   (`ORCHESTRATION.md`) — what cost capture reads.
+   (`CONVENTIONS.md` → "Delegate briefs") — what cost capture reads, and pins the
+   implementer by.
 2. **Where.** The checkout `feature-start.sh` made for this feature, off the base its
    manifest records (`LIFECYCLE.md`). Locally that is the worktree
    `<repo>/.worktrees/<slug>`, inside the primary checkout (a feature started before that

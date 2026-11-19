@@ -1,0 +1,10 @@
+write: /tmp/plan-capture.f7pYJw/scratch/setup.sh
+write: /tmp/plan-capture.f7pYJw/scratch/attack.sh
+write: /tmp/plan-capture.f7pYJw/scratch/attack2.sh
+edit: /tmp/plan-capture.f7pYJw/scratch/attack2.sh
+edit: /tmp/plan-capture.f7pYJw/scratch/attack2.sh
+edit: /tmp/plan-capture.f7pYJw/scratch/attack2.sh
+write: /tmp/plan-capture.f7pYJw/scratch/pushcheck.sh
+edit: /tmp/plan-capture.f7pYJw/scratch/attack2.sh
+write: /tmp/plan-capture.f7pYJw/scratch/mkfix.sh
+write: /home/user/agentTooling/self/features/close-after-filing/audit-report.md

@@ -15,6 +15,7 @@ the result is allowed to contradict it.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -30,11 +31,43 @@ PCT_FMT = "{:+.0f}%"
 NA = "—"
 TIMESTAMP_FMT = "%Y-%m-%dT%H:%M:%SZ"
 SECONDS_PER_MINUTE = 60
+MINUTES_FMT = "{:.0f}m"
 DEFAULT_NOISE_BAND_PCT = 15
 SHORT_SHA_LEN = 7
 OVERHEAD_PCT_FMT = "{:.1f}%"
 COUNT_FMT = "{:g}"
 COUNT_DECIMALS = 1
+
+# Row instants the time columns read (harness/SPEC.md §6)
+T_SETUP_START = "t_setup_start"
+T_METHOD_START = "t_method_start"
+T_PR_OPEN = "t_pr_open"
+T_GREEN = "t_green"
+TIME_MEANS_NOTE = ("_Time means leave out rows with `method_failed` and rows missing an "
+                   "instant; times are wall-clock._")
+# The Per cell table's cost columns read the runs that did not fail; Failed counts the rest
+# and Spend charges every run of the cell — failed ones and killed attempts included.
+PER_CELL_COLUMNS = ("Fixture", "Method", "Arm", "Runs", "Mean to green", "Spread",
+                    "Mean to PR-open", "Mean wall to PR", "Mean total", "Mean wall to green",
+                    "Failed", "Spend")
+COST_MEANS_NOTE = ("_Cost means, spreads and the band comparisons leave out rows with "
+                   "`method_failed` (counted under Failed); Spend is every run's to-green "
+                   "cost plus its `cost_lost_usd`, failed runs included._")
+COST_LOST_FIELD = "cost_lost_usd"
+
+# Acceptance: pass counts at PR-open and at green, and the probe's per-check lines
+ACCEPT_HEADING = "## Acceptance"
+ACCEPT_PR_OPEN_PASS = "accept_pr_open_pass"
+ACCEPT_PR_OPEN_LINES = "accept_pr_open_lines"
+ACCEPT_COUNT_COLUMNS = ("Fixture", "Method", "Arm", "Runs", "Pass at PR-open", "Pass at green")
+ACCEPT_COUNT_FMT = "{}/{}"
+# A probe line `PASS  A1  <what>` / `FAIL  A3  <why>`: the verdict, then the check's id
+ACCEPT_CHECK_RE = r"^(PASS|FAIL)\s+([A-Z]+[0-9]+)\b"
+ACCEPT_CHECK_PASS = "pass"
+ACCEPT_CHECK_FAIL = "FAIL"
+ACCEPT_TRANSITION_FMT = "{} → {}"
+ACCEPT_CHECKS_NOTE = ("_Per check: one cell per probe check, `at PR-open → at green` when both "
+                      "were measured, the green result alone otherwise._")
 
 # Ledger rows: an ordinary cell has no `kind`; a program cell is `kind: "program"`
 # (harness/README.md → "File shapes").
@@ -109,18 +142,36 @@ def money(value) -> str:
         return NA
 
 
-def minutes_between(start: str, end: str) -> str:
+def minutes_value(start: str, end: str) -> float | None:
+    """Minutes from start to end; None when either instant is missing, malformed or the
+    span is negative."""
     if not start or not end:
-        return NA
+        return None
     try:
         t0 = datetime.strptime(start, TIMESTAMP_FMT)
         t1 = datetime.strptime(end, TIMESTAMP_FMT)
     except ValueError:
-        return NA
+        return None
     total = (t1 - t0).total_seconds()
     if total < 0:
-        return NA
-    return f"{total / SECONDS_PER_MINUTE:.0f}m"
+        return None
+    return total / SECONDS_PER_MINUTE
+
+
+def minutes_text(minutes: float | None) -> str:
+    return NA if minutes is None else MINUTES_FMT.format(minutes)
+
+
+def minutes_between(start: str, end: str) -> str:
+    return minutes_text(minutes_value(start, end))
+
+
+def mean_minutes(rows: list[dict], start_field: str, end_field: str) -> str:
+    """Mean wall minutes over the rows that did not fail and carry both instants; NA when
+    none does."""
+    values = [v for v in (minutes_value(r.get(start_field, ""), r.get(end_field, ""))
+                          for r in rows if not r.get("method_failed")) if v is not None]
+    return minutes_text(mean(values)) if values else NA
 
 
 def mean(values: list[float]) -> float:
@@ -328,6 +379,75 @@ def render_reading(rows: list[dict]) -> list[str]:
     return out
 
 
+def finished(rows: list[dict]) -> list[dict]:
+    """The rows whose method did not fail — the ones a cost mean or comparison reads."""
+    return [r for r in rows if not r.get("method_failed")]
+
+
+def cell_spend(rows: list[dict]) -> float:
+    """Everything a cell cost: each run's to-green figure plus its killed attempts."""
+    return sum(float(r.get("cost_green_usd") or 0) + float(r.get(COST_LOST_FIELD) or 0)
+               for r in rows)
+
+
+def accept_checks(lines) -> dict[str, str]:
+    """{check id: pass|FAIL} from a probe's output lines; empty when none carries an id."""
+    out: dict[str, str] = {}
+    for line in lines or []:
+        match = re.match(ACCEPT_CHECK_RE, str(line))
+        if match:
+            out[match.group(2)] = ACCEPT_CHECK_PASS if match.group(1) == "PASS" else ACCEPT_CHECK_FAIL
+    return out
+
+
+def check_sort_key(check: str) -> tuple[str, int]:
+    """A1, A2, …, A10 in numeric order."""
+    match = re.match(r"^([A-Z]+)([0-9]+)$", check)
+    return (match.group(1), int(match.group(2))) if match else (check, 0)
+
+
+def accept_count(rows: list[dict], field: str) -> str:
+    """`passed/measured` over the rows that carry a boolean in field; NA when none does."""
+    measured = [r[field] for r in rows if isinstance(r.get(field), bool)]
+    return ACCEPT_COUNT_FMT.format(sum(measured), len(measured)) if measured else NA
+
+
+def render_accept(rows: list[dict], groups: dict[tuple[str, str, str], list[dict]]) -> list[str]:
+    """Pass counts per cell at PR-open and at green (when any row measured PR-open), then
+    the probe's checks per run (when any line carries a check id); empty otherwise, so a
+    ledger with neither renders as before. Measured means a boolean: every row run.sh writes
+    carries the key, null when the accept stage is off, and such a ledger has nothing to
+    count (its accept_pass is the false it was initialized to, not a measured failure)."""
+    has_pr_open = any(isinstance(r.get(ACCEPT_PR_OPEN_PASS), bool) for r in rows)
+    per_row = [(r, accept_checks(r.get(ACCEPT_PR_OPEN_LINES)), accept_checks(r.get("accept_lines")))
+               for r in rows]
+    checks = sorted({c for _, a, b in per_row for c in list(a) + list(b)}, key=check_sort_key)
+    if not has_pr_open and not checks:
+        return []
+    out: list[str] = [ACCEPT_HEADING, ""]
+    if has_pr_open:
+        out.extend(table_header(ACCEPT_COUNT_COLUMNS))
+        for (fixture, method, arm), group in sorted(groups.items()):
+            out.append(table_row(fixture, method, arm or NA, str(len(group)),
+                                 accept_count(group, ACCEPT_PR_OPEN_PASS),
+                                 accept_count(finished(group), "accept_pass")))
+        out.append("")
+    if checks:
+        out.extend(table_header(("Fixture", "Method", "Arm", "Branch") + tuple(checks)))
+        for row, at_open, at_green in per_row:
+            cells = []
+            for check in checks:
+                green = at_green.get(check, NA)
+                cells.append(ACCEPT_TRANSITION_FMT.format(at_open[check], green)
+                             if check in at_open else green)
+            out.append(table_row(str(row.get("fixture", "?")), cell_label(row), arm_label(row),
+                                 f"`{row.get('branch', '?')}`", *cells))
+        out.append("")
+        out.append(ACCEPT_CHECKS_NOTE)
+        out.append("")
+    return out
+
+
 def render(experiment: dict, all_rows: list[dict]) -> str:
     rows, programs = split_rows(all_rows)
     name = experiment.get("name", "experiment")
@@ -370,8 +490,8 @@ def render(experiment: dict, all_rows: list[dict]) -> str:
         out.append("## Runs")
         out.append("")
         out.append("| Fixture | Method | Arm | Branch | To PR-open | Review fixed/esc. | Rework | "
-                   "To green | Wall to PR | Accept | PR |")
-        out.append("|---|---|---|---|---|---|---|---|---|---|---|")
+                   "To green | Wall to PR | Wall to green | Total | Accept | PR |")
+        out.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
         for row in rows:
             accept = "pass" if row.get("accept_pass") else "FAIL"
             if row.get("method_failed"):
@@ -384,7 +504,9 @@ def render(experiment: dict, all_rows: list[dict]) -> str:
                 f"{row.get('review_fixed', 0)}/{row.get('review_escalated', 0)} | "
                 f"{money(row.get('cost_rework_usd')) if row.get('rework_ran') else NA} | "
                 f"{money(row.get('cost_green_usd'))} | "
-                f"{minutes_between(row.get('t_method_start', ''), row.get('t_pr_open', ''))} | "
+                f"{minutes_between(row.get(T_METHOD_START, ''), row.get(T_PR_OPEN, ''))} | "
+                f"{minutes_between(row.get(T_METHOD_START, ''), row.get(T_GREEN, ''))} | "
+                f"{minutes_between(row.get(T_SETUP_START, ''), row.get(T_GREEN, ''))} | "
                 f"{accept} | {pr} |"
             )
         out.append("")
@@ -400,14 +522,27 @@ def render(experiment: dict, all_rows: list[dict]) -> str:
     if any(len(group) > 1 for group in groups.values()):
         out.append("## Per cell")
         out.append("")
-        out.append("| Fixture | Method | Arm | Runs | Mean to green | Spread | Mean to PR-open |")
-        out.append("|---|---|---|---|---|---|---|")
+        out.extend(table_header(PER_CELL_COLUMNS))
         for (fixture, method, arm), group in sorted(groups.items()):
-            greens = [float(r.get("cost_green_usd") or 0) for r in group]
-            opens = [float(r.get("cost_method_usd") or 0) for r in group]
-            out.append(f"| {fixture} | {method} | {arm or NA} | {len(group)} | "
-                       f"{money(mean(greens))} | {money(spread(greens))} | {money(mean(opens))} |")
+            done = finished(group)
+            greens = [float(r.get("cost_green_usd") or 0) for r in done]
+            opens = [float(r.get("cost_method_usd") or 0) for r in done]
+            out.append(table_row(
+                fixture, method, arm or NA, str(len(group)),
+                money(mean(greens)) if done else NA, money(spread(greens)) if done else NA,
+                money(mean(opens)) if done else NA,
+                mean_minutes(group, T_METHOD_START, T_PR_OPEN),
+                mean_minutes(group, T_SETUP_START, T_GREEN),
+                mean_minutes(group, T_METHOD_START, T_GREEN),
+                str(len(group) - len(done)), money(cell_spend(group))))
         out.append("")
+        out.append(TIME_MEANS_NOTE)
+        out.append("")
+        out.append(COST_MEANS_NOTE)
+        out.append("")
+
+    if rows:
+        out.extend(render_accept(rows, groups))
 
     # The noise band, applied to each fixture's method pairs (within one arm) and to each
     # fixture × method's arm pairs. A tie inside the band is the honest reading at n=1:
@@ -420,8 +555,8 @@ def render(experiment: dict, all_rows: list[dict]) -> str:
         for i, left in enumerate(methods):
             for right in methods[i + 1:]:
                 line = compare(f"{fixture}" + (f" · arm {arm}" if arm else ""), left,
-                               groups[(fixture, left, arm)], right,
-                               groups[(fixture, right, arm)], band)
+                               finished(groups[(fixture, left, arm)]), right,
+                               finished(groups[(fixture, right, arm)]), band)
                 if line:
                     comparisons.append(line)
     for (fixture, method) in sorted({(f, m) for (f, m, _) in groups}):
@@ -429,8 +564,8 @@ def render(experiment: dict, all_rows: list[dict]) -> str:
         for i, left in enumerate(arms_here):
             for right in arms_here[i + 1:]:
                 line = compare(f"{fixture} · {method}", f"arm {left}",
-                               groups[(fixture, method, left)], f"arm {right}",
-                               groups[(fixture, method, right)], band)
+                               finished(groups[(fixture, method, left)]), f"arm {right}",
+                               finished(groups[(fixture, method, right)]), band)
                 if line:
                     comparisons.append(line)
     comparisons.extend(program_comparisons(programs, band))
@@ -456,6 +591,9 @@ def render(experiment: dict, all_rows: list[dict]) -> str:
         if not row.get("accept_pass") and not row.get("method_failed"):
             for line in row.get("accept_lines") or []:
                 notes.append(f"- `{row.get('branch')}` accept: {line}")
+        if row.get(ACCEPT_PR_OPEN_PASS) is False:
+            for line in row.get(ACCEPT_PR_OPEN_LINES) or []:
+                notes.append(f"- `{row.get('branch')}` accept at PR-open: {line}")
     for row in programs:
         for item in row.get("interventions") or []:
             notes.append(f"- `{row.get('branch')}` {item.get('t', '')}: {item.get('what', '')}")

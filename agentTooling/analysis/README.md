@@ -72,6 +72,12 @@ cadence. The repair tools are below. What made the sweep look necessary was that
 feature's own record was only written *after* the merge, so everything corpus-wide had to
 be caught later; on the branch there is nothing left over to catch weekly.
 
+**No option may be abbreviated.** `capture_planning.py`, `manifest.py` (both its parsers)
+and `report.py` set `allow_abbrev=False`: the permission hook approves their read-only
+forms by exact words (`../hooks/README.md` → "The harness's own entry points"), and an
+abbreviation such as `--forc` for `--force` was a second spelling it never saw
+(`../self/features/python-entry-exact/`). Spell every option in full.
+
 ### Repair tools
 
 Reach for one of these when something is *already* wrong, or when a corpus predates the
@@ -186,6 +192,51 @@ Both capture steps read sources that expire, which is why they run at the featur
 
 Both write into `plans/` — the capture commits them on the branch, so the PR carries them and merging it freezes them.
 
+## The brief header
+
+**The one specification** of the line every delegate brief — an Agent or subagent prompt —
+opens with, naming the feature its cost belongs to (`../self/features/delegate-cost-claims/`).
+`../CONVENTIONS.md` → "Delegate briefs" states the rule and points here;
+`../hooks/brief_header.py` is the one implementation, which the hook and this directory
+both read (the hook may not import `analysis/`, so it lives on the hook's side and
+`capture_planning.py` reaches it by path).
+
+    feature: <repo>/<slug>
+    feature: none — <reason>
+
+- **Where**: the prompt's first non-empty line, compared with its leading and trailing
+  whitespace stripped. A header anywhere else in the prompt is not the header.
+- **`feature: <repo>/<slug>`** names the feature: `<repo>` is the repository's name — its
+  origin URL's last segment without `.git` (`repo_display_name`; `agentTooling` for this
+  repo's own corpus, `feature_repo_name` in `../plan-runner-roots.sh`, the name
+  `feature-start.sh` prints the line with) — and `<slug>` the feature's slug. Each half is
+  one or more of `A–Z a–z 0–9 _ . -`, joined by one `/`, and **nothing follows the slug**:
+  `feature: musicMap/x (setup; read on)` is no header.
+- **`feature: none — <reason>`** names no feature, for work no feature owns (read-only
+  analysis, an orchestrator's survey). The separator may be `—`, `–`, `-` or `--`; the
+  reason is any non-empty text.
+- **Two headers name the same feature** when the slugs are equal and the repo halves equal
+  ignoring case (`same_feature_ref`): a lowercase cloud clone's `musicmap/x` is
+  `musicMap/x`. `<slug>-two` is never `<slug>`.
+- **Ambiguous**: a brief carrying a second header line further down that names a different
+  feature (`brief_is_ambiguous`). No reader resolves it by guessing.
+
+Who reads it:
+
+- the PreToolUse hook (`../hooks/README.md` → "The brief header") sends back an `Agent` call
+  whose prompt does not open with a header, naming both forms;
+- `capture_planning.py --list-subagents --unclaimed`'s "brief names (pin here)" column
+  (`<repo>/<slug>`, `none`, or `-` for no header) and `--for`, through `brief_feature_of`;
+- the pinned-brief check (`check_brief_headers`): a pin whose brief names another feature
+  is warned about;
+- **the capture's auto-claim** (`auto_claim_briefed`): an unclaimed delegate whose header
+  names the feature being captured is pinned through `manifest.py pin-subagent` — never one
+  another feature pins, one this feature excludes, an ambiguous one, one whose parent is a
+  runner session, or one a parent this capture selects already claims;
+- **the close's claim check** (`capture_planning.py --claim-check`): a delegate with no
+  header, or one naming this feature, is listed as possibly the build; one naming another
+  feature or `none` is not.
+
 ## Scripts
 
 - `roots.py` — root resolution shared by the other scripts below (`transcript.py`
@@ -195,9 +246,55 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   sets the process-wide ordinary artifact root `artifact_root(False)` and
   `features_root(False)` answer with; a usage error with `--self`),
   `artifact_root(self_mode)`,
-  `features_root(self_mode)`, `all_features_roots()`, `orchestrations_root()` (always
-  `self/orchestrations/`, in both modes: an orchestration record lives in agentTooling
-  whatever repos its features were built in, so it takes no `--self`), `session_root(self_mode)`,
+  `features_root(self_mode)`, `all_features_roots()`, `orchestrations_root(self_mode)` (`--self`:
+  agentTooling's `self/orchestrations/`; otherwise the consuming repo's `plans/orchestrations/`,
+  `artifact_root(False)`-relative so `--arm-root` applies — a record lives in the repo that
+  ran it, as a feature does; `ORCHESTRATIONS_SELF_PARTS` / `ORCHESTRATIONS_CONSUMER_PARTS`
+  are `../hooks/shared_rules.py`'s `ORCHESTRATIONS_SELF_REL` / `ORCHESTRATIONS_CONSUMER_REL`
+  split on `/` — the one definition the role rule and `../orchestration-start.sh` read too),
+  `all_orchestrations_roots()` (both,
+  self first, for readers; only the self root from agentTooling's own checkout, as the hook's
+  `record_roots`), `legacy_orchestrations_root()`,
+  `is_stranded_record(slug)` (the ONE classifier: the vendored record's LAST fence lists a
+  feature whose `repo` equals `orchestration_home_repo(False)` case-insensitively; agentTooling's
+  shipped records, or a record with no such feature, are not stranded; also
+  `python3 roots.py stranded <slug>`, exit 0 for stranded, which `../orchestration-start.sh`
+  asks), `is_standalone_checkout()` / `standalone_refusal(self_mode)` (`checkout_of(AGENT_TOOLING_DIR)
+  == AGENT_TOOLING_DIR`, never under `--arm-root`: agentTooling's own checkout has no consuming
+  repo, so `STANDALONE_REFUSAL` names `--self`; it is `shared_rules.STANDALONE_REFUSAL`, which
+  `../orchestration-start.sh` reads), `orchestration_home_repo(self_mode)` (the repo name a record's own
+  features carry: agentTooling under `--self`, else the consuming repo's as the brief header names
+  it) and `record_refusal(self_mode, slug)` (without `--self`: the standalone refusal; else, for a
+  slug with no record in the consuming repo but one at the old vendored
+  `agentTooling/self/orchestrations/<slug>`, `LEGACY_RECORD_REFUSAL` ending in the `git mv` when
+  stranded, `OWN_RECORD_NOTE` — agentTooling's own record, read it with `--self` — when not;
+  else `None`; every record tool prints it, exit 1, writing nothing; `LEGACY_RECORD_REFUSAL`
+  and `LEGACY_RECORD_MOVE` are `shared_rules`' too, so the shell's start prints the same text,
+  asserted as output by `../self/tests/orchestration-records-in-repo.sh` R3/R7),
+  `self_record_write_allowed()` (`is_standalone_checkout()` under the name its two askers use:
+  `record_write_refusal` below, and `coordinator_check.py`'s advisory, which names `--self`
+  only where it holds),
+  `record_write_refusal(self_mode, slug)` (what a tool that WRITES into a record folder asks
+  instead — `manifest.py --orchestration` `add-feature`/`set-feature`/`set-window-to`,
+  `orchestration_capture.py`, `report.py --orchestration`: under `--self` in a copy that is
+  not a standalone checkout — vendored in a consuming repo, decided by
+  `is_standalone_checkout()` and nothing else — `VENDORED_SELF_WRITE_REFUSAL`, naming
+  `plans/orchestrations/<slug>/` and saying to drop `--self`, because a file under the vendored
+  `self/orchestrations/` is a local edit to code every repo receives; otherwise
+  `record_refusal`'s answer. A read — `manifest.py --self --orchestration … get`, the role
+  hook, the coordinator advisory — is not refused, so a shipped record stays readable; also
+  `python3 roots.py self-write <slug>`, exit 0 to write, else the text and exit 1, which
+  `../orchestration-start.sh --self` asks before any write and treats any other outcome as a
+  refusal; `../self/features/consumer-record-guard/`, asserted by
+  `../self/tests/consumer-record-guard.sh`),
+  `ORCH_KIND_KEY` / `ORCH_KIND_COORDINATOR` / `ORCH_KIND_ORCHESTRATOR` and
+  `orchestration_kind(record)` (a record's fence `kind`: `"coordinator"` when it says so, else
+  `"orchestrator"`; the key and the coordinator value are `shared_rules.KIND_KEY` /
+  `KIND_COORDINATOR`), `shared_rules` itself (`../hooks/shared_rules.py`, appended to
+  `sys.path` from `HOOKS_DIR` and imported unguarded here; `manifest.py`, `routing.py`,
+  `coordinator_check.py` and `orchestration_capture.py` take it with `from roots import
+  shared_rules`, so nothing in `hooks/` can shadow an analysis module, and a missing module is
+  an ImportError that writes nothing), `session_root(self_mode)`,
   `checkout_of(path)` (the nearest ancestor of `path`, inclusive, holding `.git` — a
   linked worktree counts as its own checkout — or `None`; what `session_root` starts from
   and `routing.feature_dir_in_worktree` measures the corpus against),
@@ -889,6 +986,49 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   a `<slug>-two` delegate is somebody else's and a name too long for the 26-character pin
   column is still matched — which is what `feature-capture.sh`'s unclaimed-delegate
   warning reads, after its capture, and it is a usage error without `--unclaimed`.
+  The brief's header is read from its **first non-empty line only**, by the one definition
+  ("The brief header" above): a header further down, or one with a remark after the slug,
+  is the column's `-`, and a `feature: none — …` header is `none`. The rows themselves are
+  `subagent_rows` — dicts `{ start, started_at, agent_id, parent, branch, model, cost,
+  minutes, cwd_name, header, named, named_text, ambiguous, prompt }` — which the auto-claim
+  and the claim check below read too, so the three select by one piece of code
+  (`session_rows`, `{ start, started_at, session_id, branch, cwd, model, cost, minutes,
+  prompt }`, is `--list-sessions`' twin).
+  **The capture auto-claims a delegate whose brief names its feature**
+  (`../self/features/delegate-cost-claims/`). After its walk, `capture_feature` asks
+  `briefed_delegates` for the rows `--list-subagents --unclaimed --for <repo>/<slug>
+  --since <from-date>` would print — the listing's rules, by its code — and pins each one
+  through `manifest.py`'s own `cmd_pin_subagent` (in-process, with the arguments its CLI
+  parses: the same id check and fence rendering, `--arm-root` honoured), printing
+  `<slug>: auto-claim pinned delegate <id> …`; the pin fallback then claims it like any
+  other pin, and the manifest it dirtied rides the capture's cost commit. It leaves alone, and
+  prints `auto-claim left delegate <id> unpinned — <why>` for, a delegate another feature
+  pins (`other_feature_pins`: a manifest in this corpus's copies, or a ledger pin), one
+  this manifest's `exclude_subagents` names, an ambiguous brief, a delegate whose parent is
+  a runner-only session (its runner's `usage.json` holds its cost; a pin would only read
+  back as "matches no transcript"), and one the walk already priced through a parent it
+  selected (claimed by the parent route; a pin would duplicate it). A partial match is no
+  match: the header grammar refuses a remark after the slug and `same_feature_ref` compares
+  the slug exactly. The delegates it leaves are still `feature-capture.sh`'s warning.
+  **`--claim-check <slug>` is the close's question before its PR** (`claim_check`): would
+  this capture claim any session or subagent for the build? It runs `capture_feature(...,
+  dry_run=True, ignore_to=True)` — the capture's own selection, with the on-branch reading
+  of the window (`to` ignored up to a later feature chained on the same branch name), a
+  delegate the auto-claim WOULD pin counted as pinned and nothing written: no manifest, no
+  ledger, no `planning.json`. Exit 0 and one line when something is claimed — a runner
+  session on the feature's branch counts, as it does for the capture, which writes that
+  zero as evidenced (a feature built entirely by `run-batch.sh` is claimed) — or when
+  nothing at all was met (the capture's own zero refusal then speaks); exit
+  `CLAIM_CHECK_UNCLAIMED_EXIT` (5) when nothing is claimed but something was met in the
+  window, each printed with the exact `python3 <abs>/analysis/manifest.py [--self] <slug>
+  pin-session|pin-subagent <id>` that claims it: manually excluded sessions on the branch
+  (`exclude_sessions` entries in the set behind the evidenced-zero note), `session_rows(…,
+  unclaimed)` that started in the window, and
+  `subagent_rows(…, unclaimed)` that started in the window whose brief names this feature
+  or nothing (one naming another feature, or `none`, is not this build). Any other
+  non-zero exit is a check that could not run. `feature-close.sh` reads the 5 as its stop
+  (its `CLAIM_CHECK_UNCLAIMED_RC`; `self/tests/feature-lifecycle.sh` UBa2 holds the two in
+  step). A manifest's `allow_unclaimed` reason (below) is copied into `planning.json`.
   **A delegate the feature's own manifest pins is not unclaimed** and is dropped from
   that list (`manifest_pinned_subagents`, looked up by slug — never by the `(repo, slug)`
   pair. Not for want of an identity to compare against: `corpus_identity` declares the
@@ -1164,7 +1304,11 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   pin added to a feature whose sessions have expired) and `self/tests/capture-merge.sh`
   (the provenance rules: first stamp kept, earliest at the top, deselected and
   reclassified rows dropped, `--force`, the report line, the alias).
-- `report.py` — **the plain single-feature mode refuses a feature nothing has captured
+- `report.py` — **a close let through with its build unclaimed says so**: a
+  `planning.json` carrying `allow_unclaimed` (`feature-close.sh --allow-unclaimed`) adds
+  one `warnings[]` line, `ALLOW_UNCLAIMED_WARNING` with the reason, to `report.json` and
+  `report.md` (`../self/features/delegate-cost-claims/`).
+  **The plain single-feature mode refuses a feature nothing has captured
   yet.** `report.py <slug>` (no `--all`, no `--rounds-md`) reads `planning.json`
   unconditionally, so calling it between a feature's start and its close (or its capture,
   once merged) used to raise a bare `FileNotFoundError` with a full traceback. It now
@@ -1461,9 +1605,11 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   written). Usage:
   `python3 agentTooling/analysis/report.py <slug>` or
   `python3 agentTooling/analysis/report.py --all`.
-- `orchestration_capture.py` — `orchestration_capture.py <slug>`, run by
+- `orchestration_capture.py` — `orchestration_capture.py [--self] <slug>`, run by
   `../orchestration-capture.sh`: prices the orchestrator's own transcript into
-  `self/orchestrations/<slug>/planning.json`. It reads the record's `session` and
+  `plans/orchestrations/<slug>/planning.json` (`self/orchestrations/<slug>/planning.json`
+  under `--self`; `roots.record_write_refusal` applies: the standalone-checkout refusal, a stranded
+  record's `git mv`, agentTooling's own record's note, and `--self` from a vendored copy). It reads the record's `session` and
   `session_window` (`to` null = now) and calls
   `capture_planning.price_session_in_window(session_id, window)` — the one pricing path
   for a bare session id. That function takes **every** `~/.claude/projects/*/<id>.jsonl`
@@ -1472,15 +1618,53 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   instant is in the half-open window (the dating rule of `outside_window_cost`), and
   prices the chosen file's `<id>/subagents/agent-*.jsonl` too, as subagent cost. Exit 1,
   nothing written, when there is no record, no `session`, or no transcript. Output shape:
-  "JSON artifacts" → orchestration `planning.json`.
-- `report.py --orchestration <slug>` — the **group report**: `report.py` reads
-  `self/orchestrations/<slug>/README.md` and writes `report.md` and `report.json` beside
-  it. `compute_orchestration_report(record, folder, repo_root)` is the one function holding
+  "JSON artifacts" → orchestration `planning.json`. **A coordinator record** (`"kind":
+  "coordinator"`, `../self/features/coordinator-cost-records/`) passes
+  `price_session_in_window(…, subagent_filter=coordinator_owns(claimed))`: a delegate is
+  priced only when its brief opens `feature: none — …` (`brief_header_of`) and its agent id
+  is in neither the claims ledger's `subagents` (`load_ledger`) nor any readable manifest's
+  `subagents` pins (`manifest_pins`, both corpora) — the coordinator's own analysis and
+  bookkeeping; every other one is claimed by, or briefed for, a feature and is listed in
+  `subagents_not_priced` instead. A manifest `sessions` pin of the coordinator's session, or
+  the ledger's session section naming it, is one warning each (`session_claimants`): that
+  feature already counts the transcript. Asserted by `../self/tests/coordinator-records.sh`
+  K3.
+- `coordinator_check.py` — `coordinator_check.py <session-id> <checkout-dir> [--self]`
+  (`--self`: the start is a `--self` start, and the advisory's command reads
+  `orchestration-start.sh --self <slug> …` — in agentTooling's own checkout only: from a copy
+  vendored in a consuming repo that start is refused, so the command names no flag there,
+  `roots.self_record_write_allowed`, `../self/features/consumer-record-guard/`;
+  `../feature-start.sh` passes its `SELF_FLAG`), run by
+  `../feature-start.sh` under the cloud profile once the start has taken its session for the
+  feature's coordinator (`COORDINATOR_CHECK_MODULE`), its stdout printed as `  warn` lines.
+  Prints one line when the session's transcript (`routing.find_transcript`) records a first
+  `cwd` outside the checkout `<checkout-dir>` sits in (`roots.checkout_of`) and no
+  orchestration record of either kind, in either root (`roots.all_orchestrations_roots`:
+  `self/orchestrations/` and the consuming repo's `plans/orchestrations/`), names the
+  session — a delegate starting a feature
+  for a wave coordinator elsewhere, whose session id it shares, so no branch claims that
+  coordinator — naming `orchestration-start.sh [--self ]<slug> --coordinator --session <id>`
+  (`--self ` only when run for a `--self` start); and a
+  second line when that `cwd` is in no git checkout at all, so the session ran under no
+  repository's hooks. Silent otherwise, and exit 0 always (an advisory: a missing
+  transcript or any error is silence). Depends on the transcript's `cwd` field and on the
+  record fence's `session`. Asserted by `../self/tests/coordinator-records.sh` K5 and
+  `../self/tests/cloud-start.sh` W1.
+- `report.py [--self] --orchestration <slug>` — the **group report**: `report.py` reads
+  `plans/orchestrations/<slug>/README.md` (`self/orchestrations/<slug>/README.md` under
+  `--self`; `roots.record_refusal` refuses a stranded legacy slug with the `git mv`, an
+  agentTooling-own legacy slug with a note naming `--self`, and any no-`--self` run in
+  agentTooling's own checkout; `roots.record_write_refusal`, since it writes, also refuses a
+  `--self` run from a vendored copy) and writes
+  `report.md` and `report.json` beside
+  it. `compute_orchestration_report(record, folder, repo_root, checkouts=None, home_repo=None, tooling_root=None)` is the one function holding
   the arithmetic and returns the dict `report.json` serialises; `render_orchestration_md`
   only prints it. One row per `features[]` entry: priced from that feature's `report.json`
   (`cost.total`, read by `read_total_usd`, the one loader — also used for the
   orchestrator's `planning.json` `cost_usd.total`) when its `report` path (relative to
-  `repo_root`, the agentTooling root) is a file holding a number, else `unpriced` with one
+  `repo_root` — the record's own repo root, `artifact_root(self_mode)`: the consuming repo's,
+  agentTooling's under `--self` — or, for an `agentTooling` entry, to the agentTooling
+  directory) is a file holding a number, else `unpriced` with one
   of three reasons: `no report path in the record`, `report path does not exist: <path>`,
   `no total in <path>`. The overhead is the orchestrator's `planning.json` total, or
   `unpriced: not captured`. **Unpriced features are not in the group total**
@@ -1488,9 +1672,35 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   (`unpriced_count`); `overhead_pct` is overhead over the group total, null when there is
   no overhead or the total is zero. Output fields: "JSON artifacts" → orchestration
   `report.json`. Asserted by `../self/tests/orchestration-records.sh` S6.
+  **Where a `report` path is read from** (no `--checkout`): an `agentTooling` entry
+  (`ORCH_TOOLING_REPO`, `self/features/<slug>/report.json`) from the agentTooling directory,
+  which is on disk in every checkout, so a consuming repo's record prices an agentTooling
+  feature without a `--checkout` (`compute_orchestration_report(…, tooling_root=)`, passed
+  `artifact_root(True)`; omitted, the entry is read like any other); any other entry from
+  `repo_root`. Asserted by `../self/tests/orchestration-records-in-repo.sh` R2
+  (`self/features/orchestration-record-fixes/`).
+  **`--checkout REPO=PATH`** (repeatable, `--orchestration` only — anything else is a usage
+  error, as is a word with no `=` or a PATH that is not a directory): a feature entry whose
+  `repo` is REPO resolves its `report` under PATH instead of the default root above, so a
+  record can price the features it ran in other repositories; an entry in a repo other than
+  the record's own (`roots.orchestration_home_repo(self_mode)`: `agentTooling` under `--self`,
+  else the consuming repo's name by `capture_planning.corpus_identity` →
+  `repo_display_name`, compared case-insensitively; passed as `home_repo`) with no checkout
+  and no file is unpriced with
+  `in <repo>: pass --checkout <repo>=<its checkout>`. `kind` (`roots.orchestration_kind`)
+  is carried into `report.json` and picks the wording (`ORCH_WORDING`): a coordinator
+  record's report is titled `Coordination report`, names the `Coordinator session` and
+  calls its line `Coordination overhead`. Asserted by `../self/tests/coordinator-records.sh`
+  K4; the consuming-repo mode (a feature at `plans/features/<f>/report.json` priced with no
+  `--checkout`) by `../self/tests/orchestration-records-in-repo.sh` R2.
 - `manifest.py` — reads and writes a feature manifest's machine-readable fence, and reads
   what its `planning.json` claimed: the JSON edits the lifecycle scripts need, kept out of
-  bash. Twelve subcommands, `--self` first as everywhere. `init --method M --branch B --base
+  bash. Thirteen subcommands, `--self` first as everywhere. `check-prose` prints one
+  `unfilled  <section>` line per part of the README's prose (above `## Machine-readable`)
+  that is still word for word the template's fill-in text or carries one of its
+  `<placeholders>` of eight characters or more, and exits 1 — what `feature-close.sh`
+  refuses on before a PR; a deleted Levels or Contracts section is fine, a missing README
+  exits 1. `init --method M --branch B --base
   BASE --from TS [--profile local|cloud] [--gate green|skipped] [--session ID]… [--plan STEM]…` writes `<features root>/<slug>/README.md`
   from `templates/plans/features/TEMPLATE.md` with the template's fence replaced by a
   filled one (`profile` then `gate` after `base` in `FENCE_KEY_ORDER`, each only when
@@ -1607,19 +1817,31 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   `COST_FILES` entry, as `pin-session`'s does. How a pin written in error comes out without
   a hand edit — the humanNetworkMap wave router's, for one. Asserted by
   `self/tests/manifest-unpin.sh`.
+  `allow-unclaimed <reason>` writes the fence's `allow_unclaimed` — why a close went ahead
+  with no session or delegate claimed for the build — replacing one already there and
+  refusing an empty reason (exit 1); `feature-close.sh --allow-unclaimed` is its caller,
+  after `capture_planning.py --claim-check` stopped, and the manifest it dirties is a cost
+  record. The same `pin-subagent` code path, `cmd_pin_subagent`, is what the capture's
+  auto-claim calls in-process — this module still imports nothing from `capture_planning`.
+  Asserted by `self/tests/delegate-cost-claims.sh`.
   `claimed` prints the sessions and subagents `planning.json` holds, each with how it was
   selected and where it was launched, plus the total — what `feature-capture.sh` shows the
   human before the number is quoted. The fence it writes is
   `{ slug, method, plans[], branches[], base, session_window{from,to}, exclude_sessions[],
-  exclude_subagents[], sessions[], subagents[] }`, one key per line in that order with
+  exclude_subagents[], sessions[], subagents[], allow_unclaimed? }`, one key per line in that order with
   compact values — the shape every hand-written manifest in both corpora already has, so a
   diff after `init` or `set-window-to` shows the change and nothing else. `method` is one
   of `plans`, `direct`, `hand`. Depends on `TEMPLATE.md` still carrying a fenced JSON block to
   replace, and on `roots.features_root` for where the file goes.
   **The orchestration scope** (`../self/features/orchestration-records/`):
-  `manifest.py --orchestration <slug> <subcommand>` — `--orchestration` is the **first**
-  word, which is what selects it (after a slug it is `init`'s flag, below) — edits
-  `self/orchestrations/<slug>/README.md`, a different file from a feature manifest, through
+  `manifest.py [--self] --orchestration <slug> <subcommand>` — `--orchestration` is the **first**
+  word (after an optional `--self`), which is what selects it (after a slug it is `init`'s
+  flag, below) — edits
+  `plans/orchestrations/<slug>/README.md` (`self/orchestrations/<slug>/README.md` under
+  `--self`; refused, exit 1, by `roots.record_refusal` as for `report.py` above, and the three
+  writing subcommands by `roots.record_write_refusal`, which adds `--self` from a vendored copy;
+  `get` is a read and still reads a shipped record there),
+  a different file from a feature manifest, through
   the same last-fence reader. Four subcommands, the feature ones untouched: `get <key>`
   (a scalar or JSON from the record's fence, dotted path, empty when absent);
   `add-feature repo=R slug=S [session=ID] [branch=B] [pr=URL] [report=PATH]`, which
@@ -1630,7 +1852,8 @@ Both write into `plans/` — the capture commits them on the branch, so the PR c
   an entry that is not there, are refused, exit 1); and `set-window-to <instant|now>`,
   stamping `session_window.to` in either direction but refusing one not after `from`.
   The fence is rewritten one top-level key per line with `features` one entry per line
-  (`render_orchestration_fence`). **`init --orchestration <slug>`** writes the feature
+  (`render_orchestration_fence`), in `ORCH_KEY_ORDER` — `slug, kind, session, agent_tooling,
+  session_window, features`, `kind` written only when the record has one. **`init --orchestration <slug>`** writes the feature
   manifest's optional `orchestration` key (after `gate` in `FENCE_KEY_ORDER`), refusing a
   slug that fails the lifecycle's pattern; `get orchestration` reads it.
 
@@ -1640,8 +1863,11 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
 
 - The **feature manifest's fence** — the last fenced JSON block in
   `plans/features/<slug>/README.md`:
-  `{ slug, method, plans[], branches[], base, profile?, gate?, session_window{from,to},
-  exclude_sessions[], exclude_subagents[], sessions[], subagents[] }`. Written by
+  `{ slug, method, plans[], branches[], base, profile?, gate?, orchestration?,
+  session_window{from,to}, exclude_sessions[], exclude_subagents[], sessions[], subagents[],
+  allow_unclaimed? }`. `allow_unclaimed` is written by `manifest.py allow-unclaimed` for
+  `feature-close.sh --allow-unclaimed "<reason>"`, and the capture copies it into
+  `planning.json`. Written by
   `manifest.py` on behalf of `feature-start.sh` (`init`) and `feature-capture.sh`
   (`set-window-to`: `--replace` on the branch, `--tighten` under `--recapture` after the
   merge; the bound comes from
@@ -1753,8 +1979,10 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   cache_creation_1h,tier,from,source},share?,full_cost_usd?,shared_with[]?}],
   cost_usd{main,sidechain,subagents,total,total_is_partial},
   duration_s{sessions,subagents,entries_without_duration[]}, rates_source,
-  warnings[] }` — a feature's frozen planning-phase cost and time, written by
-  `capture_planning.py`. `cost_usd` and `rates_applied` are computed once at capture
+  warnings[], allow_unclaimed? }` — a feature's frozen planning-phase cost and time, written by
+  `capture_planning.py`. `allow_unclaimed` is the reason a close went ahead with no session
+  or delegate claimed for the build, copied from the manifest's fence; `report.py` prints
+  it as a warning. `cost_usd` and `rates_applied` are computed once at capture
   time; `report.py` (plan 56) only reads and sums these dollar figures, never
   recomputes them. `rates_applied` is `pricing.RatesApplied` (records captured before
   litellm-pricing carry no `from`/`source`); a row whose `source` is `"litellm-live"` was
@@ -2004,18 +2232,25 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   `missing_duration_plans[]`, and it keeps `time.total_is_partial` true because a span is
   a lower bound rather than the executor's wall clock.
 
-- the orchestration record's fence (`self/orchestrations/<slug>/README.md`, the last
-  ```` ```json ```` block) — `{ slug, session, agent_tooling, session_window{from,to},
-  features[{repo,slug,session,branch,pr,report}] }`. `session` is the orchestrator's session
+- the orchestration record's fence (`plans/orchestrations/<slug>/README.md`, or
+  `self/orchestrations/<slug>/README.md` for agentTooling's own, the last
+  ```` ```json ```` block) — `{ slug, kind?, session, agent_tooling, session_window{from,to},
+  features[{repo,slug,session,branch,pr,report}] }`. `kind` is present only on a
+  coordinator record, `"coordinator"` (`orchestration-start.sh --coordinator`): then
+  `session` is the coordinator's, the record is no role, and `report` may be relative to the
+  feature's own repository (priced with `report.py --checkout`). `session` is the orchestrator's session
   id; `agent_tooling` the full commit id of the checkout it ran under, or null (a vendored
   copy has no `.git` to ask); `session_window.to` is null until
   `manifest.py --orchestration <slug> set-window-to`. A feature entry's `repo` is the
   repository name as its origin names it, `session` the implementer's session id or null,
-  `report` that feature's `report.json` path relative to the agentTooling root or null when
-  it lives in another repository. Written by `orchestration-start.sh` and `manifest.py
+  `report` that feature's `report.json` path relative to the record's own repo root, or relative
+  to its own repository when it lives in another (priced only under `report.py --checkout`),
+  or null. Written by `orchestration-start.sh` and `manifest.py
   --orchestration`; read by `orchestration_capture.py` and `report.py --orchestration`.
-- an orchestration's `planning.json` (`self/orchestrations/<slug>/planning.json`) — `{ slug,
-  captured_at, orchestration: true, agent_tooling, session_window{from,to}, sessions[{session_id,
+- an orchestration's `planning.json` (`plans/orchestrations/<slug>/planning.json`, or
+  `self/orchestrations/<slug>/planning.json` under `--self`) — `{ slug,
+  captured_at, orchestration: true, kind, agent_tooling, session_window{from,to},
+  subagents_not_priced[]?, sessions[{session_id,
   git_branch,selected_by:"orchestration",cwd,date,started_at,ended_at,duration_s}],
   subagents[{agent_id,parent_session_id,date,started_at,ended_at,duration_s,selected_by,
   cross_repo}], priced[{session_id,agent_id,model,is_sidechain,date,tokens,cost_usd,
@@ -2027,8 +2262,11 @@ Usage, planning, and report artifacts (`usage.json`, `planning.json`, `report.js
   have no `share_basis`, `also_claimed_by` or `carried_from` and its `priced[]` rows no
   `duration_s`, `share` or `shared_with` (nothing else claims the orchestrator's session, and
   a capture is a whole re-pricing); and `selected_by` is `"orchestration"`. `cost_usd.total`
-  is the key `report.py` reads from both.
-- an orchestration's `report.json` — `{ slug, generated_at, session, agent_tooling,
+  is the key `report.py` reads from both. `kind` is `"orchestrator"` or `"coordinator"`;
+  `subagents_not_priced` (agent ids) is present only on a coordinator's, listing every
+  delegate with an in-window response that it left to the features (`subagents` then holds
+  only its own `feature: none` delegates no feature claims).
+- an orchestration's `report.json` — `{ slug, kind, generated_at, session, agent_tooling,
   agent_tooling_short, session_window{from,to}, features[{repo,slug,pr,total_usd,
   unpriced_reason}], overhead{usd,unpriced_reason,total_is_partial}, features_total_usd,
   priced_count, unpriced_count, group_total_usd, overhead_pct }` — for each feature exactly

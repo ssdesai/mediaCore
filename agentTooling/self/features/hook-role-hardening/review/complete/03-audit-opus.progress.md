@@ -1,0 +1,13 @@
+write: /tmp/plan-capture.c3uUBc/scratch/setup.sh
+write: /tmp/plan-capture.c3uUBc/scratch/run.py
+write: /tmp/plan-capture.c3uUBc/scratch/cmds1.txt
+write: /tmp/plan-capture.c3uUBc/scratch/mkfiles.sh
+write: /tmp/plan-capture.c3uUBc/scratch/cmds0.txt
+edit: /tmp/plan-capture.c3uUBc/scratch/run.py
+edit: /tmp/plan-capture.c3uUBc/scratch/run.py
+edit: /tmp/plan-capture.c3uUBc/scratch/run.py
+write: /tmp/plan-capture.c3uUBc/scratch/verify.sh
+write: /tmp/plan-capture.c3uUBc/scratch/verify2.sh
+write: /tmp/plan-capture.c3uUBc/scratch/cmds2.txt
+write: /tmp/plan-capture.c3uUBc/scratch/mklink.sh
+write: /home/user/agentTooling-delegate-cost-claims/self/features/hook-role-hardening/audit-report.md

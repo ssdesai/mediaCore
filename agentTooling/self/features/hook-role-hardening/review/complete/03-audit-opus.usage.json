@@ -1,0 +1,81 @@
+{
+  "plan": "03-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "ffcb5c01-817a-4614-bcbf-e5ba76814615",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 37,
+  "duration_ms": 197456,
+  "total_cost_usd": 1.0870805000000001,
+  "usage": {
+    "input_tokens": 46,
+    "cache_creation_input_tokens": 55323,
+    "cache_read_input_tokens": 1443712,
+    "output_tokens": 17763
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 3006,
+      "outputTokens": 19,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.00031010000000000006,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 46,
+      "outputTokens": 17763,
+      "cacheReadInputTokens": 1443712,
+      "cacheCreationInputTokens": 55323,
+      "webSearchRequests": 0,
+      "costUSD": 1.0867704,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 7214,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 55323,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 17,
+    "Edit": 3,
+    "Read": 6,
+    "Write": 10
+  },
+  "files_edited": [
+    "/tmp/plan-capture.c3uUBc/scratch/cmds0.txt",
+    "/tmp/plan-capture.c3uUBc/scratch/cmds1.txt",
+    "/tmp/plan-capture.c3uUBc/scratch/cmds2.txt",
+    "/tmp/plan-capture.c3uUBc/scratch/mkfiles.sh",
+    "/tmp/plan-capture.c3uUBc/scratch/mklink.sh",
+    "/tmp/plan-capture.c3uUBc/scratch/run.py",
+    "/tmp/plan-capture.c3uUBc/scratch/setup.sh",
+    "/tmp/plan-capture.c3uUBc/scratch/verify.sh",
+    "/tmp/plan-capture.c3uUBc/scratch/verify2.sh",
+    "self/features/hook-role-hardening/audit-report.md"
+  ],
+  "edit_count": 13,
+  "attempts": [
+    {
+      "session_id": "ffcb5c01-817a-4614-bcbf-e5ba76814615",
+      "outcome": "complete",
+      "total_cost_usd": 1.0870805000000001,
+      "num_turns": 37,
+      "duration_ms": 197456
+    }
+  ]
+}

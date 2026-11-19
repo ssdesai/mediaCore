@@ -1,0 +1,16 @@
+write: /tmp/plan-capture.f6AOGg/scratch/setup.sh
+write: /tmp/plan-capture.f6AOGg/scratch/drive.py
+write: /tmp/plan-capture.f6AOGg/scratch/cases_a.py
+write: /tmp/plan-capture.f6AOGg/scratch/cases_b.py
+write: /tmp/plan-capture.f6AOGg/scratch/cases_c.py
+write: /home/user/agentTooling/../../../tmp/plan-capture.f6AOGg/scratch/head/.git/agenttooling-orchestrators
+write: /tmp/plan-capture.f6AOGg/scratch/main/.git/agenttooling-orchestrators
+edit: /tmp/plan-capture.f6AOGg/scratch/drive.py
+edit: /tmp/plan-capture.f6AOGg/scratch/drive.py
+write: /tmp/plan-capture.f6AOGg/scratch/cases_d.py
+write: /tmp/plan-capture.f6AOGg/scratch/cases_e.py
+write: /tmp/plan-capture.f6AOGg/scratch/cases_f.py
+edit: /tmp/plan-capture.f6AOGg/scratch/drive.py
+write: /tmp/plan-capture.f6AOGg/scratch/cases_g.py
+write: /tmp/plan-capture.f6AOGg/scratch/manifest_attack.py
+write: /home/user/agentTooling/self/features/hook-audit-gaps/audit-report.md

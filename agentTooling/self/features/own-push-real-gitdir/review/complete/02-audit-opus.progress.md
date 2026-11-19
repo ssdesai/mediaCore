@@ -1,0 +1,9 @@
+write: /tmp/plan-capture.raG3G4/scratch/extract.sh
+write: /tmp/plan-capture.raG3G4/scratch/attack.py
+edit: /tmp/plan-capture.raG3G4/scratch/attack.py
+edit: /tmp/plan-capture.raG3G4/scratch/attack.py
+edit: /tmp/plan-capture.raG3G4/scratch/attack.py
+write: /tmp/plan-capture.raG3G4/scratch/origin_dir.sh
+write: /tmp/plan-capture.raG3G4/scratch/legacy_remotes.sh
+write: /tmp/plan-capture.raG3G4/scratch/table.py
+write: /home/user/agentTooling/self/features/own-push-real-gitdir/audit-report.md

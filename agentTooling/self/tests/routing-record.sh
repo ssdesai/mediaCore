@@ -91,11 +91,14 @@ trap 'rm -rf "$TMP"' EXIT
 TMP="$(cd "$TMP" && pwd -P)"
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features" "$AT/.git"
+mkdir -p "$AT/hooks" && cp "$HERE/hooks/shared_rules.py" "$AT/hooks/"  # roots.py imports it
 
 export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
 for f in pricing.py litellm_prices.py rates_history.json roots.py transcript.py capture_planning.py report.py routing.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f" 2>/dev/null || true
 done
+# capture_planning.py reads the brief header from ../hooks/brief_header.py (README.md).
+mkdir -p "$AT/hooks" && cp "$HERE/hooks/brief_header.py" "$AT/hooks/brief_header.py"
 source "$HERE/self/tests/fixtures/transcripts/build-transcript.sh"
 
 FAKE_HOME="$TMP/home"
@@ -641,6 +644,7 @@ rb_feature rb-cdbrief "$RB_CDBRIEF"
 # consumer checkout holds both, with a copy of the analysis scripts under agentTooling/.
 CONS="$TMP/consumer"
 mkdir -p "$CONS/.git" "$CONS/agentTooling/analysis" "$CONS/agentTooling/self/features" "$CONS/plans/features"
+mkdir -p "$CONS/agentTooling/hooks" && cp "$HERE/hooks/shared_rules.py" "$CONS/agentTooling/hooks/"  # roots.py imports it
 cp "$AT/analysis/"* "$CONS/agentTooling/analysis/" 2>/dev/null || true
 CONS_PROJ="$(project_dir "$CONS")"
 mkdir -p "$CONS_PROJ"

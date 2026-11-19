@@ -51,7 +51,13 @@ set -uo pipefail
 #      component, a relative `cd`, a brace group the expansion refuses — is denied with
 #      its rewrite, counts toward the same escalation as the seven opaque shapes, is
 #      reset by a command of the ASK class (which prints nothing), and falls silent
-#      under AGENTTOOLING_HEADLESS at the escalation like any other.
+#      under AGENTTOOLING_HEADLESS at the escalation like any other;
+#  10. a line that names git and does not tokenize (`git push -f origin y⏎echo '#`) is the
+#      git deny every time, never the `ask` a rewrite deny decays to, while the same shape
+#      with no git on it still decays (hook-audit-gaps, round 6). A line that names git and
+#      that bash parses though the hook's lexer does not (`git commit -m "$(echo "it's")"`)
+#      is the rewrite deny again and decays (10c), and one bash refuses behind an ANSI-C
+#      quote (`git push -f origin y⏎echo $'\'' "`) is the git deny every time (10d) — round 7.
 #
 # Depends on the hook keying its counter off `session_id`+`agent_id`, on
 # OPAQUE_REWRITE_ATTEMPTS being 2, and on the state directory being an explicit template
@@ -401,6 +407,41 @@ check("9h. two shell-authored files in a row are denied",
 third, third_reason = decide(AUTHORING[2], session_id=SW)
 check("9i. the third is ask, with the escalation's own reason (got %s)" % third,
       third == "ASK" and not [w for w in ASK_REASON_WORDS if w not in third_reason])
+
+# ── 10: a line that names git and does not tokenize never decays ─────────────
+# hook-audit-gaps, round 6 (escalations/05-audit-opus.md, B1): such a line is a git command
+# that cannot be read — the git deny, which counts no attempt — and not the does-not-tokenize
+# rewrite deny, which a third attempt turned into an `ask`. The same line without git still
+# counts: it is the rewrite deny it was.
+UNLEXED_GIT = ["git push -f origin y\necho '", "git push -f origin y\necho '#",
+               "git rebase 'main", "git push -f origin y\necho \"$(cat <<EOF",
+               "git reset --hard\necho '<<"]
+UG = "unlexed-git"
+got = [d(line, session_id=UG) for line in UNLEXED_GIT]
+check("10a. five lines in a row that name git and do not tokenize are each denied, "
+      "none asked (got %s)" % got, got == ["DENY"] * len(UNLEXED_GIT))
+UN = "unlexed-no-git"
+got = [d(line, session_id=UN) for line in ("cat 'x", "ls 'src", "echo \"unterminated")]
+check("10b. the same shape with no git on the line still decays to ask (got %s)" % got,
+      got == ["DENY", "DENY", "ASK"])
+# hook-audit-gaps, round 7 (escalations/06-review-opus.md): a line that names git, that the
+# hook's lexer refuses and that BASH PARSES — a quoted substitution whose inner quotes hold an
+# odd quote — is not that git deny: it is the rewrite deny round 5 gave it, and decays ...
+BP = "bash-parses-git"
+got = [d(line, session_id=BP) for line in ("git commit -m \"$(echo \"it's\")\"",
+                                           "git commit -m \"$(printf \"%s\" \"don't\")\"",
+                                           "git log --grep \"$(echo \"it's\")\" -1")]
+check("10c. a line that names git, does not tokenize here and parses for bash is the rewrite "
+      "deny it was, and decays to ask (got %s)" % got, got == ["DENY", "DENY", "ASK"])
+# ... while the audit's B1 lines (escalations/06-audit-opus.md), which bash refuses behind an
+# ANSI-C quote that escapes a quote, are the git deny every time
+BR = "bash-refuses-git"
+BASH_REFUSED = ["git push -f origin y\necho $'\\'' \"", "git push origin main\necho $'\\'' '",
+                "git reset --hard\n: $'a\\'b' \"x", "echo $'\\''\ngit push -f origin y\necho \"",
+                "git branch -D y\necho ${x:-$'\\''} \""]
+got = [d(line, session_id=BR) for line in BASH_REFUSED]
+check("10d. five lines in a row that name git and that bash refuses, each behind an ANSI-C "
+      "quote, are each denied, none asked (got %s)" % got, got == ["DENY"] * len(BASH_REFUSED))
 
 sys.exit(1 if fails else 0)
 PY

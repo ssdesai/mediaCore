@@ -1,0 +1,11 @@
+write: /tmp/plan-capture.bib6rk/scratch/extract.sh
+write: /tmp/plan-capture.bib6rk/scratch/drive.py
+write: /tmp/plan-capture.bib6rk/scratch/cases.txt
+write: /tmp/plan-capture.bib6rk/scratch/cases2.txt
+write: /tmp/plan-capture.bib6rk/scratch/realbash.sh
+write: /tmp/plan-capture.bib6rk/scratch/mkcases.py
+write: /tmp/plan-capture.bib6rk/scratch/real.txt
+edit: /tmp/plan-capture.bib6rk/scratch/drive.py
+write: /tmp/plan-capture.bib6rk/scratch/cases3.txt
+write: /tmp/plan-capture.bib6rk/scratch/replay.sh
+write: /home/user/agentTooling/self/features/orchestration-record-fixes/audit-report.md

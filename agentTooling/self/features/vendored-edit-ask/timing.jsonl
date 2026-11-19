@@ -1,0 +1,8 @@
+{"at":"2026-11-13T19:20:23Z","event":"pass_start","queue":"review","round":"1"}
+{"at":"2026-11-13T19:20:23Z","event":"plan_start","plan":"01-audit-opus","queue":"review","round":"1"}
+{"at":"2026-11-13T19:23:18Z","event":"plan_start","plan":"01-review-opus","queue":"review","round":"1"}
+{"at":"2026-11-13T19:24:12Z","event":"plan_end","plan":"01-audit-opus","queue":"review","rc":"0","round":"1"}
+{"at":"2026-11-13T19:24:12Z","event":"plan_end","plan":"01-review-opus","queue":"review","rc":"0","verdict":"clean","head":"8e8dc8fc56e4e5263c2eeb4214a9ab9431e921a9","round":"1"}
+{"at":"2026-11-13T19:24:13Z","event":"audit_end","plan":"01-audit-opus","verdict":"clean","head":"8e8dc8fc56e4e5263c2eeb4214a9ab9431e921a9","round":"1"}
+{"at":"2026-11-13T19:24:13Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"1"}
+{"at":"2026-11-13T19:24:29Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/142","round":"1"}

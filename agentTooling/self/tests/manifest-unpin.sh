@@ -44,6 +44,8 @@ TMP="$(cd "$TMP" && pwd -P)"
 AT="$TMP/agentTooling"
 CONSUMER="$TMP/consumer"
 mkdir -p "$AT/analysis" "$AT/self/features" "$CONSUMER/agentTooling/analysis" "$CONSUMER/plans/features"
+mkdir -p "$AT/hooks" && cp "$HERE/hooks/shared_rules.py" "$AT/hooks/"  # roots.py imports it
+mkdir -p "$CONSUMER/agentTooling/hooks" && cp "$HERE/hooks/shared_rules.py" "$CONSUMER/agentTooling/hooks/"  # roots.py imports it
 
 # manifest.py imports routing, which imports pricing, roots and transcript; pricing loads
 # rates_history.json from beside itself.

@@ -1,0 +1,13 @@
+write: /tmp/plan-capture.WJVVuQ/scratch/setup.sh
+write: /tmp/plan-capture.WJVVuQ/scratch/selftest.sh
+write: /tmp/plan-capture.WJVVuQ/scratch/roots.sh
+write: /tmp/plan-capture.WJVVuQ/scratch/envfunc.sh
+write: /tmp/plan-capture.WJVVuQ/scratch/hookrun.py
+write: /tmp/plan-capture.WJVVuQ/scratch/hookone.sh
+edit: /tmp/plan-capture.WJVVuQ/scratch/hookrun.py
+write: /tmp/plan-capture.WJVVuQ/scratch/hookone.sh
+write: /tmp/plan-capture.WJVVuQ/scratch/hookpy.sh
+write: /tmp/plan-capture.WJVVuQ/scratch/conf.py
+write: /tmp/plan-capture.WJVVuQ/scratch/stray.sh
+write: /tmp/plan-capture.WJVVuQ/scratch/stub-claude
+write: /home/user/agentTooling/self/features/brief-conformance-checks/audit-report.md

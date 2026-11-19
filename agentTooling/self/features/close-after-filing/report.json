@@ -1,0 +1,415 @@
+{
+  "slug": "close-after-filing",
+  "generated_at": "2026-11-17T13:43:08.491414+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 9.373604199999999,
+    "build": 9.373604199999999,
+    "verify": 0.0,
+    "review": 11.4454372,
+    "total": 20.8190414,
+    "planning_pct": 0.0,
+    "build_pct": 45.02418732881716,
+    "verify_pct": 0.0,
+    "review_pct": 54.97581267118284,
+    "cost_per_plan": 1.7349201166666666,
+    "cost_per_file": 0.7178979793103448,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 12524,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 12524,
+    "build_s": 12524.0,
+    "verify_s": 0.0,
+    "review_s": 1679.627,
+    "executor_s": 14203.627,
+    "total_s": 14203.627,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-17T03:46:31+00:00",
+      "last_at": "2026-11-17T13:43:07+00:00",
+      "batch_span_s": 35796.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 1715.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 2176.0,
+      "plan_runs": 12,
+      "pr_opened_at": "2026-11-17T13:43:07+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/157"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 9.373604199999999,
+      "build_min": 208.73333333333332,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.9571886000000003,
+      "review_min": 4.018516666666667,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.0216949,
+      "review_min": 4.94025,
+      "review_plan": "02-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/02-review-opus.md"
+    },
+    {
+      "round": 3,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.0533808000000002,
+      "review_min": 5.31475,
+      "review_plan": "03-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/03-review-opus.md"
+    },
+    {
+      "round": 4,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.1172059,
+      "review_min": 5.793933333333333,
+      "review_plan": "04-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/04-review-opus.md"
+    },
+    {
+      "round": 5,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.6301126000000001,
+      "review_min": 4.2743,
+      "review_plan": "05-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 6,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.6658544,
+      "review_min": 3.6520333333333332,
+      "review_plan": "06-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 9.373604199999999
+  },
+  "cold_start_tax_tokens": 713002,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 12,
+      "total_turns": 265,
+      "total_cost_usd": 11.4454372,
+      "total_duration_s": 1679.627,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "01-audit-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "02-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "02-audit-opus",
+      "edit_count": 5,
+      "files_edited": 3,
+      "churn_ratio": 1.6666666666666667
+    },
+    {
+      "plan": "03-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "03-audit-opus",
+      "edit_count": 10,
+      "files_edited": 6,
+      "churn_ratio": 1.6666666666666667
+    },
+    {
+      "plan": "04-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "04-audit-opus",
+      "edit_count": 14,
+      "files_edited": 7,
+      "churn_ratio": 2.0
+    },
+    {
+      "plan": "05-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "05-audit-opus",
+      "edit_count": 6,
+      "files_edited": 5,
+      "churn_ratio": 1.2
+    },
+    {
+      "plan": "06-review-opus",
+      "edit_count": 3,
+      "files_edited": 3,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "06-audit-opus",
+      "edit_count": 6,
+      "files_edited": 6,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 75,
+      "loc_changed": 39
+    },
+    {
+      "plan": "01-audit-opus",
+      "plan_md_lines": 82,
+      "loc_changed": 229
+    },
+    {
+      "plan": "02-review-opus",
+      "plan_md_lines": 52,
+      "loc_changed": 87
+    },
+    {
+      "plan": "02-audit-opus",
+      "plan_md_lines": 82,
+      "loc_changed": 281
+    },
+    {
+      "plan": "03-review-opus",
+      "plan_md_lines": 50,
+      "loc_changed": 77
+    },
+    {
+      "plan": "03-audit-opus",
+      "plan_md_lines": 82,
+      "loc_changed": 334
+    },
+    {
+      "plan": "04-review-opus",
+      "plan_md_lines": 45,
+      "loc_changed": 76
+    },
+    {
+      "plan": "04-audit-opus",
+      "plan_md_lines": 82,
+      "loc_changed": 371
+    },
+    {
+      "plan": "05-review-opus",
+      "plan_md_lines": 45,
+      "loc_changed": 58
+    },
+    {
+      "plan": "05-audit-opus",
+      "plan_md_lines": 82,
+      "loc_changed": 288
+    },
+    {
+      "plan": "06-review-opus",
+      "plan_md_lines": 56,
+      "loc_changed": 78
+    },
+    {
+      "plan": "06-audit-opus",
+      "plan_md_lines": 82,
+      "loc_changed": 206
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "self/gate.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "01-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.5H4E5u/scratch/attack.sh",
+        "self/features/close-after-filing/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-opus",
+      "edited_not_listed": [
+        "self/features/close-after-filing/NOTES.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.10p3zO/scratch/attack.sh",
+        "/tmp/plan-capture.10p3zO/scratch/headfix/feature-close.sh",
+        "self/features/close-after-filing/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "03-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "03-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.f7pYJw/scratch/attack.sh",
+        "/tmp/plan-capture.f7pYJw/scratch/attack2.sh",
+        "/tmp/plan-capture.f7pYJw/scratch/mkfix.sh",
+        "/tmp/plan-capture.f7pYJw/scratch/pushcheck.sh",
+        "/tmp/plan-capture.f7pYJw/scratch/setup.sh",
+        "self/features/close-after-filing/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "04-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "04-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.IZa4DY/scratch/attack.sh",
+        "/tmp/plan-capture.IZa4DY/scratch/cgpatch.py",
+        "/tmp/plan-capture.IZa4DY/scratch/mkfix.sh",
+        "/tmp/plan-capture.IZa4DY/scratch/patch.py",
+        "/tmp/plan-capture.IZa4DY/scratch/pushcheck.sh",
+        "/tmp/plan-capture.IZa4DY/scratch/setup.sh",
+        "self/features/close-after-filing/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "05-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "05-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.ZEIf8u/scratch/attack.sh",
+        "/tmp/plan-capture.ZEIf8u/scratch/forge_graph.py",
+        "/tmp/plan-capture.ZEIf8u/scratch/mk.sh",
+        "/tmp/plan-capture.ZEIf8u/scratch/stub-claude",
+        "self/features/close-after-filing/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "06-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.Mgkmyl/scratch/cmp.sh",
+        "README.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "06-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.QcdDqq/scratch/patch.py",
+        "/tmp/plan-capture.QcdDqq/scratch/patch2.py",
+        "/tmp/plan-capture.QcdDqq/scratch/run.sh",
+        "/tmp/plan-capture.QcdDqq/scratch/run2.sh",
+        "/tmp/plan-capture.QcdDqq/scratch/run3.sh",
+        "self/features/close-after-filing/audit-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": [],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and this feature stamped no `checkpoint` event \u2014 nothing divides it by round, so all of it sits in round 1"
+    }
+  ],
+  "profile": "cloud",
+  "gate": "green",
+  "carried": {
+    "rows": 1,
+    "captured_at": [
+      "2026-11-17T05:55:19.449834+00:00"
+    ]
+  }
+}

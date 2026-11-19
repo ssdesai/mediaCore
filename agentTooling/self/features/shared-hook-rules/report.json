@@ -1,0 +1,333 @@
+{
+  "slug": "shared-hook-rules",
+  "generated_at": "2026-11-14T02:52:57.618661+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 23.663505200000003,
+    "build": 23.663505200000003,
+    "verify": 0.0,
+    "review": 8.31423,
+    "total": 31.977735200000005,
+    "planning_pct": 0.0,
+    "build_pct": 73.99994105899032,
+    "verify_pct": 0.0,
+    "review_pct": 26.00005894100968,
+    "cost_per_plan": 3.9972169000000006,
+    "cost_per_file": 1.2791094080000003,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 47860,
+    "planning_subagents_s": 35126,
+    "planning_s": 0.0,
+    "implementer_s": 82986,
+    "build_s": 82986.0,
+    "verify_s": 0.0,
+    "review_s": 1615.6159999999998,
+    "executor_s": 84601.616,
+    "total_s": 84601.616,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-13T13:56:35+00:00",
+      "last_at": "2026-11-14T02:52:56+00:00",
+      "batch_span_s": 46581.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 1648.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 1910.0,
+      "plan_runs": 8,
+      "pr_opened_at": "2026-11-14T02:52:56+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/143"
+    },
+    "tests_s": null,
+    "direct_build_s": null,
+    "gate_s": 486.0
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 23.663505200000003,
+      "build_min": 1383.1,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.7653560999999995,
+      "review_min": 5.472616666666667,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.7446899,
+      "review_min": 8.1948,
+      "review_plan": "02-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 3,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.4770769000000001,
+      "review_min": 3.193083333333333,
+      "review_plan": "03-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 4,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.3271071,
+      "review_min": 10.066433333333332,
+      "review_plan": "04-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 11.766291800000001,
+    "sessions": 11.897213400000002
+  },
+  "cold_start_tax_tokens": 551322,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 8,
+      "total_turns": 170,
+      "total_cost_usd": 8.31423,
+      "total_duration_s": 1615.616,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "01-audit-opus",
+      "edit_count": 4,
+      "files_edited": 3,
+      "churn_ratio": 1.3333333333333333
+    },
+    {
+      "plan": "02-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "02-audit-opus",
+      "edit_count": 6,
+      "files_edited": 6,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "03-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "03-audit-opus",
+      "edit_count": 3,
+      "files_edited": 3,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "04-review-opus",
+      "edit_count": 5,
+      "files_edited": 5,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "04-audit-opus",
+      "edit_count": 9,
+      "files_edited": 9,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 73,
+      "loc_changed": 77
+    },
+    {
+      "plan": "01-audit-opus",
+      "plan_md_lines": 50,
+      "loc_changed": 471
+    },
+    {
+      "plan": "02-review-opus",
+      "plan_md_lines": 45,
+      "loc_changed": 40
+    },
+    {
+      "plan": "02-audit-opus",
+      "plan_md_lines": 50,
+      "loc_changed": 449
+    },
+    {
+      "plan": "03-review-opus",
+      "plan_md_lines": 43,
+      "loc_changed": 48
+    },
+    {
+      "plan": "03-audit-opus",
+      "plan_md_lines": 50,
+      "loc_changed": 360
+    },
+    {
+      "plan": "04-review-opus",
+      "plan_md_lines": 55,
+      "loc_changed": 85
+    },
+    {
+      "plan": "04-audit-opus",
+      "plan_md_lines": 50,
+      "loc_changed": 516
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/home/user/agentTooling/hooks/allow-repo-commands.sh",
+      "tool": "Read",
+      "plans": [
+        "01-audit-opus",
+        "02-audit-opus",
+        "04-audit-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/self/features/shared-hook-rules/NOTES.md",
+      "tool": "Read",
+      "plans": [
+        "01-review-opus",
+        "03-review-opus",
+        "04-review-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/self/tests/hook-orchestrator-role.sh",
+      "tool": "Read",
+      "plans": [
+        "02-audit-opus",
+        "03-audit-opus"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "orchestration-start.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "01-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.P9aCiF/scratch/audit.py",
+        "/tmp/plan-capture.P9aCiF/scratch/extra.py",
+        "self/features/shared-hook-rules/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.n2Yb6W/scratch/ostart.sh",
+        "/tmp/plan-capture.n2Yb6W/scratch/probe.py",
+        "/tmp/plan-capture.n2Yb6W/scratch/probe2.py",
+        "/tmp/plan-capture.n2Yb6W/scratch/setup.sh",
+        "/tmp/plan-capture.n2Yb6W/scratch/wire.py",
+        "self/features/shared-hook-rules/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "03-review-opus",
+      "edited_not_listed": [
+        "self/features/shared-hook-rules/README.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "03-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.nCifoj/scratch/audit.py",
+        "/tmp/plan-capture.nCifoj/scratch/wire.py",
+        "self/features/shared-hook-rules/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "04-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.N7dIE4/scratch/check.sh",
+        "/tmp/plan-capture.N7dIE4/scratch/cmp.py",
+        "hooks/README.md",
+        "self/review-report.md",
+        "self/tests/shared-rules.sh"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "04-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.EbAaPC/scratch/ostart.sh",
+        "/tmp/plan-capture.EbAaPC/scratch/probe.py",
+        "/tmp/plan-capture.EbAaPC/scratch/probe2.py",
+        "/tmp/plan-capture.EbAaPC/scratch/probe3.py",
+        "/tmp/plan-capture.EbAaPC/scratch/rest.sh",
+        "/tmp/plan-capture.EbAaPC/scratch/setup.sh",
+        "/tmp/plan-capture.EbAaPC/scratch/variants.py",
+        "/tmp/plan-capture.EbAaPC/scratch/wsdump.py",
+        "self/features/shared-hook-rules/audit-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [],
+  "warnings": [],
+  "profile": "cloud",
+  "gate": "green"
+}

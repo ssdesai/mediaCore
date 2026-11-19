@@ -1,0 +1,12 @@
+write: /tmp/plan-capture.hPsVtB/scratch/harness.py
+write: /tmp/plan-capture.hPsVtB/scratch/b1.txt
+write: /tmp/plan-capture.hPsVtB/scratch/bashcheck.sh
+write: /tmp/plan-capture.hPsVtB/scratch/b2.txt
+write: /tmp/plan-capture.hPsVtB/scratch/reason.py
+edit: /tmp/plan-capture.hPsVtB/scratch/harness.py
+edit: /tmp/plan-capture.hPsVtB/scratch/harness.py
+write: /tmp/plan-capture.hPsVtB/scratch/b3.txt
+write: /tmp/plan-capture.hPsVtB/scratch/bashcheck2.sh
+write: /tmp/plan-capture.hPsVtB/scratch/b4.txt
+write: /tmp/plan-capture.hPsVtB/scratch/malformed.py
+write: /home/user/agentTooling/self/features/orchestration-record-fixes/audit-report.md

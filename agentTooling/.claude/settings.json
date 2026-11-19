@@ -9,6 +9,15 @@
             "command": "test ! -f \"${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh\" || \"${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh\""
           }
         ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test ! -f \"${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh\" || \"${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh\""
+          }
+        ]
       }
     ],
     "SessionStart": [

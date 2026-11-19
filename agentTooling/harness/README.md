@@ -24,20 +24,26 @@ worktrees. There is no cross-check stage.
 | `run.sh` | The driver. `run.sh <experiment-dir> [--only <fixture>[:<method>[:<arm>][:<n>]]] [--only <program>[:orchestrator[:<arm>][:<n>]]] [--from <stage>] [--dry-run] [--no-cleanup]`, run from the consuming repo root with that repo's own vendored harness (it refuses to run from any other copy — "Repositories by URL"). Walks the eight stages per cell (fixture × method × arm × repeat), pins the arm's agentTooling version at setup (or, for a base arm, cuts the worktree at the arm's commit of the measured repository; both kinds together are refused), writes the state file and the ledger row, renders the scorecard, removes the worktree and keeps the branch. For each program in `experiment.json`'s `programs` (program × arm × repeat) it sources `program-stages.sh` and walks the program stages `setup brief loop collect review rework accept capture record` ("Program cells" below); `--only` selects a program the same way as a cell, the program name in the fixture's place and the literal `orchestrator` in the method's. `--from` accepts the union of the cell and program stage names. |
 | `program-stages.sh` | The program cell's stages, sourced by `run.sh`, never run: the orchestrator turns (`claude -p --session-id`, then `--resume`), the per-feature loop (brief, worktree, implementer, tip and dependency check), the collect turn, the per-feature review/rework/accept/capture through `run.sh`'s own cell functions, the overhead pricing and the `kind: "program"` row. Depends on `orchestration-start.sh` and `analysis/manifest.py --orchestration` of the arm's pinned copy (the record's path layout `agentTooling/self/orchestrations/<PSLUG>/README.md`), on the titles and placeholders of `templates/program-*.md`, and on `scorecard.py` reading the row it writes. |
 | `program_cost.py` | `program_cost.py <analysis-dir> --session <id>[@<from-ts>]… --from <ts> --to <ts> [--projects-root <dir>]` — prices the orchestrator session(s) inside a window with the **driver's** `capture_planning.price_session_in_window` (imported by path from `<analysis-dir>`) and prints one dollar figure, four decimals. Exit 0 a figure was printed, 2 a usage error. An id with no transcript prices at 0 with a stderr warning; a partial total (a model without a rate) warns too. |
-| `lib.sh` | Everything a stage or a method would otherwise implement twice: naming, template filling, the manifest skeleton, gate running and counting, findings parsing, state-file writes, `harness_fixture_repo` / `harness_check_measured_repo` / `harness_require_own_driver` (the measured repository is the consumer, a `repo` block naming another is refused, and the running harness must be the consumer's own vendored copy), `harness_fixture_spec_repo`, `harness_resolve_repo` (a repository URL to a checkout on this machine — override, search, clone — used only for the two external read-only inputs: `spec.url` and the agentTooling pin), `harness_replace_literal` (the one literal substitution `harness_fill_template` uses — never `${t//pat/$value}`, which bash 5.2's `patsub_replacement` rewrites at an `&` in the value), `harness_resolve_commit` (a base that is on no fetched branch is fetched by sha once, no ref created), `harness_forge_for` / `harness_forge_run` / `harness_pr_url` / `harness_pr_open` / `harness_branch_pushed` / `harness_branch_has_commits` (the forge seam: the driver's `forge.sh` pointed at a checkout), `harness_pin_agent_tooling` (an arm's pin), `harness_experiment_arm_kind` (an experiment's one arm kind — `agent_tooling`, `base_arms` or none — refusing both together; `base_arms` with `programs` is refused by its callers, `new-experiment.sh` and `run.sh`) and `harness_experiment_arms` (one `<label> <sha>` line per arm of that kind, or `- -`), and `harness_claude` — the **single** seam every model call goes through, which appends `--effort "$HARNESS_EFFORT"` when that variable is set (validated against `HARNESS_EFFORT_LEVELS` on source; `harness_effort_dry` renders the dry-run fragment). Sourced, never run. |
-| `scorecard.py` | `scorecard.py <experiment-dir>` — renders `results.jsonl` into `SCORECARD.md`. Stdlib only, like `analysis/`. Reprices nothing; every dollar in it was frozen at capture time. Ledger rows with `kind: "program"` ("File shapes" below) are split off first: every cell section runs on the ordinary rows alone, and a `## Programs` section follows the cost-band section — a table of program cells, a table of features per cell, per-arm means once a program has repeats, and one comparison line per program and arm pair under the band heading (to PR-open and to green on the group figures, then PRs open, green and overhead %). A ledger with no program row renders exactly as it did before they existed. A `## Reading before the first edit` table follows the Runs table, one row per cell row carrying the reading fields (`—` for not measured); a ledger without them renders exactly as before. A base arm is labelled `<arm> (base <sha7>)` and the header lists `base arms: <label>=<sha7>, …`. |
+| `lib.sh` | Everything a stage or a method would otherwise implement twice: naming, template filling, the manifest skeleton, gate running and counting, findings parsing, state-file writes, `harness_fixture_repo` / `harness_check_measured_repo` / `harness_require_own_driver` (the measured repository is the consumer, a `repo` block naming another is refused, and the running harness must be the consumer's own vendored copy), `harness_fixture_spec_repo`, `harness_resolve_repo` (a repository URL to a checkout on this machine — override, search, clone — used only for the two external read-only inputs: `spec.url` and the agentTooling pin), `harness_replace_literal` (the one literal substitution `harness_fill_template` uses — never `${t//pat/$value}`, which bash 5.2's `patsub_replacement` rewrites at an `&` in the value), `harness_resolve_commit` (a base that is on no fetched branch is fetched by sha once, no ref created), `harness_forge_for` / `harness_forge_run` / `harness_pr_url` / `harness_pr_open` / `harness_branch_pushed` / `harness_branch_has_commits` (the forge seam: the driver's `forge.sh` pointed at a checkout), `harness_pin_agent_tooling` (an arm's pin), `harness_fixture_setup` (the one loop over a fixture's or program's `setup[]`, run from a tree — the setup stage, a no-PR resume, a program's setup and `check-fixture.sh`'s reference worktree all call it) and `harness_run_accept_probe` (`accept/accept.py <tree>`, output to a file, its exit status the verdict), `harness_experiment_arm_kind` (an experiment's one arm kind — `agent_tooling`, `base_arms` or none — refusing both together; `base_arms` with `programs` is refused by its callers, `new-experiment.sh` and `run.sh`) and `harness_experiment_arms` (one `<label> <sha>` line per arm of that kind, or `- -`), and `harness_claude` — the **single** seam every model call goes through, which appends `--effort "$HARNESS_EFFORT"` when that variable is set (validated against `HARNESS_EFFORT_LEVELS` on source; `harness_effort_dry` renders the dry-run fragment). The `# Arm spec paths` block: `HARNESS_ARM_SPEC_PATHS_KEY` (`arm_spec_paths`), `HARNESS_SPEC_SOURCE_SHARED` / `HARNESS_SPEC_SOURCE_ARM` (`"shared"` / `"arm"`), the `HARNESS_SPEC_PROVENANCE_*` and `HARNESS_SPEC_RULE_*` texts, `harness_check_arm_spec_paths` (every base arm has exactly one relative path with no `..`; no path for a non-arm; dies on a bad pairing) and `harness_arm_spec_path_for` (an arm's path, or nothing); `harness_build_isolation` fills `@@SPEC_PROVENANCE@@` and `@@SPEC_RULE@@` from `HARNESS_SPEC_SOURCE` (unset reads as `shared`; anything else dies). Sourced, never run. |
+| `scorecard.py` | `scorecard.py <experiment-dir>` — renders `results.jsonl` into `SCORECARD.md`. Stdlib only, like `analysis/`. Reprices nothing; every dollar in it was frozen at capture time. Ledger rows with `kind: "program"` ("File shapes" below) are split off first: every cell section runs on the ordinary rows alone, and a `## Programs` section follows the cost-band section — a table of program cells, a table of features per cell, per-arm means once a program has repeats, and one comparison line per program and arm pair under the band heading (to PR-open and to green on the group figures, then PRs open, green and overhead %). A ledger with no program row renders exactly as it did before they existed. A `## Reading before the first edit` table follows the Runs table, one row per cell row carrying the reading fields (`—` for not measured); a ledger without them renders exactly as before. A base arm is labelled `<arm> (base <sha7>)` and the header lists `base arms: <label>=<sha7>, …`. Time is shown beside cost: the Runs table has **Wall to PR** (`t_method_start` → `t_pr_open`), **Wall to green** (`t_method_start` → `t_green`) and **Total** (`t_setup_start` → `t_green`), in minutes, `—` when an instant is missing; the Per cell table adds **Mean wall to PR**, **Mean total** and **Mean wall to green**, leaving out rows with `method_failed` (a footnote line says so). Cost means, spreads and the band comparison lines leave out `method_failed` rows too — a failed $0 run once turned a tie into "+54%, outside the band" — and the Per cell table counts them under **Failed** and charges the cell its **Spend**: every run's `cost_green_usd` plus its `cost_lost_usd`, failed runs included. An `## Acceptance` section follows the Per cell table: pass counts per cell at PR-open (`accept_pr_open_pass`) and at green, when any row measured PR-open, and a per-check table (`A1`…`An`, parsed from probe lines `PASS  A1 …` / `FAIL  A3 …`) whose cells read `<at PR-open> → <at green>`; absent when no row carries either. These are wall-clock times, so they include any wait or interruption inside a stage — a `--from` resume after a dead container spans the dead time. The Programs section prints no time. |
 | `new-fixture.sh` | `new-fixture.sh <name> --base <ref> --spec-ref <ref> --spec-path <file> [--spec-repo <url or checkout>] [--sections …] [--setup '<cmd>']… [--gate-*] [--branch-stem …]` — scaffolds `plans/experiments/fixtures/<name>/` for the consuming repo it runs in: the fixture measures that repository, so it writes no `repo` block (only `repo.remote` when `--remote` is not `origin`; an optional `--repo` must be the consumer or is refused). `--spec-repo` is only for a spec living in another repository (a checkout contributes its `origin`; recorded as `spec.url`); omitted, the spec is taken from the consumer. Resolves both refs to full commit ids and writes `fixture.json` pinned to them, verifies the spec path exists at that commit and the gate script at base, and writes `facts.md`, `review-brief.md` and `accept/accept.py` as stubs that fail loudly (a `@@TODO@@` placeholder aborts any run at the brief stage; the stub probe exits 1). |
-| `check-fixture.sh` | `check-fixture.sh <name>` — one line per check, exit = failures: a fixture whose `repo` block names a repository other than the consumer dies at once, then every field the stages read, the base resolves in the consumer's own checkout (a base missing there is fetched by sha once before it counts as unresolved — a prep commit on no fetched branch) and the spec in the consumer or, when the fixture names `spec.url`, in the checkout that resolves to (cloned if need be, read-only; a bare `spec.repo` path passes with a warning naming `spec.url` to add), both commits resolve, spec path at the spec commit, gate script at base, the three hand-written files are present, not stubs, and use only the placeholders the harness fills, `accept.py` compiles. `new-experiment.sh` runs it on every fixture it names. |
-| `new-experiment.sh` | `new-experiment.sh <name> [--fixtures <a,b> --methods <x,y>] [--programs <p,q>] --prediction '<text>' [--agent-tooling <label>=<ref>,…] [--base-arms <label>=<ref>,…] [--repeats N] [--noise-band 15] [--compare-to <path>] [--no-review\|--no-rework\|--no-accept] [--override <fixture-or-program>=<stem>]…` — scaffolds `plans/experiments/<name>/{experiment.json,README.md}`. Checks every fixture (`check-fixture.sh`) and every method directory, pins each arm's ref to a full agentTooling commit id, computes each cell's branch and **refuses if it already exists** locally or on the consumer's remote (so a replay needs `--override`, which becomes `branch_stem_override`). The prediction is required. `--fixtures` and `--methods` go together; at least one of `--fixtures` / `--programs` is required. For each `--programs` name it requires a bare-camelCase name that is not a fixture's, runs `harness_program_check` on `plans/experiments/programs/<name>/program.json`, refuses an arm whose pinned agentTooling lacks the version floor (`orchestration-start.sh`, `templates/plans/ORCHESTRATOR_BRIEF.md`; an unpinned experiment is checked against the consumer's vendored copy), and collision-checks the program branch and every feature branch. `--base-arms` resolves each ref in the measured repository's own checkout (a sha missing locally is fetched by sha from `origin` once) and refuses one that does not resolve there; it refuses `--agent-tooling` together with `--base-arms` (one kind of arm per experiment) and `--base-arms` with `--programs` (a program pins its own `base`). |
+| `check-fixture.sh` | `check-fixture.sh <name>` — one line per check, exit = failures: a fixture whose `repo` block names a repository other than the consumer dies at once, then every field the stages read, the base resolves in the consumer's own checkout (a base missing there is fetched by sha once before it counts as unresolved — a prep commit on no fetched branch) and the spec in the consumer or, when the fixture names `spec.url`, in the checkout that resolves to (cloned if need be, read-only; a bare `spec.repo` path passes with a warning naming `spec.url` to add), both commits resolve, spec path at the spec commit, gate script at base, the three hand-written files are present, not stubs, and use only the placeholders the harness fills, `accept.py` compiles, and — **the reference check** — `accept.py` passes at the fixture's reference build (`reference.commit`, or `--reference <commit>`; "Validating the probe" below), run in a throwaway detached worktree of the consumer given the fixture's `setup[]` and removed afterwards; no reference named is a warning, `--no-reference` skips it. It does **not** run the gate — the run's setup stage rehearses that. `new-experiment.sh` runs it on every fixture it names. |
+| `new-experiment.sh` | `new-experiment.sh <name> [--fixtures <a,b> --methods <x,y>] [--programs <p,q>] --prediction '<text>' [--agent-tooling <label>=<ref>,…] [--base-arms <label>=<ref>,…] [--arm-spec-path <label>=<path>,…] [--repeats N] [--noise-band 15] [--compare-to <path>] [--no-review\|--no-rework\|--no-accept] [--override <fixture-or-program>=<stem>]…` — scaffolds `plans/experiments/<name>/{experiment.json,README.md}`. Checks every fixture (`check-fixture.sh`) and every method directory, pins each arm's ref to a full agentTooling commit id, computes each cell's branch and **refuses if it already exists** locally or on the consumer's remote (so a replay needs `--override`, which becomes `branch_stem_override`). The prediction is required. `--fixtures` and `--methods` go together; at least one of `--fixtures` / `--programs` is required. For each `--programs` name it requires a bare-camelCase name that is not a fixture's, runs `harness_program_check` on `plans/experiments/programs/<name>/program.json`, refuses an arm whose pinned agentTooling lacks the version floor (`orchestration-start.sh`, `templates/plans/ORCHESTRATOR_BRIEF.md`; an unpinned experiment is checked against the consumer's vendored copy), and collision-checks the program branch and every feature branch. `--base-arms` resolves each ref in the measured repository's own checkout (a sha missing locally is fetched by sha from `origin` once) and refuses one that does not resolve there; it refuses `--agent-tooling` together with `--base-arms` (one kind of arm per experiment) and `--base-arms` with `--programs` (a program pins its own `base`). `--arm-spec-path <label>=<path>,…` (with `--base-arms` only) records `arm_spec_paths`: each base arm's spec read from its own tree. It is refused without `--base-arms` (so with `--agent-tooling` or `--programs` alone), for a label that is not a base arm, for a base arm with no path, for an absolute path or one with `..`, and for a path that is not a file at that arm's commit. |
 | `publish.sh` | `publish.sh <experiment-dir> [--branch <name>]` — after a run: re-renders the scorecard, commits only the experiment directory (`<experiment>: run <n> results`, `n` = ledger rows; `logs/` stays gitignored), pushes with `-u`, and opens the PR through the forge seam (the driver's `forge.sh` — in the results PR's case the consumer's own vendored copy, since the harness is that — or `HARNESS_FORGE_BIN`) with `SCORECARD.md` as the body unless one is already open for the branch (the results PR opens on the measured repository itself, from its own vendored harness). On the consumer's default branch it first creates `<experiment>Results` (or `--branch`); on any other branch it commits there. |
 | `templates/` | The prompts the harness itself owns: the isolation paragraph pasted into every brief, the review and rework preambles, and a program cell's three orchestrator prompts (`program-brief.md`, `program-feature.md`, `program-collect.md`). See `templates/README.md`. |
-| `methods/` | One directory per way of turning a worktree at `base` into an open PR — `plans`, `direct`, `direct-bare` (`direct` without its procedure steps, the control that measures their cost), and the `null` test double. Adding a method is adding a directory. `orchestrator` is a reserved name (a program cell's method) and has no directory. See `methods/README.md`. |
+| `methods/` | One directory per way of turning a worktree at `base` into an open PR — `plans`, `direct`, `direct-bare` (`direct` without its procedure steps, the control that measures their cost), `vanilla-conv` (a minimal brief with no doctrine, the tree's conventions and hook live) and `vanilla` (the same brief with the conventions' imports and the hook taken out of the tree for the build, kept out of every commit and restored after) — the tooling-ablation ladder `vanilla` → `vanilla-conv` → `direct-bare` → `direct` → `plans` — `split-tests` beside the ladder (`vanilla-conv` plus an independent test author: one session commits the acceptance tests, a second implements against them; both briefs in its one `template.md`, its test diff in `<experiment>/logs/<branch>-test-diff.txt`), and the `null` test double. Adding a method is adding a directory. The `plans` method's batch output is appended to `<experiment>/logs/<branch>-plans-batch.log` (`HARNESS_LOG_DIR`), never inside the arm's tree, and it exits 2 only on positive usage-limit or interrupt evidence in the batch's output (`methods/plans/README.md`). `orchestrator` is a reserved name (a program cell's method) and has no directory. See `methods/README.md`. |
 | `reading_metrics.py` | `reading_metrics.py <analysis-dir> <tree> --from <ts> --to <ts> [--projects-root <dir>]` — prints one JSON line `{read_files_before_edit, read_bytes_before_edit, readme_bytes_read, transcripts}` (the three figures integers, or `null` when no transcript fell in the window) for a cell's worktree. Imports the driver's `capture_planning.py` and `transcript.py` by path from `<analysis-dir>`. Exit 0 a figure was printed, 2 a usage error. Definitions in the module's docstring and "The ledger row" below. |
 | `tests/smoke.sh` | The whole pipeline against a throwaway repo with a fake `claude` and a fake `forge.sh`: no network, no money. Prices an ordinary `direct` cell end to end (implementer, review and rework each non-zero) and runs `stages {review: false}` as a whole run. Covers a program cell too (two fixtures, the second dependent; a failed implementer; `--only` and `--from record`; the floor refusal; the lib and cost unit checks). See `tests/README.md`. |
 | `tests/scorecard-arms.sh` | `scorecard.py`'s arm-vs-arm and method-vs-method comparison lines, the noise-band wording, and the unpinned row's never being paired with a pinned one, on a hand-built ledger. See `tests/README.md`. |
+| `tests/scorecard-accept.sh` | `scorecard.py`'s failed-run handling (left out of the cost means and band lines, counted under Failed, charged with `cost_lost_usd` under Spend), the Per cell mean wall to green, and the `## Acceptance` section (pass counts at PR-open and at green, the per-check table), on a hand-built ledger. See `tests/README.md`. |
+| `tests/scorecard-time.sh` | `scorecard.py`'s time columns on a hand-built ledger: the Runs table's wall to PR, wall to green and total, the Per cell means with a `method_failed` row left out, `—` for a missing instant, and the Per cell section's unchanged gating. See `tests/README.md`. |
 | `tests/scorecard-programs.sh` | `scorecard.py`'s program section on a hand-built ledger of `kind: "program"` rows: the Programs and per-feature tables, the `✓`/`✗` dependency mark, the program comparison line and its counts suffix, program rows staying out of the cell sections, and the byte-identity of a program-free ledger's scorecard against `tests/scorecard-programs.cells.md`. See `tests/README.md`. |
 | `tests/arm-base.sh` | Base arms, offline: `lib.sh`'s arm-kind helpers on hand-written `experiment.json`s (none, `agent_tooling`, `base_arms`, both refused, malformed) and the scorecard's base-arm header, labels and comparison lines. The end-to-end half — `new-experiment.sh --base-arms` resolving and refusing, `run.sh` refusing a hand-edited experiment and cutting a cell's worktree at the arm's commit — is `tests/smoke.sh` section 8b. See `tests/README.md`. |
+| `tests/arm-spec.sh` | Arm spec paths, offline: `harness_check_arm_spec_paths`' accepted and refused shapes, `harness_build_isolation` for each `HARNESS_SPEC_SOURCE` (a bogus one dies), and the byte-for-byte hold on the prompts a shared-spec cell renders against `tests/arm-spec.shared.md` (written with `--write-expected --from-ref <ref>` from that ref's templates, never by hand). The end-to-end half is `tests/smoke.sh` section 8c. See `tests/README.md`. |
 | `tests/reading-metrics.sh` | `reading_metrics.py` on hand-built transcripts: the window, the first edit, distinct files, bytes, README bytes, subagents, and `null` when not measured. See `tests/README.md`. |
+| `tests/plans-method.sh` | `methods/plans/run.sh`'s batch half with a stub `run-batch.sh` and a fake `claude`: the log outside a clean tree, exit 1 with one batch call on a failure with no usage-limit evidence, exit 2 on the runners' usage-limit or interrupt summary, earlier runs' evidence ignored, an escalation winning, the call after exit 2 resuming the batch without the architect, and the evidence strings pinned against `plan-runner-lib.sh`. See `tests/README.md`. |
+| `tests/review-model.sh` | `HARNESS_REVIEW_MODEL`, offline: `lib.sh`'s resolution (unset and empty follow `HARNESS_MODEL`, a value is kept) and the dry run's per-stage models with it unset and set. The review call and the row's `review_model` are asserted in `tests/smoke.sh`. See `tests/README.md`. |
+| `tests/review-effort.sh` | `HARNESS_REVIEW_EFFORT`, offline: `lib.sh`'s resolution (unset and empty follow `HARNESS_EFFORT`, a value is kept, a bad one is refused) and the dry run's per-stage efforts. The review call and the rows' `review_effort` are asserted in `tests/smoke.sh`. See `tests/README.md`. |
 
 Fixtures and experiments do **not** live here — they pin the consuming repo's own commits,
 which is a project fact, so they live in the consuming repo under
@@ -78,7 +84,31 @@ branch (`git worktree add -b <experiment>Results ../<repo>-<experiment>Results o
    `accept/accept.py` (the real CLI or routes, never the arm's tests). Then the `@@TODO@@`
    lines in the two READMEs. Existing fixtures are the models.
 4. **Check it:** `./agentTooling/harness/check-fixture.sh <fixture>` — green only when
-   the stubs are gone.
+   the stubs are gone and the probe passes at the reference build, if the fixture names
+   one (below).
+
+### Validating the probe
+
+`accept.py` is the scoring instrument, and a probe that compiles can still be wrong:
+vinylCatalogue's `importedWhereV2` probe appended a second `[peers]` TOML table to a
+config the build's own code had already rendered one in, and scored a correct build 0/3.
+So name a **reference build** — a commit of the consumer where the feature is built right
+(the feature's own merge, or a hand build) — in `fixture.json`:
+
+```json
+"reference": {"commit": "<full sha>"}
+```
+
+and `check-fixture.sh` runs the probe there: it adds a throwaway **detached** worktree of
+the consumer at that commit under `$TMPDIR` (no branch, no ref), runs the fixture's
+`setup[]` in it exactly as the setup stage does (`harness_fixture_setup`, the same
+function), runs `accept/accept.py <worktree>`, removes the worktree, and fails the fixture
+— quoting the probe's last lines — when the probe does not pass. `--reference <commit>`
+checks against a commit the fixture does not name (say, to validate a reference before
+recording it); `--no-reference` skips the check. A fixture with no reference passes with a
+warning. The check costs one `setup[]` (a venv and an install, for a Python consumer), so
+`new-experiment.sh`, which runs `check-fixture.sh` on every fixture, pays it once per
+fixture.
 5. **Scaffold the experiment**, prediction first:
    ```bash
    ./agentTooling/harness/new-experiment.sh <experiment> --fixtures <fixture> --methods direct,plans \
@@ -121,7 +151,14 @@ not cloned. `--from <stage>` re-enters a run at
 file (a program cell's stages are `setup | brief | loop | collect | review | rework |
 accept | capture | record`, "Program cells" below). `--only <fixture>[:<method>[:<arm>][:<n>]]`
 narrows to one cell (the arm is letters, the repeat digits); `--only
-<program>[:orchestrator[:<arm>][:<n>]]` narrows to one program cell. `--from loop` or
+<program>[:orchestrator[:<arm>][:<n>]]` narrows to one program cell. `--only` is
+repeatable, one spec per flag, and the run takes the union of the cells they select; a spec
+that matches no cell is refused. `--time-budget <minutes>` (default
+`HARNESS_TIME_BUDGET_MINUTES_DEFAULT`, 110; `0` turns the budget off) is the "Exit codes"
+section's 75. `--reset <spec>` (alone, with `--consumer` only) is "Resetting a killed cell"
+below. `--from` past `setup` refuses a fixture cell whose state file, recorded setup start or
+worktree is missing (the worktree is not needed for `--from record`, which rebuilds the row
+from the state file), and names the `--reset` line to run instead (or dropping `--from`). `--from loop` or
 `--from collect` on an ordinary cell skips all of its stages (they are not its stages);
 `--from method` on a program cell means `loop`. The consuming repo root is the parent of
 `agentTooling/`, and the harness must be that repo's own vendored copy: `run.sh`,
@@ -142,8 +179,83 @@ pinned to, are found on this machine ("Repositories by URL"). `HARNESS_MODEL` (d
 `high`, `xhigh`, `max`, passed to every model call as `claude --effort <level>` by
 `harness_claude`, shown by `--dry-run`, and recorded as `effort` in both row shapes;
 any other value is refused when the harness starts, naming the levels),
+`HARNESS_REVIEW_MODEL` (default empty: `HARNESS_MODEL`; otherwise the model of the harness
+review stage, the one stage that judges and makes a model call — accept is mechanical — so a
+cheaper build model need not grade its own work: `HARNESS_MODEL=<cheaper model>
+HARNESS_REVIEW_MODEL=<stronger model>`. It rides on the review call (and its usage-limit retry) only.
+**Rework is building**, so it stays on `HARNESS_MODEL`, as do the methods and a program
+cell's orchestrator and implementers; a program cell's per-feature review goes through the
+same stage and takes the review model. `--dry-run` prints the model of every stage, and
+both row shapes record it as `review_model` beside `model`),
+`HARNESS_REVIEW_EFFORT` (default empty: `HARNESS_EFFORT`, and with both unset the CLI's own
+effort, exactly as before; otherwise one of the same levels, refused the same way, for the
+harness review stage and its usage-limit retry only — the calls `HARNESS_REVIEW_MODEL`
+covers — so `HARNESS_REVIEW_EFFORT=max` reviews at max while the build stays at the default.
+**Rework is building**, so it stays on `HARNESS_EFFORT`, as do the methods and a program
+cell's orchestrator and implementers. `--dry-run` prints the effort of every stage, and both
+row shapes record it as `review_effort` beside `effort`; `effort` keeps its meaning, the
+build effort),
 `REVIEW_BUDGET_USD` (`$7.00`) and `REWORK_BUDGET_USD` (`$10.00`) are the other knobs;
 `PROGRAM_BUDGET_USD` (unset: no cap) caps each orchestrator call of a program cell.
+
+## Exit codes
+
+- `0` — every selected cell ran to its end (or the dry run printed).
+- `1` — an error, or at least one cell did not finish.
+- `75` (`HARNESS_BUDGET_STOP_RC`) — the time budget stopped the run. A Claude Code
+  background command is killed at 2 hours, so before each cell `run.sh` adds the time
+  elapsed to an estimate of that cell (the longest finished cell in `state/`, by the sum of
+  its stage durations; `HARNESS_CELL_ESTIMATE_MINUTES_DEFAULT`, 60, when none has finished)
+  and starts no further cell if the sum exceeds the budget. The first cell of every
+  invocation always starts: when its estimate alone exceeds the budget, `run.sh` prints a
+  warning (estimate N m, budget M m, the cell may be killed; a fresh invocation per cell is the
+  most time any cell can get) and runs it, so every invocation makes progress and a `resume:`
+  line never repeats the invocation that printed it. On a stop it prints why, then a line beginning
+  `resume: ` holding the command that runs the cells not yet started (`--only` once per cell,
+  with `--from`, `--no-cleanup` and an explicit `--time-budget` carried over). Run that line
+  next. Dry runs have no budget. A budget stop exits 75 even when an earlier cell of the same
+  run failed; it then also prints `<n> cell(s) did not finish`, so 75 alone does not mean
+  every cell before the stop succeeded.
+
+## Resetting a killed cell
+
+`run.sh <experiment-dir> --reset <fixture>:<method>[:<arm>]:<n>` (alone: no `--only`,
+`--from`, `--dry-run` or `--time-budget`; `--consumer` allowed) readies a cell that a kill
+left half-built for a clean re-run. Resuming it on its partial tree would be wrong for an
+experiment: it invalidates the cold-start reading metrics (`read_files_before_edit`,
+`read_bytes_before_edit`, `readme_bytes_read`). So the reset moves the cell aside:
+
+- the worktree moves to the path the harness would give a branch named
+  `<branch>Killed<UTC ts>` (`HARNESS_KILLED_SUFFIX`, then `%Y%m%dT%H%M%SZ`), by
+  `git worktree move`;
+- the branch is renamed to `<branch>Killed<UTC ts>`, by `git branch -m`;
+- the state file moves to `state/killed/<branch>Killed<UTC ts>.json`;
+- a fresh state file takes its place with no setup start, so setup's first-setup path runs
+  next time, carrying `cost_lost_usd`: the earlier value plus any open model window it priced
+  before moving (transcripts are filed under the tree's path).
+
+It prints what moved and `next: run.sh <exp> --consumer <root> --only <spec>`. It refuses: a spec that matches
+no cell or several (it lists them), a program cell (not supported), a cell with a completed
+row in `results.jsonl`, a cell with no worktree, branch or state, a worktree path that is not
+a worktree of the repo, and a target that already exists (retry a second later). If a move
+fails midway it says what moved and what did not; there is no rollback. Nothing is deleted or
+pushed: a remote branch of the old name is left, and the reset says so, and that setup's
+branch-collision guard will then refuse the next run unless `branch_stem_override` is set in
+`experiment.json` or `HARNESS_ALLOW_EXISTING_BRANCH=1` is passed. `results.jsonl` rows stay as
+history.
+
+The lock: a real run and a reset take a directory
+`<git common dir>/harness-locks/<experiment dir name>.lock` (`HARNESS_LOCK_DIR_NAME`) holding
+the owner's pid (`HARNESS_LOCK_PID_FILE`). It is under the git common dir, not `state/`,
+because `state/` is committed with the ledger and the lock must not be. A second run on the
+same experiment dies naming the pid; a lock whose pid is not running is replaced with a
+warning. Dry runs skip it.
+
+Why the reset lives in `run.sh`: a consumer's permission hook denies an agent's own
+`git worktree move` and `git branch -m` (`LIFECYCLE.md` rule 2). `run.sh` is one invocation
+the human approves, as every `run.sh` call already is, and the git it runs — setup's
+`git worktree add`, the reset's move and rename — is harness-run git, which the standing
+rules allow. Never clean up a killed cell with hand-run git.
 
 ## Repositories by URL
 
@@ -212,7 +324,9 @@ could not be opened — vinylCatalogue's `exportStorePlansOpusMax2`) is resumed 
 
 (add `--only <fixture>:<method>[:<arm>][:<n>]` to pick the cell). Because the method stage
 is skipped, `run.sh` runs only the PR step instead (`do_pr_resume`): it re-adds the
-worktree and spec worktree if the earlier record stage removed them, runs the same
+worktree and spec worktree if the earlier record stage removed them, reruns the fixture's
+`setup[]` in the worktree (`harness_fixture_setup`, the setup stage's own function —
+a re-added worktree has no `.venv`, and the accept probe at PR-open crashed on one), runs the same
 check-then-open as above, clears `method_failed`, records `pr_opened_by_harness` and a
 "resumed from no-pr" intervention, **never re-runs the method**, and then goes on to
 review, rework, accept, capture and record. The capture stage re-captures the method's
@@ -246,6 +360,21 @@ PR-open (the method alone) and to green, each against the band. A resumed branch
 already carries its pin commit is not re-pinned; one whose earlier pin died before
 committing (the tree there, the commit not) is pinned on the re-run.
 
+Two limits of that arrangement, each learned from an experiment that assumed otherwise:
+
+- **`HARNESS_EFFORT` (and `HARNESS_REVIEW_EFFORT`) reach only sessions launched through `harness_claude`** — the
+  method's own call, a `plans` architect, the review, the rework and a program cell's
+  orchestrator and implementers. Sessions the arm's own `run-batch.sh` /
+  `plan-runner-lib.sh` start (the plans executors, verify, the in-batch review) run at the
+  CLI's default effort, so "plans at max" is max only in the architect and the harness's
+  own stages (vinylCatalogue `plans/experiments/exportStoreMethodEffortMax/ANALYSIS.md` →
+  "What max meant"). Not plumbed into the arm's runners here; the same holds for
+  `HARNESS_REVIEW_EFFORT`, which reaches the harness's own review stage and nothing else.
+- **A method's `run.sh` runs from the driver's checkout** (`HARNESS_METHODS_DIR`), not the
+  arm's tree; only what the method itself calls inside the tree (`run-batch.sh`, say) comes
+  from the arm. A fix to a method therefore has to be in the driver's copy to take effect,
+  whatever the arm pins.
+
 A **base arm** differs by a commit of the measured repository instead.
 `new-experiment.sh --base-arms <label>=<ref>,…` (or `experiment.json`
 `base_arms: {<label>: <full sha>}`) resolves each ref in the measured repository's **own
@@ -261,6 +390,19 @@ and `base_arms` together are refused by `new-experiment.sh` and by `run.sh`
 (`harness_experiment_arm_kind`), and `base_arms` with `programs` is refused too — a program
 pins its own `base`. The scorecard compares base arms exactly as agentTooling arms. The row
 records `arm_kind: "base"`, `arm`, and `base` as the arm's commit (`agent_tooling` empty).
+
+A base-arm experiment can also give each arm its own **spec**: `new-experiment.sh
+--base-arms … --arm-spec-path <label>=<path>,…` (`experiment.json` `arm_spec_paths`). The
+cell then reads the spec from its own worktree at the arm's path — `SPEC_TREE` is the cell's
+tree, `SPEC_PATH` the arm's path, and no shared spec worktree is added — and the prompts say
+the spec is never to be edited (`@@SPEC_PROVENANCE@@` in the method templates, `@@SPEC_RULE@@`
+in the isolation paragraph, both filled by `harness_build_isolation` from
+`HARNESS_SPEC_SOURCE`). This is how two shapes of a repo's spec (a monolith against a split)
+are compared; without it every arm reads the fixture's one spec. One path per base arm,
+relative, no `..`, a file at that arm's commit; refused without `--base-arms`, and `run.sh`
+refuses the same shapes in a hand-edited `experiment.json`. Without it the prompts are byte
+for byte what they were (`tests/arm-spec.sh`). The `null` method and the program templates
+keep their spec lines; program cells cannot have base arms.
 
 ## In a Claude Code cloud container
 
@@ -288,18 +430,30 @@ Sequential; each stage's start, end and outcome are written to
 `<experiment-dir>/state/<branch>.json`.
 
 1. **setup** — fetch, resolve `base` (a base that is a prep commit on a branch no clone has
-   fetched is fetched by sha once — `harness_resolve_commit`, which creates no ref — before
-   the run dies on it), add the worktree at `base` (a base arm's commit for a base arm), pin the arm's agentTooling version
+   fetched is looked for, in order and once each, by `harness_resolve_commit` — which creates
+   no local branch: a fetch of that sha; one `--unshallow` of a shallow clone (a cloud clone
+   is 50 commits deep); one fetch of the forge's `refs/pull/*/head` (listed, fetched by name
+   into `FETCH_HEAD`) — before the run dies naming the sha and what was tried. The same
+   resolver serves the spec commit and the agentTooling arm ref and pin in `check-fixture.sh`,
+   `new-experiment.sh` and `harness_pin_agent_tooling`, and `check-fixture.sh` warns when a
+   pin was reachable only through a PR head), add the worktree at `base` (a base arm's commit for a base arm), pin the arm's agentTooling version
    when the experiment names one ("Arms" above), run `fixture.setup`, run the gate and
    require `gate.green` (a red gate stops the run: the fixture is broken, not the
-   method), add the read-only spec worktree, write the manifest skeleton with
+   method), add the read-only spec worktree (not for an arm-spec cell, whose spec is in its own tree; it also requires the arm's `spec_path` to exist there), write the manifest skeleton with
    `session_window.from` open.
 2. **brief** — fill `methods/<m>/template.md` into `<tree>/plans/features/<slug>/BRIEF.md`.
    Generated from fixture + method only.
 3. **method** — `methods/<m>/run.sh`; on exit 2 wait out the usage limit and retry once;
    on exit 1 record `method_failed` and skip to capture. On success verify the PR
    exists (opening it when the method pushed commits and opened none — "The forge seam"),
-   close the manifest window, commit that one edit, push.
+   close the manifest window, commit that one edit, push — unless the method's own close
+   already stamped the window's `to` (a plans arm's `feature-close.sh` does), when the
+   bound is left as written and one informational line says so. Then, when the accept stage is
+   on, **accept at PR-open**: the fixture's `accept/accept.py <tree>` on the tree the
+   method handed over, before the review touches it, recorded as `accept_pr_open_pass` /
+   `accept_pr_open_lines` (log `<branch>-accept-pr-open.txt`) — the correctness the method
+   reached alone, which the accept stage after rework cannot show. It is part of the PR
+   step, so a `no-pr` resume (`--from review`) measures it too.
 4. **review** — a fresh `claude` in the tree with `templates/review-preamble.md` plus the
    fixture's `review-brief.md`: fix what is local, escalate the rest, write
    `plans/features/<slug>/review/findings.md`, gate, commit `review: <fixture>`, push.
@@ -307,8 +461,9 @@ Sequential; each stage's start, end and outcome are written to
 5. **rework** — only when `findings.md` escalates something. One `claude` with
    `templates/rework-preamble.md` plus that file and nothing else. Manifest
    `<slug>-rework`.
-6. **accept** — the fixture's `accept/accept.py <tree>`; then the gate once more, whose
-   counts become the checklist-green counts.
+6. **accept** — the fixture's `accept/accept.py <tree>` on the reviewed and reworked tree
+   (`accept_pass` / `accept_lines`); then the gate once more, whose counts become the
+   checklist-green counts.
 7. **capture** — `analysis/capture_planning.py` then `analysis/report.py` for each of the
    three slugs, **run from the driver's own `analysis/`** (measuring is the driver's,
    building is the arm's: an arm's vendored copy, from a historical base, has no rates for
@@ -443,15 +598,18 @@ The only thing the harness knows about a method:
   name stands for the program cell's method in its rows, branches and `--only`), and `program.json` may not pin
   `orchestrator` or `null` on a feature (checked wherever it is read). The one
   exception to "never edit `agentTooling/`": a program cell's orchestration record lives in
-  the pinned copy inside the program worktree
-  (`agentTooling/self/orchestrations/<PSLUG>/README.md`) and is written there, by the
-  orchestrator and the harness, on the program branch.
+  the program worktree (`plans/orchestrations/<PSLUG>/README.md`, written there by the pinned
+  copy's `orchestration-start.sh` — a record lives in the repo that ran it,
+  `../self/features/orchestration-records-in-repo/`; an arm pinned to an older agentTooling
+  wrote `agentTooling/self/orchestrations/<PSLUG>/README.md` instead, which
+  `program-stages.sh`'s `program_record_root` reads when only that exists) and is written
+  there, by the orchestrator and the harness, on the program branch.
 
 ## File shapes
 
 ### `fixture.json` — `plans/experiments/fixtures/<name>/fixture.json`
 
-`{ name, repo?{remote?, url?, path?}, base, spec{url?, commit, path, sections[], repo?}, setup[], gate{command, green, minutes}, branch_stem, diff_lines }`
+`{ name, repo?{remote?, url?, path?}, base, spec{url?, commit, path, sections[], repo?}, setup[], gate{command, green, minutes}, branch_stem, diff_lines, reference?{commit} }`
 
 - `name` — the fixture directory's own name; the spec worktree is `<spec checkout>-fx-<name>`.
 - `repo` — optional, and normally absent: the fixture's repository is the consumer, the
@@ -471,7 +629,12 @@ The only thing the harness knows about a method:
   present, it names an external spec repository, resolved to a checkout ("Repositories
   by URL") and only read (`spec.repo` the optional legacy path hint).
   `spec.sections` are the sections the brief tells the delegate to read.
-- `setup[]` — shell commands run inside the fresh worktree before the gate rehearsal.
+- `setup[]` — shell commands run inside the fresh worktree before the gate rehearsal;
+  also rerun by a no-PR resume that re-adds the worktree, and in `check-fixture.sh`'s
+  reference worktree. Expected to be re-runnable.
+- `reference` — optional, `{commit}`: a commit of the consumer where the feature is built
+  right, on which `check-fixture.sh` requires `accept/accept.py` to pass ("Validating the
+  probe" above). Nothing in `run.sh` reads it.
 - `gate.command` — run from the worktree; `gate.green` is the substring the harness
   greps the gate's last lines for; `gate.minutes` is quoted into briefs.
 - `branch_stem` — the branch is `<branch_stem><Method><Arm><n>` (§4 of `SPEC.md`).
@@ -479,7 +642,7 @@ The only thing the harness knows about a method:
 
 ### `experiment.json` — `plans/experiments/<experiment>/experiment.json`
 
-`{ name, fixtures[], methods[], programs[]?, repeats, stages{review, rework, accept}, noise_band_pct, prediction, compare_to, agent_tooling{<label>: <sha>}?, base_arms{<label>: <sha>}?, branch_stem_override{<fixture-or-program>: <stem>}? }`
+`{ name, fixtures[], methods[], programs[]?, repeats, stages{review, rework, accept}, noise_band_pct, prediction, compare_to, agent_tooling{<label>: <sha>}?, base_arms{<label>: <sha>}?, arm_spec_paths{<label>: <path>}?, branch_stem_override{<fixture-or-program>: <stem>}? }`
 
 `prediction` is required and is copied into the scorecard before any run — the
 checklist-first rule from `EXPERIMENTS.md`. `stages` turns off a stage for the whole
@@ -491,6 +654,9 @@ copy, with an empty `arm` in its row.
 `base_arms` is optional and exclusive with `agent_tooling`: the arms, each a bare-letters
 label naming a full commit id of the measured repository ("Arms" above); each cell's
 worktree is cut there instead of at the fixture's `base`. `programs` cannot be combined with it.
+`arm_spec_paths` is optional and only with `base_arms`: one path per base arm, relative, no
+`..`, a file at that arm's commit. Each such cell reads its spec from its own tree at that path
+("Arms" above); absent, every cell reads the fixture's `spec.path` from the shared spec worktree.
 `programs` is optional: the names of programs (`program.json`, below) to run as program
 cells, one per program × arm × repeat; at least one of `fixtures` / `programs` is
 non-empty, a program's name is never a fixture's, and `repeats`, `agent_tooling`, `stages`
@@ -536,18 +702,31 @@ the record of (`HARNESS_ALLOW_EXISTING_BRANCH=1` overrides, and should be rare).
 
 ### The ledger row — one JSON object per line in `results.jsonl`
 
-`{ experiment, fixture, method, repeat, arm, agent_tooling, arm_kind, branch, slug, pr_url, base, spec_commit, model, effort, t_setup_start, t_method_start, t_pr_open, t_review_end, t_rework_end, t_green, cost_method_usd, cost_method_reported_usd, cost_review_usd, cost_rework_usd, cost_green_usd, cost_lost_usd, read_files_before_edit, read_bytes_before_edit, readme_bytes_read, review_fixed, review_escalated, rework_ran, gate_counts_pr_open, gate_counts_green, accept_pass, accept_lines[], method_failed, pr_opened_by_harness, interventions[{t, what}], harness_version }`
+`{ experiment, fixture, method, repeat, arm, agent_tooling, arm_kind, spec_source, spec_path, branch, slug, pr_url, base, spec_commit, model, review_model, effort, review_effort, t_setup_start, t_method_start, t_pr_open, t_review_end, t_rework_end, t_green, cost_method_usd, cost_method_reported_usd, cost_review_usd, cost_rework_usd, cost_green_usd, cost_lost_usd, read_files_before_edit, read_bytes_before_edit, readme_bytes_read, review_fixed, review_escalated, rework_ran, gate_counts_pr_open, gate_counts_green, accept_pass, accept_lines[], accept_pr_open_pass, accept_pr_open_lines[], method_failed, pr_opened_by_harness, interventions[{t, what}], harness_version }`
 
-`model` is `HARNESS_MODEL`; `effort` is `HARNESS_EFFORT` as a string (`"low"` … `"max"`), or
-`null` when it was unset and the CLI's default applied.
+`model` is `HARNESS_MODEL`, the build model; `review_model` is `HARNESS_REVIEW_MODEL` as
+resolved (equal to `model` when it was unset; absent on rows written before it existed); `effort` is `HARNESS_EFFORT` as a string (`"low"` … `"max"`), or
+`null` when it was unset and the CLI's default applied; `review_effort` is
+`HARNESS_REVIEW_EFFORT` as resolved (equal to `effort` when it was unset, so `null` when
+both were; absent on rows written before it existed).
 
 Every `t_*` is UTC with a `Z`, the convention `analysis/README.md` makes load-bearing.
+`accept_pass` / `accept_lines` are the probe on the green tree (after review and rework);
+`accept_pr_open_pass` / `accept_pr_open_lines` the same probe on the tree the method opened
+its PR with — `true`/`false` and the probe's lines, or `null` when not measured (the accept
+stage off, the method failed, a row written before the field existed). Program rows'
+features carry neither.
 `cost_green_usd` is the sum of `cost_method_usd`, `cost_review_usd` and `cost_rework_usd`. `cost_lost_usd` is spend from a killed attempt's orphaned open manifest window, priced when the stage re-runs and kept out of every method figure. `cost_method_reported_usd` is the `total_cost_usd` the method's first `claude -p` session reported for itself, kept beside the captured figure as a cross-check: captured below 90% of it (or zero against a non-zero report) makes the capture stage warn. A `planning.json` stamped before its slug's current manifest window opened is a stale freeze from an earlier attempt — a reused branch, or a stage a `--from` resume re-ran — and is rebuilt with `--recapture`. `gate_counts_*` are whatever the
 gate printed, as a string. `arm` is the arm's label and `agent_tooling` the upstream
 commit its vendored copy was pinned to — both empty for a run with no pin. For a base arm
 `agent_tooling` is empty and `base` is the arm's commit (the fixture's `base` otherwise).
 `arm_kind` is `"agent_tooling"`, `"base"`, or `""` with no arm; it is absent on older rows —
 read absent as `"agent_tooling"` when `agent_tooling` is non-empty, else `""`.
+`spec_source` is `"shared"` (the spec read from the shared spec worktree) or `"arm"` (read from
+the cell's own tree); `spec_path` is the path read — the fixture's `spec.path`, or the arm's
+`arm_spec_paths` entry. Both are on every row and in the state file, and absent on older rows:
+read absent as `"shared"` and the fixture's `spec.path`. On an `"arm"` row `spec_commit` is
+still the fixture's `spec.commit`, which that cell did not read: its spec is at `base`.
 `read_files_before_edit`, `read_bytes_before_edit` and `readme_bytes_read` are integers, or
 `null` when not measured (no transcript in the window; absent on older rows). Their
 definitions are `reading_metrics.py`'s docstring: the transcripts under the worktree's own
@@ -579,18 +758,20 @@ ordinary cell and reads exactly as above; `scorecard.py` splits the two on `kind
 `arm_kind` nor the reading fields (a program feature's capture does not run the extractor),
 and a program cell cannot run under base arms.
 
-`{ kind: "program", experiment, program, method: "orchestrator", repeat, arm, agent_tooling, branch, slug, base, model, effort, orchestrator_sessions[], orchestration_record, t_setup_start, t_method_start, t_method_end, cost_overhead_usd, cost_group_usd, cost_group_green_usd, overhead_pct, features_count, features_pr_open, features_green, method_failed, record_report{group_total_usd, overhead_pct, unpriced_count}|null, features[{ position, fixture, depends_on_previous, method, branch, slug, session, pr_url, pr_base, t_implementer_start, t_implementer_end, brief_written, dependency_ok, cost_method_usd, cost_review_usd, cost_rework_usd, cost_green_usd, unpriced_reason, review_fixed, review_escalated, rework_ran, accept_pass, accept_lines[], gate_counts_green, green, method_failed }], interventions[{t, what}], harness_version }`
+`{ kind: "program", experiment, program, method: "orchestrator", repeat, arm, agent_tooling, branch, slug, base, model, review_model, effort, review_effort, orchestrator_sessions[], orchestration_record, t_setup_start, t_method_start, t_method_end, cost_overhead_usd, cost_group_usd, cost_group_green_usd, overhead_pct, features_count, features_pr_open, features_green, method_failed, record_report{group_total_usd, overhead_pct, unpriced_count}|null, features[{ position, fixture, depends_on_previous, method, branch, slug, session, pr_url, pr_base, t_implementer_start, t_implementer_end, brief_written, dependency_ok, cost_method_usd, cost_review_usd, cost_rework_usd, cost_green_usd, unpriced_reason, review_fixed, review_escalated, rework_ran, accept_pass, accept_lines[], gate_counts_green, green, method_failed }], interventions[{t, what}], harness_version }`
 
 - `program` — the program's name; with `arm` and `repeat` it identifies a program cell,
   as `fixture`, `method`, `arm` and `repeat` do an ordinary one. `method` is always
   `"orchestrator"`. `experiment`, `repeat`, `arm`, `agent_tooling`, `base`, `model`, `effort`,
-  `t_setup_start`, `interventions[]` and `harness_version` mean what they mean on a cell
+  `review_effort`, `t_setup_start`, `interventions[]` and `harness_version` mean what they mean on a cell
   row; `t_method_start` / `t_method_end` bracket the orchestrator's run.
 - `branch` / `slug` — the program's **own** branch and its slug: the orchestrator's tree,
   carrying the arm pin and the orchestration record. `orchestrator_sessions[]` — the
   orchestrator's session ids, in order, each distinct id once (more than one only if a
   `--resume` reported a different id). `orchestration_record` — the record's path
-  relative to that tree, always `agentTooling/self/orchestrations/<slug>/README.md`.
+  relative to that tree: `plans/orchestrations/<slug>/README.md`, or
+  `agentTooling/self/orchestrations/<slug>/README.md` for an arm on an agentTooling from
+  before records moved into the repo.
 - `cost_overhead_usd` — the orchestrator's own cost. `cost_group_usd` =
   `cost_overhead_usd` + Σ `features[].cost_method_usd`: the group to PR-open.
   `cost_group_green_usd` adds every feature's review and rework cost: the group to green.

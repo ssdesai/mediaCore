@@ -25,7 +25,8 @@ set -uo pipefail
 #       with the reason for no path, a missing path and a file with no total), the overhead
 #       line, the group total (priced features + overhead), the overhead percentage and the
 #       count of unpriced features, in report.md and in report.json alike; an uncaptured
-#       overhead reads `unpriced: not captured`.
+#       overhead reads `unpriced: not captured`. (The consuming-repo layout is
+#       orchestration-records-in-repo.sh R2's.)
 # No model, no network.
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -39,11 +40,20 @@ export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/test
 unset CLAUDE_CODE_SESSION_ID
 
 mkdir -p "$AT/analysis" "$AT/templates/plans/features" "$AT/self/features" "$FAKE_HOME/.claude/projects"
+mkdir -p "$AT/hooks" && cp "$HERE/hooks/shared_rules.py" "$AT/hooks/"  # roots.py imports it
 for f in pricing.py litellm_prices.py rates_history.json roots.py transcript.py routing.py manifest.py capture_planning.py report.py orchestration_capture.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f"
 done
+# capture_planning.py reads the brief header from ../hooks/brief_header.py (README.md).
+mkdir -p "$AT/hooks" && cp "$HERE/hooks/brief_header.py" "$AT/hooks/brief_header.py"
 cp "$HERE/templates/plans/features/TEMPLATE.md" "$AT/templates/plans/features/TEMPLATE.md"
-cp "$HERE/orchestration-start.sh" "$HERE/orchestration-capture.sh" "$AT/"
+# plan-runner-roots.sh too: the start's reverse guard reads manifests through it
+# (self/features/orchestrator-role-guard/)
+cp "$HERE/orchestration-start.sh" "$HERE/orchestration-capture.sh" "$HERE/plan-runner-roots.sh" "$AT/"
+# The start decides the profile through env-profile.sh; pinned local here, since the cloud
+# branch rule is orchestrator-role.sh's B (self/features/orchestration-start-branch-v2/)
+cp "$HERE/env-profile.sh" "$AT/"; cp "$HERE/hooks/env_profile.py" "$AT/hooks/"
+export AGENTTOOLING_PROFILE=local
 # A real checkout, so `agent_tooling` has a commit to name.
 git -C "$AT" init -q
 git -C "$AT" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init
@@ -56,8 +66,10 @@ ok()   { echo "  ok    $1"; }
 fail() { echo "  FAIL  $1"; fails=$((fails + 1)); }
 check() { if eval "$2"; then ok "$1"; else fail "$1"; fi; }
 
-MANIFEST=(python3 -B "$AT/analysis/manifest.py")
-REPORT=(python3 -B "$AT/analysis/report.py")
+# The fixture is agentTooling's own checkout, so every record call is `--self`; the
+# consuming-repo mode is self/tests/orchestration-records-in-repo.sh
+MANIFEST=(python3 -B "$AT/analysis/manifest.py" --self)
+REPORT=(python3 -B "$AT/analysis/report.py" --self)
 SLUG="wave-one"
 SESSION="oooooooo-0000-0000-0000-000000000001"
 RECORD="$AT/self/orchestrations/$SLUG/README.md"
@@ -73,7 +85,7 @@ print(eval(sys.argv[2]))' "$1" "$2"
 json_get() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' "$1" "$2"; }
 
 echo "== S1 start =="
-out="$("$AT/orchestration-start.sh" "$SLUG" --session "$SESSION" 2>&1)"
+out="$("$AT/orchestration-start.sh" --self "$SLUG" --session "$SESSION" 2>&1)"
 check "S1 start exits 0 and writes the record" '[[ -f "$RECORD" ]]'
 check "S1 fence slug and session" '[[ "$(fence_get "$RECORD" "d[\"slug\"]+\" \"+d[\"session\"]")" == "$SLUG $SESSION" ]]'
 check "S1 agent_tooling is the full HEAD" '[[ "$(fence_get "$RECORD" "d[\"agent_tooling\"]")" == "$HEAD_ID" ]]'
@@ -83,11 +95,11 @@ check "S1 prose: orchestrator commits only its record" 'grep -q "commits nothing
 
 echo "== S2 start refusals =="
 before="$(find "$AT/self/orchestrations" | sort)"
-"$AT/orchestration-start.sh" "Bad_Slug" --session "$SESSION" >/dev/null 2>&1; rc=$?
+"$AT/orchestration-start.sh" --self "Bad_Slug" --session "$SESSION" >/dev/null 2>&1; rc=$?
 check "S2 a bad slug is refused (1)" '[[ $rc -eq 1 ]]'
-"$AT/orchestration-start.sh" "$SLUG" --session "$SESSION" >/dev/null 2>&1; rc=$?
+"$AT/orchestration-start.sh" --self "$SLUG" --session "$SESSION" >/dev/null 2>&1; rc=$?
 check "S2 an existing record is refused (1)" '[[ $rc -eq 1 ]]'
-"$AT/orchestration-start.sh" "no-session" >/dev/null 2>&1; rc=$?
+"$AT/orchestration-start.sh" --self "no-session" >/dev/null 2>&1; rc=$?
 check "S2 no session id is refused (1)" '[[ $rc -eq 1 ]]'
 check "S2 nothing was written by a refusal" '[[ "$(find "$AT/self/orchestrations" | sort)" == "$before" ]]'
 "$AT/orchestration-start.sh" >/dev/null 2>&1; rc=$?
@@ -151,7 +163,7 @@ subagent_line "$SESSION" a0123456789abcdef /w main s1 "$MODEL" 2026-07-02T11:00:
 # The record's `from` is the clock; move it into the fixture's day so the window holds m1 and m2.
 sed -i.bak 's/"from": "[^"]*"/"from": "2026-07-02T09:00:00Z"/' "$RECORD" && rm -f "$RECORD.bak"
 "${MANIFEST[@]}" --orchestration "$SLUG" set-window-to 2026-07-02T12:00:00Z >/dev/null
-"$AT/orchestration-capture.sh" "$SLUG" >"$TMP/capture.out" 2>&1; rc=$?
+"$AT/orchestration-capture.sh" --self "$SLUG" >"$TMP/capture.out" 2>&1; rc=$?
 check "S5 capture exits 0 and writes planning.json" '[[ $rc -eq 0 && -f "$FOLDER/planning.json" ]]'
 EXPECT="$(python3 -c '
 import sys
@@ -166,8 +178,8 @@ check "S5 the subagent is priced as a subagent" '[[ "$(json_get "$FOLDER/plannin
 check "S5 two filings are named in warnings" '[[ "$(json_get "$FOLDER/planning.json" "len(d[\"warnings\"])")" == "1" ]]'
 check "S5 the shape carries slug, captured_at, rates_source, session" '[[ "$(json_get "$FOLDER/planning.json" "sorted(k for k in (\"slug\",\"captured_at\",\"rates_source\",\"sessions\",\"priced\",\"cost_usd\",\"duration_s\") if k in d) == sorted([\"slug\",\"captured_at\",\"rates_source\",\"sessions\",\"priced\",\"cost_usd\",\"duration_s\"])")" == "True" ]]'
 "${MANIFEST[@]}" --orchestration "$SLUG" add-feature repo=x slug=y >/dev/null
-"$AT/orchestration-start.sh" ghost --session "ffffffff-0000-0000-0000-000000000009" >/dev/null 2>&1
-"$AT/orchestration-capture.sh" ghost >/dev/null 2>&1; rc=$?
+"$AT/orchestration-start.sh" --self ghost --session "ffffffff-0000-0000-0000-000000000009" >/dev/null 2>&1
+"$AT/orchestration-capture.sh" --self ghost >/dev/null 2>&1; rc=$?
 check "S5 a session with no transcript is refused (1)" '[[ $rc -eq 1 && ! -e "$AT/self/orchestrations/ghost/planning.json" ]]'
 
 echo "== S6 group report =="

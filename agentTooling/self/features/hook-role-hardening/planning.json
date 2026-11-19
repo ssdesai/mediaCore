@@ -1,0 +1,328 @@
+{
+  "slug": "hook-role-hardening",
+  "captured_at": "2026-11-12T02:44:47.636394+00:00",
+  "manifest_branches": [
+    "claude/hook-role-hardening"
+  ],
+  "manifest_subagents": [
+    "a49ee2b0d3a0c9acc",
+    "a74d4ff76d3ba4bbb",
+    "a7501f987056131e8",
+    "a7955c22019472443",
+    "a7ac6ad56e21037f0",
+    "abbcbf89c91144112"
+  ],
+  "sessions": [],
+  "subagents": [
+    {
+      "agent_id": "a49ee2b0d3a0c9acc",
+      "parent_session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "date": "2026-11-11",
+      "started_at": "2026-11-11T22:37:35.688000+00:00",
+      "ended_at": "2026-11-11T23:06:25.055000+00:00",
+      "duration_s": 1729,
+      "selected_by": "pinned",
+      "cross_repo": true
+    },
+    {
+      "agent_id": "a74d4ff76d3ba4bbb",
+      "parent_session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "date": "2026-11-11",
+      "started_at": "2026-11-11T16:21:58.416000+00:00",
+      "ended_at": "2026-11-11T16:34:34.257000+00:00",
+      "duration_s": 755,
+      "selected_by": "pinned",
+      "cross_repo": true
+    },
+    {
+      "agent_id": "a7501f987056131e8",
+      "parent_session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "date": "2026-11-11",
+      "started_at": "2026-11-11T23:40:12.529000+00:00",
+      "ended_at": "2026-11-12T00:05:35.573000+00:00",
+      "duration_s": 1523,
+      "selected_by": "pinned",
+      "cross_repo": true
+    },
+    {
+      "agent_id": "a7955c22019472443",
+      "parent_session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "date": "2026-11-11",
+      "started_at": "2026-11-11T14:26:28.865000+00:00",
+      "ended_at": "2026-11-12T02:44:39.826000+00:00",
+      "duration_s": 44290,
+      "selected_by": "pinned",
+      "cross_repo": true
+    },
+    {
+      "agent_id": "a7ac6ad56e21037f0",
+      "parent_session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "date": "2026-11-12",
+      "started_at": "2026-11-12T00:32:49.050000+00:00",
+      "ended_at": "2026-11-12T00:52:03.790000+00:00",
+      "duration_s": 1154,
+      "selected_by": "pinned",
+      "cross_repo": true
+    },
+    {
+      "agent_id": "abbcbf89c91144112",
+      "parent_session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "date": "2026-11-11",
+      "started_at": "2026-11-11T15:16:32.201000+00:00",
+      "ended_at": "2026-11-11T15:29:50.643000+00:00",
+      "duration_s": 798,
+      "selected_by": "pinned",
+      "cross_repo": true
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "13e7b30d-fc65-4cf5-9526-0d47638c4a08",
+    "44ab45b4-fd8e-41c4-a1b9-94b195cd8b78",
+    "489fc0df-dd3d-440c-a4f5-43a6b801fa75",
+    "5d25b685-51de-445d-beb5-a0ff520a746b",
+    "733c7890-65ca-4089-8b40-2c9e722541ff",
+    "75a9e9df-0a77-4edb-95d1-7b42f3f92423",
+    "795554ca-aa14-4298-8ebb-435eaeb3d1bb",
+    "8a131145-5df0-44af-8626-98f9321f266b",
+    "8cdeb739-e5ba-45be-a370-c01755b8b522",
+    "d42856bf-1f54-41f1-9dd5-5f55c994ca77",
+    "ffcb5c01-817a-4614-bcbf-e5ba76814615"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "agent_id": "a49ee2b0d3a0c9acc",
+      "model": "claude-fable-5-2",
+      "is_sidechain": true,
+      "date": "2026-11-11",
+      "duration_s": 1729,
+      "tokens": {
+        "input": 110,
+        "output": 82788,
+        "cache_read": 10533526,
+        "cache_creation_5m": 539404,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 10.8131452,
+      "rates_applied": {
+        "model": "claude-fable-5-2",
+        "input": 8,
+        "output": 40,
+        "cache_read": 0.2,
+        "cache_creation_5m": 10,
+        "cache_creation_1h": 16,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm-live"
+      }
+    },
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "agent_id": "a74d4ff76d3ba4bbb",
+      "model": "claude-fable-5-2",
+      "is_sidechain": true,
+      "date": "2026-11-11",
+      "duration_s": 755,
+      "tokens": {
+        "input": 60,
+        "output": 51762,
+        "cache_read": 4953584,
+        "cache_creation_5m": 234290,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 5.4045768,
+      "rates_applied": {
+        "model": "claude-fable-5-2",
+        "input": 8,
+        "output": 40,
+        "cache_read": 0.2,
+        "cache_creation_5m": 10,
+        "cache_creation_1h": 16,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm-live"
+      }
+    },
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "agent_id": "a7501f987056131e8",
+      "model": "claude-fable-5-2",
+      "is_sidechain": true,
+      "date": "2026-11-11",
+      "duration_s": 1523,
+      "tokens": {
+        "input": 80,
+        "output": 69264,
+        "cache_read": 7371647,
+        "cache_creation_5m": 252861,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 6.7741394,
+      "rates_applied": {
+        "model": "claude-fable-5-2",
+        "input": 8,
+        "output": 40,
+        "cache_read": 0.2,
+        "cache_creation_5m": 10,
+        "cache_creation_1h": 16,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm-live"
+      }
+    },
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "agent_id": "a7501f987056131e8",
+      "model": "claude-opus-4-8",
+      "is_sidechain": true,
+      "date": "2026-11-11",
+      "duration_s": 1523,
+      "tokens": {
+        "input": 24,
+        "output": 12689,
+        "cache_read": 2708410,
+        "cache_creation_5m": 14584,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 1.7627,
+      "rates_applied": {
+        "model": "claude-opus-4-8",
+        "input": 5,
+        "output": 25,
+        "cache_read": 0.5,
+        "cache_creation_5m": 6.25,
+        "cache_creation_1h": 10,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "agent_id": "a7955c22019472443",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-11",
+      "duration_s": 44290,
+      "tokens": {
+        "input": 784,
+        "output": 370341,
+        "cache_read": 173935716,
+        "cache_creation_5m": 18223911,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 133.31665420000002,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "agent_id": "a7ac6ad56e21037f0",
+      "model": "claude-fable-5-2",
+      "is_sidechain": true,
+      "date": "2026-11-12",
+      "duration_s": 1154,
+      "tokens": {
+        "input": 26,
+        "output": 34971,
+        "cache_read": 1480821,
+        "cache_creation_5m": 156344,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 3.2586522,
+      "rates_applied": {
+        "model": "claude-fable-5-2",
+        "input": 8,
+        "output": 40,
+        "cache_read": 0.2,
+        "cache_creation_5m": 10,
+        "cache_creation_1h": 16,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm-live"
+      }
+    },
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "agent_id": "a7ac6ad56e21037f0",
+      "model": "claude-opus-4-8",
+      "is_sidechain": true,
+      "date": "2026-11-12",
+      "duration_s": 1154,
+      "tokens": {
+        "input": 44,
+        "output": 35053,
+        "cache_read": 3426487,
+        "cache_creation_5m": 54529,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 2.93059475,
+      "rates_applied": {
+        "model": "claude-opus-4-8",
+        "input": 5,
+        "output": 25,
+        "cache_read": 0.5,
+        "cache_creation_5m": 6.25,
+        "cache_creation_1h": 10,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "agent_id": "abbcbf89c91144112",
+      "model": "claude-fable-5-2",
+      "is_sidechain": true,
+      "date": "2026-11-11",
+      "duration_s": 798,
+      "tokens": {
+        "input": 50,
+        "output": 71833,
+        "cache_read": 4097611,
+        "cache_creation_5m": 238822,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 6.0814622,
+      "rates_applied": {
+        "model": "claude-fable-5-2",
+        "input": 8,
+        "output": 40,
+        "cache_read": 0.2,
+        "cache_creation_5m": 10,
+        "cache_creation_1h": 16,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm-live"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 0.0,
+    "sidechain": 170.34192475,
+    "subagents": 170.34192475,
+    "total": 170.34192475,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 0,
+    "subagents": 50249,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "priced from LiteLLM live (litellm-live), not from analysis/rates_history.json: claude-fable-5-2 \u2014 refresh the history with analysis/refresh_rates.py in an agentTooling self feature, then capture_planning.py --recapture this feature"
+  ]
+}

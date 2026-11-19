@@ -1,0 +1,9 @@
+write: /tmp/plan-capture.bvpezK/scratch/harness.py
+write: /tmp/plan-capture.bvpezK/scratch/cases1.json
+write: /tmp/plan-capture.bvpezK/scratch/bashcheck.sh
+write: /tmp/plan-capture.bvpezK/scratch/bashcheck2.sh
+write: /tmp/plan-capture.bvpezK/scratch/cases2.json
+write: /tmp/plan-capture.bvpezK/scratch/malformed.py
+write: /home/user/agentTooling/self/features/orchestration-record-fixes/audit-report.md
+edit: /home/user/agentTooling/self/features/orchestration-record-fixes/audit-report.md
+edit: /home/user/agentTooling/self/features/orchestration-record-fixes/audit-report.md

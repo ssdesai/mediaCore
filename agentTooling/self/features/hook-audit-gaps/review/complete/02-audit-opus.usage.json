@@ -1,0 +1,81 @@
+{
+  "plan": "02-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "bfdee4ec-3822-48e0-846f-bd597b2f1f8d",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 40,
+  "duration_ms": 416233,
+  "total_cost_usd": 2.6381949000000002,
+  "usage": {
+    "input_tokens": 56,
+    "cache_creation_input_tokens": 143575,
+    "cache_read_input_tokens": 3361709,
+    "output_tokens": 40831
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 2836,
+      "outputTokens": 251,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0004091,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 227,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 56,
+      "outputTokens": 40831,
+      "cacheReadInputTokens": 3361709,
+      "cacheCreationInputTokens": 143575,
+      "webSearchRequests": 0,
+      "costUSD": 2.6377858,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 18373,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 143575,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 1,
+  "tool_counts": {
+    "Bash": 20,
+    "Edit": 4,
+    "Read": 4,
+    "Write": 10
+  },
+  "files_edited": [
+    "/tmp/plan-capture.1N7PKN/scratch/c1.py",
+    "/tmp/plan-capture.1N7PKN/scratch/c2.py",
+    "/tmp/plan-capture.1N7PKN/scratch/c3.py",
+    "/tmp/plan-capture.1N7PKN/scratch/c4.py",
+    "/tmp/plan-capture.1N7PKN/scratch/c5.py",
+    "/tmp/plan-capture.1N7PKN/scratch/drive.py",
+    "/tmp/plan-capture.1N7PKN/scratch/fakegit.sh",
+    "/tmp/plan-capture.1N7PKN/scratch/oracle.py",
+    "/tmp/plan-capture.1N7PKN/scratch/setup.sh",
+    "self/features/hook-audit-gaps/audit-report.md"
+  ],
+  "edit_count": 14,
+  "attempts": [
+    {
+      "session_id": "bfdee4ec-3822-48e0-846f-bd597b2f1f8d",
+      "outcome": "complete",
+      "total_cost_usd": 2.6381949000000002,
+      "num_turns": 40,
+      "duration_ms": 416233
+    }
+  ]
+}

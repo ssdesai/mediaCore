@@ -1,0 +1,361 @@
+{
+  "slug": "harness-long-runs",
+  "generated_at": "2026-11-04T22:48:51.291657+00:00",
+  "cost": {
+    "method": "plans",
+    "planning": 4.8055258,
+    "implementer": 0.0,
+    "build": 1.5112777,
+    "verify": 0.35471590000000003,
+    "review": 2.0734034,
+    "total": 8.744922800000001,
+    "planning_pct": 54.95218093863561,
+    "build_pct": 17.281772916280058,
+    "verify_pct": 4.056249644650951,
+    "review_pct": 23.70979650043337,
+    "cost_per_plan": 1.2492746857142858,
+    "cost_per_file": 0.6246373428571429,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "plans",
+    "planning_sessions_s": 3486,
+    "planning_subagents_s": 398,
+    "planning_s": 3884,
+    "implementer_s": null,
+    "build_s": 326.356,
+    "verify_s": 60.6,
+    "review_s": 229.39000000000001,
+    "executor_s": 616.346,
+    "total_s": 4500.346,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-04T22:11:02+00:00",
+      "last_at": "2026-11-04T22:48:50+00:00",
+      "batch_span_s": 2268.0,
+      "batch_runs": 1,
+      "batch_runs_s": 1192.0,
+      "passes_s": {
+        "auto": 332.0,
+        "verify": 62.0,
+        "review": 234.0
+      },
+      "gates_s": 640.0,
+      "gate_runs": 1,
+      "plans_s": 628.0,
+      "plan_runs": 7,
+      "pr_opened_at": "2026-11-04T22:48:50+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/125"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 1.5112777,
+      "build_min": 5.439266666666667,
+      "verify_usd": 0.35471590000000003,
+      "verify_min": 1.01,
+      "review_usd": 1.4567848,
+      "review_min": 2.5944833333333337,
+      "review_plan": "06-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/06-review-opus.md"
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.6166186000000001,
+      "review_min": 1.2286833333333333,
+      "review_plan": "07-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 1.0600535999999998,
+    "sessions": 3.7454722
+  },
+  "cold_start_tax_tokens": 422037,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 2,
+      "total_turns": 53,
+      "total_cost_usd": 2.0734034,
+      "total_duration_s": 229.39000000000001,
+      "flags": []
+    },
+    {
+      "model": "sonnet",
+      "plan_count": 5,
+      "total_turns": 84,
+      "total_cost_usd": 1.8659936,
+      "total_duration_s": 386.956,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-tests-long-runs-sonnet",
+      "edit_count": 7,
+      "files_edited": 3,
+      "churn_ratio": 2.3333333333333335
+    },
+    {
+      "plan": "02-run-cells-budget-sonnet",
+      "edit_count": 7,
+      "files_edited": 2,
+      "churn_ratio": 3.5
+    },
+    {
+      "plan": "03-run-reset-lock-sonnet",
+      "edit_count": 13,
+      "files_edited": 3,
+      "churn_ratio": 4.333333333333333
+    },
+    {
+      "plan": "04-docs-long-runs-sonnet",
+      "edit_count": 8,
+      "files_edited": 6,
+      "churn_ratio": 1.3333333333333333
+    },
+    {
+      "plan": "05-verify-sonnet",
+      "edit_count": 3,
+      "files_edited": 2,
+      "churn_ratio": 1.5
+    },
+    {
+      "plan": "06-review-opus",
+      "edit_count": 8,
+      "files_edited": 4,
+      "churn_ratio": 2.0
+    },
+    {
+      "plan": "07-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-tests-long-runs-sonnet",
+      "plan_md_lines": 119,
+      "loc_changed": 325
+    },
+    {
+      "plan": "02-run-cells-budget-sonnet",
+      "plan_md_lines": 104,
+      "loc_changed": 196
+    },
+    {
+      "plan": "03-run-reset-lock-sonnet",
+      "plan_md_lines": 108,
+      "loc_changed": 237
+    },
+    {
+      "plan": "04-docs-long-runs-sonnet",
+      "plan_md_lines": 94,
+      "loc_changed": 134
+    },
+    {
+      "plan": "05-verify-sonnet",
+      "plan_md_lines": 35,
+      "loc_changed": 20
+    },
+    {
+      "plan": "06-review-opus",
+      "plan_md_lines": 91,
+      "loc_changed": 116
+    },
+    {
+      "plan": "07-review-opus",
+      "plan_md_lines": 48,
+      "loc_changed": 46
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/home/user/agentTooling/harness/README.md",
+      "tool": "Read",
+      "plans": [
+        "04-docs-long-runs-sonnet",
+        "06-review-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/harness/lib.sh",
+      "tool": "Read",
+      "plans": [
+        "01-tests-long-runs-sonnet",
+        "02-run-cells-budget-sonnet",
+        "03-run-reset-lock-sonnet",
+        "04-docs-long-runs-sonnet",
+        "06-review-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/harness/run.sh",
+      "tool": "Read",
+      "plans": [
+        "02-run-cells-budget-sonnet",
+        "03-run-reset-lock-sonnet",
+        "04-docs-long-runs-sonnet",
+        "05-verify-sonnet",
+        "06-review-opus",
+        "07-review-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/harness/tests/long-runs.sh",
+      "tool": "Read",
+      "plans": [
+        "02-run-cells-budget-sonnet",
+        "05-verify-sonnet",
+        "06-review-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/self/gate-report.txt",
+      "tool": "Read",
+      "plans": [
+        "05-verify-sonnet",
+        "06-review-opus",
+        "07-review-opus"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-tests-long-runs-sonnet",
+      "edited_not_listed": [],
+      "listed_not_edited": [
+        "#!/usr/bin/env bash"
+      ]
+    },
+    {
+      "plan": "03-run-reset-lock-sonnet",
+      "edited_not_listed": [
+        "/tmp/plan-capture.VndZsW/scratch/reset-block.txt"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "05-verify-sonnet",
+      "edited_not_listed": [
+        "/tmp/plan-capture.XlwLQS/scratch/hook.py",
+        "harness/tests/long-runs.sh"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "06-review-opus",
+      "edited_not_listed": [
+        "harness/README.md",
+        "harness/SPEC.md",
+        "harness/run.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "07-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "harness/run.sh",
+      "earlier_plan": "03-run-reset-lock-sonnet",
+      "later_plan": "03-run-reset-lock-sonnet",
+      "overlap_chars": 110
+    },
+    {
+      "file": "harness/run.sh",
+      "earlier_plan": "02-run-cells-budget-sonnet",
+      "later_plan": "03-run-reset-lock-sonnet",
+      "overlap_chars": 86
+    },
+    {
+      "file": "harness/run.sh",
+      "earlier_plan": "02-run-cells-budget-sonnet",
+      "later_plan": "03-run-reset-lock-sonnet",
+      "overlap_chars": 191
+    },
+    {
+      "file": "harness/tests/long-runs.sh",
+      "earlier_plan": "01-tests-long-runs-sonnet",
+      "later_plan": "05-verify-sonnet",
+      "overlap_chars": 45
+    },
+    {
+      "file": "harness/tests/long-runs.sh",
+      "earlier_plan": "05-verify-sonnet",
+      "later_plan": "05-verify-sonnet",
+      "overlap_chars": 204
+    },
+    {
+      "file": "harness/run.sh",
+      "earlier_plan": "02-run-cells-budget-sonnet",
+      "later_plan": "06-review-opus",
+      "overlap_chars": 137
+    },
+    {
+      "file": "harness/run.sh",
+      "earlier_plan": "03-run-reset-lock-sonnet",
+      "later_plan": "06-review-opus",
+      "overlap_chars": 55
+    },
+    {
+      "file": "harness/run.sh",
+      "earlier_plan": "02-run-cells-budget-sonnet",
+      "later_plan": "06-review-opus",
+      "overlap_chars": 53
+    },
+    {
+      "file": "harness/README.md",
+      "earlier_plan": "04-docs-long-runs-sonnet",
+      "later_plan": "06-review-opus",
+      "overlap_chars": 125
+    },
+    {
+      "file": "harness/README.md",
+      "earlier_plan": "04-docs-long-runs-sonnet",
+      "later_plan": "06-review-opus",
+      "overlap_chars": 107
+    },
+    {
+      "file": "harness/README.md",
+      "earlier_plan": "04-docs-long-runs-sonnet",
+      "later_plan": "06-review-opus",
+      "overlap_chars": 60
+    },
+    {
+      "file": "harness/SPEC.md",
+      "earlier_plan": "04-docs-long-runs-sonnet",
+      "later_plan": "06-review-opus",
+      "overlap_chars": 56
+    }
+  ],
+  "warnings": [],
+  "profile": "cloud",
+  "gate": "green"
+}

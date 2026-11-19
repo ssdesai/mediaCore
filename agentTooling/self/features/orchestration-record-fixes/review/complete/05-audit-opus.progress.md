@@ -1,0 +1,10 @@
+write: /tmp/plan-capture.BsH7wj/scratch/fixture.py
+write: /tmp/plan-capture.BsH7wj/scratch/run.py
+write: /tmp/plan-capture.BsH7wj/scratch/c1.json
+write: /tmp/plan-capture.BsH7wj/scratch/c2.json
+write: /tmp/plan-capture.BsH7wj/scratch/c3.json
+write: /tmp/plan-capture.BsH7wj/scratch/why.py
+write: /tmp/plan-capture.BsH7wj/scratch/c4.json
+write: /tmp/plan-capture.BsH7wj/scratch/bashcheck.sh
+write: /home/user/agentTooling/self/features/orchestration-record-fixes/audit-report.md
+edit: /home/user/agentTooling/self/features/orchestration-record-fixes/audit-report.md

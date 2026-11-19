@@ -1,0 +1,39 @@
+{
+  "slug": "readme-structure",
+  "generated_at": "2026-11-05T04:03:39Z",
+  "session": "299d0a61-3b3f-509b-b174-2a7951389f6d",
+  "agent_tooling": "e4e08b9b6b66259ae09457396dc8c3b516722fbe",
+  "agent_tooling_short": "e4e08b9",
+  "session_window": {
+    "from": "2026-11-03T21:30:42Z",
+    "to": "2026-11-05T04:03:31Z"
+  },
+  "features": [
+    {"repo": "agentTooling", "slug": "harness-arm-base", "pr": "https://github.com/ssdesai/agentTooling/pull/121", "total_usd": null, "unpriced_reason": "no report path in the record"},
+    {"repo": "agentTooling", "slug": "readme-index-check", "pr": "https://github.com/ssdesai/agentTooling/pull/119", "total_usd": null, "unpriced_reason": "no report path in the record"},
+    {"repo": "humanNetworkMap", "slug": "split-root-readme", "pr": "https://github.com/ssdesai/humanNetworkMap/pull/273", "total_usd": null, "unpriced_reason": "no report path in the record"},
+    {"repo": "musicMap", "slug": "folder-scoped-facts", "pr": "https://github.com/ssdesai/musicMap/pull/73", "total_usd": null, "unpriced_reason": "no report path in the record"},
+    {"repo": "humanNetworkMap", "slug": "trim-project-facts", "pr": "https://github.com/ssdesai/humanNetworkMap/pull/275", "total_usd": null, "unpriced_reason": "no report path in the record"},
+    {"repo": "musicMap", "slug": "trim-project-facts", "pr": "https://github.com/ssdesai/musicMap/pull/74", "total_usd": null, "unpriced_reason": "no report path in the record"},
+    {"repo": "vinylCatalogue", "slug": "pull-agenttooling-pr121", "pr": "https://github.com/ssdesai/vinylCatalogue/pull/213", "total_usd": null, "unpriced_reason": "no report path in the record"},
+    {"repo": "vinylCatalogue", "slug": "readme-restructure", "pr": "https://github.com/ssdesai/vinylCatalogue/pull/218", "total_usd": null, "unpriced_reason": "no report path in the record"},
+    {"repo": "vinylCatalogue", "slug": "discogs-prefill-fixture", "pr": "https://github.com/ssdesai/vinylCatalogue/pull/220", "total_usd": null, "unpriced_reason": "no report path in the record"},
+    {"repo": "agentTooling", "slug": "harness-spec-per-arm", "pr": null, "total_usd": null, "unpriced_reason": "no report path in the record"},
+    {"repo": "agentTooling", "slug": "harness-arm-spec", "pr": "https://github.com/ssdesai/agentTooling/pull/123", "total_usd": null, "unpriced_reason": "no report path in the record"},
+    {"repo": "humanNetworkMap", "slug": "split-test-spec", "pr": "https://github.com/ssdesai/humanNetworkMap/pull/277", "total_usd": null, "unpriced_reason": "no report path in the record"},
+    {"repo": "vinylCatalogue", "slug": "pull-agenttooling-pr123", "pr": "https://github.com/ssdesai/vinylCatalogue/pull/219", "total_usd": null, "unpriced_reason": "no report path in the record"},
+    {"repo": "vinylCatalogue", "slug": "discogs-prefill-structure-run", "pr": "https://github.com/ssdesai/vinylCatalogue/pull/231", "total_usd": null, "unpriced_reason": "no report path in the record"},
+    {"repo": "agentTooling", "slug": "harness-long-runs", "pr": "https://github.com/ssdesai/agentTooling/pull/125", "total_usd": null, "unpriced_reason": "no report path in the record"},
+    {"repo": "vinylCatalogue", "slug": "pull-agenttooling-pr125", "pr": "https://github.com/ssdesai/vinylCatalogue/pull/228", "total_usd": null, "unpriced_reason": "no report path in the record"}
+  ],
+  "overhead": {
+    "usd": 41.734434799999995,
+    "unpriced_reason": null,
+    "total_is_partial": false
+  },
+  "features_total_usd": 0,
+  "priced_count": 0,
+  "unpriced_count": 16,
+  "group_total_usd": 41.734434799999995,
+  "overhead_pct": 100.0
+}

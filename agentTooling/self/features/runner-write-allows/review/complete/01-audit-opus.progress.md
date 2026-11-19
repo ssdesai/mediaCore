@@ -1,0 +1,13 @@
+write: /tmp/plan-capture.hcvIw1/scratch/setup.sh
+write: /tmp/plan-capture.hcvIw1/scratch/attack.py
+write: /tmp/plan-capture.hcvIw1/scratch/cases.txt
+write: /tmp/plan-capture.hcvIw1/scratch/tools.sh
+write: /tmp/plan-capture.hcvIw1/scratch/wdemo.sh
+write: /tmp/plan-capture.hcvIw1/scratch/words.py
+write: /tmp/plan-capture.hcvIw1/scratch/mypyw.sh
+write: /tmp/plan-capture.hcvIw1/scratch/cases2.txt
+write: /tmp/plan-capture.hcvIw1/scratch/malformed.py
+edit: /tmp/plan-capture.hcvIw1/scratch/attack.py
+write: /home/user/agentTooling/self/features/runner-write-allows/audit-report.md
+edit: /home/user/agentTooling/self/features/runner-write-allows/audit-report.md
+edit: /home/user/agentTooling/self/features/runner-write-allows/audit-report.md

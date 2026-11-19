@@ -1,0 +1,73 @@
+{
+  "slug": "harness-review-effort",
+  "captured_at": "2026-11-05T14:38:49.572499+00:00",
+  "manifest_branches": [
+    "claude/harness-review-effort"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "adc71574-cb80-5944-ba16-1ac1f657986b",
+      "git_branch": "claude/harness-review-effort",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-11-05",
+      "started_at": "2026-11-05T13:30:45.858000+00:00",
+      "ended_at": "2026-11-05T14:38:48.512000+00:00",
+      "duration_s": 4082
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "0215b885-d053-4c8e-b829-e50781b65118",
+    "24261954-6b64-4309-808b-46261b716fe5",
+    "9103dad4-38cc-43d2-98ba-4de52d59543b",
+    "aa1e6619-ce9f-4c87-b435-7ec174b2cc50"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "adc71574-cb80-5944-ba16-1ac1f657986b",
+      "agent_id": null,
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-05",
+      "duration_s": 4082,
+      "tokens": {
+        "input": 212,
+        "output": 38535,
+        "cache_read": 13882809,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 122310
+      },
+      "cost_usd": 2.2632949000000004,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 2.2632949000000004,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 2.2632949000000004,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 4082,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": []
+}

@@ -1,0 +1,78 @@
+{
+  "plan": "15-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "c47d78b7-d602-416f-8fa4-a08bc20275f0",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 48,
+  "duration_ms": 322623,
+  "total_cost_usd": 2.0211973000000003,
+  "usage": {
+    "input_tokens": 62,
+    "cache_creation_input_tokens": 98730,
+    "cache_read_input_tokens": 2691363,
+    "output_tokens": 34627
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 2862,
+      "outputTokens": 21,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0002967,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 62,
+      "outputTokens": 34627,
+      "cacheReadInputTokens": 2691363,
+      "cacheCreationInputTokens": 98730,
+      "webSearchRequests": 0,
+      "costUSD": 2.0209006,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 12395,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 98730,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 30,
+    "Edit": 2,
+    "Read": 8,
+    "Write": 7
+  },
+  "files_edited": [
+    "/tmp/plan-capture.BoD6v2/scratch/bashcheck.sh",
+    "/tmp/plan-capture.BoD6v2/scratch/cases.json",
+    "/tmp/plan-capture.BoD6v2/scratch/cases2.json",
+    "/tmp/plan-capture.BoD6v2/scratch/cases3.json",
+    "/tmp/plan-capture.BoD6v2/scratch/compare.py",
+    "/tmp/plan-capture.BoD6v2/scratch/drive.py",
+    "self/features/orchestration-record-fixes/audit-report.md"
+  ],
+  "edit_count": 9,
+  "attempts": [
+    {
+      "session_id": "c47d78b7-d602-416f-8fa4-a08bc20275f0",
+      "outcome": "complete",
+      "total_cost_usd": 2.0211973000000003,
+      "num_turns": 48,
+      "duration_ms": 322623
+    }
+  ]
+}

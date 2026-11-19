@@ -50,6 +50,7 @@ container() {
   local root="$TMP/$1" at origin f
   at="$root/agentTooling"; origin="$root/origin.git"
   mkdir -p "$at/analysis" "$at/self/features" "$at/templates/plans/features" "$at/hooks"
+  mkdir -p "$at/hooks" && cp "$HERE/hooks/shared_rules.py" "$at/hooks/"  # roots.py imports it
   for f in feature-start.sh plan-runner-roots.sh env-profile.sh; do
     cp "$HERE/$f" "$at/$f" 2>/dev/null || true
   done

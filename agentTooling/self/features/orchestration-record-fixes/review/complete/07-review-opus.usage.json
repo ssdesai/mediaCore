@@ -1,0 +1,75 @@
+{
+  "plan": "07-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "0022480e-505e-4ed1-b01d-48a690b4b6fb",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 21,
+  "duration_ms": 128522,
+  "total_cost_usd": 0.8847491999999998,
+  "usage": {
+    "input_tokens": 32,
+    "cache_creation_input_tokens": 55390,
+    "cache_read_input_tokens": 1039776,
+    "output_tokens": 11654
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 4565,
+      "outputTokens": 19,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.000466,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 32,
+      "outputTokens": 11654,
+      "cacheReadInputTokens": 1039776,
+      "cacheCreationInputTokens": 55390,
+      "webSearchRequests": 0,
+      "costUSD": 0.8842831999999999,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 4367,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 55390,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 2,
+  "tool_counts": {
+    "Bash": 9,
+    "Edit": 2,
+    "Read": 6,
+    "Write": 3
+  },
+  "files_edited": [
+    "/tmp/plan-capture.rPFQpB/scratch/cases2.txt",
+    "/tmp/plan-capture.rPFQpB/scratch/probe.py",
+    "hooks/allow-repo-commands.sh",
+    "self/review-report.md"
+  ],
+  "edit_count": 5,
+  "attempts": [
+    {
+      "session_id": "0022480e-505e-4ed1-b01d-48a690b4b6fb",
+      "outcome": "complete",
+      "total_cost_usd": 0.8847491999999998,
+      "num_turns": 21,
+      "duration_ms": 128522
+    }
+  ]
+}

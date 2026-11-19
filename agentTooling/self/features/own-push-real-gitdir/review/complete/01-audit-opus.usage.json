@@ -1,0 +1,73 @@
+{
+  "plan": "01-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "7838d9f0-42fb-477b-94a1-9b331db3d800",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 20,
+  "duration_ms": 330006,
+  "total_cost_usd": 1.5511292,
+  "usage": {
+    "input_tokens": 32,
+    "cache_creation_input_tokens": 82289,
+    "cache_read_input_tokens": 1109074,
+    "output_tokens": 33529
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 2834,
+      "outputTokens": 22,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0002944,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 32,
+      "outputTokens": 33529,
+      "cacheReadInputTokens": 1109074,
+      "cacheCreationInputTokens": 82289,
+      "webSearchRequests": 0,
+      "costUSD": 1.5508348,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 13197,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 82289,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 1,
+  "tool_counts": {
+    "Bash": 9,
+    "Read": 7,
+    "Write": 3
+  },
+  "files_edited": [
+    "/tmp/plan-capture.DziU99/scratch/audit.py",
+    "/tmp/plan-capture.DziU99/scratch/verify.py",
+    "self/features/own-push-real-gitdir/audit-report.md"
+  ],
+  "edit_count": 3,
+  "attempts": [
+    {
+      "session_id": "7838d9f0-42fb-477b-94a1-9b331db3d800",
+      "outcome": "complete",
+      "total_cost_usd": 1.5511292,
+      "num_turns": 20,
+      "duration_ms": 330006
+    }
+  ]
+}

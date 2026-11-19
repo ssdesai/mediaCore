@@ -236,3 +236,30 @@ format".
   reaches `claude --model` as the CLI's own alias. No default model moved. Built by hand
   (`method: "hand"`) by the cloud session that started it; plan `01-review-fable` is its
   review, run on fable. It adds `../tests/model-suffix.sh`.
+- `delegate-cost-claims` — delegated work stops dropping out of cost records. The close
+  refuses, before its PR, a build no session or delegate claims while something was met in
+  its window (`analysis/capture_planning.py --claim-check`), naming each id and its pin
+  command, unless `--allow-unclaimed "<reason>"` records why (`manifest.py
+  allow-unclaimed`, carried into `planning.json` and the report); the capture auto-claims
+  an unclaimed delegate whose brief opens `feature: <repo>/<slug>` for it, through
+  `manifest.py pin-subagent`; and the brief header is a rule — `../../CONVENTIONS.md` →
+  "Delegate briefs", specified in `../../analysis/README.md` → "The brief header",
+  implemented once in `../../hooks/brief_header.py`, enforced on `Agent` calls by the hook.
+  It repairs `ablation-harness-fixes`' record, pinning its implementer. Built directly
+  (`method: "direct"`) by a delegate of a cloud coordinator; plan `01-review-opus` is its
+  review; rulings in its `NOTES.md`. It adds `../tests/delegate-cost-claims.sh` and
+  `../tests/hook-brief-header.sh`.
+- `pin-delegate-cost-claims-audit` — a cost-record repair, no code: pins the PR audit
+  (`aff571c3480ebde40`) and the audit fixes (`ad64af30ea0b2fdf0`) in
+  `delegate-cost-claims`' manifest and re-captures its merged record with
+  `../../feature-capture.sh --self delegate-cost-claims --recapture`. Built by hand
+  (`method: "hand"`, started `--no-gate`); plan `01-review-opus` is its review.
+- `python-entry-exact` — the hook approves `capture_planning.py` and `manifest.py` only in
+  their exact documented read-only shapes, word by word, closing the propagation audit's
+  B1 (a repeated `--orchestration` running `set-window-to` as a `get`) and B2 (an
+  abbreviated `--force`/`--all` beside a decoy `--list-` value); the orchestrator
+  allowlist's record-tool, `--checkout` and listing rows take the same rule, and the three
+  parsers set `allow_abbrev=False`. Built by hand in a cloud container; plan
+  `01-review-opus` is its review, with the security audit; rulings and the list of entry
+  points checked in its `NOTES.md`. Rows in `../tests/allow-repo-commands.sh` and
+  `../tests/hook-orchestrator-role.sh` (H27).

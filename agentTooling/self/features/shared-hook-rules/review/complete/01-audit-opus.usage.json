@@ -1,0 +1,74 @@
+{
+  "plan": "01-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "7a8ad978-8fa3-4b77-b49c-44367a3fe274",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 20,
+  "duration_ms": 217120,
+  "total_cost_usd": 1.4152050999999999,
+  "usage": {
+    "input_tokens": 34,
+    "cache_creation_input_tokens": 88428,
+    "cache_read_input_tokens": 1249486,
+    "output_tokens": 22872
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 2984,
+      "outputTokens": 19,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.00030790000000000006,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 34,
+      "outputTokens": 22872,
+      "cacheReadInputTokens": 1249486,
+      "cacheCreationInputTokens": 88428,
+      "webSearchRequests": 0,
+      "costUSD": 1.4148971999999997,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 6599,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 88428,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 13,
+    "Edit": 1,
+    "Read": 2,
+    "Write": 3
+  },
+  "files_edited": [
+    "/tmp/plan-capture.P9aCiF/scratch/audit.py",
+    "/tmp/plan-capture.P9aCiF/scratch/extra.py",
+    "self/features/shared-hook-rules/audit-report.md"
+  ],
+  "edit_count": 4,
+  "attempts": [
+    {
+      "session_id": "7a8ad978-8fa3-4b77-b49c-44367a3fe274",
+      "outcome": "complete",
+      "total_cost_usd": 1.4152050999999999,
+      "num_turns": 20,
+      "duration_ms": 217120
+    }
+  ]
+}

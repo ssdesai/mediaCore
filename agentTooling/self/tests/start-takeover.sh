@@ -69,6 +69,7 @@ KILLED_BY_SIGKILL_RC=137
 AT="$TMP/agentTooling"
 ORIGIN="$TMP/origin.git"
 mkdir -p "$AT/analysis" "$AT/self/features" "$AT/templates/plans/features"
+mkdir -p "$AT/hooks" && cp "$HERE/hooks/shared_rules.py" "$AT/hooks/"  # roots.py imports it
 for f in feature-start.sh plan-runner-roots.sh env-profile.sh; do
   cp "$HERE/$f" "$AT/$f" 2>/dev/null || true
 done

@@ -1,0 +1,72 @@
+{
+  "slug": "harness-ablation-methods",
+  "captured_at": "2026-11-05T17:18:52.455594+00:00",
+  "manifest_branches": [
+    "claude/harness-ablation-methods"
+  ],
+  "manifest_subagents": [
+    "a37c317fcba738986"
+  ],
+  "sessions": [],
+  "subagents": [
+    {
+      "agent_id": "a37c317fcba738986",
+      "parent_session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "date": "2026-11-05",
+      "started_at": "2026-11-05T16:45:34.899000+00:00",
+      "ended_at": "2026-11-05T17:18:51.172000+00:00",
+      "duration_s": 1996,
+      "selected_by": "pinned",
+      "cross_repo": true
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "a0f9c9f8-b07e-4202-8047-23f9ec95a45d"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "agent_id": "a37c317fcba738986",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-05",
+      "duration_s": 1996,
+      "tokens": {
+        "input": 386,
+        "output": 109095,
+        "cache_read": 58647059,
+        "cache_creation_5m": 839099,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 18.1083508,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 0.0,
+    "sidechain": 18.1083508,
+    "subagents": 18.1083508,
+    "total": 18.1083508,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 0,
+    "subagents": 1996,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": []
+}

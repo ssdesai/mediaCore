@@ -1,0 +1,13 @@
+write: /tmp/plan-capture.28k3NN/scratch/setup.sh
+write: /tmp/plan-capture.28k3NN/scratch/run.py
+write: /tmp/plan-capture.28k3NN/scratch/cases1.jsonl
+write: /tmp/plan-capture.28k3NN/scratch/bs.py
+write: /tmp/plan-capture.28k3NN/scratch/cases2.jsonl
+write: /tmp/plan-capture.28k3NN/scratch/unreadable.py
+write: /tmp/plan-capture.28k3NN/scratch/fuzz.py
+write: /tmp/plan-capture.28k3NN/scratch/cases3.jsonl
+edit: /tmp/plan-capture.28k3NN/scratch/run.py
+write: /tmp/plan-capture.28k3NN/scratch/cases4.jsonl
+edit: /tmp/plan-capture.28k3NN/scratch/unreadable.py
+write: /home/user/agentTooling/self/features/orchestration-record-fixes/audit-report.md
+edit: /home/user/agentTooling/self/features/orchestration-record-fixes/audit-report.md

@@ -1,0 +1,59 @@
+{
+  "plan": "02-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "2ae89760-c864-498c-81c6-6afca8ae1e3a",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 28,
+  "duration_ms": 123132,
+  "total_cost_usd": 1.0992544000000004,
+  "usage": {
+    "input_tokens": 34,
+    "cache_creation_input_tokens": 73334,
+    "cache_read_input_tokens": 1387432,
+    "output_tokens": 11748
+  },
+  "model_usage": {
+    "claude-opus-5-5": {
+      "inputTokens": 34,
+      "outputTokens": 11748,
+      "cacheReadInputTokens": 1387432,
+      "cacheCreationInputTokens": 73334,
+      "webSearchRequests": 0,
+      "costUSD": 1.0992544000000004,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 4866,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 73334,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 16,
+    "Edit": 5,
+    "Read": 5,
+    "Write": 1
+  },
+  "files_edited": [
+    "analysis/README.md",
+    "analysis/roots.py",
+    "orchestration-start.sh",
+    "self/review-report.md"
+  ],
+  "edit_count": 6,
+  "attempts": [
+    {
+      "session_id": "2ae89760-c864-498c-81c6-6afca8ae1e3a",
+      "outcome": "complete",
+      "total_cost_usd": 1.0992544000000004,
+      "num_turns": 28,
+      "duration_ms": 123132
+    }
+  ]
+}

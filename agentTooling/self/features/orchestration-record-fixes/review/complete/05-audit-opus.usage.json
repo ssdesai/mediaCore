@@ -1,0 +1,80 @@
+{
+  "plan": "05-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "4a5d2706-4e00-4da0-86d8-64489a5f9f87",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 28,
+  "duration_ms": 307793,
+  "total_cost_usd": 1.5187762999999999,
+  "usage": {
+    "input_tokens": 40,
+    "cache_creation_input_tokens": 80122,
+    "cache_read_input_tokens": 1497097,
+    "output_tokens": 28896
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 2874,
+      "outputTokens": 27,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0003009,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 40,
+      "outputTokens": 28896,
+      "cacheReadInputTokens": 1497097,
+      "cacheCreationInputTokens": 80122,
+      "webSearchRequests": 0,
+      "costUSD": 1.5184754,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 11948,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 80122,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 14,
+    "Edit": 1,
+    "Read": 3,
+    "Write": 9
+  },
+  "files_edited": [
+    "/tmp/plan-capture.BsH7wj/scratch/bashcheck.sh",
+    "/tmp/plan-capture.BsH7wj/scratch/c1.json",
+    "/tmp/plan-capture.BsH7wj/scratch/c2.json",
+    "/tmp/plan-capture.BsH7wj/scratch/c3.json",
+    "/tmp/plan-capture.BsH7wj/scratch/c4.json",
+    "/tmp/plan-capture.BsH7wj/scratch/fixture.py",
+    "/tmp/plan-capture.BsH7wj/scratch/run.py",
+    "/tmp/plan-capture.BsH7wj/scratch/why.py",
+    "self/features/orchestration-record-fixes/audit-report.md"
+  ],
+  "edit_count": 10,
+  "attempts": [
+    {
+      "session_id": "4a5d2706-4e00-4da0-86d8-64489a5f9f87",
+      "outcome": "complete",
+      "total_cost_usd": 1.5187762999999999,
+      "num_turns": 28,
+      "duration_ms": 307793
+    }
+  ]
+}

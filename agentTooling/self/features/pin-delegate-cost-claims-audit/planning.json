@@ -1,0 +1,34 @@
+{
+  "slug": "pin-delegate-cost-claims-audit",
+  "captured_at": "2026-11-07T23:33:52.934643+00:00",
+  "manifest_branches": [
+    "claude/pin-delegate-cost-claims-audit"
+  ],
+  "manifest_subagents": [],
+  "sessions": [],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "5d25b685-51de-445d-beb5-a0ff520a746b",
+    "75a9e9df-0a77-4edb-95d1-7b42f3f92423"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [],
+  "cost_usd": {
+    "main": 0.0,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 0.0,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 0,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "no planning session matched, but 1 excluded session(s) on ['claude/pin-delegate-cost-claims-audit'] were met \u2014 the branch name is right and the zero is evidenced; their cost is in usage.json or belongs to the feature that excluded them"
+  ]
+}

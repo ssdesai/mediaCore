@@ -1,0 +1,13 @@
+write: /tmp/plan-capture.RfRNpw/scratch/run.py
+edit: /tmp/plan-capture.RfRNpw/scratch/run.py
+write: /tmp/plan-capture.RfRNpw/scratch/c1.txt
+write: /tmp/plan-capture.RfRNpw/scratch/c2.txt
+write: /tmp/plan-capture.RfRNpw/scratch/c3.txt
+edit: /tmp/plan-capture.RfRNpw/scratch/run.py
+write: /tmp/plan-capture.RfRNpw/scratch/c4.txt
+edit: /tmp/plan-capture.RfRNpw/scratch/run.py
+write: /tmp/plan-capture.RfRNpw/scratch/raw.py
+write: /tmp/plan-capture.RfRNpw/scratch/variants.py
+write: /tmp/plan-capture.RfRNpw/scratch/c5.txt
+write: /home/user/agentTooling/self/features/hook-audit-gaps/audit-report.md
+edit: /home/user/agentTooling/self/features/hook-audit-gaps/audit-report.md

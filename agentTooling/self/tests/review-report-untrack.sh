@@ -44,7 +44,8 @@ SLUG_B="feat-b"
 REPORT="plans/review-report.md"
 IGNORE_LINE="/review-report.md"
 ROOT_IGNORED="plans/root-ignored.txt"
-RUNNER_FILES=(run-review.sh plan-runner-lib.sh plan-runner-roots.sh stamp-timing.sh sync-plans.sh)
+# the role reader refuses a copy without its two modules (hook-silent-allow-sweep, item 7)
+RUNNER_FILES=(run-review.sh plan-runner-lib.sh plan-runner-roots.sh stamp-timing.sh sync-plans.sh hooks/orchestrator_role.py hooks/shared_rules.py)
 UNTRACK_WORDS="untracked $REPORT"
 SYNC_HINT_WORDS="run sync-plans.sh"
 
@@ -77,7 +78,7 @@ manifest() {
 # fixture <name> [no-ignore] — the legacy state at $TMP/<name>: the report tracked on main
 fixture() {
   local repo="$TMP/$1" f
-  mkdir -p "$repo/agentTooling/templates" "$repo/plans"
+  mkdir -p "$repo/agentTooling/templates" "$repo/agentTooling/hooks" "$repo/plans"
   for f in "${RUNNER_FILES[@]}"; do cp "$HERE/$f" "$repo/agentTooling/$f"; done
   cp -R "$HERE/templates/plans" "$repo/agentTooling/templates/plans"
   chmod +x "$repo"/agentTooling/*.sh

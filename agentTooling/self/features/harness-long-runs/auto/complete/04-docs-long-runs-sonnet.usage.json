@@ -1,0 +1,76 @@
+{
+  "plan": "04-docs-long-runs-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "b0d4aba1-966e-4b75-97ba-9dded83b8c9d",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 22,
+  "duration_ms": 58097,
+  "total_cost_usd": 0.3269632,
+  "usage": {
+    "input_tokens": 12,
+    "cache_creation_input_tokens": 55747,
+    "cache_read_input_tokens": 311578,
+    "output_tokens": 7238
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 4039,
+      "outputTokens": 19,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0004134,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5-5": {
+      "inputTokens": 12,
+      "outputTokens": 7238,
+      "cacheReadInputTokens": 311578,
+      "cacheCreationInputTokens": 55747,
+      "webSearchRequests": 0,
+      "costUSD": 0.3265498,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 295,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 55747,
+      "canonicalModel": "claude-sonnet-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Edit": 8,
+    "Grep": 2,
+    "Read": 11
+  },
+  "files_edited": [
+    "LIFECYCLE.md",
+    "harness/EXPERIMENTS.md",
+    "harness/README.md",
+    "harness/SPEC.md",
+    "self/BACKLOG.md",
+    "self/PROJECT_FACTS.md"
+  ],
+  "edit_count": 8,
+  "attempts": [
+    {
+      "session_id": "b0d4aba1-966e-4b75-97ba-9dded83b8c9d",
+      "outcome": "complete",
+      "total_cost_usd": 0.3269632,
+      "num_turns": 22,
+      "duration_ms": 58097
+    }
+  ]
+}

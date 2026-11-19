@@ -1,0 +1,12 @@
+write: /tmp/plan-capture.Fiyg7f/scratch/build.sh
+write: /tmp/plan-capture.Fiyg7f/scratch/hook.py
+write: /tmp/plan-capture.Fiyg7f/scratch/hook2.py
+write: /tmp/plan-capture.Fiyg7f/scratch/start.sh
+write: /tmp/plan-capture.Fiyg7f/scratch/start-all.sh
+write: /tmp/plan-capture.Fiyg7f/scratch/vendored.sh
+write: /tmp/plan-capture.Fiyg7f/scratch/vendored-all.sh
+write: /tmp/plan-capture.Fiyg7f/scratch/push.sh
+write: /tmp/plan-capture.Fiyg7f/scratch/push-all.sh
+write: /tmp/plan-capture.Fiyg7f/scratch/realmove.sh
+write: /home/user/agentTooling/self/features/orchestration-start-branch-v2/audit-report.md
+edit: /home/user/agentTooling/self/features/orchestration-start-branch-v2/audit-report.md

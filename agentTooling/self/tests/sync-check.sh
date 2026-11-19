@@ -26,9 +26,9 @@ set -uo pipefail
 # template reports EDITED with the line it would drop and --check writes nothing, while
 # the plain sync repairs it as OVERWROTE;
 # deleting a script's template-version line reports DRIFT (both under --check and the
-# plain sync, which still keeps the file), and so does a pr.sh still at 4 (4 < 7 —
-# fixtures/pr-v4.sh), at 5 (5 < 7 — fixtures/pr-v5.sh, whose merge request is still
-# `gh pr merge`) or at 6 (6 < 7 — fixtures/pr-v6.sh, whose already-open path leaves the
+# plain sync, which still keeps the file), and so does a pr.sh still at 4 (4 < 8 —
+# fixtures/pr-v4.sh), at 5 (5 < 8 — fixtures/pr-v5.sh, whose merge request is still
+# `gh pr merge`) or at 6 (6 < 8 — fixtures/pr-v6.sh, whose already-open path leaves the
 # body at round 1's); a body-only edit below a script's
 # REPO-SPECIFIC marker is not drift; a deleted repo-owned script reports missing and
 # the plain sync recreates it; BACKLOG.md with a repo's own entry in it survives a sync
@@ -135,14 +135,14 @@ git -C "$CONSUMER" add -A && git -C "$CONSUMER" commit -q -m "init"
 # ── 1. fresh seed: everything in-sync except the unfilled skeleton ─────────────
 out="$("$S" --check 2>&1)"; rc=$?
 check "1a. --check rc 1 on a fresh seed (got $rc)" '[[ $rc -eq 1 ]]'
-for rel in README.md interactive/README.md features/README.md features/TEMPLATE.md .gitignore ORCHESTRATOR_BRIEF.md; do
+for rel in README.md interactive/README.md features/README.md features/TEMPLATE.md .gitignore ORCHESTRATOR_BRIEF.md ORCHESTRATOR_SESSION_BRIEF.md; do
   check "1b. in-sync stub $rel" "grep -qF \"  in-sync    plans/$rel\" <<<\"\$out\""
 done
 check "1c. gate.sh in-sync (template-version 3)" 'grep -qF "  in-sync    plans/gate.sh (template-version 3)" <<<"$out"'
-check "1d. pr.sh in-sync (template-version 7)" 'grep -qF "  in-sync    plans/pr.sh (template-version 7)" <<<"$out"'
+check "1d. pr.sh in-sync (template-version 8)" 'grep -qF "  in-sync    plans/pr.sh (template-version 8)" <<<"$out"'
 check "1e. worktree-setup.sh in-sync (template-version 2)" 'grep -qF "  in-sync    plans/worktree-setup.sh (template-version 2)" <<<"$out"'
 check "1f. gate.sh, pr.sh, worktree-setup.sh lines appear in that order" \
-  '[[ "$out" == *"plans/gate.sh (template-version 3)"*"plans/pr.sh (template-version 7)"*"plans/worktree-setup.sh (template-version 2)"* ]]'
+  '[[ "$out" == *"plans/gate.sh (template-version 3)"*"plans/pr.sh (template-version 8)"*"plans/worktree-setup.sh (template-version 2)"* ]]'
 # The two seeded adapters of design §7: environment.sh (profile facts, SOURCED by the gate,
 # worktree-setup.sh and the repo's own scripts — so not executable) and cloud-setup.sh (the
 # once-per-container step a SessionStart hook runs — executable), both repo-owned and
@@ -197,12 +197,12 @@ check "3e. --check rc 0 again (got $rc3)" '[[ $rc3 -eq 0 ]]'
 awk '!/^# template-version:/' "$CONSUMER/plans/pr.sh" > "$TMP/pr.sh.stripped" && mv "$TMP/pr.sh.stripped" "$CONSUMER/plans/pr.sh"
 out="$("$S" --check 2>&1)"; rc=$?
 check "4a. --check rc 1 after stripping pr.sh's version line (got $rc)" '[[ $rc -eq 1 ]]'
-line="$(grep -F 'plans/pr.sh (template-version 0 < 7' <<<"$out")"
-check "4b. DRIFT line for pr.sh" '[[ "$line" == "  DRIFT      plans/pr.sh (template-version 0 < 7;"* ]]'
+line="$(grep -F 'plans/pr.sh (template-version 0 < 8' <<<"$out")"
+check "4b. DRIFT line for pr.sh" '[[ "$line" == "  DRIFT      plans/pr.sh (template-version 0 < 8;"* ]]'
 out2="$("$S" 2>&1)"; rc2=$?
 check "4c. plain sync also rc 1" '[[ $rc2 -eq 1 ]]'
-line2="$(grep -F 'plans/pr.sh (template-version 0 < 7' <<<"$out2")"
-check "4d. plain sync also prints the DRIFT line" '[[ "$line2" == "  DRIFT      plans/pr.sh (template-version 0 < 7;"* ]]'
+line2="$(grep -F 'plans/pr.sh (template-version 0 < 8' <<<"$out2")"
+check "4d. plain sync also prints the DRIFT line" '[[ "$line2" == "  DRIFT      plans/pr.sh (template-version 0 < 8;"* ]]'
 check "4e. plain sync still prints kept pr.sh" 'grep -qF "  kept       plans/pr.sh" <<<"$out2"'
 # A copy seeded at 4 and never hand-merged — every consuming repo the day the forge
 # adapter lands (README.md → "Adopting the forge adapter"): the v4 -> v5 bump is drift
@@ -211,22 +211,22 @@ check "4e. plain sync still prints kept pr.sh" 'grep -qF "  kept       plans/pr.
 cp "$AT/self/tests/fixtures/pr-v4.sh" "$CONSUMER/plans/pr.sh"
 out="$("$S" --check 2>&1)"; rc=$?
 check "4f. --check rc 1 on a pr.sh still at template-version 4 (got $rc)" '[[ $rc -eq 1 ]]'
-check "4g. ... with a DRIFT line naming 4 < 7 and the hand-merge" \
-  'grep -qF "  DRIFT      plans/pr.sh (template-version 4 < 7; hand-merge, see agentTooling/README.md -> Updating)" <<<"$out"'
+check "4g. ... with a DRIFT line naming 4 < 8 and the hand-merge" \
+  'grep -qF "  DRIFT      plans/pr.sh (template-version 4 < 8; hand-merge, see agentTooling/README.md -> Updating)" <<<"$out"'
 # A copy at 5 — the forge adapter's open path, its merge request still `gh pr merge`,
 # GraphQL the cloud proxy refuses — is drift the same way: v6 sends the merge request
 # through forge.sh auto-merge. fixtures/pr-v5.sh is the template as it stood at 5.
 cp "$AT/self/tests/fixtures/pr-v5.sh" "$CONSUMER/plans/pr.sh"
 out="$("$S" --check 2>&1)"; rc=$?
-check "4h. --check rc 1 on a pr.sh still at template-version 5, naming 5 < 7 (got $rc)" \
-  '[[ $rc -eq 1 ]] && grep -qF "  DRIFT      plans/pr.sh (template-version 5 < 7; hand-merge, see agentTooling/README.md -> Updating)" <<<"$out"'
+check "4h. --check rc 1 on a pr.sh still at template-version 5, naming 5 < 8 (got $rc)" \
+  '[[ $rc -eq 1 ]] && grep -qF "  DRIFT      plans/pr.sh (template-version 5 < 8; hand-merge, see agentTooling/README.md -> Updating)" <<<"$out"'
 # A copy at 6 — which says "already open" and leaves a re-closed PR's body at round 1's —
 # is drift the same way: v7 refreshes the body through forge.sh pr-edit
 # (self/features/pr-body-refresh/). fixtures/pr-v6.sh is the template as it stood at 6.
 cp "$AT/self/tests/fixtures/pr-v6.sh" "$CONSUMER/plans/pr.sh"
 out="$("$S" --check 2>&1)"; rc=$?
-check "4i. --check rc 1 on a pr.sh still at template-version 6, naming 6 < 7 (got $rc)" \
-  '[[ $rc -eq 1 ]] && grep -qF "  DRIFT      plans/pr.sh (template-version 6 < 7; hand-merge, see agentTooling/README.md -> Updating)" <<<"$out"'
+check "4i. --check rc 1 on a pr.sh still at template-version 6, naming 6 < 8 (got $rc)" \
+  '[[ $rc -eq 1 ]] && grep -qF "  DRIFT      plans/pr.sh (template-version 6 < 8; hand-merge, see agentTooling/README.md -> Updating)" <<<"$out"'
 cp "$CONSUMER/agentTooling/templates/plans/pr.sh" "$CONSUMER/plans/pr.sh"
 chmod +x "$CONSUMER/plans/pr.sh"
 

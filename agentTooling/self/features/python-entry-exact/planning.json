@@ -1,0 +1,88 @@
+{
+  "slug": "python-entry-exact",
+  "captured_at": "2026-11-16T08:48:51.935485+00:00",
+  "manifest_branches": [
+    "claude/python-entry-exact"
+  ],
+  "manifest_subagents": [
+    "ad2d3ab0b70de5519"
+  ],
+  "sessions": [],
+  "subagents": [
+    {
+      "agent_id": "ad2d3ab0b70de5519",
+      "parent_session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "date": "2026-11-16",
+      "started_at": "2026-11-16T07:20:28.877000+00:00",
+      "ended_at": "2026-11-16T08:48:48+00:00",
+      "duration_s": 5299,
+      "selected_by": "pinned",
+      "cross_repo": true
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "084db790-68eb-4b0f-bbb9-ea220ad46c09",
+    "13e7b30d-fc65-4cf5-9526-0d47638c4a08",
+    "44ab45b4-fd8e-41c4-a1b9-94b195cd8b78",
+    "489fc0df-dd3d-440c-a4f5-43a6b801fa75",
+    "5d25b685-51de-445d-beb5-a0ff520a746b",
+    "6bb9345e-ef7c-44f0-ab84-8b3d6d27eaaa",
+    "72e930b9-ef3f-46be-a65c-551a2509928a",
+    "733c7890-65ca-4089-8b40-2c9e722541ff",
+    "75a9e9df-0a77-4edb-95d1-7b42f3f92423",
+    "795554ca-aa14-4298-8ebb-435eaeb3d1bb",
+    "8a131145-5df0-44af-8626-98f9321f266b",
+    "8cdeb739-e5ba-45be-a370-c01755b8b522",
+    "d3d05ca2-4e65-4f43-bb63-5157b42aeb93",
+    "d42856bf-1f54-41f1-9dd5-5f55c994ca77",
+    "ffcb5c01-817a-4614-bcbf-e5ba76814615"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "agent_id": "ad2d3ab0b70de5519",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-16",
+      "duration_s": 5299,
+      "tokens": {
+        "input": 244,
+        "output": 62831,
+        "cache_read": 26919840,
+        "cache_creation_5m": 2923647,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 21.259799,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 0.0,
+    "sidechain": 21.259799,
+    "subagents": 21.259799,
+    "total": 21.259799,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 0,
+    "subagents": 5299,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "rate history is stale (checked 2026-10-13); refresh analysis/rates_history.json with analysis/refresh_rates.py in an agentTooling self feature"
+  ]
+}
