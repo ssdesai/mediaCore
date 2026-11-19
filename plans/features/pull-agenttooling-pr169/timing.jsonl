@@ -2,3 +2,6 @@
 {"at":"2026-11-19T18:36:11Z","event":"plan_start","plan":"01-audit-opus","queue":"review","round":"1"}
 {"at":"2026-11-19T18:47:49Z","event":"plan_start","plan":"01-review-opus","queue":"review","round":"1"}
 {"at":"2026-11-19T18:48:37Z","event":"plan_end","plan":"01-audit-opus","queue":"review","rc":"0","round":"1"}
+{"at":"2026-11-19T18:48:37Z","event":"plan_end","plan":"01-review-opus","queue":"review","rc":"0","verdict":"escalated","head":"6af57470300f8008f74855babf2b39ac960b7f77","round":"1"}
+{"at":"2026-11-19T18:48:38Z","event":"audit_end","plan":"01-audit-opus","verdict":"clean","head":"6af57470300f8008f74855babf2b39ac960b7f77","round":"1"}
+{"at":"2026-11-19T18:48:38Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"1"}
