@@ -99,6 +99,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/plan-runner-roots.sh"
 resolve_roots "${1:-}"
 if (( SELF_MODE )); then shift; fi
+# An orchestrator builds nothing: refused before the first temporary file below.
+refuse_orchestrator_session "${CLAUDE_CODE_SESSION_ID:-}"
 
 # Forwarded verbatim to both passes so they can never resolve to different roots — the
 # same failure the FEATURE_SLUG_OUT handshake below prevents for the feature slug.

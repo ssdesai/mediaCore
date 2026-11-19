@@ -1,0 +1,184 @@
+{
+  "slug": "hook-hardening-wave",
+  "captured_at": "2026-11-16T01:37:04.820472+00:00",
+  "orchestration": true,
+  "kind": "coordinator",
+  "agent_tooling": "08f42556ae06671b796fdac6641a850ecf4830ca",
+  "session_window": {
+    "from": "2026-11-11T14:06:53Z",
+    "to": "2026-11-15T14:33:19Z"
+  },
+  "subagents_not_priced": [
+    "a2fa373c49d38d706",
+    "a49ee2b0d3a0c9acc",
+    "a74d4ff76d3ba4bbb",
+    "a7501f987056131e8",
+    "a7955c22019472443",
+    "a7ac6ad56e21037f0",
+    "abbcbf89c91144112"
+  ],
+  "sessions": [
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "git_branch": null,
+      "selected_by": "orchestration",
+      "cwd": null,
+      "date": "2026-11-11",
+      "started_at": "2026-11-05T16:39:00.566000+00:00",
+      "ended_at": "2026-11-16T01:37:03.099000+00:00",
+      "duration_s": 346973
+    }
+  ],
+  "subagents": [
+    {
+      "agent_id": "a1d07f668ba5acbaa",
+      "parent_session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "date": "2026-11-14",
+      "started_at": "2026-11-14T03:34:24.221000+00:00",
+      "ended_at": "2026-11-14T03:52:38.114000+00:00",
+      "duration_s": 1093,
+      "selected_by": "orchestration",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a400a0cbe561f6b82",
+      "parent_session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "date": "2026-11-15",
+      "started_at": "2026-11-15T14:29:49.887000+00:00",
+      "ended_at": "2026-11-15T14:33:17.729000+00:00",
+      "duration_s": 207,
+      "selected_by": "orchestration",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "af5fb6550307ef5b6",
+      "parent_session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "date": "2026-11-11",
+      "started_at": "2026-11-11T14:07:21.518000+00:00",
+      "ended_at": "2026-11-11T14:09:41.072000+00:00",
+      "duration_s": 139,
+      "selected_by": "orchestration",
+      "cross_repo": false
+    }
+  ],
+  "priced": [
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-11",
+      "tokens": {
+        "input": 415,
+        "output": 116050,
+        "cache_read": 34069087,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 1641348
+      },
+      "cost_usd": 22.2672614,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "agent_id": "a1d07f668ba5acbaa",
+      "model": "claude-fable-5-2",
+      "is_sidechain": true,
+      "date": "2026-11-14",
+      "tokens": {
+        "input": 78,
+        "output": 71501,
+        "cache_read": 7016004,
+        "cache_creation_5m": 259103,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 6.854894799999999,
+      "rates_applied": {
+        "model": "claude-fable-5-2",
+        "input": 8,
+        "output": 40,
+        "cache_read": 0.2,
+        "cache_creation_5m": 10,
+        "cache_creation_1h": 16,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm-live"
+      }
+    },
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "agent_id": "a400a0cbe561f6b82",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-15",
+      "tokens": {
+        "input": 100,
+        "output": 18468,
+        "cache_read": 7501263,
+        "cache_creation_5m": 196947,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 2.8547476,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+      "agent_id": "af5fb6550307ef5b6",
+      "model": "claude-fable-5-2",
+      "is_sidechain": true,
+      "date": "2026-11-11",
+      "tokens": {
+        "input": 20,
+        "output": 12769,
+        "cache_read": 1009363,
+        "cache_creation_5m": 134573,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 2.0585226000000003,
+      "rates_applied": {
+        "model": "claude-fable-5-2",
+        "input": 8,
+        "output": 40,
+        "cache_read": 0.2,
+        "cache_creation_5m": 10,
+        "cache_creation_1h": 16,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "litellm-live"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 22.2672614,
+    "sidechain": 0,
+    "subagents": 11.768165,
+    "total": 34.0354264,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 346973,
+    "subagents": 1439,
+    "entries_without_duration": []
+  },
+  "warnings": [],
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13"
+}

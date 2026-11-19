@@ -1,0 +1,258 @@
+{
+  "slug": "harness-arm-spec",
+  "generated_at": "2026-11-04T15:01:23.696548+00:00",
+  "cost": {
+    "method": "plans",
+    "planning": 3.1932023000000003,
+    "implementer": 0.0,
+    "build": 1.4836825,
+    "verify": 0.266753,
+    "review": 0.8998395,
+    "total": 5.843477299999999,
+    "planning_pct": 54.645584060025364,
+    "build_pct": 25.39040410065425,
+    "verify_pct": 4.564970244686329,
+    "review_pct": 15.399041594634074,
+    "cost_per_plan": 0.8347824714285713,
+    "cost_per_file": 0.3246376277777777,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "plans",
+    "planning_sessions_s": 969,
+    "planning_subagents_s": 81,
+    "planning_s": 1050,
+    "implementer_s": null,
+    "build_s": 277.47900000000004,
+    "verify_s": 40.674,
+    "review_s": 147.128,
+    "executor_s": 465.281,
+    "total_s": 1515.281,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-04T14:41:32+00:00",
+      "last_at": "2026-11-04T15:01:22+00:00",
+      "batch_span_s": 1190.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "auto": 285.0,
+        "verify": 43.0,
+        "review": 149.0
+      },
+      "gates_s": 708.0,
+      "gate_runs": 1,
+      "plans_s": 477.0,
+      "plan_runs": 7,
+      "pr_opened_at": "2026-11-04T15:01:22+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/123"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 1.4836825,
+      "build_min": 4.62465,
+      "verify_usd": 0.266753,
+      "verify_min": 0.6779,
+      "review_usd": 0.8998395,
+      "review_min": 2.4521333333333333,
+      "review_plan": "07-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.3900901,
+    "sessions": 2.8031122
+  },
+  "cold_start_tax_tokens": 346780,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 1,
+      "total_turns": 20,
+      "total_cost_usd": 0.8998395,
+      "total_duration_s": 147.128,
+      "flags": []
+    },
+    {
+      "model": "sonnet",
+      "plan_count": 6,
+      "total_turns": 115,
+      "total_cost_usd": 1.7504355,
+      "total_duration_s": 318.153,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-tests-arm-spec-sonnet",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "02-lib-templates-sonnet",
+      "edit_count": 8,
+      "files_edited": 5,
+      "churn_ratio": 1.6
+    },
+    {
+      "plan": "03-driver-sonnet",
+      "edit_count": 21,
+      "files_edited": 2,
+      "churn_ratio": 10.5
+    },
+    {
+      "plan": "04-smoke-sonnet",
+      "edit_count": 2,
+      "files_edited": 1,
+      "churn_ratio": 2.0
+    },
+    {
+      "plan": "05-docs-sonnet",
+      "edit_count": 18,
+      "files_edited": 7,
+      "churn_ratio": 2.5714285714285716
+    },
+    {
+      "plan": "07-review-opus",
+      "edit_count": 4,
+      "files_edited": 3,
+      "churn_ratio": 1.3333333333333333
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-tests-arm-spec-sonnet",
+      "plan_md_lines": 100,
+      "loc_changed": 270
+    },
+    {
+      "plan": "02-lib-templates-sonnet",
+      "plan_md_lines": 105,
+      "loc_changed": 79
+    },
+    {
+      "plan": "03-driver-sonnet",
+      "plan_md_lines": 83,
+      "loc_changed": 97
+    },
+    {
+      "plan": "04-smoke-sonnet",
+      "plan_md_lines": 64,
+      "loc_changed": 108
+    },
+    {
+      "plan": "05-docs-sonnet",
+      "plan_md_lines": 65,
+      "loc_changed": 92
+    },
+    {
+      "plan": "06-verify-sonnet",
+      "plan_md_lines": 33,
+      "loc_changed": 0
+    },
+    {
+      "plan": "07-review-opus",
+      "plan_md_lines": 76,
+      "loc_changed": 75
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/home/user/agentTooling/harness/lib.sh",
+      "tool": "Read",
+      "plans": [
+        "01-tests-arm-spec-sonnet",
+        "02-lib-templates-sonnet",
+        "04-smoke-sonnet",
+        "07-review-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/harness/new-experiment.sh",
+      "tool": "Read",
+      "plans": [
+        "03-driver-sonnet",
+        "04-smoke-sonnet"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/harness/run.sh",
+      "tool": "Read",
+      "plans": [
+        "03-driver-sonnet",
+        "04-smoke-sonnet",
+        "06-verify-sonnet"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/harness/tests/smoke.sh",
+      "tool": "Read",
+      "plans": [
+        "04-smoke-sonnet",
+        "05-docs-sonnet"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "05-docs-sonnet",
+      "edited_not_listed": [],
+      "listed_not_edited": [
+        "arm-spec.sh",
+        "arm-spec.shared.md",
+        "experiment.json",
+        "harness/tests/*.sh",
+        "harness/tests/arm-spec.sh",
+        "isolation.md",
+        "lib.sh",
+        "new-experiment.sh",
+        "scorecard-programs.cells.md",
+        "self/features/harness-arm-spec/",
+        "tests/arm-spec.sh"
+      ]
+    },
+    {
+      "plan": "07-review-opus",
+      "edited_not_listed": [
+        "harness/README.md",
+        "harness/tests/arm-spec.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "harness/tests/arm-spec.sh",
+      "earlier_plan": "01-tests-arm-spec-sonnet",
+      "later_plan": "07-review-opus",
+      "overlap_chars": 84
+    },
+    {
+      "file": "harness/README.md",
+      "earlier_plan": "05-docs-sonnet",
+      "later_plan": "07-review-opus",
+      "overlap_chars": 151
+    }
+  ],
+  "warnings": [
+    "plan 06-verify-sonnet has 0 files_edited; excluded from churn ratio"
+  ],
+  "profile": "cloud",
+  "gate": "green"
+}

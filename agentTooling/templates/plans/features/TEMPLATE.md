@@ -152,7 +152,14 @@ go wrong quietly:
   and pinned here all the same. `--list-subagents --unclaimed` is the standing
   question — every delegate on this machine no feature has claimed, with the
   feature its brief names; a pin already claimed by another feature refuses the
-  capture rather than counting twice.
+  capture rather than counting twice. **A delegate whose brief opens `feature:
+  <repo>/<slug>` for this feature is pinned by the capture itself**, through the same
+  command, and the capture says so — the reason every brief opens with that line
+  (`agentTooling/CONVENTIONS.md` → "Delegate briefs").
+- **`allow_unclaimed`** — absent unless `feature-close.sh --allow-unclaimed "<reason>"`
+  let a close through with no session or delegate claimed for the build; it holds that
+  reason, written by `analysis/manifest.py allow-unclaimed`, and the capture copies it into
+  `planning.json`, where the report prints it. Never hand-written.
 - **`exclude_subagents`** — optional, and legacy: leave it empty. Delegates of a session
   this manifest *does* select that belong to another feature. A delegate another feature
   pins now **yields** on its own — the capture leaves it to that feature and records it in
@@ -161,10 +168,11 @@ go wrong quietly:
   entry out with `python3 agentTooling/analysis/manifest.py <slug> unexclude-subagent
   <agent-id>`, never by editing the fence.
 - **`orchestration`** — optional: the slug of the orchestration record (a group of
-  features an orchestrator session spawned, `self/orchestrations/<slug>/`) this feature
+  features an orchestrator session spawned, `plans/orchestrations/<slug>/` in a consuming
+  repo, `self/orchestrations/<slug>/` for agentTooling's own) this feature
   belongs to. `feature-start.sh --orchestration <slug>` writes it, and `manifest.py <slug>
   get orchestration` reads it. Nothing in the cost capture reads it; the group report
-  (`analysis/report.py --orchestration <slug>`) is what joins the two.
+  (`analysis/report.py [--self] --orchestration <slug>`) is what joins the two.
 - **`session_window.to`** — `null` means "still in flight", and open is the right value
   until the feature's first capture. `agentTooling/feature-capture.sh` sets it on the
   branch, from evidence: one second past the last instant of the sessions this feature's

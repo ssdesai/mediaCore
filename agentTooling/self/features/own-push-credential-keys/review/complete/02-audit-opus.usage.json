@@ -1,0 +1,73 @@
+{
+  "plan": "02-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "e20a320c-4a41-4280-a526-44ff67528ecf",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 16,
+  "duration_ms": 244659,
+  "total_cost_usd": 1.0671266,
+  "usage": {
+    "input_tokens": 28,
+    "cache_creation_input_tokens": 56674,
+    "cache_read_input_tokens": 834925,
+    "output_tokens": 22313
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 3676,
+      "outputTokens": 20,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.00037760000000000007,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 28,
+      "outputTokens": 22313,
+      "cacheReadInputTokens": 834925,
+      "cacheCreationInputTokens": 56674,
+      "webSearchRequests": 0,
+      "costUSD": 1.0667490000000002,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 7511,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 56674,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 1,
+  "tool_counts": {
+    "Bash": 9,
+    "Read": 3,
+    "Write": 3
+  },
+  "files_edited": [
+    "/tmp/plan-capture.pEmOGC/scratch/attack.py",
+    "/tmp/plan-capture.pEmOGC/scratch/attack2.py",
+    "self/features/own-push-credential-keys/audit-report.md"
+  ],
+  "edit_count": 3,
+  "attempts": [
+    {
+      "session_id": "e20a320c-4a41-4280-a526-44ff67528ecf",
+      "outcome": "complete",
+      "total_cost_usd": 1.0671266,
+      "num_turns": 16,
+      "duration_ms": 244659
+    }
+  ]
+}

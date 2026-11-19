@@ -1,0 +1,74 @@
+{
+  "slug": "hook-planted-gitdir",
+  "captured_at": "2026-11-17T19:06:28.764564+00:00",
+  "manifest_branches": [
+    "claude/hook-planted-gitdir"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "eecb1625-1524-5a5d-84de-7d33d8099af2",
+      "git_branch": "claude/hook-planted-gitdir",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-11-17",
+      "started_at": "2026-11-17T17:23:05.218000+00:00",
+      "ended_at": "2026-11-17T19:06:28.518000+00:00",
+      "duration_s": 6203
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "1754b34e-defc-43f5-950d-a05a4dc32943",
+    "a245e7a1-2d99-4731-8996-c4c8b91955f8"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "eecb1625-1524-5a5d-84de-7d33d8099af2",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-17",
+      "duration_s": 6203,
+      "tokens": {
+        "input": 157,
+        "output": 40819,
+        "cache_read": 12870827,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 149212
+      },
+      "cost_usd": 4.5848694000000005,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 4.5848694000000005,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 4.5848694000000005,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 6203,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "session eecb1625-1524-5a5d-84de-7d33d8099af2 may span the window boundary (window 2026-11-17T17:23:05.218000+00:00..2026-11-17T19:06:28+00:00 UTC, session ends 2026-11-17T19:06:28.518000+00:00); no billable response of it falls at or after `to`",
+    "rate history is stale (checked 2026-10-13); refresh analysis/rates_history.json with analysis/refresh_rates.py in an agentTooling self feature"
+  ]
+}

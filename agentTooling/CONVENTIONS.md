@@ -32,12 +32,17 @@ fix; `hooks/README.md` has the reasoning behind each shape.
 **Approved silently.** Reads and tests, confined to the project root: `ls`, `cat`,
 `head`, `tail`, `wc`, `grep`, `rg`, `find`, `sed -n …p`, `stat`, `du`, a read-only `git`
 (`status`, `log`, `diff`, `show`, `branch --show-current`, `worktree list`, `stash list`,
-behind `-C <path inside the root>` as well), the test and lint runners (pytest, ruff,
-mypy, `npx playwright test`, the named `npm run` scripts), and the harness's own
+behind `-C <path inside the root>` as well), the test and lint runners in their read-only
+forms (pytest, ruff, mypy, `npx playwright test`, the named `npm run` scripts), and the harness's own
 read-only entry points (`gate.sh`, `check-plans.sh`, `bash -n`, `shellcheck`,
 `py_compile`, `report.py`, a listing `capture_planning.py`, `manifest.py get`). A
 standalone `cd <absolute path>` inside the root is approved, and the directory persists
-into the next call.
+into the next call. In a Claude Code cloud container only, one write too: a plain `git
+push [-u] origin <branch>` of the started feature's own branch (the current branch and a
+tracked manifest's `branches[0]`, read from the manifest committed at `HEAD`), run from the
+project root with no `-C` or other global option and nothing else on the line (chained with
+anything it is sent back to run alone, and piped it prompts), since a container is reclaimed with what it never
+pushed; every other push still goes to the human.
 
 **Sent back with a rewrite.** Rewrite it as the reason says rather than retrying it;
 `pushd` and a subshell are denied too.
@@ -65,7 +70,17 @@ into the next call.
 
 Exempt: a heredoc feeding `cat` is a literal string, not code (`git commit -m "$(cat
 <<'EOF' … EOF)"` is the shape Claude Code itself uses), as is a `$(…)` that is a whole
-argument rather than part of a path. After two such denials in one session the policy
+argument rather than part of a path. The heredoc's body ends only at a line holding the
+delimiter alone, as in bash (leading tabs stripped under `<<-`, and with an unquoted
+delimiter a line that ends in a `\` joined to the next one first, as bash joins it: `EO\`
+then `F` is the line `EOF`); `EOF)` is body text, and a
+body the hook cannot place that way is read as commands, never as a message. What follows
+the body is policed like any other command, and a comment is no command (an apostrophe in
+one hides nothing; a `#` inside a word, as in `a#b`, is a literal and hides nothing either).
+A force push is `--force`, `--force-with-lease`, `-f` or any bundle of
+short flags holding `f` (`-fu`, `-uf`), denied wherever the rows apply, and a brace group is
+expanded before a git command is judged (`--forc{e,x}`, a nested group, a `{a..c}` sequence).
+After two such denials in one session the policy
 stops correcting and asks the human instead; under a batch runner it prints nothing then,
 and the executor has a scratch directory of its own (`RUNNER.md` → "The executor's
 environment").
@@ -87,6 +102,17 @@ After a feature's review comes back `Verdict: clean`, run `feature-close.sh` (wi
 opens is the expected outcome of a clean round, and the repository owner has authorized it
 as a standing rule (`LIFECYCLE.md` → step 5). An escalated verdict is a new round, never a
 close.
+
+## Delegate briefs
+
+Every Agent or subagent brief begins with one line naming the feature its cost belongs to:
+`feature: <repo>/<slug>`, or `feature: none — <reason>` for work that belongs to no
+feature, such as read-only analysis. **Cost attribution claims a delegate by this line**: a
+delegate records its parent's branch, which outside the feature's checkout no feature
+selects, so the line is what the capture reads to claim it — it pins the delegate itself
+when the line names the feature being captured — and without it the cost is counted by no
+feature. The format is specified once, in `analysis/README.md` → "The brief header";
+`hooks/allow-repo-commands.sh` sends back an `Agent` call whose brief does not open with it.
 
 ## READMEs
 

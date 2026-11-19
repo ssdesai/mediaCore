@@ -113,8 +113,9 @@ set -uo pipefail
 #       `gh pr merge --auto`, asking for `--merge` and never `--squash` (both the prune
 #       and the post-merge capture decide "merged" by ancestry, which a squash never
 #       gives) and opens no PR of its own; unset, it exits 0 saying nothing was
-#       requested; self/pr.sh never calls it; and both copies read template-version 7, the
-#       body refreshed through forge.sh pr-edit, which keeps the merge request (>= 4);
+#       requested; self/pr.sh never calls it; and both copies read template-version 8, the
+#       body composed through conformance.py and refreshed through forge.sh pr-edit, which
+#       keeps the merge request (>= 4);
 #   P3. that merge request names the PR pr-find found and asks forge.sh per profile:
 #       under cloud exactly one PUT …/pulls/<n>/ccr/auto_merge with merge_method=merge and
 #       no `gh pr` / `gh auth status`; under local `gh pr merge <url> --auto --merge
@@ -205,6 +206,10 @@ set -uo pipefail
 #       feature's report, and commits both with this feature's own cost records;
 #   A2. while a sibling's record dirtied BEFORE the run — not by that annotation — refuses
 #       the capture by name and leaves the tree exactly as it found it;
+#   RP. a feature README still matching the real template is refused by the close,
+#       naming the section, before any PR call (the fixture's own template carries real
+#       prose, so every other close here describes its feature; and S1n3: the start's last
+#       lines name the review brief to fill);
 #   RB. a router that built its feature is refused until it is pinned;
 #   F.  forge.sh against the fake `gh` (self/DESIGN-2026-10-05-cloud-execution.md §5):
 #       https, https-without-.git, ssh-URL and scp-style ssh origins all give the same
@@ -244,9 +249,12 @@ ORIGIN="$TMP/origin.git"
 FORGE_REPO_PATH="lifecycle-owner/agentTooling"
 FORGE_URL="https://github.com/$FORGE_REPO_PATH.git"
 mkdir -p "$AT/analysis" "$AT/self/features/old/review/complete" "$AT/templates/plans/features" "$TMP/bin"
+mkdir -p "$AT/hooks" && cp "$HERE/hooks/shared_rules.py" "$AT/hooks/"  # roots.py imports it
 
+# the role reader refuses a copy without its two modules (hook-silent-allow-sweep, item 7)
 for f in feature-start.sh feature-capture.sh feature-close.sh plan-runner-roots.sh plan-runner-lib.sh \
-         run-plans.sh run-verify.sh run-review.sh run-batch.sh stamp-timing.sh forge.sh env-profile.sh; do
+         run-plans.sh run-verify.sh run-review.sh run-batch.sh stamp-timing.sh forge.sh env-profile.sh \
+         hooks/orchestrator_role.py hooks/shared_rules.py; do
   cp "$HERE/$f" "$AT/$f" 2>/dev/null || true
 done
 # The profile is forced, never inherited: a Claude Code cloud container sets
@@ -258,7 +266,15 @@ export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/test
 for f in pricing.py litellm_prices.py rates_history.json refresh_rates.py roots.py transcript.py capture_planning.py report.py manifest.py routing.py recover_attempts.py; do
   cp "$HERE/analysis/$f" "$AT/analysis/$f" 2>/dev/null || true
 done
-cp "$HERE/templates/plans/features/TEMPLATE.md" "$AT/templates/plans/features/TEMPLATE.md"
+# capture_planning.py reads the brief header from ../hooks/brief_header.py (README.md).
+mkdir -p "$AT/hooks" && cp "$HERE/hooks/brief_header.py" "$AT/hooks/brief_header.py"
+# The fixture's template carries real prose above the real machine-readable part: this
+# test closes features it never describes, and the close refuses a README still matching
+# its template (self/tests/feature-readme-check.sh owns that refusal).
+{
+  printf '# A fixture feature\n\nThe goal of a fixture feature, written out.\n\n## Plans\n\n| Plan | What it does |\n|---|---|\n| `review/incomplete/01-review-opus.md` | the review |\n\n'
+  sed -n '/^## Machine-readable/,$p' "$HERE/templates/plans/features/TEMPLATE.md"
+} > "$AT/templates/plans/features/TEMPLATE.md"
 cp "$HERE/self/pr.sh" "$AT/self/pr.sh" 2>/dev/null || true
 # The settings generator and the hook beside the tracked policy, as the real checkout has
 # them; the start no longer runs the generator (S1v, S6h).
@@ -706,6 +722,11 @@ check "S1m2. ... without teaching a chained cd" '! grep -qE "cd [^ ]+ (&&|;)" <<
 check "S1n. output says the stub brief must be replaced" 'grep -q "@@TODO@@" <<<"$out"'
 # The review pass records the round's verdict and stops; the close is what opens the PR
 # and captures on the branch, and merging it is still the last step of a feature.
+# The start's LAST lines name the one file still a stub and the sections to write, so the
+# refusal of run-review.sh is never reached by surprise (item 1 of lifecycle-loose-ends).
+last_lines="$(tail -n 9 <<<"$out")"
+check "S1n3. the last lines name the review brief to fill, and its two sections" \
+  'grep -q "self/features/$SLUG/review/incomplete/01-review-opus.md" <<<"$last_lines" && grep -q "What the feature was supposed to do" <<<"$last_lines" && grep -q "Contracts to hold it to" <<<"$last_lines"'
 check "S1n2. the Next block names the close as what opens the PR, and ends at the merge" \
   'grep -q "feature-close.sh --self $SLUG" <<<"$out" && grep -qi "merge the PR" <<<"$out"'
 check "S1o. the worktree is inside the primary at R/$WORKTREES_DIR/S, and nothing is at the legacy R-S" '[[ -d "$WT" && ! -e "$AT-$SLUG" ]]'
@@ -736,8 +757,10 @@ done
 check "S2b. no branch and no worktree was created for any of them" '[[ "$(branches)" == "$before" && ! -e "$(wt_path Bad_Slug)" && ! -e "$(wt_path review/x)" ]]'
 start "$SLUG" >/dev/null 2>&1; rc=$?
 check "S2c. a slug whose branch exists is refused (got $rc)" '[[ $rc -ne 0 ]]'
-HOME="$FAKE_HOME" "$WT/feature-start.sh" --self another >/dev/null 2>&1; rc=$?
+wt_out="$(HOME="$FAKE_HOME" "$WT/feature-start.sh" --self another 2>&1)"; rc=$?
 check "S2d. the copy inside a worktree refuses (got $rc)" '[[ $rc -ne 0 ]]'
+check "S2d2. ... naming the primary checkout's feature-start.sh, not the worktree path under the common root" \
+  'grep -qF "it is $AT/feature-start.sh" <<<"$wt_out" && ! grep -qF "$AT/$WT" <<<"$wt_out"'
 check "S2e. ... and created nothing" '[[ ! -e "$WT/$WORKTREES_DIR/another" && ! -e "$(wt_path another)" && "$(branches)" == "$before" ]]'
 mkdir -p "$(wt_path lifecycle-occupied)"
 start lifecycle-occupied --no-gate >/dev/null 2>&1; rc=$?
@@ -1021,6 +1044,9 @@ check "S6h. the start wrote no nested agentTooling/$LOCAL_SETTINGS_REL into the 
   '[[ ! -e "$VENDOR_AT/$LOCAL_SETTINGS_REL" && ! -e "$VENDOR_WT/agentTooling/$LOCAL_SETTINGS_REL" ]]'
 check "S6i. ... and the shipped agentTooling/$SETTINGS_REL is as shipped: the generator's bytes" \
   'cmp -s "$VENDOR_AT/$SETTINGS_REL" "$EXPECTED_SETTINGS_DIR/$SETTINGS_REL" && cmp -s "$VENDOR_WT/agentTooling/$SETTINGS_REL" "$EXPECTED_SETTINGS_DIR/$SETTINGS_REL"'
+vendor_wt_out="$(HOME="$FAKE_HOME" "$VENDOR_WT/agentTooling/feature-start.sh" --self vendored-other --no-gate 2>&1)"; rc=$?
+check "S6j. the vendored copy inside a worktree refuses, naming the primary's agentTooling/feature-start.sh (got $rc)" \
+  '[[ $rc -ne 0 ]] && grep -qF "it is $VENDOR_AT/feature-start.sh" <<<"$vendor_wt_out"'
 
 # ── T1. a stub brief cannot run ───────────────────────────────────────────────
 rm -f "$CLAUDE_CALLED_OUT"
@@ -1042,13 +1068,16 @@ git -C "$WT" commit -q -m "$SLUG: review brief"
 
 # ── C1. the capture runs on the branch, and pushes the branch ─────────────────
 # The session launched in the worktree, on branch S — claimed by branch — and, in the
-# primary on main, a coordinator with two delegates: one briefed for S and pinned by
-# nobody, one briefed for S-two. And the router's own transcript: the session that ran
-# S's start, which the capture's routing refresh re-derives the record from.
+# primary on main, a coordinator with three delegates: one briefed for S and pinned by
+# nobody, which the capture claims itself (self/features/delegate-cost-claims); one briefed
+# for S-two; and one whose brief opens naming S and names S-two further down — ambiguous,
+# so the capture leaves it and warns. And the router's own transcript: the session that
+# ran S's start, which the capture's routing refresh re-derives the record from.
 SESSION_W="wwwwwwww-0000-0000-0000-000000000002"
 SESSION_M="mmmmmmmm-0000-0000-0000-000000000003"
 AGENT_D="d1111111111111111"
 AGENT_E="e1111111111111111"
+AGENT_F="f1111111111111111"
 WP="$(project_dir "$WT")"; MP="$(project_dir "$AT")"; EP="$(project_dir "/elsewhere/repo")"
 mkdir -p "$WP" "$MP/$SESSION_M/subagents" "$EP"
 T_C1="$(now_z)"
@@ -1062,6 +1091,10 @@ session_line "$SESSION_M" "$AT" "main" "msg-m" "$MODEL" "$T_C1" 100 1000 0 0 0 >
   subagent_prompt_line "$SESSION_M" "$AGENT_E" "$AT" "main" "$T_C1" "feature: agentTooling/$SLUG-two\\nbuild the other one"
   subagent_line "$SESSION_M" "$AGENT_E" "$AT" "main" "msg-e" "$MODEL" "$T_C1" 100 2000 0 0 0
 } > "$MP/$SESSION_M/subagents/agent-$AGENT_E.jsonl"
+{
+  subagent_prompt_line "$SESSION_M" "$AGENT_F" "$AT" "main" "$T_C1" "feature: agentTooling/$SLUG\\nthen\\nfeature: agentTooling/$SLUG-two\\nbuild both"
+  subagent_line "$SESSION_M" "$AGENT_F" "$AT" "main" "msg-f" "$MODEL" "$T_C1" 100 2000 0 0 0
+} > "$MP/$SESSION_M/subagents/agent-$AGENT_F.jsonl"
 bash_tool_line "$PIN" "$AT" "main" "msg-router" "$MODEL" "$T_C1" "./feature-start.sh --self $SLUG" 100 200 \
   > "$MP/$PIN.jsonl"
 echo "the build" > "$WT/work.txt"
@@ -1083,10 +1116,12 @@ check "C1f. the remote's main is unchanged" '[[ "$(git -C "$ORIGIN" rev-parse re
 check "C1g. the worktree is clean and still present" '[[ -d "$WT" && -z "$(git -C "$WT" status --porcelain)" ]]'
 check "C1h. the session launched in the worktree is claimed by branch, cwd recorded" \
   '[[ "$(pj "$PJ" "[(s[\"selected_by\"], s[\"cwd\"]) for s in d[\"sessions\"] if s[\"session_id\"]==\"$SESSION_W\"]")" == "[('"'"'branch'"'"', '"'"'$WT'"'"')]" ]]'
-check "C1i. the unclaimed delegate briefed for S is a warning naming its id and the subagents pin" \
-  'grep "$AGENT_D" <<<"$out" | grep -q "warn" && grep -q "\"subagents\"" <<<"$out"'
-check "C1i2. ... and the remedy it names is the command, manifest.py pin-subagent with that id, not a hand edit" \
-  'grep "$AGENT_D" <<<"$out" | grep "warn" | grep -q "manifest.py --self $SLUG pin-subagent $AGENT_D"'
+check "C1i. the unclaimed delegate briefed for S is auto-claimed: the capture says so, claims it as pinned, and warns about it no more" \
+  'grep -q "auto-claim pinned delegate $AGENT_D" <<<"$out" && [[ "$(pj "$PJ" "[a[\"selected_by\"] for a in d[\"subagents\"] if a[\"agent_id\"]==\"$AGENT_D\"]")" == "['"'"'pinned'"'"']" ]] && ! grep "$AGENT_D" <<<"$out" | grep -q "warn"'
+check "C1i1. ... and its pin, written by manifest.py, rides the cost commit to the remote's S" \
+  '[[ "$(remote_fence "$SLUG" "d[\"subagents\"]")" == "['"'"'$AGENT_D'"'"']" ]]'
+check "C1i2. the ambiguous one is left, said so, and is the warning naming manifest.py pin-subagent with its id, not a hand edit" \
+  'grep "$AGENT_F" <<<"$out" | grep -q "ambiguous" && grep "$AGENT_F" <<<"$out" | grep "warn" | grep -q "manifest.py --self $SLUG pin-subagent $AGENT_F" && grep -q "\"subagents\"" <<<"$out"'
 # The warning is this FEATURE's: only a delegate whose brief names S is a pin S's manifest
 # is missing. The sibling briefed for S-two is somebody else's pin and is never warned
 # about here — it is named once, in the corpus-wide residue below (C3c2), where it is one
@@ -1112,7 +1147,7 @@ check "C3a3. ... and exactly one tiers line, in one of the two wordings refresh_
   '[[ "$(grep -c "^  tiers " <<<"$residue")" -eq 1 ]] && grep -qE "^  tiers +(no model in the corpus carries a tiered rate|[0-9]+ model\(s\) carry an above-[0-9k/]+ tier: .* — tiered pricing is unbuilt, see self/BACKLOG\.md)$" <<<"$residue"'
 check "C3b. ... an unclaimed listing naming the main session no feature claims" \
   'grep -q "$SESSION_M" <<<"$residue"'
-check "C3c. ... and the delegates nobody claimed" 'grep -q "$AGENT_D" <<<"$residue"'
+check "C3c. ... and the delegates nobody claimed" 'grep -q "$AGENT_F" <<<"$residue" && ! grep -q "$AGENT_D" <<<"$residue"'
 check "C3c2. ... including one briefed for another feature entirely — the residue is the corpus's, not this feature's" \
   'grep -q "$AGENT_E" <<<"$residue"'
 check "C3d. ... while the router that started S is not listed as unclaimed — routing is its own category" \
@@ -1127,10 +1162,11 @@ check "C3f. ... and an unclaimed session did not fail the capture" '[[ $rc -eq 0
 # no frozen-record refusal, no "already captured" skip.
 T_C2="$(shift_z "$T_C1" 3600)"
 session_line "$SESSION_W" "$WT" "$SLUG" "msg-w2" "$MODEL" "$T_C2" 100 3000 0 0 0 >> "$WP/$SESSION_W.jsonl"
-# And the remedy C1i named is taken: the delegate briefed for S is pinned with the command
-# (self/features/manifest-pin-subagent), from the worktree's own copy. The manifest is a
-# cost record, so the dirty README passes the capture's stray check and rides its commit.
-outpin="$(HOME="$FAKE_HOME" python3 -B "$WT/analysis/manifest.py" --self "$SLUG" pin-subagent "$AGENT_D" 2>&1)"; rcpin=$?
+# And the remedy C1i2 named is taken: the ambiguous delegate is pinned with the command
+# (self/features/manifest-pin-subagent), from the worktree's own copy — a human's word,
+# which the brief alone could not be. The manifest is a cost record, so the dirty README
+# passes the capture's stray check and rides its commit.
+outpin="$(HOME="$FAKE_HOME" python3 -B "$WT/analysis/manifest.py" --self "$SLUG" pin-subagent "$AGENT_F" 2>&1)"; rcpin=$?
 out="$(capture "$WT" "$SLUG")"; rc=$?
 check "C2a. a second capture exits 0 (got $rc)" '[[ $rc -eq 0 ]]'
 check "C2b. ... moving to later, onto the new last instant" \
@@ -1141,12 +1177,12 @@ check "C2d. ... with no refusal and no already-captured skip" '! grep -qi "alrea
 check "C2e. ... and the branch pushed again" \
   '[[ "$(git -C "$ORIGIN" rev-parse "refs/heads/$SLUG" 2>/dev/null)" == "$(git -C "$WT" rev-parse HEAD)" && -z "$(git -C "$WT" status --porcelain)" ]]'
 check "C2f. manifest.py pin-subagent pinned the warned-about delegate (got $rcpin: $outpin)" \
-  '[[ $rcpin -eq 0 && "$outpin" == "subagents = [\"$AGENT_D\"]" ]]'
+  '[[ $rcpin -eq 0 && "$outpin" == "subagents = [\"$AGENT_D\", \"$AGENT_F\"]" ]]'
 check "C2g. ... and the capture claims it as pinned, under the coordinator on main" \
-  '[[ "$(pj "$PJ" "[(a[\"agent_id\"], a[\"selected_by\"], a[\"parent_session_id\"]) for a in d[\"subagents\"] if a[\"agent_id\"]==\"$AGENT_D\"]")" == "[('"'"'$AGENT_D'"'"', '"'"'pinned'"'"', '"'"'$SESSION_M'"'"')]" ]]'
-check "C2h. ... so it is no longer warned about" '! grep "$AGENT_D" <<<"$out" | grep -q "warn"'
+  '[[ "$(pj "$PJ" "[(a[\"agent_id\"], a[\"selected_by\"], a[\"parent_session_id\"]) for a in d[\"subagents\"] if a[\"agent_id\"]==\"$AGENT_F\"]")" == "[('"'"'$AGENT_F'"'"', '"'"'pinned'"'"', '"'"'$SESSION_M'"'"')]" ]]'
+check "C2h. ... so it is no longer warned about" '! grep "$AGENT_F" <<<"$out" | grep -q "warn"'
 check "C2i. ... and the pin rode the cost commit to the remote's S" \
-  '[[ "$(remote_fence "$SLUG" "d[\"subagents\"]")" == "['"'"'$AGENT_D'"'"']" ]]'
+  '[[ "$(remote_fence "$SLUG" "d[\"subagents\"]")" == "['"'"'$AGENT_D'"'"', '"'"'$AGENT_F'"'"']" ]]'
 
 # ── N1. no routing record, no routing talk ────────────────────────────────────
 NWT="$(wt_path lifecycle-noenv)"
@@ -1210,7 +1246,29 @@ git -C "$HWT" commit -q -m "lifecycle-hand: review brief"
 rm -f "$CLAUDE_CALLED_OUT"; : > "$GH_LOG"
 out="$(review "$HWT" lifecycle-hand)"; rc=$?
 check "T3a. the hand start's own brief, extended with a line that mentions the marker mid-line, is not a stub: it runs, and the pass exits 0 (got $rc)" '[[ $rc -eq 0 && -e "$CLAUDE_CALLED_OUT" ]]'
-outh="$(PR_AUTO_MERGE=1 close "$HWT" lifecycle-hand)"; rch=$?
+# UB (self/features/delegate-cost-claims): nothing claims this feature's build, while C1's
+# coordinator — an unclaimed session in the primary, on main — started inside its window.
+# Closed as it stands, the build would be recorded at $0, so the close stops BEFORE its PR,
+# naming that session with the exact pin-session command, writing nothing. The exit code
+# capture_planning.py --claim-check stops with is CLAIM_CHECK_UNCLAIMED_EXIT there and
+# CLAIM_CHECK_UNCLAIMED_RC in feature-close.sh; UBa2 holds the two in step.
+ub_head_before="$(git -C "$HWT" rev-parse HEAD)"
+ub_status_before="$(git -C "$HWT" status --porcelain --untracked-files=all)"
+: > "$GH_LOG"
+outub="$(close "$HWT" lifecycle-hand)"; rcub=$?
+check "UBa. the close of a feature whose build nothing claims, with an unclaimed session met in its window, refuses (got $rcub)" \
+  '[[ $rcub -ne 0 ]] && grep -q "no session and no delegate is claimed" <<<"$outub"'
+check "UBa2. ... the stop is the claim check's own exit code, the same number in both scripts" \
+  '[[ "$(sed -n "s/^CLAIM_CHECK_UNCLAIMED_RC=//p" "$HWT/feature-close.sh")" == "$(sed -n "s/^CLAIM_CHECK_UNCLAIMED_EXIT = //p" "$HWT/analysis/capture_planning.py")" ]]'
+check "UBb. ... naming the session it met with the exact pin-session command" \
+  'grep -qF "manifest.py --self lifecycle-hand pin-session $SESSION_M" <<<"$outub"'
+check "UBc. ... and the flag that lets it through" 'grep -q -- "--allow-unclaimed" <<<"$outub"'
+check "UBd. ... before any PR call, with nothing written or committed" \
+  '[[ ! -s "$GH_LOG" && "$(git -C "$HWT" rev-parse HEAD)" == "$ub_head_before" && "$(git -C "$HWT" status --porcelain --untracked-files=all)" == "$ub_status_before" ]]'
+UB_REASON="T3 fixture: this hand build ran in no session"
+outh="$(PR_AUTO_MERGE=1 close "$HWT" lifecycle-hand --allow-unclaimed "$UB_REASON")"; rch=$?
+check "UBe. --allow-unclaimed lets the close through, saying so, and records the reason in the manifest's fence" \
+  'grep -q "allow     --allow-unclaimed" <<<"$outh" && [[ "$(fence "$HWT/self/features/lifecycle-hand/README.md" "d[\"allow_unclaimed\"]")" == "$UB_REASON" ]]'
 check "T3b. the close over a feature with nothing to capture exits non-zero (got $rch)" '[[ $rch -ne 0 ]]'
 check "T3c. ... reporting the capture's failure with the exact re-run command" \
   'grep -q "feature-capture.sh --self lifecycle-hand" <<<"$outh"'
@@ -1258,8 +1316,10 @@ check "T4f. ... leaving the worktree clean, with no capture refusal printed" \
 # ── P1. pr.sh on its own ──────────────────────────────────────────────────────
 : > "$GH_LOG"
 BWT="$(wt_path lifecycle-based)"
+# An empty BWT (a start that failed) must never run pr.sh in the real checkout: `cd ""` is a
+# no-op, and pr.sh would commit and push the tree the gate runs in
 (
-  cd "$BWT"
+  [[ -n "$BWT" ]] && cd "$BWT" || exit 1
   echo x > dirty.txt
   FEATURE_BASE=other ./self/pr.sh lifecycle-based >/dev/null 2>&1
 ); rc=$?
@@ -1281,7 +1341,7 @@ check "P1e. neither copy creates a branch" '! grep -q "checkout -b" "$HERE/templ
 head_before="$(git -C "$BWT" rev-parse HEAD)"
 : > "$GH_ARGV_LOG"
 (
-  cd "$BWT"
+  [[ -n "$BWT" ]] && cd "$BWT" || exit 1
   echo w > dirty-noforge.txt
   FORGE_SCRIPT="$TMP/no-such-forge.sh" FEATURE_BASE=other ./self/pr.sh lifecycle-based >/dev/null 2>&1
 ); rc=$?
@@ -1297,7 +1357,7 @@ rm -f "$BWT/dirty-noforge.txt"
 # point that makes it.
 : > "$GH_LOG"
 (
-  cd "$BWT"
+  [[ -n "$BWT" ]] && cd "$BWT" || exit 1
   echo z >> dirty.txt
   FEATURE_BASE=other PR_AUTO_MERGE=1 "$PR_TEMPLATE" lifecycle-based >/dev/null 2>&1
 ); rc=$?
@@ -1305,7 +1365,7 @@ check "P2b. the OPEN path with PR_AUTO_MERGE=1 reaches the forge and asks for no
   '[[ $rc -eq 0 && -s "$GH_LOG" ]] && ! grep -qE "$AUTO_MERGE_CALL_RE" "$GH_LOG"'
 : > "$GH_LOG"
 (
-  cd "$BWT"
+  [[ -n "$BWT" ]] && cd "$BWT" || exit 1
   FEATURE_BASE=other PR_AUTO_MERGE=1 "$PR_TEMPLATE" --merge-request lifecycle-based >/dev/null 2>&1
 ); rc=$?
 check "P2b2. --merge-request with PR_AUTO_MERGE=1 makes exactly one gh pr merge --auto call (got rc $rc, $(grep -cE "$AUTO_MERGE_CALL_RE" "$GH_LOG") calls)" \
@@ -1320,19 +1380,19 @@ check "P2b4. ... and it opened no PR of its own — the merge request is all it 
   '! grep -q "pr create" "$GH_LOG"'
 : > "$GH_LOG"
 outm="$(
-  cd "$BWT"
+  [[ -n "$BWT" ]] && cd "$BWT" || exit 1
   FEATURE_BASE=other "$PR_TEMPLATE" --merge-request lifecycle-based 2>&1
 )"; rc=$?
 check "P2c. --merge-request with PR_AUTO_MERGE unset exits 0, saying nothing was requested (got $rc)" \
   '[[ $rc -eq 0 ]] && grep -qi "no merge requested" <<<"$outm" && ! grep -qE "$AUTO_MERGE_CALL_RE" "$GH_LOG"'
 : > "$GH_LOG"
 (
-  cd "$BWT"
+  [[ -n "$BWT" ]] && cd "$BWT" || exit 1
   FEATURE_BASE=other PR_AUTO_MERGE=1 ./self/pr.sh --merge-request lifecycle-based >/dev/null 2>&1
 )
 check "P2d. self/pr.sh never calls it, even with PR_AUTO_MERGE=1" '! grep -qE "$AUTO_MERGE_CALL_RE" "$GH_LOG"'
-check "P2e. both copies carry template-version 7 — the body refreshed through forge.sh pr-edit, at or past the 4 the close's merge request needs" \
-  '[[ "$(sed -n "s/^# template-version:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$HERE/templates/plans/pr.sh" | head -1)" == "7" ]] && [[ "$(sed -n "s/^# template-version:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$HERE/self/pr.sh" | head -1)" == "7" ]]'
+check "P2e. both copies carry template-version 8 — the body composed through conformance.py and refreshed through forge.sh pr-edit, at or past the 4 the close's merge request needs" \
+  '[[ "$(sed -n "s/^# template-version:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$HERE/templates/plans/pr.sh" | head -1)" == "8" ]] && [[ "$(sed -n "s/^# template-version:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$HERE/self/pr.sh" | head -1)" == "8" ]]'
 
 # ── P3. the merge request goes through forge.sh, which asks per profile ──────
 # (self/DESIGN-2026-10-05-cloud-execution.md §5.) Local: P2b2 above is `gh pr merge
@@ -1341,7 +1401,7 @@ check "P2e. both copies carry template-version 7 — the body refreshed through 
 # status` anywhere on the way.
 : > "$GH_LOG"; : > "$GH_ARGV_LOG"
 (
-  cd "$BWT"
+  [[ -n "$BWT" ]] && cd "$BWT" || exit 1
   FEATURE_BASE=other PR_AUTO_MERGE=1 AGENTTOOLING_PROFILE=cloud "$PR_TEMPLATE" --merge-request lifecycle-based >/dev/null 2>&1
 ); rc=$?
 check "P3a. under cloud, --merge-request with PR_AUTO_MERGE=1 exits 0 (got $rc)" '[[ $rc -eq 0 ]]'
@@ -1352,21 +1412,23 @@ check "P3c. ... and calling no gh pr, no gh auth status, no squash" \
 P3_LOCAL_URL_CALL_RE='^pr merge https://example\.invalid/pr/1 --auto --merge --delete-branch$'
 : > "$GH_LOG"
 (
-  cd "$BWT"
+  [[ -n "$BWT" ]] && cd "$BWT" || exit 1
   FEATURE_BASE=other PR_AUTO_MERGE=1 "$PR_TEMPLATE" --merge-request lifecycle-based >/dev/null 2>&1
 )
 check "P3d. under local the same request names the PR pr-find found: gh pr merge <url> --auto --merge --delete-branch" \
   'grep -qE "$P3_LOCAL_URL_CALL_RE" "$GH_LOG"'
 : > "$GH_LOG"
 outp3="$(
-  cd "$BWT"
+  [[ -n "$BWT" ]] && cd "$BWT" || exit 1
   FEATURE_BASE=other PR_AUTO_MERGE=1 GH_API_RC=1 "$PR_TEMPLATE" --merge-request nothing-open 2>&1
 )"; rc=$?
 check "P3e. a forge that cannot find the PR leaves the merge to a human: exit 0, a warning, no merge call (got $rc)" \
   '[[ $rc -eq 0 ]] && grep -q "warn" <<<"$outp3" && ! grep -qE "$AUTO_MERGE_CALL_RE" "$GH_LOG"'
 rm -f "$BWT/dirty.txt"
-git -C "$BWT" add -A
-git -C "$BWT" commit -q -m "lifecycle-based: the pr.sh runs' leftovers" 2>/dev/null
+if [[ -n "$BWT" ]]; then   # `git -C ""` is the cwd: never the real checkout
+  git -C "$BWT" add -A
+  git -C "$BWT" commit -q -m "lifecycle-based: the pr.sh runs' leftovers" 2>/dev/null
+fi
 
 # ── X1. the close refuses every tree no clean review judged ───────────────────
 # The four refusals of design §5 step 1, each naming what to do. The shim is gone: this
@@ -1754,8 +1816,13 @@ check "MRg. ... naming both features it started — the later capture is the sup
 # the primary's work in progress is the one thing the branch rule exists to prevent. The
 # runner says so itself now — there is no pr.sh call in this pass to say it for it.
 : > "$GH_LOG"
+T5_BRIEF="$AT/self/features/$SLUG/review/incomplete/99-review-opus.md"
+T5_ERR="$TMP/t5-brief.err"
+mkdir -p "$(dirname "$T5_BRIEF")" 2>"$T5_ERR"
 printf '# review\n\nA real brief run from the primary. Hold the diff to the manifest.\n' \
-  > "$AT/self/features/$SLUG/review/incomplete/99-review-opus.md"
+  2>>"$T5_ERR" > "$T5_BRIEF"
+check "T5-pre. the brief exists before the review runs, and writing it printed nothing on stderr" \
+  '[[ -s "$T5_BRIEF" && ! -s "$T5_ERR" ]]'
 echo "work in progress in the primary" > "$AT/scratch.txt"
 head_before="$(git -C "$AT" rev-parse HEAD)"
 out="$(review "$AT" "$SLUG")"
@@ -2216,6 +2283,35 @@ check "RBf. pinned, the same close exits 0 — the refusal was the missing pin a
 check "RBg. ... and the pin rides the cost-records commit" \
   '[[ "$(git -C "$RBWT" log -1 --format=%s)" == "$RB_SLUG: cost records" ]] && git -C "$RBWT" show "HEAD:self/features/$RB_SLUG/README.md" | grep -q "$RB_ROUTER"'
 
+# ── RP. the close refuses a feature README still matching its template ───────
+# The fixture's template carries real prose, so a README that went back to the template's
+# placeholders is what the close must refuse — naming the section, before any PR call, with
+# nothing written. The unit cases (a filled README, a hand pull's, each section) are
+# self/tests/feature-readme-check.sh's.
+RP_SLUG="lifecycle-readme-blank"
+start "$RP_SLUG" --no-gate >/dev/null 2>&1
+RPWT="$(wt_path "$RP_SLUG")"
+RPFD="$RPWT/self/features/$RP_SLUG"
+review_ready "$RP_SLUG" "rb000000-0000-0000-0000-000000000041"
+{
+  printf '# <Feature title>\n\n<One paragraph: what this feature delivers and why.>\n\n'
+  sed -n '/^## Plans/,$p' "$RPFD/README.md"
+} > "$TMP/rp-readme"
+cp "$TMP/rp-readme" "$RPFD/README.md"
+# This worktree judges against the real template, whose placeholders the blank README keeps.
+cp "$HERE/templates/plans/features/TEMPLATE.md" "$RPWT/templates/plans/features/TEMPLATE.md"
+git -C "$RPWT" add -A >/dev/null 2>&1
+git -C "$RPWT" commit -q -m "$RP_SLUG: blank the README" >/dev/null 2>&1
+review "$RPWT" "$RP_SLUG" >/dev/null
+rp_head_before="$(git -C "$RPWT" rev-parse HEAD)"
+: > "$GH_LOG"
+outrp="$(close "$RPWT" "$RP_SLUG")"; rcrp=$?
+check "RPa. the close refuses a README still matching its template (got $rcrp)" \
+  '[[ $rcrp -ne 0 ]] && grep -q "still matches its template" <<<"$outrp"'
+check "RPb. ... naming the section to fill" 'grep -q "title and opening paragraph" <<<"$outrp"'
+check "RPc. ... before any PR call, with nothing committed" \
+  '[[ ! -s "$GH_LOG" && "$(git -C "$RPWT" rev-parse HEAD)" == "$rp_head_before" ]]'
+
 # ── CB. the close on a manifest whose branch is not the slug ─────────────────
 # self/DESIGN-2026-10-05-cloud-execution.md §2: every script reads the feature's branch
 # from the manifest's `branches[0]`, never from the slug. In a cloud container that is the
@@ -2297,6 +2393,58 @@ check "CCa. a capture on $CB_BRANCH exits 0 in on-branch mode, naming that branc
   '[[ $rccc -eq 0 ]] && grep -qF "mode      on branch $CB_BRANCH" <<<"$outcc"'
 check "CCb. ... and pushes $CB_BRANCH, the remote's copy at the checkout's HEAD" \
   'grep -qF "push      $CB_BRANCH -> origin" <<<"$outcc" && [[ "$(git -C "$ORIGIN" rev-parse "refs/heads/$CB_BRANCH" 2>/dev/null)" == "$(git -C "$CBWT" rev-parse HEAD)" ]]'
+
+# ── UC. the cloud shape of the unclaimed build ────────────────────────────────
+# self/features/delegate-cost-claims, the case it was written for: a coordinator launched
+# outside any repo (a cloud container's /home/user) spawns the implementer, whose transcript
+# records branch HEAD, so no branch claims it. On the cloud profile, on `claude/<slug>`:
+# a headerless implementer is met in the window and the close stops before its PR, naming
+# its pin-subagent command; once a second delegate briefed `feature: agentTooling/<slug>`
+# exists, the close's check counts it as claimed, the close runs through, and the capture
+# pins it itself — the pin riding the cost commit.
+UC_SLUG="lifecycle-cloud-delegate"
+UC_BRANCH="claude/$UC_SLUG"
+UC_COORD="ucucucuc-0000-0000-0000-000000000050"
+UC_HEADLESS="c5c5c5c5c5c5c5c51"
+UC_BRIEFED="c5c5c5c5c5c5c5c52"
+start_unrouted "$UC_SLUG" --no-gate >/dev/null
+UCWT="$(wt_path "$UC_SLUG")"
+UCFD="$UCWT/self/features/$UC_SLUG"
+UCSTEM="$(fence "$UCFD/README.md" "d[\"plans\"][0]")"
+git -C "$UCWT" checkout -q -b "$UC_BRANCH"
+set_fence_list "$UCFD/README.md" branches "[\"$UC_BRANCH\"]"
+printf '# review\n\nA real brief for %s. Hold the diff to the manifest.\n' "$UC_SLUG" \
+  > "$UCFD/review/incomplete/$UCSTEM.md"
+echo "the delegated build" > "$UCWT/delegated-work.txt"
+git -C "$UCWT" add -A
+git -C "$UCWT" commit -q -m "$UC_SLUG: the build"
+review "$UCWT" "$UC_SLUG" >/dev/null
+UCP="$(project_dir "/home/coordinator")"
+mkdir -p "$UCP/$UC_COORD/subagents"
+T_UC="$(now_z)"
+session_line "$UC_COORD" "/home/coordinator" "HEAD" "msg-uc" "$MODEL" "$T_UC" 100 100 0 0 0 > "$UCP/$UC_COORD.jsonl"
+{
+  subagent_prompt_line "$UC_COORD" "$UC_HEADLESS" "/home/coordinator" "HEAD" "$T_UC" "Build four fixes with no header."
+  subagent_line "$UC_COORD" "$UC_HEADLESS" "/home/coordinator" "HEAD" "msg-uch" "$MODEL" "$T_UC" 100 2000 0 0 0
+} > "$UCP/$UC_COORD/subagents/agent-$UC_HEADLESS.jsonl"
+uc_head_before="$(git -C "$UCWT" rev-parse HEAD)"
+: > "$GH_LOG"; : > "$GH_ARGV_LOG"
+outuc="$(AGENTTOOLING_PROFILE=cloud close "$UCWT" "$UC_SLUG")"; rcuc=$?
+check "UCa. on the cloud profile, a close whose build nothing claims stops, naming the headless implementer's pin-subagent command (got $rcuc)" \
+  '[[ $rcuc -ne 0 ]] && grep -qF "manifest.py --self $UC_SLUG pin-subagent $UC_HEADLESS" <<<"$outuc"'
+check "UCb. ... before any forge call, with nothing committed" \
+  '[[ ! -s "$GH_ARGV_LOG" && "$(git -C "$UCWT" rev-parse HEAD)" == "$uc_head_before" ]]'
+{
+  subagent_prompt_line "$UC_COORD" "$UC_BRIEFED" "/home/coordinator" "HEAD" "$T_UC" "feature: agentTooling/$UC_SLUG\\nbuild it"
+  subagent_line "$UC_COORD" "$UC_BRIEFED" "/home/coordinator" "HEAD" "msg-ucb" "$MODEL" "$T_UC" 100 3000 0 0 0
+} > "$UCP/$UC_COORD/subagents/agent-$UC_BRIEFED.jsonl"
+outuc2="$(AGENTTOOLING_PROFILE=cloud close "$UCWT" "$UC_SLUG")"; rcuc2=$?
+check "UCc. with a delegate briefed for the feature the close runs through: the check counts it as claimed (got $rcuc2)" \
+  '[[ $rcuc2 -eq 0 ]] && grep -q "auto-claim would pin delegate $UC_BRIEFED" <<<"$outuc2" && grep -q "the build is claimed" <<<"$outuc2"'
+check "UCd. ... the PR is opened and the capture pins it itself, the pin riding the cost commit pushed to $UC_BRANCH" \
+  'grep -E "$REST_OPEN_CALL_RE" "$GH_ARGV_LOG" | grep -qF "head=$UC_BRANCH" && grep -q "auto-claim pinned delegate $UC_BRIEFED" <<<"$outuc2" && [[ "$(git -C "$UCWT" log -1 --format=%s)" == "$UC_SLUG: cost records" ]] && git -C "$ORIGIN" show "refs/heads/$UC_BRANCH:self/features/$UC_SLUG/README.md" | grep -q "$UC_BRIEFED"'
+check "UCe. ... and planning.json claims it as pinned, the headless one not at all" \
+  '[[ "$(pj "$UCFD/planning.json" "sorted((a[\"agent_id\"], a[\"selected_by\"]) for a in d[\"subagents\"])")" == "[('"'"'$UC_BRIEFED'"'"', '"'"'pinned'"'"')]" ]]'
 
 # ── CD. a fence with no branches reads as the slug ────────────────────────────
 # Every manifest written before this feature names its slug in `branches`, and a fence

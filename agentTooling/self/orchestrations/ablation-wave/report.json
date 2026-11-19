@@ -1,0 +1,87 @@
+{
+  "slug": "ablation-wave",
+  "kind": "coordinator",
+  "generated_at": "2026-11-15T14:33:16Z",
+  "session": "4cba07a3-a87d-5001-97c1-4a7b4cc0510c",
+  "agent_tooling": "8f9e0b47b3aaadb60fa13bd43721a5dcc0b305b7",
+  "agent_tooling_short": "8f9e0b4",
+  "session_window": {
+    "from": "2026-11-05T16:39:00.566Z",
+    "to": "2026-11-11T14:06:53Z"
+  },
+  "features": [
+    {
+      "repo": "agentTooling",
+      "slug": "harness-ablation-methods",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/130",
+      "total_usd": 19.9861219,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "vinylCatalogue",
+      "slug": "tooling-ablation",
+      "pr": "https://github.com/ssdesai/vinylCatalogue/pull/291",
+      "total_usd": 37.311945200000004,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "ablation-harness-fixes",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/132",
+      "total_usd": 11.2705495,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "vinylCatalogue",
+      "slug": "split-tests-experiment",
+      "pr": "https://github.com/ssdesai/vinylCatalogue/pull/297",
+      "total_usd": 8.0745713,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "split-tests-method",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/133",
+      "total_usd": 15.6032737,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "delegate-cost-claims",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/134",
+      "total_usd": 44.9594803,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "vinylCatalogue",
+      "slug": "pin-split-tests-delegate",
+      "pr": "https://github.com/ssdesai/vinylCatalogue/pull/309",
+      "total_usd": 0.3230039,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "pin-delegate-cost-claims-audit",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/136",
+      "total_usd": 0.353082,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "coordinator-cost-records",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/138",
+      "total_usd": 15.778433800000002,
+      "unpriced_reason": null
+    }
+  ],
+  "overhead": {
+    "usd": 45.7683446,
+    "unpriced_reason": null,
+    "total_is_partial": false
+  },
+  "features_total_usd": 153.66046160000002,
+  "priced_count": 9,
+  "unpriced_count": 0,
+  "group_total_usd": 199.42880620000003,
+  "overhead_pct": 22.949715977390227
+}

@@ -35,6 +35,9 @@
 #   REVIEW_REPORT      absolute path the review executor writes its findings to, and
 #                      the PR hook reads as the PR body
 #   REVIEW_REPORT_LABEL that same path relative to REPO_DIR, for the executor prompt
+#   BACKLOG_LABEL      the repo's BACKLOG file relative to REPO_DIR — the one file a
+#                      commit after a clean review may touch (feature-close.sh,
+#                      BACKLOG_COMMIT_SUFFIX; self/features/close-after-filing/)
 # Exit code run-plans.sh uses for "paused at a level boundary — a level-verify plan is
 # queued" (RUNNER.md → "Level sentinels"). Reserved: finalize_plan and run_level_gate clamp
 # a child process that happens to exit with this code, so a failed plan or gate can never
@@ -113,6 +116,8 @@ completed_review_count() {
   [[ -n "$slug" && -d "$dir" ]] || { echo 0; return 0; }
   for f in "$dir"/[0-9]*.md; do
     [[ -e "$f" && "$f" != *.progress.md ]] || continue
+    is_audit_stem "$(basename "${f%.md}")" && continue   # an audit is no round of its own
+    is_conformance_stem "$(basename "${f%.md}")" && continue   # nor is the conformance check
     count=$((count + 1))
   done
   echo "$count"
@@ -149,6 +154,8 @@ latest_review_plan() {
     for f in "$dir"/[0-9]*.md; do
       [[ -e "$f" && "$f" != *.progress.md ]] || continue
       stem="$(basename "${f%.md}")"
+      is_audit_stem "$stem" && continue   # the audit's verdict is read by latest_audit_plan
+      is_conformance_stem "$stem" && continue   # the conformance check judges no round either
       number="${stem%%[!0-9]*}"
       number=$((10#${number:-0}))
       if (( number > latest_number )) ||
@@ -174,6 +181,310 @@ review_plan_end() {
     | tail -1
 }
 
+# ── The security audit (self/features/hook-role-hardening/, LIFECYCLE.md → "The security
+# audit") ──────────────────────────────────────────────────────────────────────
+# A feature whose diff against its base touches the hook — the PreToolUse policy and the
+# settings that wire it — is closed only once a SEPARATE review has tried to get past the
+# changed rule with concrete inputs and come back clean on the tree the review judged.
+#
+# The audit is a review plan, `NN-audit-<model>.md` in review/, queued by run-review.sh
+# beside the round's `NN-review-<model>.md` with the same NN — so it sorts first and runs
+# first in the same pass, and the review's plan_end stays the one the pass stamps. It is no
+# round of its own: completed_review_count and latest_review_plan skip it. Its verdict is
+# the first line of <features>/<slug>/AUDIT_REPORT_NAME, read with report_verdict, and the
+# runner stamps it as an `audit_end` line carrying `plan`, `verdict` and `head` — the same
+# head the review's plan_end carries, which is what ties the two to one tree.
+AUDIT_STEM_RE='^[0-9]+-audit-[a-z]+$'
+AUDIT_STEM_INFIX="-audit-"
+AUDIT_DEFAULT_MODEL="opus"
+AUDIT_REPORT_NAME="audit-report.md"
+# The report's findings section and the classes its first column holds (audit_report_unclassed)
+AUDIT_FINDINGS_HEADING="## Findings"
+AUDIT_FINDINGS_NONE="None."
+AUDIT_CLASS_BLOCKING="blocking"
+AUDIT_CLASS_NON_BLOCKING="non-blocking"
+AUDIT_CLASS_HEADER="class"
+AUDIT_END_EVENT="audit_end"
+# The brief run-review.sh copies into review/incomplete/, relative to the tooling directory
+AUDIT_TEMPLATE_REL="templates/SECURITY_AUDIT.md"
+# The paths that make a diff a hook change, relative to REPO_DIR: a directory prefix ends
+# in `/` and matches the bare name too (`hooks`, a symlink standing where the directory
+# was), anything else is one file. They are the policy and every file that ENFORCES it:
+# the hook (wire-settings.py included), Claude Code's settings directory, the scripts that
+# carry the role and this audit (this file, the close, the review runner, the record
+# writer, the session start), the audit's template and the record editor
+# (self/features/hook-role-hardening/, security audit round 1, F6). A consuming repo carries
+# the vendored copy under agentTooling/ and its own .claude/ — a subtree pull that changes
+# any of them is a hook change there too.
+# Round 2 (N11) added every script that calls refuse_orchestrator_session, the runner
+# library and stamp writer they share, and the gate. The feature's review round 1 (B2) added
+# every file the orchestrator allowlist executes and everything those import:
+# orchestration-capture.sh and `analysis/` whole — its entry points import roots.py,
+# routing.py, pricing.py and transcript.py, and a list of imports would drift.
+AUDIT_TOOLING_PATHS=("hooks/" "analysis/" "plan-runner-roots.sh" "plan-runner-lib.sh"
+                     "stamp-timing.sh" "feature-start.sh" "feature-close.sh" "run-plans.sh"
+                     "run-verify.sh" "run-review.sh" "run-batch.sh" "orchestration-start.sh"
+                     "orchestration-capture.sh" "session-start.sh" "self/gate.sh"
+                     "templates/SECURITY_AUDIT.md")
+# conformance.py joined them with the brief-conformance checks (self/features/
+# brief-conformance-checks/, R2): the close refuses on what it reads and pr.sh marks the PR
+# on what it prints, so a change to it is a change to an enforcing file.
+AUDIT_TOOLING_PATHS+=("conformance.py")
+AUDIT_SETTINGS_PATH=".claude/"
+AUDIT_CONSUMER_PREFIX="agentTooling/"
+# Where the default branch is looked up (audit_default_base), and a symlink's git mode
+AUDIT_REMOTE="origin"
+AUDIT_DEFAULT_BRANCH="main"
+GIT_SYMLINK_MODE="120000"
+
+# is_audit_stem <stem> — true for `NN-audit-<model>`.
+is_audit_stem() { [[ "${1:-}" =~ $AUDIT_STEM_RE ]]; }
+
+# ── The conformance check (self/features/brief-conformance-checks/, LIFECYCLE.md → "The
+# owner's brief and the conformance check") ─────────────────────────────────────
+# A feature carrying <features>/<slug>/OWNER_BRIEF.md gets a third kind of review-queue plan,
+# `NN-conformance-<model>.md`, queued by run-review.sh with the review's NN and model so it
+# sorts between the audit and the review (the review stays last and keeps the held plan_end).
+# It is no round: completed_review_count and latest_review_plan skip it, as they skip the
+# audit. Its answer is <features>/<slug>/CONFORMANCE_REPORT_NAME, written by the runner.
+CONFORMANCE_STEM_RE='^[0-9]+-conformance-[a-z]+$'
+CONFORMANCE_STEM_INFIX="-conformance-"
+CONFORMANCE_REPORT_NAME="conformance-report.md"
+OWNER_BRIEF_NAME="OWNER_BRIEF.md"
+
+# is_conformance_stem <stem> — true for `NN-conformance-<model>`.
+is_conformance_stem() { [[ "${1:-}" =~ $CONFORMANCE_STEM_RE ]]; }
+
+# audit_paths — the hook paths for this layout, one per line.
+audit_paths() {
+  local path prefix=""
+  (( ${SELF_MODE:-0} )) || prefix="$AUDIT_CONSUMER_PREFIX"
+  for path in "${AUDIT_TOOLING_PATHS[@]}"; do printf '%s\n' "$prefix$path"; done
+  printf '%s\n' "$AUDIT_SETTINGS_PATH"
+}
+
+# is_audit_path <path> — true when <path> is one of audit_paths, or under one that is a
+# directory prefix, or is such a prefix's bare name.
+is_audit_path() {
+  local path="$1" hook prefix=""
+  (( ${SELF_MODE:-0} )) || prefix="$AUDIT_CONSUMER_PREFIX"
+  for hook in "${AUDIT_TOOLING_PATHS[@]/#/$prefix}" "$AUDIT_SETTINGS_PATH"; do
+    if [[ "$hook" == */ ]]; then
+      [[ "$path" == "$hook"* || "$path" == "${hook%/}" ]] && return 0
+    elif [[ "$path" == "$hook" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# audit_paths_in_range <checkout> <git-diff-range> — the files of `git diff <range>` that
+# are audit paths, one per line. Renames are off (`--no-renames`: a `git mv hooks x` is a
+# deletion of every hooks/ file, never a rename that hides them) and names are read NUL
+# separated, so a name git would quote (non-ASCII, a newline) is matched as it is.
+# Submodules are never ignored (`--ignore-submodules=none`): a gitlink under an audit path is
+# listed whatever `.gitmodules` or `diff.ignoreSubmodules` say (self/features/
+# close-after-filing/, security audit round 2, B2). Returns 1
+# when git cannot produce the diff, so a caller fails closed.
+audit_paths_in_range() {
+  local checkout="$1" range="$2" raw path
+  raw="$(git -C "$checkout" diff --no-renames --ignore-submodules=none --name-only -z "$range" 2>/dev/null | tr '\0' '\n'; exit "${PIPESTATUS[0]}")" || return 1
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    if is_audit_path "$path"; then echo "$path"; fi
+  done <<<"$raw"
+  return 0
+}
+
+# audit_diff_base <checkout> <base> — the ref a close diffs from without fetching:
+# origin/<base> when that ref exists, else <base> (run-review.sh fetches first instead,
+# review_diff_base).
+audit_diff_base() {
+  local checkout="$1" base="$2"
+  if git -C "$checkout" rev-parse --verify -q "refs/remotes/origin/$base^{commit}" >/dev/null 2>&1; then
+    echo "origin/$base"
+  else
+    echo "$base"
+  fi
+}
+
+# audit_paths_touched <checkout> <diff-base> — the files of `<diff-base>...HEAD` under a
+# hook path, one per line; nothing for a diff that touches none. Returns 1 when git cannot
+# produce the diff, so a caller fails closed rather than reading "no hook change".
+audit_paths_touched() {
+  local checkout="$1" diff_base="$2" default touched extra
+  touched="$(audit_paths_in_range "$checkout" "$diff_base...HEAD")" || return 1
+  # Also against the default branch (round 2, N11): a manifest `base` naming the feature's
+  # own commit makes `base...HEAD` empty, and the merge-base with the default branch does
+  # not move with it. A default branch that cannot be found adds nothing.
+  default="$(audit_default_base "$checkout")"
+  if [[ -n "$default" && "$default" != "$diff_base" ]]; then
+    extra="$(audit_paths_in_range "$checkout" "$default...HEAD")" || return 1
+    touched="$(printf '%s\n%s\n' "$touched" "$extra" | awk 'NF && !seen[$0]++')"
+  fi
+  [[ -z "$touched" ]] || printf '%s\n' "$touched"
+}
+
+# audit_default_base <checkout> — the remote's default branch as a ref this checkout has
+# (`origin/HEAD`'s target, else `origin/main`, else the local `main`), or nothing.
+audit_default_base() {
+  local checkout="$1" ref
+  ref="$(git -C "$checkout" symbolic-ref -q --short "refs/remotes/$AUDIT_REMOTE/HEAD" 2>/dev/null)"
+  if [[ -n "$ref" ]] && git -C "$checkout" rev-parse -q --verify "$ref^{commit}" >/dev/null 2>&1; then
+    echo "$ref"; return 0
+  fi
+  for ref in "$AUDIT_REMOTE/$AUDIT_DEFAULT_BRANCH" "$AUDIT_DEFAULT_BRANCH"; do
+    if git -C "$checkout" rev-parse -q --verify "$ref^{commit}" >/dev/null 2>&1; then
+      echo "$ref"; return 0
+    fi
+  done
+}
+
+# audit_symlinks <checkout> — every symlink at or under an audit path in the working tree
+# (tracked, or untracked and not ignored), one per line. A symlink there makes what the
+# hook runs differ from what any diff of the audit paths shows (round 2, N10), so the
+# review runner refuses to queue a pass over one and the close refuses a judged tree with one.
+audit_symlinks() {
+  local checkout="$1" path prefix=""
+  (( ${SELF_MODE:-0} )) || prefix="$AUDIT_CONSUMER_PREFIX"
+  for path in "${AUDIT_TOOLING_PATHS[@]/#/$prefix}" "$AUDIT_SETTINGS_PATH"; do
+    path="${path%/}"
+    [[ -L "$checkout/$path" ]] && echo "$path"
+  done
+  while IFS= read -r -d '' path; do
+    is_audit_path "$path" && [[ -L "$checkout/$path" ]] && echo "$path"
+  done < <(git -C "$checkout" ls-files -z --cached --others --exclude-standard 2>/dev/null)
+  return 0
+}
+
+# audit_symlinks_at <checkout> <commit> — the same, for a committed tree (mode 120000).
+audit_symlinks_at() {
+  local checkout="$1" commit="$2" mode path
+  while IFS=$'\t' read -r mode path; do
+    [[ "${mode%% *}" == "$GIT_SYMLINK_MODE" ]] && is_audit_path "$path" && echo "$path"
+  done < <(git -C "$checkout" ls-tree -r --full-tree "$commit" 2>/dev/null)
+  return 0
+}
+
+# audit_tree_fingerprint <checkout> — one line per file under an audit path in the working
+# tree (tracked, or untracked and not ignored): its path and its blob id, a symlink's by its
+# target. Two equal fingerprints are one hook as far as the audit is concerned; run-review.sh
+# takes one when the audit plan finishes and one at the stamp, and an audit whose hook
+# changed in between is not stamped clean (security audit round 1, F3).
+audit_tree_fingerprint() {
+  local checkout="$1" path
+  while IFS= read -r -d '' path; do
+    is_audit_path "$path" || continue
+    if [[ -L "$checkout/$path" ]]; then
+      printf '%s link %s\n' "$path" "$(readlink "$checkout/$path")"
+    elif [[ -f "$checkout/$path" ]]; then
+      # The mode too (round 2, N10): an executable bit is part of what runs
+      printf '%s blob %s %s\n' "$path" "$([[ -x "$checkout/$path" ]] && echo x || echo -)" \
+        "$(git -C "$checkout" hash-object --no-filters -- "$path" 2>/dev/null)"
+    else
+      printf '%s absent\n' "$path"
+    fi
+  done < <(git -C "$checkout" ls-files -z --cached --others --exclude-standard 2>/dev/null)
+}
+
+# audit_plan_matches_template <template> <plan-file> [slug] — exit 0 when the plan is the
+# template rendered by run-review.sh (its NN, the slug, a diff base, and a files block of
+# only "- `path`" lines), 1 otherwise. The close holds the completed audit plan at the judged
+# head to it, so a hand-written brief cannot stand in for the template (round 2, N8).
+audit_plan_matches_template() {
+  python3 -B - "$1" "$2" "${3:-}" <<'MATCH'
+import re, sys
+template_path, plan_path, slug = sys.argv[1:4]
+try:
+    template = open(template_path, encoding="utf-8").read().rstrip("\n")
+    plan = open(plan_path, encoding="utf-8").read().rstrip("\n")
+except (OSError, UnicodeDecodeError):
+    sys.exit(1)
+fields = {"{{NN}}": r"(?P<nn>[0-9]+)", "{{SLUG}}": r"(?P<slug>[a-z0-9]+(?:-[a-z0-9]+)*)",
+          "{{DIFF_BASE}}": r"(?P<base>[A-Za-z0-9_./-]+)", "{{FILES}}": r"(?P<files>(?:- `[^`\n]+`\n?)+)"}
+seen, pattern = set(), ""
+for piece in re.split(r"(\{\{[A-Z_]+\}\})", template):
+    if piece in fields:
+        name = re.search(r"\?P<(\w+)>", fields[piece]).group(1)
+        pattern += ("(?P=%s)" % name) if name in seen else fields[piece]
+        seen.add(name)
+    else:
+        pattern += re.escape(piece)
+match = re.fullmatch(pattern, plan)
+sys.exit(0 if match and (not slug or match.group("slug") == slug) else 1)
+MATCH
+}
+
+# audit_report_unclassed <report-file> — one line per problem with the report's `## Findings`
+# section, nothing when every finding is classed non-blocking; always returns 0. The close
+# runs it on a `Verdict: clean` report (LIFECYCLE.md → "The security audit", the repository
+# owner's ruling 2026-11-16): a clean verdict means no blocking finding, so a `blocking` row,
+# a row whose FIRST cell is neither class, any other line in the section, or no such section
+# at all is a problem — fail closed. The class is the first cell only, so a `|` in a later
+# cell (a command, in backticks) cannot move it. Problems read `blocking: <row>`,
+# `unclassified: <line>` or `no <heading> section`.
+audit_report_unclassed() {
+  awk -v heading="$AUDIT_FINDINGS_HEADING" -v blocking="$AUDIT_CLASS_BLOCKING" \
+      -v nonblocking="$AUDIT_CLASS_NON_BLOCKING" -v none="$AUDIT_FINDINGS_NONE" \
+      -v classhead="$AUDIT_CLASS_HEADER" '
+    function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+    { line = $0; sub(/[ \r]+$/, "", line) }
+    line == heading { found = 1; inside = 1; header = 0; next }
+    !inside { next }
+    line ~ /^## / { inside = 0; next }
+    line ~ /^[ \t]*$/ { next }
+    line == none { next }
+    line ~ /^\|/ {
+      if (line ~ /^[-|: \t]+$/) next
+      cell = substr(line, 2)
+      cut = index(cell, "|")
+      if (cut) cell = substr(cell, 1, cut - 1)
+      cell = tolower(trim(cell)); gsub(/`/, "", cell); cell = trim(cell)
+      # The header is the first row of each section, and only a row whose first cell is
+      # `class`: a table with no header has its first finding read as one, never skipped
+      if (!header && cell == classhead) { header = 1; next }
+      if (cell == nonblocking) next
+      print ((cell == blocking) ? "blocking: " : "unclassified: ") line
+      next
+    }
+    { print "unclassified: " line }
+    END { if (!found) print "no " heading " section" }
+  ' "$1"
+  return 0
+}
+
+# latest_audit_plan <slug> — the stem of the highest-numbered audit plan in review/complete/
+# or review/failed/, or nothing.
+latest_audit_plan() {
+  local slug="${1:-}" dir f stem number latest="" latest_number=0
+  [[ -n "$slug" ]] || return 0
+  for dir in "$FEATURES_DIR/$slug/review/complete" "$FEATURES_DIR/$slug/review/failed"; do
+    [[ -d "$dir" ]] || continue
+    for f in "$dir"/[0-9]*.md; do
+      [[ -e "$f" && "$f" != *.progress.md ]] || continue
+      stem="$(basename "${f%.md}")"
+      is_audit_stem "$stem" || continue
+      number="${stem%%[!0-9]*}"
+      number=$((10#${number:-0}))
+      if (( number > latest_number )) || [[ -z "$latest" ]]; then
+        latest="$stem"; latest_number="$number"
+      fi
+    done
+  done
+  echo "$latest"
+}
+
+# audit_end_field <slug> <plan-stem> <key> — one detail of the LAST `audit_end` stamp for
+# that plan in timing.jsonl (`verdict`, `head`), or nothing.
+audit_end_field() {
+  local slug="${1:-}" plan="${2:-}" key="${3:-}" path
+  path="$FEATURES_DIR/$slug/timing.jsonl"
+  [[ -f "$path" ]] || return 0
+  jq -r --arg event "$AUDIT_END_EVENT" --arg plan "$plan" --arg key "$key" \
+    'select(.event == $event and .plan == $plan) | .[$key] // empty' "$path" 2>/dev/null \
+    | tail -1
+}
+
 resolve_roots() {
   local first_arg="${1:-}"
   local script_dir
@@ -191,6 +502,7 @@ resolve_roots() {
     PR_SCRIPT="$script_dir/self/pr.sh"
     REVIEW_REPORT="$script_dir/self/review-report.md"
     REVIEW_REPORT_LABEL="self/review-report.md"
+    BACKLOG_LABEL="self/BACKLOG.md"
   else
     SELF_MODE=0
     REPO_DIR="$(cd "$script_dir/.." && pwd)"
@@ -203,6 +515,7 @@ resolve_roots() {
     PR_SCRIPT="$REPO_DIR/plans/pr.sh"
     REVIEW_REPORT="$REPO_DIR/plans/review-report.md"
     REVIEW_REPORT_LABEL="plans/review-report.md"
+    BACKLOG_LABEL="plans/BACKLOG.md"
   fi
 }
 
@@ -399,6 +712,59 @@ manifest_branch() {
   echo "${branch:-$slug}"
 }
 
+# ── Pushing the feature's branch ───────────────────────────────────────────────
+# The one place the lifecycle scripts run `git push` (self/features/cloud-checkpoint-push/):
+# feature-capture.sh pushes with it after its cost commit, and under the cloud profile
+# feature-start.sh and run-review.sh push with it as a checkpoint after the commits they
+# make, since a container is reclaimed with whatever it never pushed. No retry and no
+# backoff: a failed checkpoint is advisory, and every later checkpoint and the close's
+# capture push the whole branch again.
+# The remote a feature's branch is pushed to (feature-capture.sh's ORIGIN_REMOTE, the same
+# string; hooks/allow-repo-commands.sh spells the same name for the approval it gives).
+PUSH_REMOTE="origin"
+# push_feature_branch's return codes
+PUSH_RC_FAILED=1
+PUSH_RC_NO_REMOTE=2
+# A checkpoint push is unattended: a remote that wants credentials fails it rather than
+# waiting on a prompt nobody will answer (git's own GIT_TERMINAL_PROMPT switch)
+CHECKPOINT_TERMINAL_PROMPT="0"
+# The lead of the lines a checkpoint push prints, in feature-start.sh's column layout
+CHECKPOINT_PUSHED_LEAD="  push      "
+CHECKPOINT_WARN_LEAD="  warn      "
+
+# push_feature_branch <checkout> <branch> — `git push -q -u origin
+# refs/heads/<branch>:refs/heads/<branch>` in <checkout>. The refspec is written out in full so
+# that no branch name can be read as another one: a bare `+main` is the force-push refspec of
+# `main` (self/features/orchestration-start-branch-v2, round 2's audit). Prints nothing of its
+# own. Returns 0 pushed, PUSH_RC_NO_REMOTE when the repository has no origin (nothing was
+# tried), PUSH_RC_FAILED when git refused.
+#   push_feature_branch "$CHECKOUT" "$FEATURE_BRANCH"; rc=$?
+PUSH_HEADS_PREFIX="refs/heads/"
+push_feature_branch() {
+  local checkout="$1" branch="$2"
+  git -C "$checkout" remote get-url "$PUSH_REMOTE" >/dev/null 2>&1 || return "$PUSH_RC_NO_REMOTE"
+  git -C "$checkout" push -q -u "$PUSH_REMOTE" "$PUSH_HEADS_PREFIX$branch:$PUSH_HEADS_PREFIX$branch" \
+    || return "$PUSH_RC_FAILED"
+  return 0
+}
+
+# checkpoint_push <checkout> <branch> — push_feature_branch as a checkpoint: one line when it
+# pushed, one warning when it failed, nothing at all with no origin, and always status 0 —
+# the caller's exit status is its own. The CALLER decides whether this is a cloud session
+# (profile_is_cloud, env-profile.sh): under the local profile it is never called.
+#   if profile_is_cloud; then checkpoint_push "$WORKTREE" "$FEATURE_BRANCH"; fi
+checkpoint_push() {
+  local checkout="$1" branch="$2" rc
+  GIT_TERMINAL_PROMPT="$CHECKPOINT_TERMINAL_PROMPT" push_feature_branch "$checkout" "$branch"
+  rc=$?
+  case "$rc" in
+    0) echo "${CHECKPOINT_PUSHED_LEAD}$branch -> $PUSH_REMOTE" ;;
+    "$PUSH_RC_NO_REMOTE") ;;
+    *) echo "${CHECKPOINT_WARN_LEAD}could not push $branch to $PUSH_REMOTE — advisory: the next checkpoint, or feature-close.sh, pushes it again" ;;
+  esac
+  return 0
+}
+
 # How a manifest is named inside a feature directory (session-start.sh's and update.sh's
 # MANIFEST_NAME, the same string)
 STARTED_MANIFEST_NAME="README.md"
@@ -425,6 +791,66 @@ started_features_on() {
       echo "$slug"
     fi
   done < <(git -C "$repo_dir" grep -l -F -e "$branch" -- "$label/*/$STARTED_MANIFEST_NAME" 2>/dev/null | sort)
+}
+
+# ── The orchestrator role ─────────────────────────────────────────────────────
+# A session whose id is an orchestration record's fence `session` is an orchestrator, and an
+# orchestrator builds nothing (LIFECYCLE.md → "Orchestrator and implementer sessions";
+# self/features/orchestrator-role-guard/). The rule is written once, in
+# hooks/orchestrator_role.py, which the hook imports too; this is its shell reader, here
+# beside manifest_branch because every lifecycle script already sources this file.
+ORCHESTRATOR_ROLE_MODULE="hooks/orchestrator_role.py"
+# The exit code of a refusal, and the line's shape — what every `refuse()` in the lifecycle
+# scripts prints, so a runner without a `refuse()` of its own says it the same way
+ORCHESTRATOR_REFUSED_RC=1
+ORCHESTRATOR_REFUSED_LEAD="  refused  "
+
+# The module the role rule imports beside it; a copy missing either file cannot read the role
+ORCHESTRATOR_SHARED_MODULE="hooks/shared_rules.py"
+# What orchestrator_record_for_session returns when the rule cannot be read
+ORCHESTRATOR_ROLE_BROKEN_RC=2
+
+# orchestrator_record_for_session <session-id> — the path of the record naming that session,
+# or nothing for an empty id or no match. Returns ORCHESTRATOR_ROLE_BROKEN_RC, printing the
+# module to blame, when the rule cannot be read: a copy without hooks/orchestrator_role.py or
+# hooks/shared_rules.py, or a module that crashes — a broken install is never "no record"
+# (self/features/hook-silent-allow-sweep/, item 7). No side effects.
+#   record="$(orchestrator_record_for_session "${CLAUDE_CODE_SESSION_ID:-}")"
+orchestrator_record_for_session() {
+  local session="${1:-}" tooling module rel output
+  [[ -n "$session" ]] || return 0
+  tooling="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  module="$tooling/$ORCHESTRATOR_ROLE_MODULE"
+  for rel in "$ORCHESTRATOR_ROLE_MODULE" "$ORCHESTRATOR_SHARED_MODULE"; do
+    if [[ ! -f "$tooling/$rel" ]]; then
+      echo "$tooling/$rel"
+      return "$ORCHESTRATOR_ROLE_BROKEN_RC"
+    fi
+  done
+  # `--`: an id is never a flag
+  if ! output="$(python3 -B "$module" -- "$tooling" "$session" 2>/dev/null)"; then
+    echo "$module"
+    return "$ORCHESTRATOR_ROLE_BROKEN_RC"
+  fi
+  [[ -z "$output" ]] || echo "$output"
+}
+
+# refuse_orchestrator_session <session-id> — when a record names that session, prints
+# `  refused  <reason>` on stderr and exits ORCHESTRATOR_REFUSED_RC; so does a role rule that
+# cannot be read (the reason names the module); otherwise returns 0 silently. One line in
+# each script that builds, placed before its first write.
+refuse_orchestrator_session() {
+  local session="${1:-}" tooling reason record rc=0
+  record="$(orchestrator_record_for_session "$session")" || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    echo "${ORCHESTRATOR_REFUSED_LEAD}the orchestrator-role rule cannot be read: $record is missing or fails to run, so this session cannot be shown not to be an orchestrator and building is refused; restore the tooling's hooks/ (a fresh subtree pull), then run this again" >&2
+    exit "$ORCHESTRATOR_REFUSED_RC"
+  fi
+  [[ -n "$record" ]] || return 0
+  tooling="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  reason="$(python3 -B "$tooling/$ORCHESTRATOR_ROLE_MODULE" --reason -- "$tooling" "$session" 2>/dev/null)"
+  echo "${ORCHESTRATOR_REFUSED_LEAD}${reason}" >&2
+  exit "$ORCHESTRATOR_REFUSED_RC"
 }
 
 # The remote whose tracking branches a detached HEAD is matched against, and the symbolic

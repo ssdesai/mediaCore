@@ -100,10 +100,12 @@ Two methods ship with the harness; both are the WP7 arms, restated:
   and the manifest `plans[]`; `run.sh` asserts `auto/incomplete/`, `verify/incomplete/`,
   `review/incomplete/` non-empty and `NOTES.md` present, then runs
   `./agentTooling/run-batch.sh <slug>` from `<tree>` with output **appended** to
-  `plans/batch.log` (`>>` — WP7 lost a run's log to `>`). The batch's own review plan
+  `$HARNESS_LOG_DIR/<branch>-plans-batch.log` (`>>` — WP7 lost a run's log to `>`; outside
+  the tree, so it never dirties it). The batch's own review plan
   and `pr.sh` are part of the method. On a non-zero batch exit: if
   `plans/features/<slug>/escalations/` is non-empty or a plan sits in `failed/`, exit
-  1; otherwise re-run the batch once (it resumes from `inprogress/`), then exit 2.
+  1; else exit 2 only if the batch's output shows the runners' usage-limit or interrupt
+  summary; any other non-zero exit is exit 1 with no resume.
 - `direct` — one implementer (`claude -p --model opus` with the brief): builds, runs
   the gate to green, commits, pushes, opens the PR. One shot, no resume. Then the
   harness review (stage 4) — **direct is not "one `claude -p`"; it is one `claude -p`
@@ -152,6 +154,8 @@ copy, §14):
 harness/run.sh <experiment-dir> [--only <fixture>:<method>[:<n>]] [--from <stage>]
                [--only <program>[:orchestrator[:<arm>][:<n>]]]    # §13
                [--dry-run] [--no-cleanup]
+               [--only …]…  [--time-budget <minutes>]             # §17: --only repeats
+harness/run.sh <experiment-dir> --reset <fixture>:<method>[:<arm>]:<n>   # §17, alone
 harness/scorecard.py <experiment-dir>            # results.jsonl → SCORECARD.md
 harness/lib.sh                                    # sourced by run.sh and methods
 harness/tests/smoke.sh                            # §7
@@ -273,8 +277,10 @@ gate green; report per item.
 ```
 experiment, fixture, method, repeat, arm, agent_tooling,
 arm_kind ("agent_tooling" | "base" | ""; absent on older rows), branch, slug, pr_url,
-base (a base arm's commit for a base arm), spec_commit, model,
+base (a base arm's commit for a base arm), spec_commit, model (HARNESS_MODEL, the build model),
+review_model (HARNESS_REVIEW_MODEL as resolved; HARNESS_MODEL when unset; absent on older rows),
 effort (HARNESS_EFFORT: low|medium|high|xhigh|max, or null when unset),
+review_effort (HARNESS_REVIEW_EFFORT as resolved; HARNESS_EFFORT when unset; null when both are; absent on older rows),
 t_setup_start, t_method_start, t_pr_open, t_review_end, t_rework_end, t_green,
 cost_method_usd, cost_review_usd, cost_rework_usd, cost_green_usd (sum),
 cost_lost_usd (spend from killed attempts' orphaned windows; never in cost_green_usd),
@@ -282,7 +288,9 @@ read_files_before_edit, read_bytes_before_edit, readme_bytes_read (integers, or 
   not measured; absent on older rows),
 review_fixed, review_escalated, rework_ran,
 gate_counts_pr_open, gate_counts_green   (whatever the gate prints, as a string),
-accept_pass (bool), accept_lines (list),
+accept_pass (bool), accept_lines (list)   (the probe on the green tree, after review and rework),
+accept_pr_open_pass (bool | null), accept_pr_open_lines (list | null)   (the same probe on the
+  PR-open tree, before the review; null when not measured; absent on older rows),
 method_failed (bool),
 pr_opened_by_harness (bool: the method pushed commits but opened no PR; the harness did),
 interventions (list of {t, what}),
@@ -299,9 +307,17 @@ closed window is never re-priced. A freeze stamped before its slug's current
 manifest window opened is stale — an earlier attempt's — and capture rebuilds it.
 
 `scorecard.py` renders: the prediction; one table row per run with cost to PR-open,
-review fixed/escalated, rework cost, cost to green, wall time to PR-open, accept
-pass/fail; per (fixture, method) mean and spread when `repeats > 1`; the noise band
-applied to each fixture's method pairs; a `## Reading before the first edit` table after the
+review fixed/escalated, rework cost, cost to green, wall time to PR-open, wall time to
+green (`t_method_start` → `t_green`), total time (`t_setup_start` → `t_green`), accept
+pass/fail — times in minutes, wall-clock (any wait or interruption inside a stage counts,
+a `--from` resume after a dead container included), `—` for a missing instant; per
+(fixture, method) mean and spread when `repeats > 1`, with mean wall to PR-open, mean
+total time and mean wall to green — every cost and time mean over the rows that did not
+fail — plus the count of failed rows and the cell's spend (every run's to-green cost plus
+its `cost_lost_usd`, failed runs included); the noise band
+applied to each fixture's method pairs, over the rows that did not fail; an `## Acceptance`
+section (pass counts at PR-open and at green per cell, and the probe's checks per run,
+`A1`…`An`, `<at PR-open> → <at green>`; absent when no row carries either); a `## Reading before the first edit` table after the
 Runs table (`—` for not measured; absent when no row carries the fields).
 
 ## 7. Smoke test — `harness/tests/smoke.sh`
@@ -469,8 +485,10 @@ and the scaffolding makes their absence impossible to miss rather than filling t
   The stub `accept.py` exits 1 and names itself.
 - `check-fixture.sh` is the gate on a fixture: fields, commits, spec path, gate script,
   the three files present and not stubs, only the four placeholders the harness fills
-  (`TREE`, `SPEC_TREE`, `GATE_COMMAND`, `GATE_MINUTES`), `accept.py` compiles. Exit code
-  is the failure count. `new-experiment.sh` calls it on every fixture it names.
+  (`TREE`, `SPEC_TREE`, `GATE_COMMAND`, `GATE_MINUTES`), `accept.py` compiles and passes
+  at the fixture's optional reference build (`reference.commit`, in a throwaway detached
+  worktree given `setup[]`; README → "Validating the probe"). It does not run the gate.
+  Exit code is the failure count. `new-experiment.sh` calls it on every fixture it names.
 - `new-experiment.sh` computes every cell's branch with `harness_branch_name` and refuses
   if any exists locally or on the consumer's remote — the same collision `run.sh`
   refuses at setup, caught before the experiment directory exists. `--override
@@ -614,7 +632,9 @@ orchestrator's results are `<logs>/<P>-orchestrator-<kind>[-NN]-result.json`.
    `PROGRAM_BUDGET_USD` (unset: none) goes to each orchestrator call as `--max-budget-usd`;
    the orchestrator's model is `HARNESS_MODEL`, and every call of the cell carries
    `--effort $HARNESS_EFFORT` when that is set; the program row records it as `effort`
-   (a string, or `null`), beside `model`.
+   (a string, or `null`), beside `model`. The per-feature review's calls carry
+   `--effort $HARNESS_REVIEW_EFFORT` instead (it defaults to `HARNESS_EFFORT`), recorded as
+   `review_effort`; rework stays on `HARNESS_EFFORT`.
 9. *`orchestrator` is a reserved method name:* no `methods/orchestrator/`, a program cell's
    `method` is the literal `"orchestrator"`, and the orchestrator chooses each implementer's
    method unless `program.json` pins it. (The brief counted ten owner rulings; these are the
@@ -672,7 +692,9 @@ Further rulings, made while building:
   `program.json`'s or, per field, the first feature's fixture's.
 - Fixture `base`s are ignored in a program cell: every non-dependent branch is cut at the
   program's `base`; one warning names the fixtures whose differs.
-- The record: `<program tree>/agentTooling/self/orchestrations/<PSLUG>/README.md`, written
+- The record: `<program tree>/plans/orchestrations/<PSLUG>/README.md` (an arm on an older
+  agentTooling wrote `<program tree>/agentTooling/self/orchestrations/<PSLUG>/README.md`,
+  still read when it is the only one), written
   by `orchestration-start.sh` at setup and edited with `manifest.py --orchestration`;
   the row's `orchestration_record` is that path relative to the tree.
 - The implementer is run with `--allowedTools Bash Agent Task` and `--model $HARNESS_MODEL`,
@@ -699,7 +721,10 @@ Further rulings, made while building:
   no `run-batch.sh` under the harness); a "plans" implementer is whatever the orchestrator
   asked its single session to do.
 - Every implementer runs at `HARNESS_MODEL`; the Sonnet-builds / Opus-reviews cost rule is
-  in the brief the orchestrator writes, not enforced by the harness.
+  in the brief the orchestrator writes, not enforced by the harness. The harness's own
+  per-feature review (not the orchestrator's brief) runs at `HARNESS_REVIEW_MODEL`, which
+  defaults to `HARNESS_MODEL`; both rows record it as `review_model`. Likewise its effort is
+  `HARNESS_REVIEW_EFFORT` (default `HARNESS_EFFORT`), recorded as `review_effort`.
 - A dependent feature's setup runs the gate at its start point. If a failed predecessor
   left that branch red, setup does not die: it logs a warning, records the intervention
   `<feature>: gate red at the previous feature's tip <sha7>; ran anyway`, ends the setup
@@ -794,3 +819,67 @@ table has one row per cell row carrying the fields; a ledger without them render
 **Program rows are unchanged**: neither the program row nor its `features[]` carries the
 reading fields (a program feature's capture does not run the extractor) or `arm_kind`, and a
 program cell cannot have base arms.
+
+## 16. Arm spec paths (added 2026-11-04)
+
+`harness-arm-spec` (`self/features/harness-arm-spec/`). Base arms vary the measured
+repository's commit, but every cell still read the fixture's one spec from the shared spec
+worktree, so a comparison of two shapes of a repo's spec (a monolith against a split) had both
+arms reading the same file. A base-arm experiment may now give each arm its own spec.
+
+`new-experiment.sh --base-arms … --arm-spec-path <label>=<path>,…` writes `experiment.json`
+`arm_spec_paths{<label>: <path>}?`, only with `base_arms`: one path per base arm, relative, no
+`..`, a file at that arm's commit. With it the cell's `SPEC_TREE` is its own worktree, `SPEC_PATH`
+is the arm's path, and no shared spec worktree is added for that cell. The prompts say the spec is
+never to be edited: the method templates' `@@SPEC_PROVENANCE@@` and the isolation paragraph's
+`@@SPEC_RULE@@`, both set by `harness_build_isolation` from `HARNESS_SPEC_SOURCE` (`shared` when
+unset). Without it the prompts are byte for byte the base's, held by `harness/tests/arm-spec.sh`
+against `harness/tests/arm-spec.shared.md` (generated with `arm-spec.sh --write-expected
+--from-ref <ref>` from that ref's templates, never hand-edited).
+
+Every ledger row and state file carries `spec_source` (`"shared"` | `"arm"`) and `spec_path`;
+older rows lack them — read absent as `"shared"` and the fixture's `spec.path`.
+
+Refused by `new-experiment.sh`: no `--base-arms` (so `--agent-tooling` or `--programs` alone), a
+label that is not a base arm, a base arm with no path, an absolute path or one with `..`, and a
+path missing at the arm's commit. `run.sh` refuses the same shapes in a hand-edited
+`experiment.json`, and a path missing from the cell's tree at setup. The `null` method and the
+program templates keep their spec lines; a program cell cannot have base arms, so it never sees
+arm mode.
+
+## 17. Long runs: the time budget, reset, several --only (added 2026-11-04)
+
+`harness-long-runs` (`self/features/harness-long-runs/`). A Claude Code background command is
+killed at a fixed 2 hours, and a cell takes about 50 minutes, so a run of several cells was
+killed mid-cell, leaving a half-built worktree that could only be cleaned by hand-run git (denied
+to an agent, `LIFECYCLE.md` rule 2) and that could not be resumed without corrupting the reading
+metrics.
+
+Four behaviours in `run.sh`:
+
+- **Several `--only`.** The flag repeats; the cells are the union, in experiment order; a spec that
+  matches no cell is refused.
+- **Time budget.** `--time-budget <minutes>` (`HARNESS_TIME_BUDGET_MINUTES_DEFAULT`, 110; `0` =
+  off; dry runs have none). Before each cell, elapsed + estimate must fit, else the run starts
+  nothing more. The first cell of an invocation always starts, with a warning when its estimate
+  alone exceeds the budget (it may be killed), so each invocation makes progress of at least
+  one cell and a `resume:` line never repeats the invocation that printed it. The estimate is the longest finished cell (`stages.record.outcome == ok`) by the
+  sum of its stage durations, not record end − setup start, because a `--from` resume rewrites
+  only the stages it re-ran; default `HARNESS_CELL_ESTIMATE_MINUTES_DEFAULT` (60) when none has
+  finished or a state file does not parse.
+- **Exit 75** (`HARNESS_BUDGET_STOP_RC`). A budget stop says why and prints a
+  `resume: ` line (`HARNESS_RESUME_LINE_PREFIX`) with the command for the cells not yet started.
+- **`--reset <spec>`.** Moves a killed fixture cell's worktree, branch and state aside under a
+  `Killed<UTC ts>` suffix, writes a fresh state carrying `cost_lost_usd`, deletes and pushes
+  nothing. Standalone. Detail: `harness/README.md` → "Resetting a killed cell".
+- **`--from` preconditions.** `--from` past setup refuses a fixture cell with no state, no
+  recorded setup start or no worktree (except `--from record`, which needs only the state
+  file), naming `--reset`.
+
+The experiment lock is a directory `<git common dir>/harness-locks/<experiment>.lock` holding the
+owner's pid, taken by a real run and by `--reset`; a dead pid's lock is replaced. It is not under
+`state/` because `state/` is committed with the ledger and the lock must not be.
+
+Excluded: `--reset` and the `--from` preconditions for program cells (backlog); a time budget in
+`run-plans.sh` between plans, and `run-batch.sh` (it has no between-plans loop — plan iteration is
+in `plan-runner-lib.sh` — and a killed batch already resumes on re-run, `RUNNER.md`).

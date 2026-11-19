@@ -1,0 +1,9 @@
+write: /tmp/plan-capture.EbAaPC/scratch/setup.sh
+write: /tmp/plan-capture.EbAaPC/scratch/probe.py
+write: /tmp/plan-capture.EbAaPC/scratch/variants.py
+write: /tmp/plan-capture.EbAaPC/scratch/probe2.py
+write: /tmp/plan-capture.EbAaPC/scratch/probe3.py
+write: /tmp/plan-capture.EbAaPC/scratch/ostart.sh
+write: /tmp/plan-capture.EbAaPC/scratch/rest.sh
+write: /tmp/plan-capture.EbAaPC/scratch/wsdump.py
+write: /home/user/agentTooling/self/features/shared-hook-rules/audit-report.md

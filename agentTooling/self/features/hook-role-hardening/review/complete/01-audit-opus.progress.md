@@ -1,0 +1,10 @@
+write: /tmp/plan-capture.WwybPB/scratch/setup.sh
+write: /tmp/plan-capture.WwybPB/scratch/probe.py
+write: /tmp/plan-capture.WwybPB/scratch/p1.txt
+write: /tmp/plan-capture.WwybPB/scratch/p2.txt
+write: /tmp/plan-capture.WwybPB/scratch/uniq-demo.sh
+write: /tmp/plan-capture.WwybPB/scratch/auditpaths.sh
+write: /tmp/plan-capture.WwybPB/scratch/role.sh
+write: /tmp/plan-capture.WwybPB/scratch/payloads.py
+write: /tmp/plan-capture.WwybPB/scratch/unreadable.sh
+write: /home/user/agentTooling-delegate-cost-claims/self/features/hook-role-hardening/audit-report.md

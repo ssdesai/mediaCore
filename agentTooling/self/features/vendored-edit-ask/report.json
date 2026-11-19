@@ -1,0 +1,158 @@
+{
+  "slug": "vendored-edit-ask",
+  "generated_at": "2026-11-13T19:24:29.514612+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 3.2767915,
+    "build": 3.2767915,
+    "verify": 0.0,
+    "review": 1.9067563000000003,
+    "total": 5.1835478,
+    "planning_pct": 0.0,
+    "build_pct": 63.215226837495344,
+    "verify_pct": 0.0,
+    "review_pct": 36.78477316250465,
+    "cost_per_plan": 2.5917739,
+    "cost_per_file": 1.03670956,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 7711,
+    "planning_subagents_s": 5716,
+    "planning_s": 0.0,
+    "implementer_s": 13427,
+    "build_s": 13427.0,
+    "verify_s": 0.0,
+    "review_s": 225.009,
+    "executor_s": 13652.009,
+    "total_s": 13652.009,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-13T19:20:23+00:00",
+      "last_at": "2026-11-13T19:24:29+00:00",
+      "batch_span_s": 246.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 230.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 283.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-11-13T19:24:29+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/142"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 3.2767915,
+      "build_min": 223.78333333333333,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.9067563000000003,
+      "review_min": 3.7501499999999997,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 1.3399055,
+    "sessions": 1.9368859999999999
+  },
+  "cold_start_tax_tokens": 129905,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 2,
+      "total_turns": 52,
+      "total_cost_usd": 1.9067563000000003,
+      "total_duration_s": 225.009,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "01-audit-opus",
+      "edit_count": 9,
+      "files_edited": 4,
+      "churn_ratio": 2.25
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 64,
+      "loc_changed": 50
+    },
+    {
+      "plan": "01-audit-opus",
+      "plan_md_lines": 39,
+      "loc_changed": 294
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "01-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.UwT9lj/scratch/hook_attack.py",
+        "/tmp/plan-capture.UwT9lj/scratch/hook_attack2.py",
+        "/tmp/plan-capture.UwT9lj/scratch/wire_attack.py",
+        "self/features/vendored-edit-ask/audit-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "/tmp/plan-capture.UwT9lj/scratch/hook_attack.py",
+      "earlier_plan": "01-audit-opus",
+      "later_plan": "01-audit-opus",
+      "overlap_chars": 86
+    },
+    {
+      "file": "/tmp/plan-capture.UwT9lj/scratch/hook_attack2.py",
+      "earlier_plan": "01-audit-opus",
+      "later_plan": "01-audit-opus",
+      "overlap_chars": 48
+    },
+    {
+      "file": "/tmp/plan-capture.UwT9lj/scratch/hook_attack.py",
+      "earlier_plan": "01-audit-opus",
+      "later_plan": "01-audit-opus",
+      "overlap_chars": 151
+    }
+  ],
+  "warnings": [],
+  "profile": "cloud",
+  "gate": "green"
+}

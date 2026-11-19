@@ -8,6 +8,7 @@ set -uo pipefail
 #                             --prediction '<text>' \
 #                             [--agent-tooling <label>=<ref>[,<label>=<ref>]...] \
 #                             [--base-arms <label>=<ref>[,<label>=<ref>]...] \
+#                             [--arm-spec-path <label>=<path>[,<label>=<path>]...] \
 #                             [--repeats N] [--noise-band 15] [--compare-to <path>] \
 #                             [--no-review] [--no-rework] [--no-accept] \
 #                             [--override <fixture-or-program>=<stem>]... [--consumer <path>]
@@ -34,6 +35,8 @@ set -uo pipefail
 # every cell's worktree is then cut at its arm's commit instead of the fixture's `base`,
 # and nothing else changes. A commit that does not resolve in the measured repository is
 # refused. `--base-arms` refuses `--agent-tooling` and `--programs` beside it.
+# `--arm-spec-path` (base arms only): each base arm reads its spec at <path> in its own
+# tree, at its own commit, instead of the shared spec worktree; every base arm needs one.
 #
 # `--programs` adds PROGRAM cells (harness/README.md → "Program cells"): each names a
 # plans/experiments/programs/<name>/program.json, checked here (harness_program_check),
@@ -50,14 +53,14 @@ source "$SCRIPT_DIR/lib.sh"
 DEFAULT_REPEATS=1
 DEFAULT_NOISE_BAND_PCT=15
 
-NAME=""; FIXTURES=""; METHODS=""; PROGRAMS=""; PREDICTION=""; COMPARE_TO=""; ARMS=""; BASE_ARMS=""
+NAME=""; FIXTURES=""; METHODS=""; PROGRAMS=""; PREDICTION=""; COMPARE_TO=""; ARMS=""; BASE_ARMS=""; ARM_SPEC_PATHS=""
 REPEATS="$DEFAULT_REPEATS"; NOISE_BAND="$DEFAULT_NOISE_BAND_PCT"
 DO_REVIEW=true; DO_REWORK=true; DO_ACCEPT=true
 OVERRIDES=()
 CONSUMER_ROOT="$DEFAULT_CONSUMER_ROOT"
 
 usage() {
-  sed -n '3,43p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,46p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-1}"
 }
 
@@ -68,6 +71,7 @@ while (( $# > 0 )); do
     --methods)    METHODS="${2:?--methods needs a comma list}"; shift 2 ;;
     --agent-tooling) ARMS="${2:?--agent-tooling needs <label>=<ref>[,...]}"; shift 2 ;;
     --base-arms)  BASE_ARMS="${2:?--base-arms needs <label>=<ref>[,...]}"; shift 2 ;;
+    --arm-spec-path) ARM_SPEC_PATHS="${2:?--arm-spec-path needs <label>=<path>[,...]}"; shift 2 ;;
     --prediction) PREDICTION="${2:?--prediction needs text}"; shift 2 ;;
     --repeats)    REPEATS="${2:?--repeats needs a number}"; shift 2 ;;
     --noise-band) NOISE_BAND="${2:?--noise-band needs a percentage}"; shift 2 ;;
@@ -93,6 +97,7 @@ harness_require_own_driver
 [[ "$NOISE_BAND" =~ ^[0-9]+$ ]] || harness_die "--noise-band must be an integer percentage"
 [[ -z "$ARMS" || -z "$BASE_ARMS" ]] || harness_die "$HARNESS_ARM_KINDS_EXCLUSIVE_MSG"
 [[ -z "$BASE_ARMS" || -z "$PROGRAMS" ]] || harness_die "$HARNESS_BASE_ARMS_NO_PROGRAMS_MSG"
+[[ -z "$ARM_SPEC_PATHS" || -n "$BASE_ARMS" ]] || harness_die "$HARNESS_ARM_SPEC_NEEDS_BASE_ARMS_MSG"
 
 harness_require_tools
 
@@ -154,7 +159,7 @@ if [[ -n "$ARMS" ]]; then
     [[ "$pair" == *=* ]] || harness_die "--agent-tooling takes <label>=<ref>: $pair"
     label="${pair%%=*}"; ref="${pair#*=}"
     [[ "$label" =~ $HARNESS_ARM_LABEL_RE ]] || harness_die "arm label must be bare lower-case letters: $label"
-    sha="$(git -C "$at" rev-parse --verify --quiet "${ref}^{commit}")" \
+    sha="$(harness_resolve_commit "$at" "$ref" origin)" \
       || harness_die "agentTooling ref does not resolve in $at: $ref"
     harness_log "arm $label: $ref -> $sha"
     ARMS_JSON="$(jq -c --arg l "$label" --arg s "$sha" '.[$l] = $s' <<<"$ARMS_JSON")"
@@ -173,6 +178,27 @@ if [[ -n "$BASE_ARMS" ]]; then
       || harness_die "base arm $label: $ref is not a commit of the measured repository $CONSUMER_ROOT — $HARNESS_BASE_ARM_REPO_RULE"
     harness_log "base arm $label: $ref -> $sha"
     BASE_ARMS_JSON="$(jq -c --arg l "$label" --arg s "$sha" '.[$l] = $s' <<<"$BASE_ARMS_JSON")"
+  done
+fi
+
+# ── Arm spec paths: each base arm's spec, read from its own tree ─────────────
+ARM_SPEC_PATHS_JSON='{}'
+if [[ -n "$ARM_SPEC_PATHS" ]]; then
+  for pair in $(printf '%s' "$ARM_SPEC_PATHS" | tr ',' ' '); do
+    [[ "$pair" == *=* ]] || harness_die "--arm-spec-path takes <label>=<path>: $pair"
+    label="${pair%%=*}"; spec_path="${pair#*=}"
+    if jq -e --arg l "$label" 'has($l)' <<<"$ARM_SPEC_PATHS_JSON" >/dev/null; then
+      harness_die "--arm-spec-path names arm $label twice"
+    fi
+    ARM_SPEC_PATHS_JSON="$(jq -c --arg l "$label" --arg p "$spec_path" '.[$l] = $p' <<<"$ARM_SPEC_PATHS_JSON")"
+  done
+  harness_check_arm_spec_paths "$BASE_ARMS_JSON" "$ARM_SPEC_PATHS_JSON" || exit 1
+  for label in $(jq -r 'keys[]' <<<"$ARM_SPEC_PATHS_JSON"); do
+    sha="$(jq -r --arg l "$label" '.[$l]' <<<"$BASE_ARMS_JSON")"
+    spec_path="$(jq -r --arg l "$label" '.[$l]' <<<"$ARM_SPEC_PATHS_JSON")"
+    if [[ "$(git -C "$CONSUMER_ROOT" cat-file -t "$sha:$spec_path" 2>/dev/null)" != blob ]]; then
+      harness_die "$HARNESS_ARM_SPEC_PATHS_KEY: $label: $spec_path does not exist at $sha (a file, at the arm's commit)"
+    fi
   done
 fi
 # One "<label> <sha>" per arm, or "- -" for an experiment with no pin — what run.sh loops.
@@ -277,6 +303,7 @@ jq -n \
   --argjson accept "$DO_ACCEPT" --argjson band "$NOISE_BAND" --arg prediction "$PREDICTION" \
   --arg compare "$COMPARE_TO" --argjson overrides "$OVERRIDES_JSON" --argjson arms "$ARMS_JSON" \
   --argjson programs "$PROGRAMS_JSON" --argjson base_arms "$BASE_ARMS_JSON" \
+  --argjson arm_spec_paths "$ARM_SPEC_PATHS_JSON" \
   '{name: $name, fixtures: $fixtures}
    + (if ($programs | length) > 0 then {programs: $programs} else {} end)
    + {methods: $methods, repeats: $repeats,
@@ -284,6 +311,7 @@ jq -n \
     noise_band_pct: $band, prediction: $prediction, compare_to: $compare}
    + (if ($arms | length) > 0 then {agent_tooling: $arms} else {} end)
    + (if ($base_arms | length) > 0 then {base_arms: $base_arms} else {} end)
+   + (if ($arm_spec_paths | length) > 0 then {arm_spec_paths: $arm_spec_paths} else {} end)
    + (if ($overrides | length) > 0 then {branch_stem_override: $overrides} else {} end)' \
   > "$EXPERIMENT_DIR/experiment.json"
 
@@ -319,6 +347,7 @@ $CELLS_BULLET
 $( [[ -n "$COMPARE_TO" ]] && printf -- '- **Compared against:** `%s`\n' "$COMPARE_TO" )
 $( [[ "$ARMS_JSON" != "{}" ]] && printf -- '- **Arms:** each cell runs under every agentTooling version named in `experiment.json`'"'"'s `agent_tooling`; the setup stage pins the worktree'"'"'s vendored copy to it in a commit titled `EXPERIMENT ARM (revert before merge): …`, which is never merged.\n' )
 $( [[ "$BASE_ARMS_JSON" != "{}" ]] && printf -- '- **Arms:** each cell runs from the commit of this repository named in `experiment.json`'"'"'s `base_arms`, its worktree cut there instead of the fixture'"'"'s `base`; everything else is the fixture'"'"'s.\n' )
+$( [[ "$ARM_SPEC_PATHS_JSON" == "{}" ]] || jq -r 'to_entries[] | "- arm \(.key): spec \(.value) in its own tree"' <<<"$ARM_SPEC_PATHS_JSON" )
 
 $CELLS_BLOCK
 | File | What it is |

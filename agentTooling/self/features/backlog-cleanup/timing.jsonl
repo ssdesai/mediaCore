@@ -1,0 +1,5 @@
+{"at":"2026-11-17T15:26:13Z","event":"pass_start","queue":"review","round":"1"}
+{"at":"2026-11-17T15:26:13Z","event":"plan_start","plan":"01-review-opus","queue":"review","round":"1"}
+{"at":"2026-11-17T15:27:51Z","event":"plan_end","plan":"01-review-opus","queue":"review","rc":"0","verdict":"clean","head":"15972dd2befc0e833e0a4662f3f13652940ef6d8","round":"1"}
+{"at":"2026-11-17T15:27:51Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"1"}
+{"at":"2026-11-17T15:28:07Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/158","round":"1"}

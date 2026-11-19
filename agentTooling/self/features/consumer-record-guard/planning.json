@@ -1,0 +1,75 @@
+{
+  "slug": "consumer-record-guard",
+  "captured_at": "2026-11-17T04:26:48.635204+00:00",
+  "manifest_branches": [
+    "claude/consumer-record-guard"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "3a95c8a8-2fc6-5b91-866a-31905f0298ed",
+      "git_branch": "claude/consumer-record-guard",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-11-17",
+      "started_at": "2026-11-17T02:51:24.918000+00:00",
+      "ended_at": "2026-11-17T04:26:47.521000+00:00",
+      "duration_s": 5722
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "00a964d4-f715-4937-b5f1-99eb1b66fe0f",
+    "3cda067d-cd50-4873-90d8-c7f91be824e6",
+    "a393a086-07e5-44dd-8791-130f1382cdb1",
+    "b1a1282a-7ec7-47e9-bb3d-7dc1049bfe4e"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "3a95c8a8-2fc6-5b91-866a-31905f0298ed",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-17",
+      "duration_s": 5722,
+      "tokens": {
+        "input": 184,
+        "output": 54368,
+        "cache_read": 17951686,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 182603
+      },
+      "cost_usd": 6.1392572,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 6.1392572,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 6.1392572,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 5722,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "rate history is stale (checked 2026-10-13); refresh analysis/rates_history.json with analysis/refresh_rates.py in an agentTooling self feature"
+  ]
+}

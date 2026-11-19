@@ -24,6 +24,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/plan-runner-roots.sh"
 resolve_roots "${1:-}"
 if (( SELF_MODE )); then shift; fi
+refuse_orchestrator_session "${CLAUDE_CODE_SESSION_ID:-}"   # an orchestrator builds nothing
 
 # --up-to NN: drain only verify plans numbered <= NN. run-batch.sh passes the sentinel's
 # number here after a level boundary so the level-verify plan runs before the next level

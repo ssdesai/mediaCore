@@ -29,7 +29,9 @@ set -uo pipefail
 #   M6. on a feature already captured the move is applied AND the output says --recapture
 #       is what moves the figure;
 #   M7. a fence whose `from` is null is refused — there is no bound to move back;
-#   M8. --session is required (argparse's own usage error, exit 2).
+#   M8. --session is required (argparse's own usage error, exit 2);
+#   M9. (python-entry-exact) no option of manifest.py (either parser), capture_planning.py
+#       or report.py may be abbreviated: each is argparse's "unrecognized arguments", exit 2.
 #
 # Every one of these was RED until `set-window-from` landed: the subcommand did not exist,
 # and argparse exited 2 for all of them, which is why M1-M7 assert exit 1 (or 0) and a
@@ -45,6 +47,7 @@ trap 'rm -rf "$TMP"' EXIT
 TMP="$(cd "$TMP" && pwd -P)"
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
+mkdir -p "$AT/hooks" && cp "$HERE/hooks/shared_rules.py" "$AT/hooks/"  # roots.py imports it
 
 # manifest.py imports routing, which imports pricing, roots and transcript.
 export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
@@ -189,6 +192,34 @@ write_manifest
 out8="$(set_from "$SESSION_FIRST")"; rc8=$?
 check "M8. --session is required, and its absence is argparse's usage error (exit 2)" \
   "[ $rc8 -eq 2 ] && grep -q 'session' <<< \"\$out8\""
+
+# ── M9. no option may be abbreviated (self/features/python-entry-exact/) ───────
+# The hook approves these scripts' read-only forms by exact words, so a parser that took
+# `--forc` for `--force` would be a second spelling the hook never sees. Every parser the
+# hook approves a form of sets allow_abbrev=False: each abbreviation is argparse's usage
+# error (exit 2, "unrecognized arguments") before anything is read or written. The
+# manifest rows run the sandbox copy; capture_planning.py and report.py run from this
+# checkout under -B, since the parser refuses them before either resolves a root.
+UNRECOGNIZED="unrecognized arguments"
+ARGPARSE_USAGE_EXIT=2
+abbreviation_refused() {  # <label> <script> <args...>
+  local label="$1"; shift
+  local out rc
+  out="$(python3 -B "$@" 2>&1)"; rc=$?
+  check "M9. $label is refused as an unrecognized argument" \
+    "[ $rc -eq $ARGPARSE_USAGE_EXIT ] && grep -q '$UNRECOGNIZED' <<< \"\$out\""
+}
+write_manifest
+abbreviation_refused "manifest.py --se" "$AT/analysis/manifest.py" --se "$SLUG" get base
+abbreviation_refused "manifest.py --orchestration … --sel" "$AT/analysis/manifest.py" \
+  --orchestration "$SLUG" --sel get session
+abbreviation_refused "capture_planning.py --forc" "$HERE/analysis/capture_planning.py" \
+  --list-sessions --forc
+abbreviation_refused "capture_planning.py --al" "$HERE/analysis/capture_planning.py" \
+  --list-subagents --al
+abbreviation_refused "capture_planning.py --list-sess" "$HERE/analysis/capture_planning.py" --list-sess
+abbreviation_refused "report.py --orch" "$HERE/analysis/report.py" --orch x
+abbreviation_refused "report.py --rounds" "$HERE/analysis/report.py" "$SLUG" --rounds
 
 echo
 if [ "$fails" -eq 0 ]; then

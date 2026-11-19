@@ -1,0 +1,11 @@
+write: /tmp/plan-capture.7lkXF2/scratch/setup.sh
+write: /tmp/plan-capture.7lkXF2/scratch/attack.py
+write: /tmp/plan-capture.7lkXF2/scratch/cases.txt
+edit: /tmp/plan-capture.7lkXF2/scratch/cases.txt
+edit: /tmp/plan-capture.7lkXF2/scratch/cases.txt
+edit: /tmp/plan-capture.7lkXF2/scratch/cases.txt
+edit: /tmp/plan-capture.7lkXF2/scratch/attack.py
+write: /tmp/plan-capture.7lkXF2/scratch/runtime.sh
+write: /tmp/plan-capture.7lkXF2/scratch/payloads.py
+write: /tmp/plan-capture.7lkXF2/scratch/trusted.sh
+write: /home/user/agentTooling-delegate-cost-claims/self/features/python-entry-exact/audit-report.md

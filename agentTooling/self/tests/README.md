@@ -34,6 +34,11 @@ offline when a test is run by hand; `../gate.sh` exports it as well. Only
 --check`, and without that seam it would fetch LiteLLM over the network
 (`feature-lifecycle.sh`, `recover-at-close.sh`).
 
+**Every sandbox that copies `capture_planning.py` copies `hooks/brief_header.py` to
+`<sandbox>/hooks/` too.** The capture reads the brief header from that one definition,
+found at `<its own dir>/../hooks/` (`analysis/README.md` → "The brief header"), and a
+missing copy is an `ImportError` in every capture (`self/features/delegate-cost-claims/`).
+
 **Every sandbox that copies `feature-start.sh` or `forge.sh` copies `env-profile.sh`
 too, and forces the profile** (`self/DESIGN-2026-10-05-cloud-execution.md` §1). Both
 source the detector, so a missing copy fails every start and every forge call; and a
@@ -112,7 +117,14 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   with `--self` — start a feature, refuse its stub brief, capture its cost on the branch,
   review it (which records the round's verdict and stops), close it (PR, stamp, capture,
   merge request), merge it, watch the next start prune
-  it — synthesizing under a redirected `$HOME` the transcripts the captures read. The stub
+  it — synthesizing under a redirected `$HOME` the transcripts the captures read. The
+  fixture's `templates/plans/features/TEMPLATE.md` carries real prose above the real fence
+  (every close here would otherwise be refused for a README still matching its template);
+  phase RP restores the real template in one worktree and asserts the refusal, naming the
+  section, before any PR call, and S1n3 that the start's last lines name the review brief
+  to fill and its sections; S2d2 and S6j that the refusal from a worktree's copy names the
+  primary checkout's own `feature-start.sh` (standalone, and `agentTooling/feature-start.sh`
+  vendored), never the worktree path under the common root. The stub
   `claude` writes the review report for the runner to read back
   (`CLAUDE_REPORT_OUT`, and `CLAUDE_REPORT_FIRST_LINE` for the verdict under test), and
   the stub `gh` remembers per branch that a PR was created — so a second close finds it
@@ -205,8 +217,11 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `report.*`, `timing.jsonl` and the manifest with `to` exactly one second past the
   session's instant, the remote's `main` ref is unchanged, the worktree is clean and
   present, the worktree session is claimed by branch with its `cwd`; a delegate of a
-  coordinator on `main` whose brief names `S` and that no route claims is a **warning**
-  line naming its id, the `"subagents"` pin and the command that writes it,
+  coordinator on `main` whose brief names `S` and that no route claims is **auto-claimed**
+  — the capture says so, claims it as `pinned` and pushes the pin in its cost commit (C1i,
+  C1i1, `../features/delegate-cost-claims/`) — while one whose brief names `S` and then
+  `S-two` further down is ambiguous, left with that reason, and is the **warning** line
+  naming its id, the `"subagents"` pin and the command that writes it,
   `manifest.py --self S pin-subagent <id>` (C1i2), and a sibling briefed for `S-two` is never
   **warned** about (it is named once, in the residue, which is the corpus's listing and not
   this feature's); the router's routing record, refreshed from the router transcript
@@ -217,8 +232,8 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   and NOT the router that started `S`, whose spend is routing overhead rather than an
   unclaimed remainder — while the capture still exits 0. **C2**: a later line in the session and a second
   capture move `to` LATER, rewrite `planning.json` in a second cost commit, and meet no
-  refusal or already-captured skip; before that capture C1's warned-about delegate is
-  pinned with the worktree copy's `manifest.py pin-subagent`, and the capture claims it as
+  refusal or already-captured skip; before that capture C1's warned-about (ambiguous)
+  delegate is pinned with the worktree copy's `manifest.py pin-subagent`, and the capture claims it as
   `pinned` under the coordinator on `main`, stops warning about it, and pushes the pin in
   its cost commit (C2f–C2i, `../features/manifest-pin-subagent/`). **N1**: a feature no routing record names captures
   with no word about routing. **V1**, a clean round
@@ -230,8 +245,15 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   as `S: review stamps` touching `timing.jsonl` alone so the round ends on a clean tree
   (V1h–V1i, `../features/rates-haiku-live-warning/`), and names
   `feature-close.sh --self S` as the next step.
+  **UB** (`../features/delegate-cost-claims/`): that feature's build is claimed by
+  nothing while C1's coordinator, an unclaimed `main` session, started in its window, so
+  the close refuses before any PR call with nothing written, naming that session's exact
+  `manifest.py --self <slug> pin-session <id>` and `--allow-unclaimed`; UBa2 holds
+  `feature-close.sh`'s `CLAIM_CHECK_UNCLAIMED_RC` equal to `capture_planning.py`'s
+  `CLAIM_CHECK_UNCLAIMED_EXIT`; and `--allow-unclaimed "<reason>"` lets it through, writing
+  the reason to the fence's `allow_unclaimed` (UBe).
   **T3**: a brief that merely mentions the marker mid-line runs; its feature has
-  no session, so the CLOSE's capture refuses — the close exits non-zero with the
+  no session, so — let through by UB's `--allow-unclaimed` — the CLOSE's capture refuses — the close exits non-zero with the
   `feature-capture.sh --self <slug>` re-run command, the PR is open all the same, no merge
   is ever requested (the record is not pushed, which is the whole reason for the order),
   and `to` is rolled back to null.
@@ -241,8 +263,9 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   being the defect cloud-close removed — `pr_opened` carries that rc and **no url**
   (T4g), nothing probed `auth status` or called `gh pr` (T4h), and the capture still
   commits `<slug>: cost records` over the round's commit, leaving a clean worktree with no
-  "capture exited" line. **T5**: the review runner invoked from the primary on `main` commits
-  nothing, says it is on the feature's base and left the output uncommitted, leaves the
+  "capture exited" line. **T5**: with its brief written into the feature's
+  `review/incomplete/` on the primary first (asserted present, and the write silent on
+  stderr), the review runner invoked from the primary on `main` commits nothing, says it is on the feature's base and left the output uncommitted, leaves the
   primary's work in progress where it was, and touches no forge and no capture.
   **P1**: `pr.sh` honours `FEATURE_BASE`, refuses on the base branch, and both copies carry
   identical logic below their REPO-SPECIFIC line and never `checkout -b`; with
@@ -344,6 +367,14 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
     mode and pushes it; and, last in the file, after merging it into `main`, removing the
     checkout and deleting both local branches, `--recapture` from the primary finds
     `origin/claude/<slug>` as the merged ref (CCc).
+  - **UC**, the cloud shape of an unclaimed build (`../features/delegate-cost-claims/`): on
+    `claude/<slug>` under `AGENTTOOLING_PROFILE=cloud`, a coordinator outside any repo
+    whose implementer's brief has no header — the close stops before any forge call,
+    naming that delegate's `pin-subagent` command (UCa–UCb); with a second delegate briefed
+    `feature: agentTooling/<slug>`, the close's check counts it as claimed ("would pin"),
+    the PR opens, and the capture pins it itself, the pin riding the cost commit pushed to
+    `claude/<slug>`, `planning.json` claiming it as `pinned` and the headless one not at all
+    (UCc–UCe).
   - **CD**: a fence whose `branches` is `[]` reads as the slug — on-branch mode on `S`.
   - **F**, `forge.sh` on its own, copied to the root of throwaway checkouts: https with
     and without `.git`, `ssh://` and scp-style origins (with and without `.git`) all ask
@@ -691,6 +722,31 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   branch lacks, and `check-fixture.sh` fetching an unfetched base — is `harness/tests/smoke.sh`.
   Depends on `session_line` from `fixtures/transcripts/build-transcript.sh`. No model, no
   network.
+- `resolve-commit.sh` — `harness_resolve_commit`'s fallbacks
+  (`self/features/lifecycle-loose-ends/`, item 3), against a local bare repo made as strict
+  as git allows (no any-sha or reachable-sha wants, protocol v0 on the clone). A commit
+  older than a shallow clone's depth is found by the `--unshallow` step (R1); a commit on
+  `refs/pull/10/head` that is not the PR's tip is found by the pull-heads step, listed with
+  `ls-remote` and fetched by exact name into `FETCH_HEAD` since a glob refspec needs a
+  destination, and a full clone tries no `--unshallow` (R2); a sha nothing has fails
+  printing nothing on stdout and a stderr line naming the sha and every step tried (R3); a
+  local ref costs no fetch and a branch name is never fetched (R4); every created ref is
+  checked absent — local branches and tags unchanged (a tag sits in the history the deepen
+  brings, so a deepen that followed tags would create it), no `refs/pull` (R1d, R2c). R5 greps that
+  `harness_pin_agent_tooling`, `new-experiment.sh`'s arm ref and `check-fixture.sh` go
+  through the resolver; R6 runs `check-fixture.sh`'s `warn_if_pr_only` for each step (a
+  warning only for the pull step). Depends on `harness/lib.sh`'s `RESOLVE_*` constants and
+  `HARNESS_RESOLVED_*` variables. No model, no network.
+- `feature-readme-check.sh` — `manifest.py check-prose`, what `feature-close.sh` refuses on
+  (`self/features/lifecycle-loose-ends/`, item 2), against a throwaway copy of `analysis/`
+  and the real `templates/plans/features/TEMPLATE.md`. A README as `init` wrote it is
+  refused naming the title and opening paragraph and each of Plans, Levels, Contracts
+  across levels, Deliberately excluded (P1); a filled one with the level sections deleted
+  passes (P2); a `--method hand` pull's (goal paragraph, one review row, no exclusions)
+  passes (P3); each placeholder alone — title, paragraph, a `<one line>` row, the exclusions
+  bullet, a Levels section left in — is refused (P4); prose mentioning `<name>` passes (P5);
+  a slug with no README exits 1 and writes nothing (P6). The close's own refusal, before any
+  PR call, is `feature-lifecycle.sh` phase RP. No model, no network.
 - `check-plans.sh` — copies the real `check-plans.sh` and `plan-runner-roots.sh` into a
   throwaway checkout (a missing `check-plans.sh` is tolerated — RED until it lands, the
   `cost-recovery.sh` convention) and drives it against synthesized feature manifests and
@@ -1421,7 +1477,12 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   refused rather than waived, the guard being unevaluable (M5); on a feature whose
   `planning.json` carries a `captured_at` the move is applied AND the output names
   `--recapture` (M6); a null `from` is refused, there being no bound to move (M7); and
-  `--session` is required, which is argparse's own exit 2 (M8). Every refusal asserts the
+  `--session` is required, which is argparse's own exit 2 (M8); M9
+  (`../features/python-entry-exact/`) holds `allow_abbrev=False` at run time — `manifest.py
+  --se` and `--orchestration … --sel` (the sandbox copy, both parsers), `capture_planning.py --forc`/`--al`/
+  `--list-sess` and `report.py --orch`/`--rounds` (this checkout's own, under `-B`: the parser
+  refuses them before a root is resolved) are each argparse's "unrecognized arguments",
+  exit 2. Every refusal asserts the
   manifest is left **byte-identical** beside the exit code, and each expects 1 (or 0)
   rather than merely non-zero — against the branch before the subcommand existed argparse
   exited 2 for all of them, so "non-zero" would have passed vacuously. The fence markers
@@ -1441,9 +1502,11 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   uppercase, `<agent-id>` or session-UUID id is refused with exit **1** and a `refusing:`
   line, the file byte-identical, the `agent-` case naming the prefix to drop (P4); a fence
   with no `subagents` key gains one (P5); the consumer layout, without `--self`, pins and
-  re-pins the same way (P6); the delegate — which inherits `main` and no route can reach —
-  leaves the capture refusing a `$0.00` record before the pin and is claimed as `pinned`
-  under its real parent after it, its coordinator staying out of `sessions[]` (P7);
+  re-pins the same way (P6); the delegate — which inherits `main` and no route can reach,
+  and whose brief names the feature — is pinned by the capture itself through this same
+  command (`../features/delegate-cost-claims/`), so a hand pin after it is the
+  already-pinned no-op, and it is claimed as `pinned` under its real parent, its
+  coordinator staying out of `sessions[]` (P7);
   `--list-subagents --unclaimed --for` lists it with advice naming `pin-subagent`, and
   drops it once pinned and captured (P8, the pre-pin listing being the guard); and
   `capture_planning.parse_manifest is routing.parse_manifest` (P9). Exit 1 rather than
@@ -1503,7 +1566,99 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   checkout's `self/gate.sh`, `./check-plans.sh`, `analysis/*.py` — empty files, since the
   hook judges paths and arguments, not contents) and three symlinks that escape the tree,
   then feeds the real `hooks/allow-repo-commands.sh` the payload Claude Code sends, one
-  command at a time.
+  command at a time. Beside that root it builds a REAL repository (`git init`, one commit,
+  a real `git worktree add` under `.worktrees/feat`, a nested `git init` under
+  `plans/nested/`) and plants a bare git directory as plain files under `plans/evil/`
+  (`HEAD`, `objects/`, `refs/`, a `config` whose `core.fsmonitor` and `diff.external` touch
+  markers); a `PLANT_LIVE` check runs git there first and fails unless the markers appear,
+  and `PLANTED_GITDIR_CASES` (`../features/hook-planted-gitdir/`) then asserts that every
+  read-only git spelling at the plant prompts (`-C`, a cwd in it or under it,
+  `--git-dir` attached, separate and relative to a `-C`, `diff --no-index`), as does one in
+  the nested repository, while the same reads in the root, its `plans/`, its own `.git`
+  and the linked worktree (from the root and as the session's own root) stay approved. The
+  exact-shape rows (`../features/python-entry-exact/`) are appended to
+  `ENTRY_PROMPT` by `exact_shape_exploits` — the propagation audit's B1 and B2 as found, a
+  repeated `--orchestration`/`--self`/listing option in each position, `=` forms, every
+  abbreviation of each capture writing mode beside a listing and beside a decoy `--since
+  '--list-… x'`, extra and missing words — and every documented `manifest.py … get` and
+  listing form is in `ENTRY_ALLOW`. The audit rows (hook-audit-gaps) are `GIT_AUDIT_DENY` — a bundled `-fu`, a
+  brace word (F2), a comment's quote (A), a command after a heredoc's body (F1), and phase 3's
+  self-audit rows (a `#` inside a word or after an escaped blank, a `$'` in a comment, a `<<`
+  that is a shift, a CRLF delimiter, a top-level `EOF)`, a whole-argument body holding a quote,
+  nested and sequence braces, braces past the cap) — and the rows added to `DENY` and
+  `GIT_NOT_DENIED` beside them. Round 2's rows are there too: a bare `{` inside `${…}` (the
+  review's item 1), a `$(…)` heredoc ended at `EOF )`, `EOF⇥)`, `EOFS)`, `EOF x)`, `EOFxyz ;
+  true)` and `EOF'q')` (the audit's E1), a `#` right after a `)` that closed a word and a
+  comment in doubt holding a quote (E3), a `#` in an arithmetic expression or a subscript, and
+  `$$'a\'` (the PID and a plain quote). Round 3's (`escalations/02-review-opus.md`,
+  `02-audit-opus.md`; bash deletes a line continuation before it reads the construct around
+  it): an unquoted delimiter's body ended at a terminator joined across one (`EO\⏎F`,
+  `E\⏎O\⏎F`, `EOF\⏎` and an empty line, `⇥EO\⏎F` under `<<-`, inside `$(…)` and inside
+  `"$(cat <<EOF …)"` — R2-1), with a chained `cd` and an own-assignment after such a body in
+  `DENY` and `ASSIGN_DENY`; a substitution opener split by one (`<\⏎(`, `$\⏎(`, `>\⏎(`, and
+  the arithmetic openers before a `<<` — R2-2); a split operator, delimiter and
+  whole-argument head or tail; inside backticks, a continuation in single quotes and the
+  `\\⏎` bash halves to one; and `a=(x)#b; X=/p; cat $X/f` (R2-3). The twins bash joins
+  nothing in — a quoted delimiter, an escaped backslash before the line break — are prompts
+  in `GIT_NOT_DENIED`. Round 4's (`escalations/03-audit-opus.md`): in `GIT_AUDIT_DENY`, a
+  run-on terminator inside `"$(cat <<…)"` with an odd `"` after it — the audit's w1, w2, o13p,
+  w11, w12, w8, w9, x3, x4, x8, o13 and its three split twins, o13u (R3-1: the built reading
+  does not tokenize, and the line is a git command that cannot be read) — its controls w4, x1
+  and x5, the same rule after a placed body, a stood-in heredoc, a dropped comment and a
+  deleted continuation, and the opened head spelled `"$( cat <<`, with tabs, a line break, no
+  blank or a continuation (R3-2: o3, o3p); `TORN_READING_DENY` holds w10 and w14 and two
+  plain-heredoc twins, which name no git and take the does-not-tokenize deny, its reason
+  asserted (x7's too); `TORN_READING_NOT_DENIED` holds what must stay a prompt — the usual
+  commit message and PR body with apostrophes, quotes, backticks and a `$(` in the body, an
+  unquoted delimiter over an odd quote, a comment in doubt read as text, a body never placed.
+  Round 5's (`escalations/04-audit-opus.md`, R4-1): in `GIT_AUDIT_DENY`, a whole-argument
+  head whose delimiter is no bare or fully quoted identifier, each with a command after its
+  `)"` — the audit's p4, p5, p2, p3, p6, p7, p8, p13 (partly and backslash-quoted), e5, e6, e8,
+  e9, e11, e14 (empty), c5, c6, c8, c10, c12, c13, c22 (the canonical message shape), four of
+  its rN run-on twins and ten more rows of its delimiter table, the head's round-4 spellings
+  and such a head beside a usual message — with the controls q5, c1, p1 and e7, denied before
+  the round, and round 4's documented over-deny pinned as the deny it is (a commit message
+  with a line that begins with its own delimiter word and an odd quote after it);
+  `TORN_READING_DENY` gains e12, an own assignment and a bare `echo "$(cat <<E-F…)"` (no git:
+  the does-not-tokenize deny, its reason asserted) and round 4's other two over-denies, pinned
+  (a quote nested in a later `"$(…)"` after a heredoc; the PR-body twin of the delimiter-word
+  line); `TORN_READING_NOT_DENIED` gains the usual message and PR body under `"EOF"`, `EOF`,
+  `-EOF`, `-'EOF'` and `'END_OF_MSG'`, a message whose body names such a head, a herestring, a
+  head with a pipe on its own line, the same delimiters on a plain heredoc, and a `grep` for
+  the head's text (still approved).
+  Round 6's (`escalations/05-audit-opus.md`, B1): `UNLEXED_GIT_DENY` — a git command on line
+  1 and a later line whose quote never closes — is the audit's six first lines (`git push -f
+  origin y`, `git push origin main`, `git reset --hard`, `git clean -fdx`, `git branch -D y`,
+  `git stash drop`) × twelve tails (its four reproductions, `echo '#`, `echo "$(cat <<EOF`, a
+  PR body whose terminator was dropped and `echo '<<`; its six other tails; two with neither a
+  `<<` nor a `#`), then its row with a quoted `<<` on an earlier line, the git word spelled
+  `gi""t` and `g\it`, the line with the push AFTER the unclosed head, the one-line twins
+  (`git rebase 'main`, `git commit -m 'unclosed`), a read on line 1, a message whose
+  terminator was dropped, and three lines with a heredoc that is never terminated and an odd
+  quote after it — each denied, and each with the GIT deny's reason (`GIT_REASON_WORDS`), as
+  is `git push -f origin y⏎echo '`. Two rows moved with it, stricter: `git rebase 'main` left
+  "the unreadable deny names the quote" (`ls 'src` stands there) and `git push -f origin
+  y⏎echo '` left "... with the reason that names the quote"; both are still asserted as
+  denies, now with the git reason. `TORN_READING_NOT_DENIED` gains the same tails on a line
+  that names no git — after a read, a write, a chained `cd` and an own assignment, each the
+  prompt it was — and what bash tokenizes on a line that names git (an apostrophe in a
+  comment, in a placed body and in a body never terminated; `git commit -m $'it\'s'`).
+  Round 7's (`escalations/06-audit-opus.md`, B1, and `06-review-opus.md`): the round-6 deny
+  asks bash itself (`bash -n`). `BASH_REFUSED_GIT_DENY` — the audit's five first lines (the
+  six above less `git stash drop`) × its five second lines (`echo $'\'' "`, `echo $'\'' '`,
+  `echo $'\'' "$(cat <<EOF`, `: $'a\'b' "x`, `echo ${x:-$'\''} "`), then the escaped quote on
+  a complete line of its own before and after the push, beside a `#`, in a substitution,
+  after a `$$`, before the push on its own line, with `g\it`, before a PR body whose
+  terminator was dropped, and in a heredoc that is never terminated; and the round's two
+  over-denies, pinned (`git push -f origin y; echo $'\'' "`, of which bash runs nothing, and
+  an extglob pattern beside the escaped quote after a `shopt -s extglob` the check does not
+  execute) — each denied with the GIT deny's reason. `BASH_PARSED_QUOTE_DENY` — the review's
+  `git commit -m "$(echo "it's")"` and `"$(printf "%s" "don't")"`, the backtick and
+  `${x:-"it's"}` spellings and a `git log --grep` — is the does-not-tokenize deny round 5
+  gave them: denied, with the reason that names the quote and none of the git deny's words.
+  `BASH_PARSED_PROMPT` — the review's `"$(echo "it's #1")"`, the same after a push, three
+  well-formed ANSI-C lines (`git push -f origin y⏎echo $'\''` among them) and the audit's
+  tail on a line that names no git — is the prompt each was. No row moved or was removed.
   Asserts that ordinary reads and runs are approved; that each entry point is approved by
   basename when its path resolves inside the root, and prompts outside it, through an
   escaping symlink, or in a writing form (`capture_planning.py --recapture`/`--all`,
@@ -1543,7 +1698,12 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   -RL`/`du -L` walking through a symlink out, `rg --hostname-bin`/`-z` and
   `git --textconv`/`--ext-diff` running an external program, `ruff --fix` and a bare
   `ruff format` rewriting the tree, `mypy --install-types`, and
-  `capture_planning.py --force` — each beside the near-miss guard that must stay
+  `capture_planning.py --force`; and the runner-write audit
+  (`../features/runner-write-allows/`, `RUNNER_WRITE_PROMPT` against `RUNNER_READ_ALLOW`:
+  ruff `--config 'fix = true'`/`--add-noqa`/`-o`, mypy `--python-executable`/`--*-report`/
+  `--inst`/`@file`, pytest `--basetemp`/`--junitxml`/`--debug`/`-o`, `report.py` without
+  `--self`, and a planted, linked or unpinned `report.py`/`gate.sh`; the fixture adds
+  `x/`, `dir/analysis/`, `linked/`, `alink` and `glink`) — each beside the near-miss guard that must stay
   approved (`grep -d recurse`, `find -H`, `git log --format=%x41`, `ruff format
   --check`, `ls -la`, `du -sh`), so a closure that over-reached fails here rather than
   in a consuming repo; that every **opaque** shape is denied with a reason naming the
@@ -1697,7 +1857,13 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   again, and a headless runner prints nothing at that escalation while the counter still
   advances. §9h–9i: a file authored through the shell counts the same way — two
   (`echo x > f`, a `cat` heredoc into a file) are denied and a third (`sed -i`) is the
-  `ask` with the escalation's own reason. Depends on
+  `ask` with the escalation's own reason. §10 (hook-audit-gaps, round 6): five lines in a
+  row that name git and do not tokenize (`git push -f origin y⏎echo '#`, `git rebase
+  'main`) are each the git deny, never the `ask`, while the same shape with no git on it
+  (`cat 'x`) still decays on the third. §10c–10d (round 7): three lines that name git, that
+  the hook's lexer refuses and that bash parses (`git commit -m "$(echo "it's")"`) are the
+  rewrite deny again — deny, deny, `ask` — and five that bash refuses behind an ANSI-C
+  quote (`git push -f origin y⏎echo $'\'' "`) are each the git deny. Depends on
   `OPAQUE_REWRITE_ATTEMPTS` being 2 and on
   the state directory being an explicit name under `$TMPDIR`. No model, no network.
 - `hook-cloud-profile.sh` — the hook's **profile** half
@@ -1722,8 +1888,130 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `mainline`, `feature/main`, `main-x` and `main:x` keep round 1's answers and `git log
   main`, `echo '…'` and a commit message carrying the text are untouched; `--repo
   <r>`/`--repo=<r>` read as naming the remote (`--repo origin x` refused in the cloud,
-  `--repo origin <current>` a prompt) and a bare `--repo` a prompt; `git push -u origin <current>`, plain `git push`, `git push origin
-  HEAD[:<current>]`, a switch to the current branch and every file checkout (`-- f`, `f`,
+  `--repo origin <current>` a prompt) and a bare `--repo` a prompt; plain `git push`, `git push origin
+  HEAD[:<current>]` prompt in both; `git push [-u|--set-upstream] origin <current>` — quoted, and with
+  `2>&1 | tail -3`, `2>&1` or `2>/dev/null` after it, a descriptor being the redirect's and not a
+  refspec — prompts locally and is **approved** in the cloud (`self/features/cloud-checkpoint-push/`:
+  `own_push_allowed`; fixture C's origin is a fixed https url), while the same push behind `git -C <root>`
+  or `-C <root>/agentTooling` now prompts in both (`self/features/own-push-real-gitdir/`), and
+  `+<current>`, `upstream`, an extra flag (`--no-verify`, `-o`, `--repo`), `refs/heads/<current>`,
+  `<current>:<current>`, a doubled branch and `--git-dir`/`-c` before `push` keep their prompt, a force
+  (`--force`, `-f`, `--force-with-lease`, `-u --force`) is denied in both and another branch denied in the cloud;
+  a push approved in the cloud inside a chain with `git status` is a rewrite denial locally; Q: the same push on a
+  branch no tracked manifest names `branches[0]` (a manifest listing it second, one only mentioning it,
+  agentTooling's own shape with no feature, a detached HEAD, no repo) is approved under neither profile, a checkout
+  on `main` and a chain with a refused member are not approved; Q5 (hook-audit-gaps, B3): `branches[0]` is read from
+  the manifest committed at `HEAD` — an uncommitted edit naming the current branch is not approved, a committed one
+  is, and an uncommitted edit away from a committed one does not withdraw it; the T table also holds B2
+  (`git push origin <b> "2">/dev/null` and `\2>/dev/null`, a quoted or escaped digit, refused in the cloud; green
+  since #139) and `-fu`/`-uf` (a force bundled into short flags, refused in both), and a command after a heredoc's
+  body (`cat <<EOF⏎x⏎EOF⏎git push origin main`, glued `;<<`, `&&<<`, an `EOF)` line) is denied, F1; H6/H7/H8 run
+  the build-script judge and `heredoc_body_span`/`judged_text`/`heredoc_argument_at` directly — a comment's quote,
+  a line continuation, a reader piped into a launcher, the launchers the denylist lacks (hook-audit-gaps, A, B, C,
+  with the coarse rule's cost pinned: a bare glob to a non-exempt command is a run) and where a body ends;
+  **H9–H14, R7 and R8 are phase 3's** — H9: a build script FED by input redirection is a run (`bash <
+  run-plans.sh`, `<>`, `N<`, `{fd}<`, glued, quoted, before the program; `cat < run-plans.sh` and `sort <
+  run-plans.sh` are not); H10: beside a reader that names one, any command that is no plain filter launches it
+  (`| unshare sh`, `| ash`, `| ./sort`, `| sort --compress-program=sh`), a filter does not; H11: bracket
+  expressions, a pattern glued to an operator on an unlexable line, a pattern in an assignment's value, and git's
+  exec flags abbreviated or clustered; H12: `judged_text`/`judged_texts`/`comment_and_heredoc_free` read a `#`, a
+  shift, an odd delimiter, a run-on line (both readings) and a whole-argument heredoc as bash does; H13:
+  `brace_words` expands nested groups and sequences and refuses past the cap; H14: a sixth fixture, a checkout
+  whose `.git` names no directory (the ledger unreadable), where a redirect-fed script gets the SAME deny as the
+  piped one on a third attempt and a read is not refused; the T table's phase-3 block holds the git rows of the
+  same self-audit (a `#` inside a word, a fake comment, CRLF and backtick delimiters, shifts, `EOF)` inside and
+  outside a substitution, nested and sequence braces, past the cap); R7: the `"$(git branch --show-current)"` push
+  is refused in the cloud with a reason naming the branch to push as a literal, and that literal push is approved;
+  R8: lines a decaying rewrite deny used to answer get the git deny's reason on a third attempt;
+  **round 2's are H15, H16, Q6 and the T table's round-2 block** (both escalation files; the deny side judges
+  every reading bash may make of a comment, a heredoc body and a continuation) — H8 is narrowed: `EOF ` and
+  `EOFS` are body lines to the main parser only, and inside a substitution any body line that begins with the
+  delimiter and goes on leaves the body unplaced, as a backtick does in a backtick substitution; H15: the
+  build-script judge reads a line with its continuations deleted AND as written (`ls # x \⏎./run-plans.sh` is a
+  run) and a `)#` hides nothing; H16: `judged_texts` returns both readings of each comment in doubt (past `(`,
+  `[`, `{` or a backtick), every combination up to `MAX_COMMENT_DOUBTS`, a certain comment once; a continuation
+  is deleted in the walk and never inside a comment; a body may end at any of its run-on lines up to
+  `MAX_RUN_ON_LINES`; past either cap a line naming git is judged as a git command that cannot be read; only a
+  `${` nests; `$$'…'` is a plain quote; Q6: a `refs/replace/` entry over the committed manifest's blob does not
+  approve the push (the fixture proves the ref is live first); **Q7 is own-push-real-gitdir's**: the audit's
+  evil2 and evil3 plants (plain files under `plans/`, no `.git` in any path) are prompts behind `-C` (relative and
+  absolute, with `-u` and `--set-upstream`), from a cwd inside the plant, with `GIT_DIR` in the hook's environment
+  and behind `--git-dir` or a `GIT_DIR=` prefix, and nothing planted runs; the approved shape has nothing before
+  `push` and the cwd is the root; one row per config key that redirects or executes, per `push.default` value, per
+  origin url shape (two values, ssh, scp-like, `ext::`, a local path, an applying `insteadOf` and `pushInsteadOf`),
+  per hook a push runs (file and directory), a `core.worktree` elsewhere, `core.bare=true` and a bare-repo shape
+  planted in a vendored root are prompts, while the plain push, `-u`, `--set-upstream`, a chain with a read,
+  `push.default=simple`/`current`, the container's own non-applying `insteadOf`, an `http://` url, a linked worktree
+  and a root that is a subdirectory of its checkout approve; every mutation is undone after its row and a last
+  row proves the fixture approves again; **Q8 is own-push-credential-keys'**: `credential.helper` (the audit's
+  `!f() { touch …; … }; f` form), a url-scoped `credential.<sub>.helper` and a mixed-case subsection, `core.askPass`
+  and a helper in the global config only (`GIT_CONFIG_GLOBAL`) are prompts, as is a non-empty `GIT_ASKPASS` or
+  `SSH_ASKPASS` in the hook's environment, as is an empty subsection written as raw text
+  (`[credential ""]` helper in the repo config and in the global config, `[includeIf ""]`, `[hook ""]`,
+  `[branch ""]`), while an empty one, `credential.interactive=false` and
+  `credential.<sub>.username` approve; each mutation is undone and no helper runs, and `hook_env` hands the hook no
+  inherited `GIT_ASKPASS`/`SSH_ASKPASS` and no system or global git config (a row sets its own), so a developer's
+  own credential helper or IDE askpass does not turn the approve rows red; the T rows hold the same shapes end to end under
+  both profiles, with the cost rows (a comment past an opener read as commands) and the rows that stay prompts
+  (the same run-on line outside a substitution, a certain comment); H14 gains E2 and E3 lines;
+  **round 3's are H17 and the T table's round-3 block** (`escalations/02-review-opus.md`, `02-audit-opus.md`
+  R2-1 to R2-3): `heredoc_body_span` with `joins` ends an unquoted delimiter's body at a terminator joined
+  across a line continuation (and not at a line joined to the one before it, nor across an escaped
+  backslash), a quoted delimiter's nowhere; `heredoc_delimiter` reads a delimiter with its continuations
+  deleted and returns `(delimiter, strip_tabs, end, quoted)`; `judged_texts` returns bash's reading first,
+  then the reading that joins nothing, and inside backticks a quoted delimiter's body both ways; a split
+  operator, herestring, substitution opener, arithmetic opener, `${` and whole-argument head or tail are the
+  ones bash reads; a whole-argument head that is not stood in is also read opened; inside backticks a
+  continuation is deleted inside single quotes and `\\⏎` is one; the own-assignment deny reads every
+  reading; past a cap a git word split by a continuation is still found; H5 gains the split-operator lines
+  on the unreadable-ledger path; the T rows hold the same shapes end to end, with the quoted-delimiter
+  twins as prompts and the audit's `x\⏎EOF` row (denied before the round, no push run) still a deny;
+  **round 4's are H18 and the T table's round-4 block** (`escalations/03-audit-opus.md`, R3-1 and R3-2): the
+  walk returns a `TornReading` when it built a reading whose quotes never close, and the plain line when it
+  built nothing; a dropped `$$` alone is no built reading; `judged_texts` notes a torn reading and returns
+  the unreadable git command for a line that names git, `tears_a_reading` and `does_not_tokenize` are true
+  for any other; a comment in doubt kept as text and bodies read as commands are not built readings; the
+  usual message is one reading that tokenizes; `HEREDOC_OPENED_HEAD_RE` matches each spelling bash reads as
+  the head and no text before the `$(`; the T rows hold the audit's reproductions and controls under both
+  profiles (the three rewrite-deny rows each behind a deny that clears the attempt count) and the usual
+  message and PR body as prompts;
+  **round 5's are H19 and the T table's round-5 block** (`escalations/04-audit-opus.md`, R4-1): `unread_head`
+  is true for a whole-argument head whose delimiter is partly quoted, backslash-quoted, empty or no
+  identifier, in every spelling of the head, and false for a bare or fully quoted identifier (with `-` and
+  blanks before it, whatever follows the word), a herestring and text before the `$(`; `judged_texts` notes
+  a reading that holds such a head as torn — the unreadable git command for a line that names git,
+  `tears_a_reading` and `does_not_tokenize` for any other — also after a body no reading places and after a
+  comment in doubt; a head a reading dropped (in a comment, a placed or stood-in body) is not noted; a
+  split head's plain delimiter is read and its odd one refused; the usual message is untouched under
+  `'EOF'`, `"EOF"`, `EOF`, `-EOF` and `-'EOF'`; the T rows hold the audit's R4-1 reproductions (e12, which
+  names no git, behind a deny that clears the attempt count), four rN twins, the controls q5, c1, p1 and
+  e7, round 4's two documented over-denies pinned as denies, and the usual message, a message that names
+  such a head and a herestring as prompts;
+  **round 6's is the T table's round-6 block** (`escalations/05-audit-opus.md`, B1): a line that names git
+  and that no reading tokenizes is denied under both profiles — the audit's six first lines × its four
+  reproductions, its other tails, a quoted `<<` on an earlier line, `g\it`, a tail with neither `<<` nor
+  `#`, `git rebase 'main`, a read on line 1, a message whose terminator was dropped, two lines with a
+  heredoc never terminated — and the same tails with no git on the line, an apostrophe in a comment or a
+  placed body and an ANSI-C quote are the prompts they were;
+  **round 7's are H20 and the T table's round-7 block** (`escalations/06-review-opus.md` and
+  `06-audit-opus.md`, B1): `bash_refuses` asks `bash -n` whether the line parses, and round 6's deny is
+  owed only when it does not — H20 pins the argv (`bash --norc --noprofile -n`, no `-c`, no file) and an
+  environment of `PATH` alone; that seventeen texts that would create a canary file (a command, a
+  substitution in a word, a body or an expansion, a redirect, a trap, an alias, a function, `eval`,
+  `exec`, `set +n`) create nothing, with `BASH_ENV`, `ENV` and `SHELLOPTS` set in the test's own
+  environment; that bash parses the review's three lines and a well-formed ANSI-C quote and refuses the
+  audit's B1 lines, a heredoc never terminated (exit 0 and a warning) and a NUL; that `judged_texts`
+  answers a refused line that names git as the unreadable git command, ANSI-C quote or not, and leaves a
+  parsed one its texts; that bash is not asked about a line a reading judges, one that names no git or a
+  torn reading, and is asked once per line; and that the check **fails closed** — with no bash on the
+  `PATH`, a program that cannot be run, a timeout, a non-zero exit and output on a zero exit (the
+  constants patched in the loaded module), the review's line and `git commit -m $'it\'s'` are the
+  unreadable git command, while `git status` and a line with no git keep their texts. The T rows hold the
+  audit's five first lines × five second lines and eight variants as denies under both profiles, the
+  review's two decaying lines each behind a deny that clears the attempt count, and its `#` line, a
+  well-formed ANSI-C quote after a push and the audit's tail with no git as prompts; and the
+  same redirect after `origin x` is still refused in the cloud and after `origin main` in
+  both (`self/features/ablation-harness-fixes/`) — a switch to the current branch and every file checkout (`-- f`, `f`,
   `HEAD -- f`, `main -- f`, `-p f`) prompt in both; an env prefix stays an ask; and the
   rest of the cloud-only shapes (`-`, `--detach`, `--orphan`, a sha, a remote-only
   branch, `HEAD:x`, `x`, `--all`, `--mirror`, `--tags`, `--prune`, `--delete`, `-d`, `:x`,
@@ -1740,7 +2028,16 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `AGENTTOOLING_PROFILE` gives today's answers and today's reason (and the local
   push-to-main reason); F4: malformed pushes (`--repo` with no value, `-o`, `:`, `+`,
   `''`) never crash the hook in either profile. P: `CLAUDE_CODE_REMOTE=true` alone is
-  cloud, neither variable is local, and `AGENTTOOLING_PROFILE=local` wins. X: under a
+  cloud, neither variable is local, and `AGENTTOOLING_PROFILE=local` wins. H (the hook
+  loaded as a module, `../features/orchestration-record-fixes/`): H1/H2, every operator
+  character reads through `punctuation_pieces`; H3, a build script after a heredoc's body is
+  still a run for `invokes_build_script`; H4, a quoted `<<` or a `<<<` hides no globbed build
+  script, while a glob after a real heredoc's body prompts as on `origin/main`; H5, with the
+  role ledger unreadable, `build_script_denial` refuses any raw command holding a
+  substitution, heredoc, herestring, `$'…'`, `$"…"` or `${…}` with `UNREADABLE_LEDGER_REASON`
+  (rounds 12–13's bypasses among the rows) and leaves a plain read alone. Table T also holds the fail-closed rule's rows: a
+  line with a git word and a substitution, backtick, `<(`/`>(`, `<<` or `case` is never
+  `allow`, and a quoted `<<` or a `<<<` never switches the git deny off. X: under a
   logging `git` stub first on `PATH`, no case runs git locally (nor on **M**), a local push
   to `main` is refused and runs none (X4), a cloud read or non-git command runs none, and
   a cloud `git switch main` does (the stub is live). O: the off-branch remedy
@@ -1768,13 +2065,23 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   never costs another command a git call. Depends on the
   manifest fence's `branches[0]` and on the hook finding its repo shape from its own path.
   No model, no network.
-- `hook-wiring.sh` — thirty-one throwaway repos, one per starting state of
+- `hook-wiring.sh` — (extended by `../features/orchestrator-role-guard/`: the hook is wired
+  twice, a `Bash` and an `Agent` matcher running the same script; every complete fixture
+  carries both entries, a file with the Bash entry and no Agent one — case `no-agent` —
+  reports `UNWIRED` naming `Agent hook entry` and the write adds exactly it after the
+  repo's own, nothing doubled; `--self --write` writes two guarded entries.) Thirty-four throwaway repos, one per starting state of
   `.claude/settings.json` (absent, unrelated content, hook only, deny rules only, a
   partial deny list with a repo's own rule in it, the hook and the `Edit` rules but no
   `Bash` rules, everything but the ask rule, everything but the sandbox block, complete,
   complete plus the retired `Bash(git stash:*)` and a repo's own rule, complete plus the
   retired `Edit(**/agentTooling/hooks/**)` deny beside the ask rule that replaced it —
   every consumer's shape before `claude-md-chain`, the deny removed and the ask kept —
+  the two retired narrow vendored asks (`Edit(**/agentTooling/hooks/**)`,
+  `Edit(**/agentTooling/self/orchestrations/**)`, `RETIRED_ASK`; `vendored-edit-ask`)
+  beside a repo's own ask rule and the records ask, and again beside the tree-wide
+  `Edit(**/agentTooling/**)` ask: `--check` names the retired asks (and the missing broad
+  rule), `--write` drops exactly those two by string, appends the broad rule and keeps the
+  repo's own — and `--self` writes neither spelling —
   a sandbox block
   carrying the repo's own domain, `denyRead` path and `excludedCommands`, a sandbox
   switched off by hand, the complete block with only `enabled` flipped against the
@@ -1792,8 +2099,10 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   retyped, so a rule added to the table reaches this file with nobody editing it.
   Asserts `hooks/wire-settings.py --check` and `--write` report the
   documented status and exit code and agree; that after a write every deny rule and the
-  `hooks/` ask rule are
-  present — the ask rule in `permissions.ask` and not in `permissions.deny` — and exactly
+  ask rules are
+  present (in a consumer, the whole vendored tree `agentTooling/**` and the
+  orchestration-record rule `plans/orchestrations/**`, `ASK`; under `--self`, `hooks/`) —
+  the ask rule in `permissions.ask` and not in `permissions.deny` — and exactly
   one hook entry names the script; that nothing the repo had is
   removed or changed, including a hand-customized hook path and whatever it had under
   `allow` — which stays exactly as it was in every case, absent included; that a second
@@ -2271,7 +2580,9 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   [--orchestration <orchestration>]` shape (B3), tells the implementer to run the start in
   the background with its output captured to a scratchpad file and to wait for its exit
   notification before touching the tree, and that the start refuses a tree that changes
-  while it runs (B3b), never says "assigned branch" (B4), stays
+  while it runs (B3b), to fill the review brief before building (B3c), carries the
+  never-move-bytes-through-a-model rule (git `show`/`archive`, no base64 in a prompt) and
+  that `ORCHESTRATION.md` has it too (B3d–B3e), never says "assigned branch" (B4), stays
   within 80 lines (B5), that `LIFECYCLE.md` names its path in a consumer
   (`plans/ORCHESTRATOR_BRIEF.md`, B6) and in agentTooling (B7), and that `sync-plans.sh`'s
   `GENERATED` list and both READMEs name it (B8–B9). B10 holds every agentTooling-root
@@ -2365,6 +2676,49 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   (`direct-bare` → `exportStoreDirectBare2`) and that every directory under
   `harness/methods/` yields a branch matching `^[a-z][A-Za-z0-9]*$`. Reads
   `harness/lib.sh`'s fill and naming; no model, no network.
+- `vanilla-pair.sh` — keeps `harness/methods/vanilla/` and `vanilla-conv/` one layer apart
+  (the tooling-ablation ladder's bottom rungs). The two templates byte-identical, filling
+  through `harness_fill_template` with no placeholder left and none `direct` lacks, keeping
+  the harness's own parts (the `feature:` line, isolation, gate, `forge.sh pr-open`, the
+  banner) and naming none of the doctrine (`CLAUDE.md`, `CONVENTIONS`, `PROJECT_FACTS`,
+  README rules, named constants, checkpoint, tests first); `vanilla-conv/run.sh` equal to
+  `direct/run.sh` once comments and the name are set aside, `vanilla/run.sh` equal to
+  `vanilla-conv/run.sh` once its `# vanilla-only` lines are removed, both launching from the
+  tree. Then `vanilla/neutralize.sh` on throwaway repos: the import lines (root and vendored
+  copy) and the settings' `hooks`/`permissions` go while the project text and other keys
+  stay, `git status` is clean, a `git add -A` commit and an explicit `git add` carry none of
+  it, verify passes on an honest build and fails naming the file on a leaked commit, restore
+  brings HEAD's files back with no skip-worktree bit or list left, a second neutralization
+  over a killed one restores first, a tree with nothing to take out is left alone; and
+  `vanilla/run.sh` end to end with a fake `claude` (it saw no import and no hook, ran from the
+  tree root, its commit is the feature alone, the tree is restored after a pass and after a
+  failure; a build that commits a neutralized file exits 1 naming it; a run whose
+  `run.sh` is sent TERM mid-build exits 143 and still restores). Branch names `exportStoreVanilla` / `exportStoreVanillaConv2`. No model, no
+  network.
+- `split-tests-pair.sh` — keeps `harness/methods/split-tests/` `vanilla-conv` plus an
+  independent test author and nothing more. Its `template.md` carries the split marker once,
+  both halves open with the `feature:` line, and the implementer half is
+  `vanilla-conv/template.md` with exactly one paragraph inserted before `## Finish` — derived
+  and compared byte for byte, the paragraph carrying the `%%TESTS_SHA%%` slot and the
+  "Test changes" heading — so an edit to `vanilla-conv`'s brief fails the gate until
+  `split-tests` follows it. The template fills through `harness_fill_template` with nothing
+  left and no placeholder `vanilla-conv` lacks, and an unknown `@@NAME@@` in the author half
+  still aborts the fill. `run.sh` launches both sessions from the tree with `vanilla-conv`'s
+  flags. Then `run.sh` end to end against a throwaway repo with a fake `claude` behind
+  `HARNESS_CLAUDE_BIN` playing both sessions: a good author then an implementer exits 0, each
+  session gets its half (the implementer's with the author's sha filled in), both briefs and
+  the author's result land in the log directory beside the method result, the test diff
+  names the test the implementer edited and not its source, and nothing lands in the tree;
+  an author who commits nothing, commits a source file, commits a `README.md` in a folder
+  holding none of its tests, leaves source uncommitted, commits under another subject, or
+  commits again after the tests commit — alone or before a usage limit, which is then
+  refused rather than resumed — or leaves source uncommitted at a usage limit after its
+  tests commit, exits 1 with no implementer (the refusals naming the file or
+  the later commit); tests kept beside their source (`src/components/Foo.test.tsx` with that
+  folder's `README.md`) and a root `conftest.py` pass to the implementer; an
+  author on a usage limit exits 2 with its result where the harness reads the reset; the
+  re-entry then runs the implementer alone; a failing implementer exits 1 with the test diff
+  still written. Branch name `exportStoreSplitTests`. No model, no network.
 - `direct-timing.sh` — copies `plan-runner-roots.sh`, the top-level `stamp-timing.sh` and
   `analysis/{pricing,roots,transcript,report}.py` into a throwaway checkout and
   synthesizes a `self/features/` corpus of hand-written manifests, `planning.json` files
@@ -2693,7 +3047,345 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   optional key; the capture pricing the later transcript's in-window responses and the
   subagent's, and refusing a session with no transcript; the group report's four feature
   rows (priced; no total; no path; path missing), overhead, total, percentage and
-  unpriced count in `report.json` and `report.md`, and an uncaptured overhead.
+  unpriced count in `report.json` and `report.md`, and an uncaptured overhead. The
+  consuming-repo layout is `orchestration-records-in-repo.sh` R2's.
+- `coordinator-records.sh` — the coordinator record (`../features/coordinator-cost-records/`).
+  Throwaway checkout holding `orchestration-{start,capture}.sh`, `plan-runner-roots.sh`,
+  `hooks/{brief_header,orchestrator_role}.py`, `analysis/{pricing,roots,transcript,routing,
+  manifest,capture_planning,report,orchestration_capture,coordinator_check}.py`, a real
+  `git init` on a branch a committed manifest names, `$HOME` in a `mktemp -d` holding a
+  coordinator transcript launched outside every checkout with four delegates (briefed for a
+  feature; `feature: none` and unclaimed; `none` but in the claims ledger; `none` but pinned)
+  and a claims ledger. K1: `--coordinator` writes `kind` after `slug`, `from` at the
+  session's first instant and the coordinator prose, passing the reverse guard a plain start
+  is refused by; `--from` sets `from`, a malformed one is refused writing nothing. K2: the
+  role module and `refuse_orchestrator_session` pass the coordinator and still refuse a
+  plain record's session. K3: the capture prices the transcript plus the one own delegate,
+  lists the other three in `subagents_not_priced`, writes `kind`, warns about the manifest
+  pinning the session; an orchestrator record on the same session prices all four. K4:
+  `kind` and the coordination wording in the report, `--checkout` pricing another repo's
+  feature (and the reason without it), its usage errors, a plain record's wording kept.
+  K5: `coordinator_check.py`'s two lines, one line, and silence (inside the checkout,
+  recorded by either kind, no transcript). K1 also holds the session-id check
+  (`../features/hook-role-hardening/`, F2): an id outside `^[A-Za-z0-9_][A-Za-z0-9_-]*$` (at most 128 characters) — a quote, `*`,
+  a space, a newline — from `--session` or `$CLAUDE_CODE_SESSION_ID` is refused writing
+  nothing, and (round 4) a symlinked `orchestration-start.sh` beside a planted
+  `plan-runner-roots.sh` sources its own library and writes its record under the real tooling
+  directory. K6 (F1(b)): `manifest.py --orchestration` refuses `session=`/`branch=` on a
+  coordinator record's features (null allowed; an orchestrator record still takes both), and
+  a `coordinator` record whose features carry a branch is read as a role. No model, no
+  network. (Every record call here passes `--self`: the fixture is agentTooling's own
+  checkout.)
+- `orchestration-records-in-repo.sh` — records live in the repo that ran them
+  (`../features/orchestration-records-in-repo/`). Consumer-shaped throwaway tree: a git repo
+  with agentTooling vendored under it (no `.git` of its own; `orchestration-{start,capture}.sh`,
+  `plan-runner-roots.sh`, `hooks/{brief_header,orchestrator_role}.py`,
+  `analysis/{pricing,roots,transcript,routing,manifest,capture_planning,report,
+  orchestration_capture,coordinator_check}.py`) and `plans/features/<slug>/report.json`
+  files carrying `cost.total`; `$HOME` in a `mktemp -d`. R1: a start with no `--self` writes
+  `plans/orchestrations/<slug>/README.md` and nothing inside the vendored copy, and `--self`
+  from the vendored copy is refused, writing in neither (`consumer-record-guard.sh` below holds
+  every writer). R2: `manifest.py --orchestration … add-feature
+  … report=plans/features/<f>/report.json` then `report.py --orchestration` prices it with
+  no `--checkout` (`unpriced_count` 0, the home repo's name compared case-insensitively),
+  a missing home-repo report says the path does not exist, another repo still asks for
+  `--checkout`, which still wins, and an
+  `agentTooling` entry in the consumer's record is priced from the vendored `agentTooling/`
+  with no `--checkout` (`../features/orchestration-record-fixes/`, item 2). R3: a STRANDED
+  slug (legacy `agentTooling/self/orchestrations/<slug>` whose last fence lists a feature of
+  the consuming repo, any case) is refused by the report, the manifest tool, the capture and
+  the start, each printing `git mv agentTooling/self/orchestrations/<slug>
+  plans/orchestrations/<slug>` (the text `roots.py` holds) and writing nothing;
+  `--self` reads it as before; after the move it reads. R4: `orchestrator_role.py` finds an
+  orchestrator record under `plans/orchestrations/` and none for a coordinator's. R5:
+  `coordinator_check.py` counts a record in either root. R6: vendored shipped records (a
+  feature in agentTooling; none; a consumer feature in an earlier fence only) draw
+  `roots.OWN_RECORD_NOTE` and no `git mv` from the report, manifest and capture tools, read
+  under `--self`, and a start of the same slug writes `plans/orchestrations/` (a stranded one
+  still blocks it). R7: a second throwaway tree, agentTooling as a standalone checkout (own
+  `.git`, parent outside any repo): every record tool without `--self` refuses (1) with
+  `roots.STANDALONE_REFUSAL` and the tree, parent included, is unchanged; `--self` works, its
+  next steps carry `--self`, and its report prices an agentTooling feature from the checkout's
+  own root (moved here from R1/R2 by `../features/consumer-record-guard/`).
+  R8: `orchestrator_role.py` ignores a record in the standalone checkout's parent
+  `plans/orchestrations/` and still reads it from the vendored copy. R9: `coordinator_check.py
+  … --self` names `orchestration-start.sh --self <slug>` in the standalone checkout, and names
+  no flag from the vendored copy (that start is refused there) or with no flag, and
+  `feature-start.sh` passes `SELF_FLAG` to it. R10: `roots.py stranded` agrees with R3/R6
+  (the shell's roots and refusal texts were compared with `roots.py`'s here before they had one
+  definition; `shared-rules.sh` holds that now, and R3 asserts the refusal text as output). R11 (round 3, merged with
+  `../features/hook-role-hardening/`): the role's history and ledger sources span both roots —
+  a committed `plans/orchestrations/` record edited to a coordinator or deleted still names its
+  session; a consumer ledger line names the `plans/orchestrations/` folder of its slug (the
+  consumer root when none exists); the real start's ledger line holds the role for a deleted
+  uncommitted record; a standalone checkout reads neither its parent's records nor their
+  history. No model, no network.
+- `consumer-record-guard.sh` — no record tool writes under a vendored copy's own
+  `self/orchestrations/`, `--self` included (`../features/consumer-record-guard/`). Two
+  throwaway trees with the same copied files as `orchestration-records-in-repo.sh`: a consuming
+  repo with agentTooling vendored under it (no `.git` of its own), and agentTooling as a
+  standalone checkout; `$HOME` in a `mktemp -d` holding a transcript for each session a capture
+  would price, so only the guard stands between a writer and its write. C1: in the consumer,
+  `orchestration-start.sh --self <slug>`, orchestrator and `--coordinator`, refuses (1) with
+  `roots.VENDORED_SELF_WRITE_REFUSAL` naming `plans/orchestrations/<slug>/`, and a checksum
+  snapshot of both record roots and the ledger is unchanged. C2: against a record shipped under
+  the vendored `self/orchestrations/`, `manifest.py --self --orchestration` `add-feature`,
+  `set-feature` and `set-window-to`, `orchestration-capture.sh --self`,
+  `orchestration_capture.py --self` and `report.py --self --orchestration` each refuse (1) with
+  the same text and write nothing (no `planning.json`, no report). C3: `manifest.py --self
+  --orchestration … get` still reads the shipped record, `hooks/orchestrator_role.py` still
+  finds its role, and `coordinator_check.py` still counts it as naming its session (a session
+  no record names still draws the advisory). C4: the no-`--self` start still writes `plans/orchestrations/`. C5: in the
+  standalone checkout every one of those writers works under `--self` (both starts,
+  the three manifest writes, `planning.json`, `report.json`/`report.md`). C6: `roots.py
+  self-write <slug>`, what the shell start asks, refuses with the text in the vendored copy and
+  allows in the standalone one; with `roots.py` moved aside the standalone `--self` start
+  refuses (1) saying it cannot ask, and writes nothing — it fails closed. No model, no network.
+- `security-audit.sh` — the security audit of a hook change (`../features/hook-role-hardening/`,
+  item 4; `../../LIFECYCLE.md` → "The security audit"). Throwaway agentTooling checkouts
+  with a bare origin (the real runners, `feature-close.sh`, `analysis/`, `hooks/`,
+  `templates/SECURITY_AUDIT.md`), each on `claude/feat` with a commit changing one path, and
+  a stub `claude` that writes the review's report or — for the audit's prompt — the audit's,
+  logging the order. R1: a `hooks/` change queues `01-audit-opus.md` from the template into
+  plans[], runs it before the review in the one pass, stamps `audit_end` (clean, at the
+  review's head), leaves `latest_review_plan`/`completed_review_count` on the review, and
+  commits the audit report; R2: `.claude/settings.json` counts as a hook change; R3: any
+  other path queues nothing; R4: an escalated audit is stamped so, leaves its rework brief
+  and the pass names the rework; R5: an audit with no review after it is refused. C1–C5,
+  `feature-close.sh` (a stray file stops it at the check after the audit's): a clean audit
+  at the judged head prints the audit line and goes on; a non-hook change is untouched; an
+  escalated audit, no audit, and an audit at another head are each refused. From security
+  audit round 1's probes: F2 (hooks/ moved behind a symlink, a module moved and linked back:
+  queued), F6 (each enforcement file, `.claude/`, a non-ASCII name: queued and named), F5 (a
+  hand-queued audit of another model or body: refused), F3 (a hook edit by the review after
+  the audit: stamped `stale`, close refuses), F1 (a hook change under `<slug>: cost records`,
+  a `<slug>: PR` commit outside the features directory: refused), F4 (a forged plan and stamp
+  with no committed report: refused), F7 (a base moved after the review, a base that empties
+  the diff: refused); and from round 2's: N8 (a review resumed from inprogress/ with no
+  audit: refused), N9 (a neutered audit in inprogress/: refused), N10 (a mode change after
+  the audit: stale; a symlink at an audit path: refused, F2a/b), N11 (enforcement scripts
+  edited by the review: stale; a feature touching only them: audited; a base at the
+  feature's own commit: audited through the default branch); and from
+  `../features/audit-blocking-classes/`: B1 (a clean report whose `## Findings` holds only
+  `non-blocking` rows — one with a `|` in a later cell — or `None.` passes the close's audit
+  check), B2 (a `blocking` row under a clean verdict: refused, named), B3 (an unclassified
+  first cell, a prose line, or no `## Findings` section: refused), B4 (the template carries
+  the rule text: `REGRESSION`, `pre-existing silent allow`, both findings headings, an
+  unclassifiable finding is blocking, and the old "even when the base allows it too" is absent), B5 (`audit_report_unclassed` alone: a table with no `class` header
+  row has its first row read, a second `## Findings` section is read, header plus
+  non-blocking rows prints nothing). The stub audit writes the new report shape; `AUDIT_FINDINGS` and
+  `AUDIT_NO_FINDINGS_SECTION` steer it. No model, no network.
+- `close-backlog.sh` — filing a clean round's non-blocking findings after the review
+  (`../features/close-after-filing/`; `../../LIFECYCLE.md` → "6. Close"). The same fixture
+  shape as `security-audit.sh`, plus a `self/BACKLOG.md` in the base, each checkout reviewed
+  clean once (a stub `claude`) and every case reset to the tree the review left, its own
+  commits added, and the close stopped by a stray file. K1/K2: one or two `feat: backlog`
+  commits touching `self/BACKLOG.md` alone pass the head check. Refused, the refusal naming
+  the allowed path (the file and the subject): K3 the subject with another file beside the
+  BACKLOG; K4 the BACKLOG alone under another subject; K6 the BACKLOG deleted, made a
+  symlink or made executable under the subject; K7 `plans/BACKLOG.md` (the other layout's
+  file) under it; K8 a merge under it whose first-parent diff is the BACKLOG alone; K5 an
+  audit path under the subject, alone or beside the BACKLOG; K11 a new file named
+  `self/BACKLOG.md<LF>`, or an executable `self/BACKLOG.md<LF><LF>`, alone under it (the
+  security audit's B1: `$(…)` strips trailing newlines, so `commit_changes_only` compares
+  past a sentinel); K12 the same trick under `feat: review stamps`; K13 a gitlink beside the
+  BACKLOG or beside `timing.jsonl` under `feat: review stamps`, hidden from a porcelain diff by
+  an excluded `.gitmodules` with `ignore = all`, or at `hooks/sub` hidden by
+  `diff.ignoreSubmodules=all` (the audit's round-2 B2: every name list is read
+  `--ignore-submodules=none`); K14 `feat: review stamps` making `timing.jsonl` executable
+  (round 2, C24); K15 an unreviewed `hooks/policy.py` commit shadowed by a local
+  `git replace` with a stand-in touching only the BACKLOG under `feat: backlog`, or only
+  `timing.jsonl` under `feat: review stamps` (round 3, B3: the close exports
+  `GIT_NO_REPLACE_OBJECTS=1`); K16 an unreviewed `docs-notes.txt` change hidden by a cyclic
+  `.git/info/grafts` under either subject (round 4, B06: the close exports
+  `GIT_GRAFT_FILE=/dev/null`; each case first asserts plain git, grafts on, sees only the
+  allowed file). L2 calls `audit_paths_in_range` directly: a gitlink at
+  `hooks/sub` under `diff.ignoreSubmodules=all` is listed. On a hook change behind
+  a clean audit, K9 a BACKLOG commit after the stamps keeps the audit line and passes, and
+  K10 one carrying an audit path is refused. L1: `resolve_roots`' `BACKLOG_LABEL` per layout;
+  D1: `ORCHESTRATION.md`, `LIFECYCLE.md` and `templates/SECURITY_AUDIT.md` name the
+  `<slug>: backlog` commit. No model, no network.
+- `orchestrator-role.sh` — the orchestrator role guard's script half
+  (`../features/orchestrator-role-guard/`). A throwaway agentTooling checkout with a bare
+  origin (the real `feature-start.sh`, `feature-close.sh`, the four runners,
+  `plan-runner-{lib,roots}.sh`, `env-profile.sh`, `stamp-timing.sh`,
+  `orchestration-{start,capture}.sh`, `hooks/{env_profile,orchestrator_role,shared_rules}.py`,
+  `analysis/*.py`, a stub gate, worktree hook, `claude` and `gh`), profile `cloud`, a
+  record `self/orchestrations/wave/` written by the real `orchestration-start.sh` for
+  session S and committed on `main`, the checkout on `claude/feat-x`. U1/U2: the module's
+  CLI and the shell reader (`orchestrator_record_for_session`) print the record for S and
+  nothing for another id, an empty id, a missing directory, a record whose fences name
+  only other sessions or an unparseable fence, and the record for S when any of its fences
+  names S, a later `{}` or other-session fence notwithstanding
+  (`../features/hook-role-hardening/`), and G9/G10 hold the git-dir ledger (written by the
+  start, read when the record is rewritten or deleted, when the records cannot be listed,
+  past a line with no newline, bad bytes or a third word, from a linked worktree, after
+  `--`; a `.git` naming no directory fails closed; the start refuses `--reason`, `-x`, `-`
+  and a 129-character id; a `.git` with no HEAD fails closed and an enclosing checkout's
+  ledger is read past a nested one); G11 holds the record as first committed (a committed
+  record edited to a coordinator or deleted, no ledger, still names S; an uncommitted one
+  answers from the working tree; git off PATH fails closed); G12 holds round 3's R4–R6 (a
+  readable ledger wins over an unreadable history, a merge-only add, a shallow boundary never
+  read as the add, 300 records in one bounded call); `--reason` names the slug, the record and
+  `templates/plans/ORCHESTRATOR_BRIEF.md`; U3: a record under the consuming repo's
+  `plans/orchestrations` is the role, and a legacy one in the vendored `self/orchestrations`
+  keeps its role and is found first (that the roots are `analysis/roots.py`'s is
+  `shared-rules.sh`'s, not compared here). G1–G6: the six scripts as S exit 1 with the
+  `  refused  ` line and write nothing (clean tree, no lock, no branch, no feature
+  directory, no `timing.jsonl`); G7: another id starts and `run-plans.sh --self` exits 0;
+  G8: the capture and `manifest.py --orchestration get` are not guarded. V1–V3: the
+  reverse guard in `orchestration-start.sh` (a tracked manifest naming the branch or
+  holding the session refuses, naming the manifest; another branch and id proceeds); V4: a
+  manifest directory git C-quotes still refuses (`ls-files -z`). B1–B6
+  (`../features/orchestration-start-branch-v2/`): under the cloud profile the start refuses a
+  detached HEAD or `main` without `--branch`, naming `--branch claude/<slug>`, and writes
+  nothing; `--branch` is refused locally and with `--coordinator`; with it the branch is cut
+  off `origin/main`, the record is its one commit and it is pushed; a branch on origin is
+  refused in a single-branch clone, an unreachable origin refuses, a branch a manifest on
+  `origin/main` names (C-quoted directory) refuses; and a vendored copy in a consuming repo
+  refuses a branch its `plans/features` names and commits the record in
+  `plans/orchestrations` on the cut branch; B7: `--branch` takes `claude/<slug>` only —
+  `origin/main`, `origin/HEAD`, `origin/claude/x`, `+main`, `main`, `claude/Bad_Name` and the
+  other ref spellings are refused before any write, naming the flag, with origin's and the
+  checkout's refs unchanged. Every fixture that runs `orchestration-start.sh`
+  in a git checkout copies `env-profile.sh` and `hooks/env_profile.py` beside it (the start
+  decides the profile through them and refuses without them). Depends on `plan-runner-roots.sh` being the only file the scripts source for the rule
+  and on `hooks/orchestrator_role.py` sitting at `<tooling>/hooks/`. No model, no network.
+- `shared-rules.sh` — the single definition of every rule the PreToolUse hook shares with
+  `analysis/` or a top-level script (`../features/shared-hook-rules/`), replacing the two
+  equality-of-copies checks the mirrors needed. S1: `hooks/shared_rules.py`'s CLI prints the
+  values asked for, one per line, and exits 2 with nothing on stdout for an unknown name or
+  none; its values are the ones the rules have always had (record roots, record name, ledger
+  name, fence keys, slug pattern, both refusal texts); it imports only `re` and `sys` and
+  opens nothing. S2: every name `roots.py`, `orchestrator_role.py`, `manifest.py`,
+  `routing.py`, `coordinator_check.py`, `orchestration_capture.py` and the hook bind to a
+  shared rule IS the `shared_rules` object (identity, not equality), `roots.py`'s `*_PARTS`
+  are the roots split, and `wire-settings.py`'s `POLICY_ASK_RULES` and `RETIRED_EDIT_ASK_RULES`
+  are the exact strings, the record roots in them built from `shared_rules`.
+  S3: an AST scan finds no module-level assignment of a shared literal in `hooks/*.py`,
+  `hooks/allow-repo-commands.sh` or `analysis/*.py`, and a line scan none in the top-level
+  `*.sh`, apart from the pairs that share a value and not a meaning, listed in the test with
+  why. S4: no `MIRRORS`/`MIRRORED` under `hooks/`, `analysis/` or the top-level `*.sh`. S5:
+  fail-safe by caller — a `hooks/` without `shared_rules.py` still approves `ls` and answers
+  exactly as one without `orchestrator_role.py` does (the role rule silent); a vendored
+  `orchestration-start.sh` over a missing or broken module refuses (exit 1, naming
+  `shared_rules.py`) and writes nothing, with or without `--self`. S6: the start script runs
+  the CLI and evals nothing. Fixtures under `mktemp -d`; no model, no network. Depends on
+  `hooks/shared_rules.py` printing the upper-case string constants `orchestration-start.sh`
+  asks for, and on `analysis/roots.py` and `wire-settings.py` binding by reference. Every
+  fixture that vendors `analysis/` or `orchestrator_role.py` copies `hooks/shared_rules.py`
+  beside it (`roots.py` imports it; a fixture that runs `analysis/` scripts from a directory
+  standing where `analysis/` does needs `hooks/` beside that directory). A fixture that runs
+  `orchestration-start.sh --self` copies `analysis/roots.py` too: the start asks `roots.py
+  self-write <slug>` before writing and refuses when it cannot ask
+  (`../features/consumer-record-guard/`; `orchestrator-role.sh`'s G10 ledger fixture does).
+- `hook-orchestrator-role.sh` — the hook half of the same guard. Two fixtures (a consuming
+  repo with the hook under `agentTooling/hooks/` and the record under
+  `agentTooling/self/orchestrations/`; agentTooling's own shape), each fed the PreToolUse
+  payload under both profiles. H1: a build script from S — `feature-start.sh`, `run-batch.sh`,
+  `bash run-review.sh`, `feature-close.sh`, `run-plans.sh` behind a chain, `run-verify.sh`
+  — is denied with the role reason; H26 (hook-audit-gaps, B1): the heredoc-terminator exploit — a commit message
+  or `gh pr create` body closed by `EOF)`, then `; ./feature-start.sh zz ; echo "⏎EOF⏎)"` — is denied from S, and
+  so is every spelling round 2's audit found bash 5.2 to end the body at (`EOF )`, `EOF⇥)`, `EOFS)`, `EOF x)`,
+  `EOF a b c)`, `EOFxyz ; true)`, `EOF'q')`); H21's `…⏎EOF ⏎$(touch pwned)⏎…` row left the admitted set for
+  the same reason (a body line that begins with the delimiter and goes on is refused, whatever follows it);
+  round 3 pins three more heads bash ran the build script behind — an unquoted delimiter's terminator joined
+  across a line continuation, and a `$(` and a `<<` split by one — and the audit's o4 the other way: a quoted
+  delimiter's `EO\⏎F)` is body text, and the orchestrator's commit is not denied;
+  H2: not from another session or with no `session_id`;
+  H3: `ls`, `cat …/feature-start.sh`, `orchestration-capture.sh` and `manifest.py
+  --orchestration … get` stay unjudged; H4–H6: an `Agent` whose prompt opens `feature: `
+  is denied from S with the role reason, and otherwise never with it (a prompt with no
+  brief header is the header rule's deny — `brief_header.py` is among the copied files —
+  and one with no prompt prints nothing); H7: malformed payloads exit 0; H8: both
+  shapes answer the same; H9: the role deny reads `brief_header.parse` — from S a
+  `feature: none — <reason>` brief prints nothing, and a `feature: <repo>/x` brief behind a
+  leading newline is denied with the role reason; H10: a coordinator record (`"kind":
+  "coordinator"`) is no role — from its session, with and without a delegate's `agent_id`,
+  no build command or implementer brief is the role denial; H11
+  (`../features/hook-role-hardening/`, F1(b)): the orchestrator's record hand-edited to
+  `kind: coordinator` while a feature entry carries `session`/`branch`, or with a later `{}`,
+  coordinator or other-session fence appended, still denies a brief and `feature-start.sh`,
+  while a genuine coordinator record with pr/report features does not; H12 (F4): a build
+  script behind `env`, `command`, `env NAME=v`, `env env`, `/usr/bin/env`, `exec -a`,
+  `nohup`, `time`, `nice`, `timeout`, `stdbuf`, `xargs`, `sudo`, quoted, split by quotes, as
+  a glob or brace group, in `bash -c`, piped into `sh`, behind `find -exec` or in a heredoc is
+  denied from S and never the role denial from another session, while `grep`/`head`/`wc`/
+  `cat | grep` over a script are not; H13: a session only the git-dir ledger names is denied;
+  H14 (round 1, F8b): ANSI-C/locale quoting, extended globs, another case, `rg --pre`, `cat … |
+  bash`, `find -exec {}`, GIT_EXTERNAL_DIFF and a git alias naming a script are denied; H15
+  (F10): the orchestrator's records commit (heredoc message), push, `gh pr create`, git/sed/
+  `bash -n` reads of a script, `$VAR`, `find -exec grep {}`, list globs are never the role
+  denial; H16 (F8a): from S the repo-code runners are never `allow`; H17 (round 2, N1/N4):
+  `bash -n +n`, `bash -n +o noexec`, `sh -n +n` over a script are denied from S and never
+  `allow` for anyone else, and a command spelling the heredoc placeholder is still judged;
+  H18–H20 (round 3, the orchestrator allowlist): H15 now holds the shapes it admits; round 1's
+  dropped items (`git grep`, `bash -n`, `find -exec`, `$HOME`, globs, a loop) and heredoc /
+  branch-substitution abuse are the allowlist denial; every round-2 probe it does not admit is
+  denied from S; and for a non-orchestrator round 2's 133-command regression set answers
+  byte-identically to `origin/main`'s hook; H21–H22 (round 3): every row of the auditor's
+  a1–a4/a6 probes from S — the admitted ones not the allowlist denial, all others denied —
+  and the entry-point, refspec, `git add`, report/capture/uniq/tail/diff/gh/signature edges;
+  H23 (round 4): `printf -v` in any spelling is the allowlist denial, and a symlink to the real
+  `orchestration-start.sh` is no entry point; H24 (lifecycle round 2's audit): `git add`
+  takes only existing regular files (pathspec magic, globs, directories, nested `.git` refused),
+  and `date` only `+FORMAT` operands; H25 (`../features/orchestration-records-in-repo/`, round
+  3): `manifest.py`/`report.py --self --orchestration …` are admitted (`--self` first only), and
+  an orchestrator recorded in the consuming repo's `plans/orchestrations/` gets the role reason
+  naming that record on a build script and an implementer brief, the allowlist on anything
+  else, and its record tool admitted; H28 (`../features/orchestration-start-branch-v2/`): from
+  S in the consumer fixture, `git mv agentTooling/self/orchestrations/wave
+  plans/orchestrations/wave` from the repo's root is approved outright under both profiles,
+  and another record, destination, file, option, extra word, `-C`, cwd, the standalone
+  fixture, an existing destination and a chained line are not; with no `plans/` the printed
+  remedy `mkdir -p plans/orchestrations && git mv …` is approved and really moves the
+  committed record, and every other `mkdir` spelling or join, a symlinked `plans` or
+  `plans/orchestrations` and a record README symlinked into another folder are not; H27 (`../features/python-entry-exact/`): the
+  propagation audit's B1 (`manifest.py --orchestration A --orchestration get
+  --orchestration=x set-window-to …`) and B2 (an abbreviated writing flag beside a decoy
+  `--since '--list- x'`), with the repeat in each position, `=` forms, every abbreviation of
+  each capture writing mode, decoy `--checkout` values and extra or missing operands, are the
+  allowlist denial from S, while the record tool's four subcommands, repeated `--checkout`
+  and the documented listings are admitted. Depends on the payload fields `tool_name`, `session_id`,
+  `cwd`, `tool_input.{command,prompt}`. No model, no network.
+- `hook-brief-header.sh` — the hook half of the brief-header rule
+  (`../features/delegate-cost-claims/`). The same two fixtures as
+  `hook-orchestrator-role.sh`, `brief_header.py` copied beside the hook, plus a third whose
+  `hooks/` lacks it; every case under both profiles. G1: an `Agent` prompt with no header
+  on its first non-empty line — plain text, the header further down, `feature: x` with no
+  slash, a header with a trailing remark, an empty prompt — is denied from another
+  session, from none, and from the orchestrator, the reason
+  naming `feature: <repo>/<slug>`, `feature: none` and cost attribution and never the role;
+  G2: `feature: <repo>/<slug>` (blank lines and indentation before it allowed), `feature:
+  none — <reason>` and `feature: none - <reason>` print nothing; G3: from the orchestrator a
+  `feature: <repo>/<slug>` brief is still the ROLE deny; G4: no prompt, or a non-string
+  one, prints nothing; G5: without `brief_header.py` the rule is silent; G6: the tracked
+  `.claude/settings.json` wires the hook for the `Agent` matcher. No model, no network.
+- `delegate-cost-claims.sh` — `subagent-capture.sh`'s scaffolding (with `manifest.py`,
+  `report.py` and `hooks/brief_header.py`), a coordinator outside any repo whose delegates
+  record branch `HEAD`, for `../features/delegate-cost-claims/`. B1: the header grammar,
+  case by case (`brief_header.parse`, `feature_of`, `feature_lines`). K5: a feature with
+  nothing claimed and nothing met passes `--claim-check` (exit 0). A1–A4, the capture's
+  auto-claim: the delegate briefed `feature: agentTooling/<slug>` is pinned into the
+  fence by `manifest.py`'s writer, said so, and priced `pinned`; one whose repo half
+  differs in case is too; a `<slug>-two` brief, a header with a remark, an ambiguous
+  brief, one another manifest pins, one the ledger holds for another feature, a headerless
+  one and one this feature excludes are not, the ambiguous and the elsewhere-pinned named
+  with why; a second capture pins nothing new. A5: a delegate briefed for the feature
+  whose parent is a runner session is not pinned, and no "matches no transcript" warning
+  follows; A6: one whose parent the capture selects is not pinned and is priced `parent`.
+  K1–K7, `--claim-check`: a claimed build
+  exits 0 writing nothing; a build that claims nothing but met a manually excluded session
+  on its branch and a headerless delegate in its window exits 5, naming both with their
+  exact `manifest.py --self <slug> pin-session|pin-subagent <id>`, writing nothing, and not
+  naming a delegate briefed for another feature or one older than the window; a delegate
+  the capture would auto-claim counts as claimed with the fence untouched; an unclaimed
+  `main` session in the window is named with its `pin-session` command; a feature built
+  entirely by runners exits 0, and the real capture of the same fixture agrees (exit 0,
+  the evidenced zero written). R1–R4:
+  `manifest.py allow-unclaimed` refuses an empty reason, writes one into the fence, the
+  capture copies it into `planning.json`, and `report.py` prints it in `report.md`'s
+  warnings. No model, no network.
 - `env-profile.sh` — the profile detector, the checkout-layout adapter, the confinement
   check and `forge.sh`'s profile-dependent verbs
   (`self/DESIGN-2026-10-05-cloud-execution.md` §1, §5; `self/features/execution-profiles/`).
@@ -2784,9 +3476,30 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   (`--open` runs the real `self/open-session.sh`, which says the session is already in the
   checkout, and no `osascript` stub is called), and P1 (under `local` the same start makes
   `.worktrees/<slug>` with `profile` `local` and `gate` `skipped` under `--no-gate`, and
-  `--branch` is refused). Depends on
+  `--branch` is refused). A1i and P1e (`self/features/cloud-checkpoint-push/`): the cloud
+  start pushes its branch — origin's copy is the local HEAD, the `<slug>: start` commit,
+  and a `  push` line says so — while the local start pushes nothing, origin holding no
+  such branch and the output no push line. A1j and W1
+  (`self/features/coordinator-cost-records/`): a session working in the checkout gets no
+  coordinator advisory, and a start whose session's transcript was launched in a
+  directory that is no checkout — a delegate starting a feature for a wave coordinator —
+  exits 0 with two `warn` lines, naming `--coordinator --session <id>` and saying that
+  directory is in no git checkout. Depends on
   `feature-start.sh`'s lock living at `.git/feature-start.lock` with a `refused=` line,
   and on `planning.json`'s `sessions[].selected_by`.
+- `cloud-checkpoint-push.sh` — the review round's checkpoint push
+  (`self/features/cloud-checkpoint-push/`; the start's is `cloud-start.sh` A1i/P1e). A
+  consuming repo under one `mktemp -d` with `run-review.sh`, the runner library,
+  `plan-runner-roots.sh`, `stamp-timing.sh`, `env-profile.sh` and `hooks/env_profile.py`, a
+  stub `claude`, a bare origin, and the checkout on `claude/feat-ckpt`, which the manifest
+  names `branches[0]`; the profile is forced with `AGENTTOOLING_PROFILE`,
+  `CLAUDE_CODE_REMOTE` cleared. C1 (cloud: exit 0, origin's branch equals the local HEAD
+  — the round's stamps commit — the tree is clean and a `  push` line names the branch),
+  C2 (local: exit 0, origin holds no such branch, no push line or warning), C3 (cloud with
+  an unreachable origin: exit status unchanged, the round's commits local, exactly one
+  `  warn` line), C4 (cloud, no `origin`: silent), C5 (cloud, on a branch the manifest does
+  not name: nothing pushed). Depends on `run-review.sh` sourcing `env-profile.sh` when it
+  sits beside it, and on `push_round`'s output lines (`PUSH_LINE_RE`, `PUSH_WARN_RE`).
 - `start-tree-guard.sh` — `feature-start.sh`'s two tree guards under the cloud profile
   (`../features/start-tree-guard/`). Each scenario is a throwaway checkout with a bare
   origin, a tracked file outside the features folder, a stub hook, and a fake gate the test
@@ -2855,6 +3568,20 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   tip, the local branch holding a commit HEAD lacks, a tip no manifest names, the local
   profile, on another branch, the local branch checked out in another worktree) and U1 (two arguments, exit 2). Depends on
   `plan-runner-roots.sh`'s `attachable_branches` and `started_features_on`.
+- `feature-sync.sh` — `../../feature-sync.sh`, the merge of a moved `origin/main` into a
+  started feature's branch (`self/features/branch-sync-and-fanout-docs/`). A bare origin
+  holding `main` and the feature's branch with its tracked manifest; a second clone lands a
+  sibling's commit on `main`; each case a fresh clone with `feature-sync.sh` and
+  `plan-runner-roots.sh` under `agentTooling/`, `CLAUDE_CODE_SESSION_ID` cleared. Asserts
+  M1–M2 (merged: exit 0, a merge commit whose parents are the old HEAD and `origin/main`,
+  subject `<slug>: merge origin/main`, clean tree, the gate and `run-review.sh` named,
+  nothing pushed; again: up to date, HEAD unmoved), R1–R6 (refused with exit 1 and HEAD and
+  the ref unmoved: a tracked edit, kept; an untracked file; on `main`; detached; the
+  manifest untracked; no manifest), C1–C3 (a same-line change on `main`: exit 3, MERGE_HEAD
+  left, the file named, `git add`/`git commit`/`git merge --abort` printed, the ref
+  unmoved; a re-run refused; the abort restores the branch) and U1 (no slug, two
+  arguments: exit 2). Depends on `plan-runner-roots.sh`'s `manifest_branch` and
+  `started_features_on`.
 - `review-base.sh` — the review's base (`self/features/review-base-and-cloud-hook/`,
   Part B): `run-review.sh` fetches `origin <base>` before each review plan, best-effort,
   and names `origin/<base>...HEAD` in the prompt, falling back to the local `<base>` only
@@ -2895,6 +3622,41 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `html_url` (`GH_NO_URL`) exits 1; E6 too few arguments exit 2; E7 no `gh pr`, `gh auth
   status` or GraphQL. The whole-close view of the same path is `feature-lifecycle.sh`
   X3d–X3f. No model, no network.
+- `brief-conformance.sh` — the brief-conformance checks (`self/features/brief-conformance-checks/`;
+  `LIFECYCLE.md` → "The owner's brief and the conformance check"). A throwaway agentTooling
+  checkout with a bare origin (a GitHub identity for `forge.sh` through `insteadOf`), a stub
+  `claude` that tells the two launches apart (`--tools ""` is the conformance check: argv
+  logged without a prompt, stdin kept, answer from `$CONF_SRC`; any other is a review: last
+  argv word kept as the prompt, report from `$REVIEW_SRC`) and a stub `gh` that remembers a
+  PR per branch and records the title and body of each POST and PATCH. The real
+  `feature-start.sh`, `run-review.sh`, `feature-close.sh`, `self/pr.sh` and `forge.sh` run.
+  **S1** `--owner-brief`: a missing path, a directory and a whitespace-only file are refused
+  with no branch or worktree, and the file lands byte for byte in the `<slug>: start` commit.
+  **C1** round 1 with an owner brief: `01-conformance-opus` queued (in `plans[]`), run before
+  the review, launched with `--tools ""` and none of its prompt in argv; its stdin prompt holds
+  the owner brief verbatim, the item ids and the diff and none of NOTES.md, the review brief
+  or the feature directory; the review keeps `--allowedTools Bash` and its prompt as the last
+  argument; `conformance-report.md` is written from the stub's `result` and committed by the
+  round; one round, the review's `plan_end` carrying the verdict; the review prompt holds the
+  owner brief and asks for both fixed sections. **K1** the close refuses, writing nothing: a
+  `partial` row (named), a conformance `not done` against a review `done` (the disagreement
+  named), a missing acceptance table, and a conformance report a later non-round commit
+  rewrote. **K2/D1** all agreeing: the PR body begins `## Acceptance`, then the deviations
+  section holding the review's deviation and the out-of-scope file, title `[deviations]
+  <slug>`; the next round with `None` in both edits the open PR to the bare slug. **N1** no
+  owner brief: the one `note`, no conformance plan, no owner section and no acceptance table
+  asked for (only the deviations section), the close proceeds with its note and a bare-slug
+  title. **N2** (R17) no owner brief: a report with no deviations section keeps the bare-slug
+  title, one with a deviation is marked. **B1** a conformance plan the feature does not owe is
+  refused with "delete it" before anything runs: beside a review with no owner brief, alone
+  after a clean round, and with an owner brief a stem whose NN or model is not the review's.
+  **L1e–f** the owed check an interrupted pass left queued (in `inprogress/` beside a queued
+  review, or both in `inprogress/`) is resumed, never refused: check, then review.
+  **L1** an owner brief written as a numbered list: both prompts list all five items by their
+  bold titles, and a second queueing of the same conformance stem leaves `plans[]` with it
+  once. **U1** `conformance.py` alone: `items` (headings, a top-level numbered list, headings
+  winning), the table parser (an unknown result fails closed), `deviations` None and missing
+  (with and without `--owner-brief-present`), `check-close`, `pr-body`, `summary`. Depends on `conformance.py` beside the scripts. No model, no network.
 - `review-report-untrack.sh` — the live review report that is never tracked
   (`self/features/review-report-never-tracked/`). A consuming repo under mktemp with
   `run-review.sh`, its libs, `sync-plans.sh` and `templates/plans/` under `agentTooling/`,

@@ -23,6 +23,7 @@ set -uo pipefail
 #       AGENTTOOLING_PROFILE, runs the hook in the primary, commits `S: start` there, and
 #       writes branches [that branch], profile "cloud", no pin and NO routing record: the
 #       session that ran it was launched on the feature's branch, so it is the coordinator;
+#       It prints no coordinator advisory (A1j): the session works in this checkout;
 #   A2. the window opens at that session's first transcript instant EXACTLY, its
 #       millisecond fraction kept — before the start ran (the #82 ruling,
 #       self/features/session-start-precision: truncated to the millisecond, where it was
@@ -67,7 +68,13 @@ set -uo pipefail
 #       the checkout and runs no osascript;
 #   P1. the local profile is unchanged by all this: a .worktrees/<slug> worktree on branch
 #       <slug>, profile "local" in the fence and on the `profile` line, gate "skipped"
-#       under --no-gate; and --branch under local is refused.
+#       under --no-gate; and --branch under local is refused; and nothing is pushed (P1e);
+#   A1i. (self/features/cloud-checkpoint-push) the cloud start pushes its branch to origin:
+#       origin's copy is the local HEAD, the start commit, and a `  push` line says so.
+#   W1. (self/features/coordinator-cost-records) a start whose session's transcript was
+#       launched in a directory that is no checkout — a delegate starting a feature for a
+#       wave coordinator — exits 0 with two `warn` lines: one naming `--coordinator
+#       --session <id>`, one saying that directory is in no git checkout.
 #
 # No model, no network. $HOME is a scratch directory for every start and capture, so no
 # test reads the machine's own ~/.claude.
@@ -91,6 +98,9 @@ CLOUD_BRANCH_PREFIX="claude/"
 # its first instant carries, which the window's `from` must keep (the #82 ruling).
 COORDINATOR_HEAD_SECONDS=7200
 FIRST_INSTANT_FRACTION=".500"
+
+# Where container <name> keeps its bare origin: $ORIGIN_OF/<name>/origin.git
+ORIGIN_OF="$TMP"
 
 FAKE_HOME="$TMP/home"
 mkdir -p "$FAKE_HOME/.claude/projects" "$TMP/bin"
@@ -124,15 +134,19 @@ container() {
   local root="$TMP/$1" at origin f
   at="$root/agentTooling"; origin="$root/origin.git"
   mkdir -p "$at/analysis" "$at/self/features" "$at/templates/plans/features"
-  for f in feature-start.sh plan-runner-roots.sh env-profile.sh; do
+  mkdir -p "$at/hooks" && cp "$HERE/hooks/shared_rules.py" "$at/hooks/"  # roots.py imports it
+  # the role reader refuses a copy without its two modules (hook-silent-allow-sweep, item 7)
+  for f in feature-start.sh plan-runner-roots.sh env-profile.sh hooks/orchestrator_role.py hooks/shared_rules.py; do
     cp "$HERE/$f" "$at/$f" 2>/dev/null || true
   done
   # The detector env-profile.sh asks, where it looks for it
   mkdir -p "$at/hooks"
   cp "$HERE/hooks/env_profile.py" "$at/hooks/env_profile.py" 2>/dev/null || true
-  for f in pricing.py litellm_prices.py rates_history.json roots.py transcript.py capture_planning.py report.py manifest.py routing.py recover_attempts.py; do
+  for f in pricing.py litellm_prices.py rates_history.json roots.py transcript.py capture_planning.py report.py manifest.py routing.py recover_attempts.py coordinator_check.py; do
     cp "$HERE/analysis/$f" "$at/analysis/$f" 2>/dev/null || true
   done
+  # capture_planning.py reads the brief header from ../hooks/brief_header.py (README.md).
+  mkdir -p "$at/hooks" && cp "$HERE/hooks/brief_header.py" "$at/hooks/brief_header.py"
   cp "$HERE/templates/plans/features/TEMPLATE.md" "$at/templates/plans/features/TEMPLATE.md" 2>/dev/null || true
   cp "$HERE/self/open-session.sh" "$at/self/open-session.sh" 2>/dev/null || true
   printf '#!/usr/bin/env bash\npwd > "${HOOK_CWD_OUT:?}"\nexit "${HOOK_STUB_RC:-0}"\n' > "$at/self/worktree-setup.sh"
@@ -234,11 +248,16 @@ check "A1f. the fence names branches [$BR], base $BASE and profile cloud" \
 check "A1g. no pin, and no routing record: launched on the feature's branch, it is the coordinator" \
   '[[ "$(fence "$FD/README.md" "d[\"sessions\"]")" == "[]" && ! -e "$FD/routing.json" ]] && grep -qi "coordinator" <<<"$out"'
 check "A1h. no start lock is left behind" '[[ ! -e "$AT/.git/$LOCK_NAME" ]]'
+# self/features/cloud-checkpoint-push: the start commit is a checkpoint, pushed in the cloud
+check "A1i. the start pushed $BR: origin's copy is the local HEAD, the 'cs-one: start' commit, and the output says so" \
+  '[[ "$(git -C "$ORIGIN_OF/a1/origin.git" rev-parse "refs/heads/$BR" 2>/dev/null)" == "$(git -C "$AT" rev-parse HEAD)" ]] && grep -qE "^  push +$BR -> origin" <<<"$out"'
 # A2 expected the floor to the whole second until #82: the floor is earlier than the session,
 # so set-window-from refused it. The ruling (self/features/session-start-precision) is the
 # instant itself, truncated to the millisecond — which for this transcript is exact.
 check "A2. session_window.from is the coordinator's first instant, exactly ($FIRST_INSTANT; got $(fence "$FD/README.md" "d[\"session_window\"][\"from\"]"))" \
   '[[ "$(fence "$FD/README.md" "d[\"session_window\"][\"from\"]")" == "$FIRST_INSTANT" ]]'
+check "A1j. no coordinator advisory: the session works in this checkout" \
+  '! grep -qF -- "--coordinator --session" <<<"$out"'
 outc="$(cd "$TMP" && HOME="$FAKE_HOME" python3 "$AT/analysis/capture_planning.py" --self cs-one 2>&1)"; rcc=$?
 check "A3a. a capture of cs-one exits 0 (got $rcc)" '[[ $rcc -eq 0 && -f "$FD/planning.json" ]]'
 check "A3b. ... and selects the coordinator by branch, with no set-window-from" \
@@ -468,9 +487,28 @@ check "P1b. ... with profile local in the fence and on the profile line" \
   '[[ "$(fence "$AT/$WORKTREES_DIR/cs-local/self/features/cs-local/README.md" "d[\"profile\"]")" == local ]] && grep -qE "^  profile +local \(AGENTTOOLING_PROFILE=local\)" <<<"$out"'
 check "P1d. ... and gate \"skipped\" under --no-gate, as in the cloud" \
   '[[ "$(fence "$AT/$WORKTREES_DIR/cs-local/self/features/cs-local/README.md" "d[\"gate\"]")" == skipped ]]'
+check "P1e. ... and pushed nothing: origin holds no cs-local, and the output has no push line" \
+  '! git -C "$ORIGIN_OF/p1/origin.git" rev-parse --verify --quiet refs/heads/cs-local >/dev/null && ! grep -qE "^  push " <<<"$out"'
 out="$( cd "$TMP" && env -u CLAUDE_CODE_REMOTE -u CLAUDE_CODE_SESSION_ID HOME="$FAKE_HOME" AGENTTOOLING_PROFILE=local "$AT/feature-start.sh" --self cs-local-two --branch claude/x --no-gate 2>&1 )"; rc=$?
 check "P1c. --branch under local is refused, creating nothing (got $rc)" \
   '[[ $rc -eq 1 && ! -e "$AT/$WORKTREES_DIR/cs-local-two" ]] && ! git -C "$AT" show-ref --verify --quiet refs/heads/claude/x'
+
+# ── W1. a delegate's start for a coordinator outside every checkout ───────────
+# self/features/coordinator-cost-records: the session id is the parent's, whose transcript
+# was launched in a directory that is no checkout, so no branch claims it — the start says
+# so, naming the coordinator record, and still exits 0.
+AT="$(container w1)"
+WSID="c0c0c0c0-0000-0000-0000-0000000000f1"
+OUTSIDE="$TMP/w1-outside"
+mkdir -p "$OUTSIDE" "$(project_dir "$OUTSIDE")"
+session_line "$WSID" "$OUTSIDE" HEAD "msg-$WSID-1" "$MODEL" "$(iso_ago "$COORDINATOR_HEAD_SECONDS").000Z" 100 3000 0 0 0 > "$(project_dir "$OUTSIDE")/$WSID.jsonl"
+git -C "$AT" checkout -q --detach "origin/$BASE"
+out="$(cstart "$AT" "$WSID" cs-wave --branch claude/cs-wave --no-gate)"; rc=$?
+check "W1a. the start exits 0 (got $rc)" '[[ $rc -eq 0 ]]'
+check "W1b. ... and warns that no record claims the coordinator, naming --coordinator --session" \
+  'grep -qE "^  warn .*--coordinator --session $WSID" <<<"$out"'
+check "W1c. ... and that its directory is in no checkout, so no hooks ran there" \
+  'grep -qE "^  warn .*$OUTSIDE is in no git checkout" <<<"$out"'
 
 echo
 if (( fails > 0 )); then echo "cloud-start: $fails assertion(s) FAILED"; exit 1; fi

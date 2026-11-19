@@ -1,0 +1,76 @@
+{
+  "plan": "01-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "e20a285b-a131-4f0e-ba58-7ba553e83570",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 33,
+  "duration_ms": 160906,
+  "total_cost_usd": 1.3217968,
+  "usage": {
+    "input_tokens": 56,
+    "cache_creation_input_tokens": 71962,
+    "cache_read_input_tokens": 2169701,
+    "output_tokens": 15561
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 7071,
+      "outputTokens": 19,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0007166,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 56,
+      "outputTokens": 15561,
+      "cacheReadInputTokens": 2169701,
+      "cacheCreationInputTokens": 71962,
+      "webSearchRequests": 0,
+      "costUSD": 1.3210802,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 6566,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 71962,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 22,
+    "Edit": 5,
+    "Read": 4,
+    "Write": 1
+  },
+  "files_edited": [
+    "README.md",
+    "self/review-report.md",
+    "self/tests/README.md",
+    "self/tests/orchestrator-role.sh",
+    "templates/plans/ORCHESTRATOR_SESSION_BRIEF.md"
+  ],
+  "edit_count": 6,
+  "attempts": [
+    {
+      "session_id": "e20a285b-a131-4f0e-ba58-7ba553e83570",
+      "outcome": "complete",
+      "total_cost_usd": 1.3217968,
+      "num_turns": 33,
+      "duration_ms": 160906
+    }
+  ]
+}

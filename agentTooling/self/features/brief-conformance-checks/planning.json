@@ -1,0 +1,150 @@
+{
+  "slug": "brief-conformance-checks",
+  "captured_at": "2026-11-19T13:14:11.109498+00:00",
+  "manifest_branches": [
+    "claude/brief-conformance-checks"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "efa7c161-a867-537c-8a26-66be5e75f861",
+      "git_branch": "claude/brief-conformance-checks",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-11-19",
+      "started_at": "2026-11-19T03:17:38.475000+00:00",
+      "ended_at": "2026-11-19T13:14:09.588000+00:00",
+      "duration_s": 35791
+    }
+  ],
+  "subagents": [
+    {
+      "agent_id": "a7be9cac129dcbf18",
+      "parent_session_id": "efa7c161-a867-537c-8a26-66be5e75f861",
+      "date": "2026-11-19",
+      "started_at": "2026-11-19T03:47:36.189000+00:00",
+      "ended_at": "2026-11-19T04:06:42.862000+00:00",
+      "duration_s": 1146,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "aa91ae1fb88942eb9",
+      "parent_session_id": "efa7c161-a867-537c-8a26-66be5e75f861",
+      "date": "2026-11-19",
+      "started_at": "2026-11-19T05:11:02.009000+00:00",
+      "ended_at": "2026-11-19T05:17:30.051000+00:00",
+      "duration_s": 388,
+      "selected_by": "parent",
+      "cross_repo": false
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "0666d3e2-a118-49e5-af1c-7c2c39cf481f",
+    "21fb0748-e009-4b8a-9a3b-86e72e0b8e56",
+    "37ee6606-44cb-4a88-8a0c-445cbebddb63",
+    "524806ef-f9db-4cdd-ba09-628f40de22bc",
+    "595f028f-605a-479b-8a67-69ad8b2eaf52",
+    "baf906e3-6b62-40c2-be5d-2e39031c59de"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "efa7c161-a867-537c-8a26-66be5e75f861",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-19",
+      "duration_s": 35791,
+      "tokens": {
+        "input": 224,
+        "output": 58155,
+        "cache_read": 25309088,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 476003
+      },
+      "cost_usd": 10.033837600000002,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "efa7c161-a867-537c-8a26-66be5e75f861",
+      "agent_id": "a7be9cac129dcbf18",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-19",
+      "duration_s": 1146,
+      "tokens": {
+        "input": 268,
+        "output": 129434,
+        "cache_read": 42328033,
+        "cache_creation_5m": 427731,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 6.5970068,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "efa7c161-a867-537c-8a26-66be5e75f861",
+      "agent_id": "aa91ae1fb88942eb9",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-19",
+      "duration_s": 388,
+      "tokens": {
+        "input": 124,
+        "output": 39445,
+        "cache_read": 11352144,
+        "cache_creation_5m": 222195,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 2.0853999,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 10.033837600000002,
+    "sidechain": 8.6824067,
+    "subagents": 8.6824067,
+    "total": 18.7162443,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 35791,
+    "subagents": 1534,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-11-18",
+  "warnings": []
+}

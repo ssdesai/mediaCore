@@ -1,0 +1,13 @@
+write: /tmp/plan-capture.WAcSDk/scratch/setup.sh
+write: /tmp/plan-capture.WAcSDk/scratch/run.py
+write: /tmp/plan-capture.WAcSDk/scratch/direct.py
+write: /tmp/plan-capture.WAcSDk/scratch/build.json
+write: /tmp/plan-capture.WAcSDk/scratch/flow-build.json
+write: /tmp/plan-capture.WAcSDk/scratch/unr/.git
+write: /tmp/plan-capture.WAcSDk/scratch/git.json
+write: /tmp/plan-capture.WAcSDk/scratch/chdir.json
+write: /tmp/plan-capture.WAcSDk/scratch/flow.json
+write: /tmp/plan-capture.WAcSDk/scratch/bashcheck.sh
+write: /tmp/plan-capture.WAcSDk/scratch/bashcheck.sh
+write: /tmp/plan-capture.WAcSDk/scratch/build2.json
+write: /home/user/agentTooling/self/features/orchestration-record-fixes/audit-report.md

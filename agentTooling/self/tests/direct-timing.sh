@@ -36,6 +36,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 AT="$TMP/agentTooling"
 mkdir -p "$AT/analysis" "$AT/self/features"
+mkdir -p "$AT/hooks" && cp "$HERE/hooks/shared_rules.py" "$AT/hooks/"  # roots.py imports it
 
 cp "$HERE/plan-runner-roots.sh" "$AT/plan-runner-roots.sh"
 # stamp-timing.sh is this feature's deliverable; a missing cp must fail every assertion

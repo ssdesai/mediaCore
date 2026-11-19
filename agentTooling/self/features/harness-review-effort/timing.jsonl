@@ -1,0 +1,18 @@
+{"at":"2026-11-05T13:56:21Z","event":"pass_start","queue":"review","round":"1"}
+{"at":"2026-11-05T13:56:21Z","event":"plan_start","plan":"01-review-opus","queue":"review","round":"1"}
+{"at":"2026-11-05T13:57:34Z","event":"plan_end","plan":"01-review-opus","queue":"review","rc":"0","verdict":"escalated","head":"40d76ee08f51d46dbac43be72839bc12c97290de","round":"1"}
+{"at":"2026-11-05T13:57:34Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"1"}
+{"at":"2026-11-05T14:09:52Z","event":"pass_start","queue":"review","round":"2"}
+{"at":"2026-11-05T14:09:52Z","event":"plan_start","plan":"02-review-opus","queue":"review","round":"2"}
+{"at":"2026-11-05T14:10:33Z","event":"plan_end","plan":"02-review-opus","queue":"review","rc":"0","verdict":"clean","head":"c5fcd4841f6175bb347800070a4f17a6d3feefaa","round":"2"}
+{"at":"2026-11-05T14:10:33Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"2"}
+{"at":"2026-11-05T14:12:07Z","event":"pass_start","queue":"review","round":"3"}
+{"at":"2026-11-05T14:12:07Z","event":"plan_start","plan":"03-review-opus","queue":"review","round":"3"}
+{"at":"2026-11-05T14:12:42Z","event":"plan_end","plan":"03-review-opus","queue":"review","rc":"0","verdict":"clean","head":"93f0df869d3ec4b29fd1ab1b05ccd924c7ce794d","round":"3"}
+{"at":"2026-11-05T14:12:42Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"3"}
+{"at":"2026-11-05T14:12:57Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/129","round":"3"}
+{"at":"2026-11-05T14:37:50Z","event":"pass_start","queue":"review","round":"4"}
+{"at":"2026-11-05T14:37:50Z","event":"plan_start","plan":"04-review-opus","queue":"review","round":"4"}
+{"at":"2026-11-05T14:38:29Z","event":"plan_end","plan":"04-review-opus","queue":"review","rc":"0","verdict":"clean","head":"26feb4109a562a92446684c28240e65661dd24d9","round":"4"}
+{"at":"2026-11-05T14:38:29Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"4"}
+{"at":"2026-11-05T14:38:49Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/129","round":"4"}

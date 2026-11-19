@@ -41,8 +41,9 @@ from typing import NamedTuple
 
 from pricing import HISTORY_FILENAME, RATES_VERIFIED, is_live, is_rates_stale, live_price_warning
 from roots import (
-    add_arm_root_flag, add_self_flag, apply_arm_root, artifact_root,
-    collapse_feature_mentions, features_root, orchestrations_root,
+    ORCH_KIND_COORDINATOR, ORCH_KIND_ORCHESTRATOR, add_arm_root_flag, add_self_flag,
+    apply_arm_root, artifact_root, collapse_feature_mentions, features_root,
+    orchestration_home_repo, orchestration_kind, orchestrations_root, record_write_refusal,
 )
 # `parse_manifest` is routing.py's: the one copy this module, capture_planning.py and
 # routing.py's pinned-session predicate all read a manifest through.
@@ -59,6 +60,14 @@ from transcript import to_utc
 # that writes the file — and `--all` never reaches this path either, since
 # `fill_missing_reports` globs `*/planning.json` and so only visits features that have one.
 UNCAPTURED_FEATURE_EXIT_CODE = 1
+# planning.json's record of a close let through with its build unclaimed
+# (`feature-close.sh --allow-unclaimed`; capture_planning.py's ALLOW_UNCLAIMED_KEY), and
+# the warning the report renders from it.
+ALLOW_UNCLAIMED_KEY = "allow_unclaimed"
+ALLOW_UNCLAIMED_WARNING = (
+    "the close went ahead with no session or delegate claimed for this feature's build "
+    "(feature-close.sh --allow-unclaimed): {reason}"
+)
 UNCAPTURED_FEATURE_MESSAGE = (
     "{path}: feature not captured yet — run 'feature-close.sh [--self] {slug}' from the "
     "worktree to capture it on the branch, or 'feature-capture.sh [--self] {slug}' for a "
@@ -2984,6 +2993,11 @@ def run_single_feature(repo_dir, features_dir, slug):
     live_models = live_priced_models(planning_data, loaded_plans)
     if live_models:
         warnings.append(live_price_warning(live_models))
+    # The close went ahead with no session or delegate claimed for the build, and said why
+    # (`feature-close.sh --allow-unclaimed`, carried by planning.json): the report says so.
+    allowed_unclaimed = planning_data.get(ALLOW_UNCLAIMED_KEY)
+    if allowed_unclaimed:
+        warnings.append(ALLOW_UNCLAIMED_WARNING.format(reason=allowed_unclaimed))
 
     data = {
         "slug": slug,
@@ -3322,7 +3336,7 @@ def run_trend_mode(features_dir):
 
 # Orchestration group report (`--orchestration <slug>`): the orchestrator's own transcript
 # (overhead, its planning.json) plus every feature it spawned (each feature's report.json),
-# read from the record at self/orchestrations/<slug>/README.md.
+# read from the record at plans/orchestrations/<slug>/README.md (self/orchestrations/ under --self).
 ORCH_REPORT_MD = "report.md"
 ORCH_REPORT_JSON = "report.json"
 ORCH_PLANNING_JSON = "planning.json"
@@ -3336,6 +3350,29 @@ ORCH_NOTE_UNPRICED = (
     "{count} feature(s) are unpriced and are NOT in the group total; it is a lower bound."
 )
 ORCH_NOTE_ALL_PRICED = "Every feature is priced; the group total is complete."
+# A feature entry in another repository (self/features/coordinator-cost-records/): its
+# `report` path is relative to THAT repo, resolved against `--checkout <repo>=<path>`; the
+# record's own repository resolves against the record's own repo root (`artifact_root`:
+# agentTooling's under --self, the consuming repo's otherwise — self/features/
+# orchestration-records-in-repo/), named by `roots.orchestration_home_repo`; and an
+# `ORCH_TOOLING_REPO` entry resolves against the agentTooling directory, which is on disk in
+# every checkout — vendored or not (self/features/orchestration-record-fixes/, item 2).
+ORCH_TOOLING_REPO = "agentTooling"
+UNPRICED_NEEDS_CHECKOUT = "in {repo}: pass --checkout {repo}=<its checkout>"
+CHECKOUT_SEPARATOR = "="
+# The words that differ between the two kinds of record (roots.orchestration_kind)
+ORCH_WORDING = {
+    ORCH_KIND_ORCHESTRATOR: {
+        "title": "Orchestration report", "session": "Orchestrator session",
+        "overhead": "Overhead (the orchestrator's own transcript)",
+    },
+    ORCH_KIND_COORDINATOR: {
+        "title": "Coordination report", "session": "Coordinator session",
+        "overhead": ("Coordination overhead (the coordinator's own transcript and its own "
+                     "`feature: none` delegates; every other delegate is in the feature it "
+                     "built)"),
+    },
+}
 
 
 def read_total_usd(path, keys):
@@ -3357,23 +3394,38 @@ def read_total_usd(path, keys):
     return float(value), None
 
 
-def compute_orchestration_report(record, folder, repo_root):
+def compute_orchestration_report(record, folder, repo_root, checkouts=None, home_repo=None,
+                                 tooling_root=None):
     """All of the group report's arithmetic, as one dict `report.json` serialises — a
     scorecard reads it without parsing the markdown.
 
     `features[]` has one row per record entry: `repo`, `slug`, `pr`, `total_usd` and
     `unpriced_reason` (exactly one of them None). A `report` path is resolved against
-    `repo_root`. `overhead` is the orchestrator's `planning.json` `cost_usd.total`.
-    `group_total_usd` is priced features plus overhead — unpriced features are NOT in it,
-    `unpriced_count` says how many — and `overhead_pct` is overhead over that total, None
-    when the total is zero."""
+    `checkouts[repo]` when the entry's repo is named there (`--checkout`); else an
+    `ORCH_TOOLING_REPO` entry against `tooling_root` when given (the agentTooling directory,
+    so a consuming repo's record prices an agentTooling feature without a `--checkout`); else
+    against `repo_root` (the record's own repo root). An entry in a repository other than
+    `home_repo` (compared case-insensitively; None means every entry is the record's own)
+    and not resolved by `tooling_root`, with no checkout and no file at that path, is
+    unpriced with `UNPRICED_NEEDS_CHECKOUT`. `overhead` is the
+    orchestrator's — or coordinator's — `planning.json` `cost_usd.total`; `kind` is the
+    record's (`roots.orchestration_kind`). `group_total_usd` is priced features plus
+    overhead — unpriced features are NOT in it, `unpriced_count` says how many — and
+    `overhead_pct` is overhead over that total, None when the total is zero."""
+    checkouts = checkouts or {}
     rows = []
     for entry in record.get("features") or []:
         report_path = entry.get("report")
+        repo = entry.get("repo")
         total, reason = None, UNPRICED_NO_PATH
         if report_path:
-            resolved = Path(repo_root) / report_path
-            if resolved.is_file():
+            tooling = tooling_root is not None and repo == ORCH_TOOLING_REPO
+            resolved = Path(checkouts.get(repo, tooling_root if tooling else repo_root)) / report_path
+            foreign = (home_repo is not None and str(repo).lower() != home_repo.lower()
+                       and not tooling)
+            if not resolved.is_file() and repo not in checkouts and foreign:
+                reason = UNPRICED_NEEDS_CHECKOUT.format(repo=repo)
+            elif resolved.is_file():
                 total, reason = read_total_usd(resolved, ("cost", "total"))
             else:
                 reason = UNPRICED_PATH_MISSING.format(path=report_path)
@@ -3394,6 +3446,7 @@ def compute_orchestration_report(record, folder, repo_root):
     commit = record.get("agent_tooling")
     return {
         "slug": record.get("slug"),
+        "kind": orchestration_kind(record),
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "session": record.get("session"),
         "agent_tooling": commit,
@@ -3415,12 +3468,13 @@ def compute_orchestration_report(record, folder, repo_root):
 
 def render_orchestration_md(data):
     window = data["session_window"]
+    words = ORCH_WORDING[data.get("kind") or ORCH_KIND_ORCHESTRATOR]
     lines = [
-        f"# Orchestration report: {data['slug']}",
+        f"# {words['title']}: {data['slug']}",
         "",
         f"Window: {window['from']} → {window['to'] or 'open'}  ",
         f"agentTooling: `{data['agent_tooling_short']}`  ",
-        f"Orchestrator session: `{data['session']}`",
+        f"{words['session']}: `{data['session']}`",
         "",
         "| Repo | Feature | PR | Total (USD) |",
         "|---|---|---|---|",
@@ -3434,9 +3488,9 @@ def render_orchestration_md(data):
     lines.append("")
     if overhead["usd"] is not None:
         partial = " (partial: some tokens had no rate)" if overhead["total_is_partial"] else ""
-        lines.append(f"Overhead (the orchestrator's own transcript): ${overhead['usd']:.4f}{partial}")
+        lines.append(f"{words['overhead']}: ${overhead['usd']:.4f}{partial}")
     else:
-        lines.append(f"Overhead (the orchestrator's own transcript): unpriced: {overhead['unpriced_reason']}")
+        lines.append(f"{words['overhead']}: unpriced: {overhead['unpriced_reason']}")
     pct = f" — overhead is {data['overhead_pct']:.1f}% of it" if data["overhead_pct"] is not None else ""
     lines.append("")
     lines.append(
@@ -3453,25 +3507,57 @@ def render_orchestration_md(data):
     return "\n".join(lines) + "\n"
 
 
-def run_orchestration(slug):
-    folder = orchestrations_root() / slug
+def parse_checkouts(parser, values):
+    """`--checkout REPO=PATH` words as {repo: Path}; a malformed word or a path that is not
+    a directory is a usage error."""
+    checkouts = {}
+    for value in values or []:
+        repo, sep, path = value.partition(CHECKOUT_SEPARATOR)
+        if not sep or not repo or not path:
+            parser.error(f"--checkout {value!r} must be REPO=PATH")
+        if not Path(path).is_dir():
+            parser.error(f"--checkout {value!r}: {path} is not a directory")
+        checkouts[repo] = Path(path).resolve()
+    return checkouts
+
+
+def run_orchestration(slug, self_mode, checkouts=None):
+    # It writes report.json and report.md into the record's folder, so it asks the write
+    # guard (self/features/consumer-record-guard/)
+    refusal = record_write_refusal(self_mode, slug)
+    if refusal:
+        print(f"refusing: {refusal}", file=sys.stderr)
+        sys.exit(1)
+    folder = orchestrations_root(self_mode) / slug
     readme = folder / "README.md"
     if not readme.is_file():
         print(f"no orchestration record at {readme}", file=sys.stderr)
         sys.exit(1)
-    data = compute_orchestration_report(parse_manifest(readme), folder, artifact_root(True))
+    data = compute_orchestration_report(
+        parse_manifest(readme), folder, artifact_root(self_mode), checkouts,
+        orchestration_home_repo(self_mode), tooling_root=artifact_root(True))
     write_record(folder / ORCH_REPORT_JSON, json.dumps(data, indent=2) + "\n")
     write_record(folder / ORCH_REPORT_MD, render_orchestration_md(data))
     print(render_orchestration_md(data))
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    # No abbreviations: the orchestrator allowlist reads `--orchestration`/`--checkout` as
+    # exact words (self/features/python-entry-exact/)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument(
         "--orchestration",
         metavar="SLUG",
         help="write the group report of the orchestration record "
-        "self/orchestrations/<slug>/ (report.md and report.json)",
+        "plans/orchestrations/<slug>/ (self/orchestrations/<slug>/ with --self; "
+        "report.md and report.json)",
+    )
+    parser.add_argument(
+        "--checkout",
+        action="append",
+        metavar="REPO=PATH",
+        help="with --orchestration: where repository REPO is checked out, so a feature "
+        "entry in REPO is priced from its report path under PATH (repeatable)",
     )
     parser.add_argument(
         "slug",
@@ -3497,8 +3583,10 @@ def main():
     args = parser.parse_args()
     apply_arm_root(parser, args)
 
+    if args.checkout and not args.orchestration:
+        parser.error("--checkout prices an orchestration record's features; pass --orchestration")
     if args.orchestration:
-        run_orchestration(args.orchestration)
+        run_orchestration(args.orchestration, args.self_mode, parse_checkouts(parser, args.checkout))
         return
 
     if args.rounds_md:

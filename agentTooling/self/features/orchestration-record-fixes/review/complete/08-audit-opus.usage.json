@@ -1,0 +1,88 @@
+{
+  "plan": "08-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "8f92c45f-e5bf-454c-8c42-b70771c9e41b",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 59,
+  "duration_ms": 503196,
+  "total_cost_usd": 2.3664459000000004,
+  "usage": {
+    "input_tokens": 74,
+    "cache_creation_input_tokens": 106876,
+    "cache_read_input_tokens": 3097101,
+    "output_tokens": 44571
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 2877,
+      "outputTokens": 28,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0003017,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 74,
+      "outputTokens": 44571,
+      "cacheReadInputTokens": 3097101,
+      "cacheCreationInputTokens": 106876,
+      "webSearchRequests": 0,
+      "costUSD": 2.3661442000000004,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 17738,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 106876,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 1,
+  "tool_counts": {
+    "Bash": 31,
+    "Edit": 3,
+    "Read": 6,
+    "Write": 18
+  },
+  "files_edited": [
+    "/tmp/plan-capture.Dck4Sp/scratch/cases1.txt",
+    "/tmp/plan-capture.Dck4Sp/scratch/cases2.txt",
+    "/tmp/plan-capture.Dck4Sp/scratch/cases3.txt",
+    "/tmp/plan-capture.Dck4Sp/scratch/cases4.txt",
+    "/tmp/plan-capture.Dck4Sp/scratch/drive.py",
+    "/tmp/plan-capture.Dck4Sp/scratch/fuzz.py",
+    "/tmp/plan-capture.Dck4Sp/scratch/gt.py",
+    "/tmp/plan-capture.Dck4Sp/scratch/mkstub.sh",
+    "/tmp/plan-capture.Dck4Sp/scratch/one.py",
+    "/tmp/plan-capture.Dck4Sp/scratch/payloads.py",
+    "/tmp/plan-capture.Dck4Sp/scratch/probe.py",
+    "/tmp/plan-capture.Dck4Sp/scratch/probe1.txt",
+    "/tmp/plan-capture.Dck4Sp/scratch/probe2.txt",
+    "/tmp/plan-capture.Dck4Sp/scratch/reasons.py",
+    "/tmp/plan-capture.Dck4Sp/scratch/setup-base.sh",
+    "/tmp/plan-capture.Dck4Sp/scratch/setup.sh",
+    "self/features/orchestration-record-fixes/audit-report.md"
+  ],
+  "edit_count": 21,
+  "attempts": [
+    {
+      "session_id": "8f92c45f-e5bf-454c-8c42-b70771c9e41b",
+      "outcome": "complete",
+      "total_cost_usd": 2.3664459000000004,
+      "num_turns": 59,
+      "duration_ms": 503196
+    }
+  ]
+}

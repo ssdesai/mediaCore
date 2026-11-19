@@ -1,0 +1,126 @@
+{
+  "slug": "orchestrator-role-guard",
+  "captured_at": "2026-11-05T17:31:10.657397+00:00",
+  "manifest_branches": [
+    "claude/orchestrator-role-guard"
+  ],
+  "manifest_subagents": [
+    "adccada0c131f57db"
+  ],
+  "sessions": [
+    {
+      "session_id": "892066d9-48f5-59fb-8599-18b753cc5cd4",
+      "git_branch": "HEAD",
+      "selected_by": "pinned",
+      "cwd": "/home/user",
+      "date": "2026-11-05",
+      "started_at": "2026-11-05T16:38:15.571000+00:00",
+      "ended_at": "2026-11-05T17:31:07.951000+00:00",
+      "duration_s": 3042,
+      "share_basis": [
+        {
+          "feature": "agentTooling/orchestrator-role-guard",
+          "from": "2026-11-05T16:38:15.571000Z",
+          "to": "2026-11-05T17:28:58Z",
+          "source": "self"
+        }
+      ],
+      "session_cost_usd": 11.92787125,
+      "session_duration_s": 3172,
+      "unclaimed_usd": 1.216898,
+      "unclaimed_duration_s": 129
+    }
+  ],
+  "subagents": [
+    {
+      "agent_id": "adccada0c131f57db",
+      "parent_session_id": "892066d9-48f5-59fb-8599-18b753cc5cd4",
+      "date": "2026-11-05",
+      "started_at": "2026-11-05T16:52:50.539000+00:00",
+      "ended_at": "2026-11-05T17:13:20.113000+00:00",
+      "duration_s": 1229,
+      "selected_by": "pinned",
+      "cross_repo": true
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "e20a285b-a131-4f0e-ba58-7ba553e83570"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "892066d9-48f5-59fb-8599-18b753cc5cd4",
+      "agent_id": null,
+      "model": "claude-fable-5-1",
+      "is_sidechain": false,
+      "date": "2026-11-05",
+      "duration_s": 3172,
+      "tokens": {
+        "input": 1239,
+        "output": 44663,
+        "cache_read": 10807733,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 288175
+      },
+      "cost_usd": 10.71097325,
+      "rates_applied": {
+        "model": "claude-fable-5-1",
+        "input": 10,
+        "output": 50,
+        "cache_read": 0.25,
+        "cache_creation_5m": 12.5,
+        "cache_creation_1h": 20,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "892066d9-48f5-59fb-8599-18b753cc5cd4",
+      "agent_id": "adccada0c131f57db",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-05",
+      "duration_s": 1229,
+      "tokens": {
+        "input": 180,
+        "output": 82033,
+        "cache_read": 20033928,
+        "cache_creation_5m": 310890,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 3.6013078,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 10.71097325,
+    "sidechain": 3.6013078,
+    "subagents": 3.6013078,
+    "total": 14.31228105,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 3042,
+    "subagents": 1229,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "session 892066d9-48f5-59fb-8599-18b753cc5cd4 may span the window boundary (window 2026-11-05T16:38:15.571000+00:00..2026-11-05T17:28:58+00:00 UTC, session ends 2026-11-05T17:31:07.951000+00:00); $1.2169 and 129s of it fall at or after `to`, not counted here (the session is pinned and this feature is its only claimant, so it is cut to the window: what lies past `to` is the unclaimed remainder)",
+    "session 892066d9-48f5-59fb-8599-18b753cc5cd4 is pinned and claimed by this feature alone, so it is cut to the window: this feature's part is $10.7110 of the session's own $11.9279",
+    "session 892066d9-48f5-59fb-8599-18b753cc5cd4 has $1.2169 (130s) unclaimed by any feature \u2014 widen a claimant's `to` bound, or pin the session to the feature it belongs to, to have it counted"
+  ]
+}

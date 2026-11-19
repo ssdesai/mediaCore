@@ -10,10 +10,10 @@ Fixtures: f  ·  methods: a, b  ·  repeats: 1  ·  noise band: ±15%  ·  agent
 
 ## Runs
 
-| Fixture | Method | Arm | Branch | To PR-open | Review fixed/esc. | Rework | To green | Wall to PR | Accept | PR |
-|---|---|---|---|---|---|---|---|---|---|---|
-| f | a | before (1111111) | `fABefore` | $10.00 | 2/0 | — | $11.00 | 30m | pass | https://example.test/pr/10 |
-| f | b | before (1111111) | `fBBefore` | $20.00 | 1/1 | $3.00 | $25.00 | — | FAIL | https://example.test/pr/11 |
+| Fixture | Method | Arm | Branch | To PR-open | Review fixed/esc. | Rework | To green | Wall to PR | Wall to green | Total | Accept | PR |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| f | a | before (1111111) | `fABefore` | $10.00 | 2/0 | — | $11.00 | 30m | — | — | pass | https://example.test/pr/10 |
+| f | b | before (1111111) | `fBBefore` | $20.00 | 1/1 | $3.00 | $25.00 | — | — | — | FAIL | https://example.test/pr/11 |
 
 ## Cost against the ±15% band
 

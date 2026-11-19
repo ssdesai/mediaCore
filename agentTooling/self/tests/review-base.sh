@@ -42,7 +42,8 @@ SLUG="feat-review"
 REMOTE="origin"
 FEATURE_FILES=(feature-one.txt feature-two.txt)
 MERGED_FILE="already-merged.txt"
-RUNNER_FILES=(run-review.sh plan-runner-lib.sh plan-runner-roots.sh stamp-timing.sh)
+# the role reader refuses a copy without its two modules (hook-silent-allow-sweep, item 7)
+RUNNER_FILES=(run-review.sh plan-runner-lib.sh plan-runner-roots.sh stamp-timing.sh hooks/orchestrator_role.py hooks/shared_rules.py)
 PROFILES=(local cloud)
 # What the prompt says when it falls back, and what the fetch warning names
 FALLBACK_WORDS="no $REMOTE/$BASE"
@@ -72,7 +73,7 @@ commit_file() {  # commit_file <repo> <file> <subject>
 fixture() {
   local dir="$TMP/$1" repo origin other f m0
   repo="$dir/repo"; origin="$dir/origin.git"; other="$dir/other"
-  mkdir -p "$repo/agentTooling" "$repo/plans/features/$SLUG/review/incomplete"
+  mkdir -p "$repo/agentTooling/hooks" "$repo/plans/features/$SLUG/review/incomplete"
   for f in "${RUNNER_FILES[@]}"; do cp "$HERE/$f" "$repo/agentTooling/$f"; done
   chmod +x "$repo"/agentTooling/*.sh
   git init -q "$repo"

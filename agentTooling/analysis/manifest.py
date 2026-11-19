@@ -7,6 +7,7 @@ planning.json claimed — the JSON edits the lifecycle scripts need, kept out of
         [--plan STEM]...
     python3 agentTooling/analysis/manifest.py [--self] <slug> session-start ID
     python3 agentTooling/analysis/manifest.py [--self] <slug> get <key>
+    python3 agentTooling/analysis/manifest.py [--self] <slug> check-prose
     python3 agentTooling/analysis/manifest.py [--self] <slug> set-plans <stem>...
     python3 agentTooling/analysis/manifest.py [--self] <slug> set-window-to [TS] [--tighten|--replace]
     python3 agentTooling/analysis/manifest.py [--self] <slug> set-window-from TS --session ID
@@ -15,16 +16,21 @@ planning.json claimed — the JSON edits the lifecycle scripts need, kept out of
     python3 agentTooling/analysis/manifest.py [--self] <slug> unpin-session ID
     python3 agentTooling/analysis/manifest.py [--self] <slug> unpin-subagent AGENT_ID
     python3 agentTooling/analysis/manifest.py [--self] <slug> unexclude-subagent AGENT_ID
+    python3 agentTooling/analysis/manifest.py [--self] <slug> allow-unclaimed REASON
     python3 agentTooling/analysis/manifest.py [--self] <slug> claimed
-    python3 agentTooling/analysis/manifest.py --orchestration <slug> get <key>
-    python3 agentTooling/analysis/manifest.py --orchestration <slug> add-feature repo=R slug=S [session=ID]
+    python3 agentTooling/analysis/manifest.py [--self] --orchestration <slug> get <key>
+    python3 agentTooling/analysis/manifest.py [--self] --orchestration <slug> add-feature repo=R slug=S [session=ID]
         [branch=B] [pr=URL] [report=PATH]
-    python3 agentTooling/analysis/manifest.py --orchestration <slug> set-feature repo=R slug=S key=value...
-    python3 agentTooling/analysis/manifest.py --orchestration <slug> set-window-to INSTANT|now
+    python3 agentTooling/analysis/manifest.py [--self] --orchestration <slug> set-feature repo=R slug=S key=value...
+    python3 agentTooling/analysis/manifest.py [--self] --orchestration <slug> set-window-to INSTANT|now
 
-`--orchestration <slug>` is a scope of its own: it edits `self/orchestrations/<slug>/README.md`
-(`roots.orchestrations_root`), not a feature manifest. `add-feature` replaces an entry with
-the same repo and slug; `set-feature` changes fields of one (`null` clears a field).
+`--orchestration <slug>` is a scope of its own: it edits `plans/orchestrations/<slug>/README.md`
+(`--self`: `self/orchestrations/<slug>/README.md`; `roots.orchestrations_root`), not a feature
+manifest. A slug found only at the old vendored `agentTooling/self/orchestrations/<slug>/`
+is refused with the `git mv` that moves it. `add-feature` replaces an entry with
+the same repo and slug; `set-feature` changes fields of one (`null` clears a field). On a
+coordinator record both refuse a non-null `session=` or `branch=` — the orchestrator's
+shape, which hooks/orchestrator_role.py reads as a role whatever `kind` says.
 
 `init` writes `<features>/<slug>/README.md` from `templates/plans/features/TEMPLATE.md`
 with the template's fence replaced by a filled one, and refuses if the file exists —
@@ -33,7 +39,9 @@ cloud), `--gate` whether its base gate ran green (`green`) or not at all (`skipp
 fence without either — every manifest started before the key — reads as "not recorded". `session-start` prints one session's first transcript instant truncated to the
 millisecond (`2026-10-05T22:05:29.123Z`), or nothing and exit 1 — the `from` the start
 stamps for a coordinator, read-only and run before `init`, and an instant
-`set-window-from … --session <same id>` accepts exactly. `get` prints one scalar (or a
+`set-window-from … --session <same id>` accepts exactly. `check-prose` prints one `unfilled` line per section of the README's prose that is still the
+template's own text or carries one of its `<placeholders>`, and exits 1 — what
+`feature-close.sh` refuses on before a PR (a deleted level section is filled enough). `get` prints one scalar (or a
 JSON array) from the LAST ```json fence, the one `capture_planning.py` reads. `set-window-to`
 replaces a `null` `to` bound with TS (default: now, UTC, `Z`) and touches nothing else in
 the file; a bound already set is left alone and reported, since a second stamp would move
@@ -96,7 +104,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from roots import AGENT_TOOLING_DIR, add_self_flag, features_root, orchestrations_root
+from roots import (
+    AGENT_TOOLING_DIR, ORCH_KIND_COORDINATOR, add_self_flag, features_root,
+    orchestration_kind, orchestrations_root, record_refusal, record_write_refusal, shared_rules,
+)
 # One way, and the direction is the point: `routing` imports `pricing`, `roots` and
 # `transcript` and nothing else — never this module and never `capture_planning` — so
 # importing it here cannot close a cycle. The other candidate would have:
@@ -109,19 +120,38 @@ from routing import find_transcript, load_lines
 
 TEMPLATE_PATH = AGENT_TOOLING_DIR / "templates" / "plans" / "features" / "TEMPLATE.md"
 FENCE_RE = re.compile(r"```json\n(.*?)\n```", re.DOTALL)
+# `check-prose`: the heading that ends the prose (the fence and its notes follow it), the
+# shape of a template placeholder (it may wrap lines), and how long one must be to count —
+# so a feature's own mention of `<name>` is not mistaken for the template's.
+PROSE_END_HEADING = "\n## Machine-readable"
+PLACEHOLDER_RE = re.compile(r"<[^<>]+>")
+PLACEHOLDER_MIN_LEN = 8
 # The order the fence is written in, so every manifest reads the same way top to bottom.
 FENCE_KEY_ORDER = (
     "slug", "method", "plans", "branches", "base", "profile", "gate", "orchestration",
     "session_window", "exclude_sessions", "exclude_subagents", "sessions", "subagents",
+    "allow_unclaimed",
 )
+# Why a close was let through with its build unclaimed: `feature-close.sh --allow-unclaimed
+# "<reason>"` writes it with `allow-unclaimed`, and the capture copies it into planning.json
+# (capture_planning.py's ALLOW_UNCLAIMED_KEY, the same name).
+ALLOW_UNCLAIMED_KEY = "allow_unclaimed"
 # A feature's optional link to the orchestration record that spawned it (`init
 # --orchestration`, read back with `get orchestration`); the slug pattern is the lifecycle's.
 ORCHESTRATION_KEY = "orchestration"
-SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+SLUG_RE = shared_rules.SLUG_RE
 # The orchestration record's fence (`--orchestration <slug>` scope, `orchestration-start.sh`):
 # top-level keys in the order it is written, and the keys of one `features[]` entry.
-ORCH_KEY_ORDER = ("slug", "session", "agent_tooling", "session_window", "features")
-ORCH_FEATURE_KEYS = ("repo", "slug", "session", "branch", "pr", "report")
+# `kind` is present only on a coordinator record (`"coordinator"`, orchestration-start.sh
+# --coordinator; the role rule in hooks/orchestrator_role.py skips it as a role).
+ORCH_KEY_ORDER = ("slug", shared_rules.KIND_KEY, shared_rules.SESSION_KEY, "agent_tooling",
+                  "session_window", shared_rules.FEATURES_KEY)
+ORCH_FEATURE_KEYS = shared_rules.ORCH_FEATURE_KEYS
+# The feature keys a COORDINATOR record never carries: a non-null `session` or `branch` in
+# a features[] entry is the orchestrator's shape, and hooks/orchestrator_role.py reads a
+# coordinator record holding one as a role (self/features/hook-role-hardening/). Refused here
+# so a genuine record cannot drift into it.
+COORDINATOR_REFUSED_FEATURE_KEYS = shared_rules.ORCHESTRATOR_FEATURE_KEYS
 ORCH_FEATURE_IDENTITY = ("repo", "slug")
 ORCH_NOW = "now"
 ORCH_NULL_WORD = "null"
@@ -266,6 +296,68 @@ def cmd_init(args):
     path.write_text(new_text)
     print(path)
     return 0
+
+
+def prose_sections(text):
+    """The manifest's prose above the machine-readable heading, as {heading: body}.
+
+    The key `""` is everything before the first `## ` heading — the title and the opening
+    paragraph. Bodies are whitespace-normalized so a re-wrapped section still compares.
+    """
+    prose = text.split(PROSE_END_HEADING, 1)[0]
+    sections, heading, lines = {}, "", []
+    for line in prose.splitlines():
+        if line.startswith("## "):
+            sections[heading] = " ".join(" ".join(lines).split())
+            heading, lines = line[3:].strip(), []
+        else:
+            lines.append(line)
+    sections[heading] = " ".join(" ".join(lines).split())
+    return sections
+
+
+def prose_problems(text, template_text):
+    """The sections of a feature README still matching the template, as sentences.
+
+    A section is unfilled when it is word for word the template's and the template's
+    version is a fill-in (carries some `<…>`), or when it still carries a `<placeholder>`
+    the template's prose carries — the opening paragraph's, a table cell's, the
+    exclusions bullet's. Placeholders shorter than
+    `PLACEHOLDER_MIN_LEN` (`<1>`, `<name>`) are only caught by the identical-section rule,
+    so prose that mentions `<name>` is not refused for it. A section the template has and
+    the feature deleted is filled enough — the template says to delete the level sections.
+    """
+    mine, theirs = prose_sections(text), prose_sections(template_text)
+    template_prose = template_text.split(PROSE_END_HEADING, 1)[0]
+    placeholders = {
+        " ".join(token.split())
+        for token in PLACEHOLDER_RE.findall(template_prose)
+        if len(token) >= PLACEHOLDER_MIN_LEN
+    }
+    problems = []
+    for heading, body in mine.items():
+        label = "the title and opening paragraph" if heading == "" else f"section '{heading}'"
+        if heading in theirs and body == theirs[heading] and PLACEHOLDER_RE.search(body):
+            problems.append(f"{label} is still the template's own text")
+            continue
+        left = sorted(p for p in placeholders if p in body)
+        if left:
+            problems.append(f"{label} still carries the placeholder {left[0]}")
+    return problems
+
+
+def cmd_check_prose(args):
+    path = manifest_path(args)
+    if not path.exists():
+        print(f"refusing: no manifest at {path}", file=sys.stderr)
+        return 1
+    if not TEMPLATE_PATH.exists():
+        print(f"refusing: no template at {TEMPLATE_PATH}", file=sys.stderr)
+        return 1
+    problems = prose_problems(path.read_text(), TEMPLATE_PATH.read_text())
+    for problem in problems:
+        print(f"  unfilled  {problem}")
+    return 1 if problems else 0
 
 
 def cmd_get(args):
@@ -724,6 +816,26 @@ def cmd_pin_subagent(args):
     return 0
 
 
+def cmd_allow_unclaimed(args):
+    """Record in the fence why this feature's close went ahead with no session or delegate
+    claimed for its build — `feature-close.sh --allow-unclaimed "<reason>"` is the caller
+    (self/features/delegate-cost-claims). The capture copies the reason into planning.json
+    and report.py prints it, so the record says why its build is unclaimed. Replaces a
+    reason already there; an empty one is refused (exit 1) — a reason is the point."""
+    reason = " ".join(args.reason.split())
+    if not reason:
+        print("refusing: an empty reason records nothing", file=sys.stderr)
+        return 1
+    path = manifest_path(args)
+    text = path.read_text()
+    match, obj = last_fence(text)
+    obj[ALLOW_UNCLAIMED_KEY] = reason
+    path.write_text(text[: match.start(1)] + render_fence(obj) + text[match.end(1):])
+    print(f"{ALLOW_UNCLAIMED_KEY} = {json.dumps(reason)}")
+    print_frozen_note(args)
+    return 0
+
+
 def cmd_claimed(args):
     planning = features_root(args.self_mode) / args.slug / "planning.json"
     if not planning.exists():
@@ -761,8 +873,8 @@ def cmd_claimed(args):
     return 0
 
 
-def orchestration_path(slug):
-    return orchestrations_root() / slug / "README.md"
+def orchestration_path(self_mode, slug):
+    return orchestrations_root(self_mode) / slug / "README.md"
 
 
 def render_orchestration_fence(obj):
@@ -786,9 +898,16 @@ def write_orchestration(path, text, match, obj):
     path.write_text(text[: match.start(1)] + render_orchestration_fence(obj) + text[match.end(1):])
 
 
-def load_orchestration(args):
-    """(path, text, match, obj) of the record, or None after printing the refusal."""
-    path = orchestration_path(args.slug)
+def load_orchestration(args, write=False):
+    """(path, text, match, obj) of the record, or None after printing the refusal. A
+    subcommand that will write the record passes `write=True`, which also refuses a `--self`
+    write into a vendored copy (`roots.record_write_refusal`); `get` reads with `write` off."""
+    check = record_write_refusal if write else record_refusal
+    refusal = check(args.self_mode, args.slug)
+    if refusal:
+        print(f"refusing: {refusal}", file=sys.stderr)
+        return None
+    path = orchestration_path(args.self_mode, args.slug)
     if not path.is_file():
         print(f"refusing: no orchestration record at {path}", file=sys.stderr)
         return None
@@ -813,6 +932,19 @@ def feature_pairs(pairs):
     return result, None
 
 
+def coordinator_feature_problem(obj, fields):
+    """The refusal for setting `session`/`branch` on a coordinator record's feature, or
+    None. Clearing one (`null`) is allowed: that only moves the record back to its shape."""
+    if orchestration_kind(obj) != ORCH_KIND_COORDINATOR:
+        return None
+    named = [key for key in COORDINATOR_REFUSED_FEATURE_KEYS if fields.get(key) is not None]
+    if not named:
+        return None
+    return (f"a coordinator record's features carry no {' or '.join(named)} — that is an "
+            "orchestrator's shape, and hooks/orchestrator_role.py would read the record as a "
+            "role; record the feature's pr= and report= instead")
+
+
 def cmd_orch_get(args):
     loaded = load_orchestration(args)
     if loaded is None:
@@ -830,11 +962,12 @@ def cmd_orch_get(args):
 
 def cmd_orch_add_feature(args):
     """Add a `features[]` entry, replacing the one with the same repo and slug."""
-    loaded = load_orchestration(args)
+    loaded = load_orchestration(args, write=True)
     if loaded is None:
         return 1
     path, text, match, obj = loaded
     fields, problem = feature_pairs(args.pairs)
+    problem = problem or coordinator_feature_problem(obj, fields)
     if problem:
         print(f"refusing: {problem}", file=sys.stderr)
         return 1
@@ -861,11 +994,12 @@ def cmd_orch_add_feature(args):
 
 
 def cmd_orch_set_feature(args):
-    loaded = load_orchestration(args)
+    loaded = load_orchestration(args, write=True)
     if loaded is None:
         return 1
     path, text, match, obj = loaded
     fields, problem = feature_pairs(args.pairs)
+    problem = problem or (coordinator_feature_problem(obj, fields) if fields else None)
     if problem or not fields:
         print(f"refusing: {problem or 'nothing to set'}", file=sys.stderr)
         return 1
@@ -880,7 +1014,7 @@ def cmd_orch_set_feature(args):
 
 
 def cmd_orch_set_window_to(args):
-    loaded = load_orchestration(args)
+    loaded = load_orchestration(args, write=True)
     if loaded is None:
         return 1
     path, text, match, obj = loaded
@@ -905,7 +1039,10 @@ def orchestration_main(argv):
     """`manifest.py --orchestration <slug> get|add-feature|set-feature|set-window-to`: the
     orchestration record's fence, a different file from a feature manifest, so a scope of
     its own and the existing subcommands untouched."""
-    parser = argparse.ArgumentParser(prog="manifest.py --orchestration")
+    # allow_abbrev=False on every parser the hook approves a form of: an abbreviation is a
+    # second spelling the hook's exact shapes never see (self/features/python-entry-exact/)
+    parser = argparse.ArgumentParser(prog="manifest.py --orchestration", allow_abbrev=False)
+    add_self_flag(parser)
     parser.add_argument("--orchestration", dest="slug", required=True, metavar="SLUG")
     sub = parser.add_subparsers(dest="command", required=True)
     p_get = sub.add_parser("get", help="print one field of the record's fence (dotted path)")
@@ -941,10 +1078,12 @@ def orchestration_main(argv):
 
 
 def main():
-    # The scope is the FIRST word: `init --orchestration <slug>` is a feature manifest's flag.
-    if sys.argv[1:2] == ["--orchestration"]:
+    # The scope is the FIRST word (after an optional `--self`): `init --orchestration <slug>`
+    # is a feature manifest's flag.
+    if sys.argv[1:2] == ["--orchestration"] or sys.argv[1:3] == ["--self", "--orchestration"]:
         return orchestration_main(sys.argv[1:])
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
     add_self_flag(parser)
     parser.add_argument("slug")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -984,6 +1123,12 @@ def main():
     )
     p_start.add_argument("session_id", metavar="ID")
     p_start.set_defaults(func=cmd_session_start)
+
+    p_check = sub.add_parser(
+        "check-prose",
+        help="exit 1, naming each section, while the README's prose still matches the template",
+    )
+    p_check.set_defaults(func=cmd_check_prose)
 
     p_get = sub.add_parser("get", help="print one field of the fence (dotted path)")
     p_get.add_argument("key")
@@ -1037,6 +1182,14 @@ def main():
     )
     p_pin_sub.add_argument("agent_id", metavar="AGENT_ID")
     p_pin_sub.set_defaults(func=cmd_pin_subagent)
+
+    p_allow = sub.add_parser(
+        "allow-unclaimed",
+        help="record in the fence why the close went ahead with no session or delegate "
+        "claimed for the build — feature-close.sh --allow-unclaimed writes it",
+    )
+    p_allow.add_argument("reason", metavar="REASON")
+    p_allow.set_defaults(func=cmd_allow_unclaimed)
 
     p_unpin = sub.add_parser(
         "unpin-session",

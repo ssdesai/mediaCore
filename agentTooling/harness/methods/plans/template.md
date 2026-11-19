@@ -13,8 +13,7 @@ you terminate, from the plans you leave behind.
 
 ## Read, in this order
 
-1. `@@SPEC_TREE@@/@@SPEC_PATH@@`, sections **@@SPEC_SECTIONS@@** — read-only, checked
-   out detached at the commit this experiment pins. This is your entire brief for *what
+1. `@@SPEC_TREE@@/@@SPEC_PATH@@`, sections **@@SPEC_SECTIONS@@** — read-only, @@SPEC_PROVENANCE@@. This is your entire brief for *what
    to build*. It pins names; use them exactly.
 2. `<tree>/CLAUDE.md`, then `<tree>/agentTooling/AGENT_PLANS.md` — how to author plans.
    It overrides parts of `CONVENTIONS.md` while you do; obey its context budget and its

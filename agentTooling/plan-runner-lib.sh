@@ -77,6 +77,9 @@ EXECUTOR_HEADLESS_ENV="AGENTTOOLING_HEADLESS"
 EXECUTOR_HEADLESS_VALUE=1
 EXECUTOR_SCRATCH_ENV="AGENTTOOLING_SCRATCH"
 EXECUTOR_SCRATCH_DIR_NAME="scratch"
+# The file a prompt bound for stdin is written to (executor_args_for_plan, run_plan), inside
+# the scratch directory so the capture directory's teardown removes it
+EXECUTOR_STDIN_PROMPT_NAME="prompt.txt"
 # `--permission-mode acceptEdits` auto-accepts an Edit or a Write only under the
 # executor's WORKING directory, and the scratch directory is under $TMPDIR — outside it.
 # Without this flag the prompt tells the executor to write a script somewhere its own
@@ -168,6 +171,9 @@ PLAN_END_HELD_RC=""
 
 hold_or_stamp_plan_end() {
   local plan="$1" rc="$2"
+  # A runner that needs to act the moment one plan of its pass finishes, before the next one
+  # starts, defines on_plan_finished (run-review.sh: the security audit's tree fingerprint).
+  if declare -F on_plan_finished >/dev/null; then on_plan_finished "$plan" "$rc"; fi
   if (( PLAN_END_DEFERRED )); then
     flush_plan_end
     PLAN_END_HELD_PLAN="$plan"
@@ -835,17 +841,46 @@ run_plan() {
     echo "WARN: could not mint a session id (uuidgen, $LINUX_UUID_SOURCE and python3 all failed) — launching $plan_name without $EXECUTOR_SESSION_ID_FLAG; the child picks its own id, and the parent's is still unset" >&2
   fi
 
+  # An optional per-plan launch hook (self/features/brief-conformance-checks/, R8): a wrapper
+  # that defines executor_args_for_plan may replace this plan's tool arguments
+  # (PLAN_TOOL_ARGS) and ask for the prompt on stdin (PLAN_PROMPT_ON_STDIN=1) — run-review.sh
+  # does, for the conformance plan, which gets no tools and a prompt it composed from git. A
+  # wrapper without the hook, and every plan the hook leaves alone, launches exactly as
+  # before: the same argv, the prompt its last element.
+  PLAN_TOOL_ARGS=("${CLAUDE_TOOL_ARGS[@]}")
+  PLAN_PROMPT_ON_STDIN=0
+  if declare -F executor_args_for_plan >/dev/null; then executor_args_for_plan "$plan_path"; fi
+
+  if (( PLAN_PROMPT_ON_STDIN )); then
+    # A prompt that carries a whole diff can pass the single-argument size limit, so it
+    # goes in through a file the shell opens as stdin. No scratch note: the executor has no
+    # tool to follow it, and the prompt is exactly what its builder wrote.
+    local prompt_file="$scratch_dir/$EXECUTOR_STDIN_PROMPT_NAME"
+    build_prompt "$plan_path" "$log_path" > "$prompt_file"
+    env "${scrub_args[@]}" \
+        "$EXECUTOR_HEADLESS_ENV=$EXECUTOR_HEADLESS_VALUE" \
+        "$EXECUTOR_SCRATCH_ENV=$scratch_dir" \
+      claude -p --model "$model" --permission-mode acceptEdits \
+      ${session_id_args[@]+"${session_id_args[@]}"} \
+      "$EXECUTOR_ADD_DIR_FLAG" "$scratch_dir" \
+      "${PLAN_TOOL_ARGS[@]}" \
+      ${CLAUDE_BUDGET_ARGS[@]+"${CLAUDE_BUDGET_ARGS[@]}"} \
+      --output-format stream-json --verbose \
+      < "$prompt_file" \
+      > "$stream_file" 2>&1 &
+  else
   env "${scrub_args[@]}" \
       "$EXECUTOR_HEADLESS_ENV=$EXECUTOR_HEADLESS_VALUE" \
       "$EXECUTOR_SCRATCH_ENV=$scratch_dir" \
     claude -p --model "$model" --permission-mode acceptEdits \
     ${session_id_args[@]+"${session_id_args[@]}"} \
     "$EXECUTOR_ADD_DIR_FLAG" "$scratch_dir" \
-    "${CLAUDE_TOOL_ARGS[@]}" \
+    "${PLAN_TOOL_ARGS[@]}" \
     ${CLAUDE_BUDGET_ARGS[@]+"${CLAUDE_BUDGET_ARGS[@]}"} \
     --output-format stream-json --verbose \
     "$(build_prompt "$plan_path" "$log_path")$(executor_scratch_note "$scratch_dir")" \
     > "$stream_file" 2>&1 &
+  fi
   CAPTURE_CLAUDE_PID=$!
 
   # One subshell for the whole follower pipeline, so $! is something `wait` can hold to

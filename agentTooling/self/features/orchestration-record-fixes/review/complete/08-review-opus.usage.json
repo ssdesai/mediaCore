@@ -1,0 +1,75 @@
+{
+  "plan": "08-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "8b0866b6-7bbc-4e3e-9a0b-9e5b4cd9c83e",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 19,
+  "duration_ms": 143574,
+  "total_cost_usd": 0.7813262,
+  "usage": {
+    "input_tokens": 30,
+    "cache_creation_input_tokens": 43612,
+    "cache_read_input_tokens": 837309,
+    "output_tokens": 13219
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 4559,
+      "outputTokens": 25,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.00046839999999999995,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 30,
+      "outputTokens": 13219,
+      "cacheReadInputTokens": 837309,
+      "cacheCreationInputTokens": 43612,
+      "webSearchRequests": 0,
+      "costUSD": 0.7808578,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 6388,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 43612,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 1,
+  "tool_counts": {
+    "Bash": 9,
+    "Edit": 3,
+    "Read": 3,
+    "Write": 3
+  },
+  "files_edited": [
+    "/tmp/plan-capture.3qP1ph/scratch/probe.py",
+    "/tmp/plan-capture.3qP1ph/scratch/regex.py",
+    "hooks/allow-repo-commands.sh",
+    "self/review-report.md"
+  ],
+  "edit_count": 6,
+  "attempts": [
+    {
+      "session_id": "8b0866b6-7bbc-4e3e-9a0b-9e5b4cd9c83e",
+      "outcome": "complete",
+      "total_cost_usd": 0.7813262,
+      "num_turns": 19,
+      "duration_ms": 143574
+    }
+  ]
+}

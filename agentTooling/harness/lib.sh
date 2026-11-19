@@ -101,21 +101,61 @@ HARNESS_ARM_KINDS_EXCLUSIVE_MSG="an experiment's arms vary one thing — the age
 HARNESS_BASE_ARMS_NO_PROGRAMS_MSG="base_arms (--base-arms) does not combine with programs (--programs): a program pins its own base"
 HARNESS_BASE_ARM_REPO_RULE="an experiment runs from, and lives on, the repository it measures (harness/EXPERIMENTS.md): push the commit there and name a ref that resolves in its checkout"
 
+# Arm spec paths — experiment.json arm_spec_paths, new-experiment.sh --arm-spec-path
+HARNESS_ARM_SPEC_PATHS_KEY="arm_spec_paths"
+HARNESS_SPEC_SOURCE_SHARED="shared"
+HARNESS_SPEC_SOURCE_ARM="arm"
+HARNESS_ARM_SPEC_NEEDS_BASE_ARMS_MSG="arm_spec_paths (--arm-spec-path) needs base_arms (--base-arms): a spec path per arm means something only when each arm is a commit of the measured repository"
+# The spec's wording in the prompts, by source. The shared texts are the base's own words,
+# byte for byte (harness/tests/arm-spec.sh compares them with arm-spec.shared.md).
+HARNESS_SPEC_PROVENANCE_SHARED="checked
+   out detached at the commit this experiment pins"
+HARNESS_SPEC_PROVENANCE_ARM="never to be
+   edited: it is this arm's own copy, inside your tree"
+HARNESS_SPEC_RULE_SHARED="- The read-only spec worktree at \`@@SPEC_TREE@@\` is reference material, checked out
+  detached at a pinned commit. Read it; never write to it."
+HARNESS_SPEC_RULE_ARM="- The spec at \`@@SPEC_TREE@@/@@SPEC_PATH@@\` is this arm's own copy, inside your tree.
+  It is reference material: read it; never edit, move or delete it, and never commit a
+  change to it."
+
 # ── Exit-code convention, copied from plan-runner-lib.sh ─────────────────────
 # A method's run.sh reports its outcome with these and nothing else.
 METHOD_OK_RC=0          # PR open
 METHOD_FAILED_RC=1      # work failure — do not retry
 METHOD_USAGE_LIMIT_RC=2 # usage limit — resumable
 
+# Time budget: a Claude Code background command is killed at 2 hours, so a run stops
+# before a cell that would not finish inside the budget (harness/README.md → "Exit codes").
+HARNESS_BUDGET_STOP_RC=75
+HARNESS_TIME_BUDGET_MINUTES_DEFAULT=110
+HARNESS_CELL_ESTIMATE_MINUTES_DEFAULT=60
+HARNESS_RESUME_LINE_PREFIX="resume: "
+HARNESS_STAGE_OK="ok"
+
+# Experiment lock and cell reset (harness/README.md → "Resetting a killed cell")
+HARNESS_LOCK_DIR_NAME="harness-locks"
+HARNESS_LOCK_PID_FILE="pid"
+HARNESS_KILLED_SUFFIX="Killed"
+HARNESS_KILLED_TS_FORMAT='+%Y%m%dT%H%M%SZ'
+HARNESS_KILLED_STATE_SUBDIR="killed"
+
 # ── Model and budget defaults ────────────────────────────────────────────────
 # The harness never hard-codes a price (analysis/pricing.py owns rates); these are
 # circuit breakers on a single pass, in the shape run-verify.sh / run-review.sh use.
 HARNESS_MODEL="${HARNESS_MODEL:-opus}"
+# The model of the harness review stage, the one stage that judges. Unset or empty means
+# HARNESS_MODEL, so an experiment that never names it behaves exactly as before. Rework,
+# the methods and the program orchestrator build, and stay on HARNESS_MODEL.
+HARNESS_REVIEW_MODEL="${HARNESS_REVIEW_MODEL:-$HARNESS_MODEL}"
 # Reasoning effort, the claude CLI's `--effort <level>`. Empty means the CLI's own
 # default and adds no flag; otherwise one of the levels below (checked once, after
 # harness_die is defined). harness_claude applies it to every call.
 HARNESS_EFFORT="${HARNESS_EFFORT:-}"
 HARNESS_EFFORT_LEVELS="low medium high xhigh max"
+# The effort of the harness review stage and its retry, the calls HARNESS_REVIEW_MODEL
+# covers. Unset or empty means HARNESS_EFFORT (both empty: the CLI's default). Rework, the
+# methods and the program orchestrator build, and stay on HARNESS_EFFORT.
+HARNESS_REVIEW_EFFORT="${HARNESS_REVIEW_EFFORT:-$HARNESS_EFFORT}"
 REVIEW_BUDGET_USD="${REVIEW_BUDGET_USD:-7.00}"
 REWORK_BUDGET_USD="${REWORK_BUDGET_USD:-10.00}"
 
@@ -135,6 +175,13 @@ GATE_REPORT_RELPATH="plans/gate-report.txt"
 # gate_counts_* fields. Deliberately loose: the row records whatever the gate prints.
 GATE_COUNT_RE='[0-9]+ (passed|failed|skipped|error|errors|deselected|xfailed)|Tests +[0-9]+|[0-9]+ (test|spec)s? (passed|failed)'
 GATE_COUNTS_JOIN=' | '
+
+# ── Fixture: setup and the acceptance probe ──────────────────────────────────
+FIXTURE_SETUP_JQ='.setup[]? // empty'   # fixture.json's setup commands, one per line
+ACCEPT_PROBE_RELPATH="accept/accept.py" # the probe, under the fixture directory
+# fixture.json's optional reference build: a commit of the measured repository where the
+# feature is known to be built right, on which the probe must pass (check-fixture.sh).
+FIXTURE_REFERENCE_COMMIT_JQ='.reference.commit // empty'
 
 # ── Findings ─────────────────────────────────────────────────────────────────
 FINDINGS_RELDIR="review"
@@ -188,9 +235,16 @@ harness_die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 if [[ -n "$HARNESS_EFFORT" && " $HARNESS_EFFORT_LEVELS " != *" $HARNESS_EFFORT "* ]]; then
   harness_die "HARNESS_EFFORT='$HARNESS_EFFORT' is not an effort level (one of: $HARNESS_EFFORT_LEVELS)"
 fi
+if [[ -n "$HARNESS_REVIEW_EFFORT" && " $HARNESS_EFFORT_LEVELS " != *" $HARNESS_REVIEW_EFFORT "* ]]; then
+  harness_die "HARNESS_REVIEW_EFFORT='$HARNESS_REVIEW_EFFORT' is not an effort level (one of: $HARNESS_EFFORT_LEVELS)"
+fi
 
-# harness_effort_dry — " --effort <level>" for a dry-run line, nothing when unset.
-harness_effort_dry() { [[ -z "$HARNESS_EFFORT" ]] || printf ' --effort %s' "$HARNESS_EFFORT"; }
+# harness_effort_dry [level] — " --effort <level>" for a dry-run line, nothing when unset.
+# No argument is the build effort (HARNESS_EFFORT); the review lines pass HARNESS_REVIEW_EFFORT.
+harness_effort_dry() {
+  local level="${1-$HARNESS_EFFORT}"
+  [[ -z "$level" ]] || printf ' --effort %s' "$level"
+}
 
 # Every instant the harness records is UTC with a Z, the convention analysis/README.md
 # makes load-bearing: a naive bound in a session_window is read as UTC, and a local one
@@ -268,6 +322,47 @@ harness_experiment_arms() {
   arms="$(jq -r --arg k "$key" '(.[$k] // {}) | to_entries[] | "\(.key) \(.value)"' "$1")" \
     || harness_die "$key in $1 must be an object of <label>: <full sha>"
   if [[ -n "$arms" ]]; then printf '%s\n' "$arms"; else printf -- '- -\n'; fi
+}
+
+# harness_arm_spec_path_ok <path> — a file path relative to the tree: not empty, not
+# absolute, no `..` component.
+harness_arm_spec_path_ok() {
+  local p="$1" part
+  [[ -n "$p" && "$p" != /* ]] || return 1
+  local IFS=/
+  for part in $p; do
+    [[ "$part" != ".." ]] || return 1
+  done
+  return 0
+}
+
+# harness_check_arm_spec_paths <base_arms json> <arm_spec_paths json> — dies on a bad pairing.
+harness_check_arm_spec_paths() {
+  local base="${1-}" paths="${2-}" label path labels
+  case "$paths" in ""|null|"{}") return 0 ;; esac
+  case "$base" in ""|null|"{}") harness_die "$HARNESS_ARM_SPEC_NEEDS_BASE_ARMS_MSG" ;; esac
+  printf '%s' "$paths" | jq -e 'type == "object" and all(.[]; type == "string")' >/dev/null 2>&1 \
+    || harness_die "$HARNESS_ARM_SPEC_PATHS_KEY must be an object of <label>: <path>"
+  labels="$(printf '%s' "$base" | jq -r 'keys_unsorted | join(" ")')"
+  while IFS= read -r label; do
+    printf '%s' "$base" | jq -e --arg l "$label" 'has($l)' >/dev/null 2>&1 \
+      || harness_die "$HARNESS_ARM_SPEC_PATHS_KEY: $label is not a base arm (base arms: $labels)"
+  done < <(printf '%s' "$paths" | jq -r 'keys_unsorted[]')
+  while IFS= read -r label; do
+    printf '%s' "$paths" | jq -e --arg l "$label" 'has($l)' >/dev/null 2>&1 \
+      || harness_die "$HARNESS_ARM_SPEC_PATHS_KEY: base arm $label has no spec path — give every base arm one, or none"
+  done < <(printf '%s' "$base" | jq -r 'keys_unsorted[]')
+  while IFS= read -r label; do
+    path="$(printf '%s' "$paths" | jq -r --arg l "$label" '.[$l]')"
+    harness_arm_spec_path_ok "$path" \
+      || harness_die "$HARNESS_ARM_SPEC_PATHS_KEY: $label: '$path' must be a file path relative to the tree, with no '..' component"
+  done < <(printf '%s' "$paths" | jq -r 'keys_unsorted[]')
+}
+
+# harness_arm_spec_path_for <arm_spec_paths json> <label> — the arm's spec path, or nothing.
+harness_arm_spec_path_for() {
+  case "${1-}" in ""|null) return 0 ;; esac
+  printf '%s' "$1" | jq -r --arg l "$2" '.[$l] // empty'
 }
 
 # ── Repositories by URL ──────────────────────────────────────────────────────
@@ -526,11 +621,8 @@ harness_forge_run() {
 harness_pin_agent_tooling() {
   local tree="$1" sha="$2" at="$3" short
   short="${sha:0:$PIN_SHORT_SHA_LEN}"
-  if ! git -C "$at" cat-file -e "$sha^{commit}" 2>/dev/null; then
-    git -C "$at" fetch -q origin 2>/dev/null || true
-    git -C "$at" cat-file -e "$sha^{commit}" 2>/dev/null \
-      || harness_die "agentTooling commit $sha is not in $at, even after a fetch"
-  fi
+  harness_resolve_commit "$at" "$sha" origin >/dev/null \
+    || harness_die "agentTooling commit $sha is not in $at, even after the fallbacks above"
   rm -rf "${tree:?}/$AGENT_TOOLING_RELPATH"
   mkdir -p "$tree/$AGENT_TOOLING_RELPATH"
   git -C "$at" archive "$sha" | tar -x -C "$tree/$AGENT_TOOLING_RELPATH" \
@@ -588,8 +680,12 @@ harness_claude() {
   # (the first real replayF2Direct run died exactly there; the runners avoid it only
   # because another flag happens to follow their tool args).
   # HARNESS_EFFORT, when set, rides on every call from here, so no call site names it.
-  local effort_args=()
+  # A caller that names its own --effort (the review stage) replaces it, never doubles it.
+  local effort_args=() arg
   [[ -z "$HARNESS_EFFORT" ]] || effort_args=(--effort "$HARNESS_EFFORT")
+  for arg in "$@"; do
+    [[ "$arg" != --effort ]] || { effort_args=(); break; }
+  done
   ( cd "$cwd" && "$HARNESS_CLAUDE_BIN" -p --output-format json ${effort_args[@]+"${effort_args[@]}"} "$@" < "$prompt_file" ) > "$out"
   local rc=$?
   return "$rc"
@@ -657,7 +753,7 @@ harness_fill_template() {
   # The program templates' multi-line values (FEATURES, RECORD_COMMANDS, DEPENDS,
   # METHOD_CHOICE) carry scalar placeholders too, so they go in before the scalars.
   for name in FACTS REVIEW_BRIEF FINDINGS_TEXT FEATURES RECORD_COMMANDS DEPENDS METHOD_CHOICE \
-              TREE BRANCH BASE SLUG SPEC_TREE SPEC_PATH SPEC_SECTIONS \
+              TREE BRANCH BASE SLUG SPEC_PROVENANCE SPEC_TREE SPEC_PATH SPEC_SECTIONS \
               GATE_COMMAND GATE_MINUTES FIXTURE SIBLINGS EXPERIMENTS_DIR \
               AGENT_TOOLING FINDINGS BRIEF \
               PROGRAM PROGRAM_SLUG PROGRAM_BRANCH PROGRAM_TREE ARM FEATURE_COUNT POSITION \
@@ -695,6 +791,13 @@ harness_build_isolation() {
   HARNESS_SIBLINGS="$siblings"
   HARNESS_TREE="$tree"
   HARNESS_ISOLATION="$(cat "$HARNESS_TEMPLATES_DIR/isolation.md")"
+  local source="${HARNESS_SPEC_SOURCE:-$HARNESS_SPEC_SOURCE_SHARED}" rule
+  case "$source" in
+    "$HARNESS_SPEC_SOURCE_SHARED") HARNESS_SPEC_PROVENANCE="$HARNESS_SPEC_PROVENANCE_SHARED"; rule="$HARNESS_SPEC_RULE_SHARED" ;;
+    "$HARNESS_SPEC_SOURCE_ARM")    HARNESS_SPEC_PROVENANCE="$HARNESS_SPEC_PROVENANCE_ARM";    rule="$HARNESS_SPEC_RULE_ARM" ;;
+    *) harness_die "unknown spec source: $source" ;;
+  esac
+  harness_replace_literal "$HARNESS_ISOLATION" '@@SPEC_RULE@@' "$rule"; HARNESS_ISOLATION="$HARNESS_REPLACED"
 }
 
 # ── Manifests ────────────────────────────────────────────────────────────────
@@ -780,6 +883,32 @@ harness_gate_counts() {
   printf '%s' "$HARNESS_REPLACED"
 }
 
+# ── Fixture setup and the acceptance probe ───────────────────────────────────
+# harness_fixture_setup <tree> <fixture.json> — every `setup[]` command, in order, run from
+# <tree>. The one copy of the loop: the setup stage, a no-PR resume that re-adds the
+# worktree (run.sh ensure_resume_trees) and check-fixture.sh's reference worktree all call
+# it, so a tree the probe or the gate runs in always has the fixture's environment (a
+# `.venv`, installed dependencies). Returns 1 at the first command that fails, naming it.
+harness_fixture_setup() {
+  local tree="$1" fixture_json="$2" cmd
+  while IFS= read -r cmd; do
+    [[ -n "$cmd" ]] || continue
+    harness_log "setup: $cmd"
+    if ! ( cd "$tree" && eval "$cmd" ); then
+      harness_warn "fixture setup command failed in $tree: $cmd"
+      return 1
+    fi
+  done < <(jq -r "$FIXTURE_SETUP_JQ" "$fixture_json")
+  return 0
+}
+
+# harness_run_accept_probe <fixture dir> <tree> <out> — the fixture's acceptance probe on
+# <tree>, its output (stdout and stderr) to <out>; returns the probe's exit status (0 pass).
+harness_run_accept_probe() {
+  local fixture_dir="$1" tree="$2" out="$3"
+  python3 "$fixture_dir/$ACCEPT_PROBE_RELPATH" "$tree" > "$out" 2>&1
+}
+
 # ── Findings ─────────────────────────────────────────────────────────────────
 harness_findings_path() { printf '%s/plans/features/%s/%s/%s' "$1" "$2" "$FINDINGS_RELDIR" "$FINDINGS_NAME"; }
 
@@ -843,21 +972,68 @@ harness_branch_pushed() {
   [[ -n "$(git -C "$1" ls-remote origin "refs/heads/$2" 2>/dev/null)" ]]
 }
 
-# harness_resolve_commit <repo> <ref> [<remote>] — prints the commit sha <ref> names in
-# <repo>. A fixture base can be a prep commit that is on no branch of main, so a clone has
-# it only once someone fetched its branch; when the ref does not resolve and looks like a
-# sha, fetch it by sha from the remote ONCE and retry. Fetching by sha creates and moves
-# no ref (it lands in FETCH_HEAD). Prints nothing and returns 1 when it still does not
-# resolve.
-harness_resolve_commit() {
+# The steps harness_resolve_commit_core takes, in order, once each, and what it reports
+# in HARNESS_RESOLVED_VIA. Every fetch lands in FETCH_HEAD or the remote-tracking refs;
+# none creates or moves a local branch or tag.
+RESOLVE_VIA_LOCAL="local"
+RESOLVE_VIA_SHA="sha"
+RESOLVE_VIA_DEEPEN="deepen"
+RESOLVE_VIA_PULL="pull"
+# The refspec of a forge's pull-request heads, fetched with no destination (FETCH_HEAD only).
+RESOLVE_PULL_REFSPEC="refs/pull/*/head"
+RESOLVE_SHA_RE='^[0-9a-fA-F]{7,40}$'
+
+# harness_resolve_commit_core <repo> <ref> [<remote>] — sets HARNESS_RESOLVED_SHA and
+# HARNESS_RESOLVED_VIA (which step found it) and returns 0, or returns 1 with
+# HARNESS_RESOLVE_TRIED naming what was tried. Runs in the caller's shell, so the "via"
+# survives (a `$(…)` would lose it). A fixture pin can be a prep commit on no branch of
+# main, older than a cloud clone's shallow depth, or reachable only through a PR head, so
+# a ref that does not resolve and looks like a sha is looked for in four steps: locally;
+# one fetch of that sha; one deepen of a shallow clone (--unshallow); one fetch of the
+# pull-request heads. A branch name or tag is only ever resolved locally.
+harness_resolve_commit_core() {
   local repo="$1" ref="$2" remote="${3:-origin}" sha
+  HARNESS_RESOLVED_SHA=""; HARNESS_RESOLVED_VIA=""; HARNESS_RESOLVE_TRIED="a local lookup"
   if sha="$(git -C "$repo" rev-parse --verify --quiet "${ref}^{commit}" 2>/dev/null)"; then
-    printf '%s' "$sha"; return 0
+    HARNESS_RESOLVED_SHA="$sha"; HARNESS_RESOLVED_VIA="$RESOLVE_VIA_LOCAL"; return 0
   fi
-  [[ "$ref" =~ ^[0-9a-fA-F]{7,40}$ ]] || return 1
-  git -C "$repo" fetch -q "$remote" "$ref" 2>/dev/null || return 1
-  sha="$(git -C "$repo" rev-parse --verify --quiet "${ref}^{commit}" 2>/dev/null)" || return 1
-  printf '%s' "$sha"
+  [[ "$ref" =~ $RESOLVE_SHA_RE ]] || return 1
+  HARNESS_RESOLVE_TRIED+=", git fetch $remote $ref"
+  if git -C "$repo" fetch -q "$remote" "$ref" 2>/dev/null \
+     && sha="$(git -C "$repo" rev-parse --verify --quiet "${ref}^{commit}" 2>/dev/null)"; then
+    HARNESS_RESOLVED_SHA="$sha"; HARNESS_RESOLVED_VIA="$RESOLVE_VIA_SHA"; return 0
+  fi
+  if [[ "$(git -C "$repo" rev-parse --is-shallow-repository 2>/dev/null)" == true ]]; then
+    HARNESS_RESOLVE_TRIED+=", git fetch --unshallow $remote"
+    # --no-tags: a deepen with the configured refspec would otherwise auto-follow every tag
+    # pointing into the history it brings, creating refs/tags/* the caller never asked for.
+    if git -C "$repo" fetch -q --no-tags --unshallow "$remote" 2>/dev/null \
+       && sha="$(git -C "$repo" rev-parse --verify --quiet "${ref}^{commit}" 2>/dev/null)"; then
+      HARNESS_RESOLVED_SHA="$sha"; HARNESS_RESOLVED_VIA="$RESOLVE_VIA_DEEPEN"; return 0
+    fi
+  fi
+  # A glob refspec needs a destination, which would create refs; so the heads are listed
+  # and fetched by exact name, in one fetch, into FETCH_HEAD alone.
+  HARNESS_RESOLVE_TRIED+=", git fetch $remote $RESOLVE_PULL_REFSPEC"
+  local pull_heads
+  pull_heads="$(git -C "$repo" ls-remote "$remote" "$RESOLVE_PULL_REFSPEC" 2>/dev/null | cut -f2)"
+  # shellcheck disable=SC2086 # ref names carry no whitespace; one word each is the point
+  if [[ -n "$pull_heads" ]] && git -C "$repo" fetch -q "$remote" $pull_heads 2>/dev/null \
+     && sha="$(git -C "$repo" rev-parse --verify --quiet "${ref}^{commit}" 2>/dev/null)"; then
+    HARNESS_RESOLVED_SHA="$sha"; HARNESS_RESOLVED_VIA="$RESOLVE_VIA_PULL"; return 0
+  fi
+  return 1
+}
+
+# harness_resolve_commit <repo> <ref> [<remote>] — prints the commit sha <ref> names in
+# <repo>, by the steps of harness_resolve_commit_core. Prints nothing and returns 1 when
+# none finds it, with a line on stderr naming the sha and what was tried.
+harness_resolve_commit() {
+  if harness_resolve_commit_core "$@"; then
+    printf '%s' "$HARNESS_RESOLVED_SHA"; return 0
+  fi
+  printf 'commit %s is not in %s; tried: %s\n' "$2" "$1" "$HARNESS_RESOLVE_TRIED" >&2
+  return 1
 }
 
 # ── State file ───────────────────────────────────────────────────────────────
@@ -896,6 +1072,33 @@ harness_state_intervention() {
   tmp="$file.tmp"
   jq --arg t "$(harness_utc_now)" --arg w "$what" \
      '.interventions = ((.interventions // []) + [{t: $t, what: $w}])' "$file" > "$tmp" && mv "$tmp" "$file"
+}
+
+# ── Experiment lock ──────────────────────────────────────────────────────────
+# A directory made with mkdir (atomic) holding the owner's pid. It lives under the git
+# common dir, not in the experiment's committed state/.
+HARNESS_LOCK_HELD=""
+
+harness_lock_acquire() {  # $1 lock dir
+  local dir="$1" pid_file pid
+  pid_file="$dir/$HARNESS_LOCK_PID_FILE"
+  mkdir -p "$(dirname "$dir")"
+  if ! mkdir "$dir" 2>/dev/null; then
+    pid="$(cat "$pid_file" 2>/dev/null || true)"
+    if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+      harness_die "a harness run for this experiment is in progress (pid $pid, lock $dir)"
+    fi
+    harness_warn "stale lock $dir (pid ${pid:-unreadable} is not running) — replacing it"
+  fi
+  printf '%s\n' "$$" > "$pid_file"
+  HARNESS_LOCK_HELD="$dir"
+}
+
+harness_lock_release() {
+  [[ -n "$HARNESS_LOCK_HELD" ]] || return 0
+  rm -f "$HARNESS_LOCK_HELD/$HARNESS_LOCK_PID_FILE"
+  rmdir "$HARNESS_LOCK_HELD" 2>/dev/null || true
+  HARNESS_LOCK_HELD=""
 }
 
 harness_version() { git -C "$AGENT_TOOLING_DIR" rev-parse HEAD 2>/dev/null || echo unknown; }

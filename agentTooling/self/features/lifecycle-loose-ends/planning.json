@@ -1,0 +1,70 @@
+{
+  "slug": "lifecycle-loose-ends",
+  "captured_at": "2026-11-04T03:09:16.281647+00:00",
+  "manifest_branches": [
+    "claude/lifecycle-loose-ends"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "0bdee13f-4529-543d-9210-2387d855b40e",
+      "git_branch": "claude/lifecycle-loose-ends",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-11-04",
+      "started_at": "2026-11-04T02:31:16.911000+00:00",
+      "ended_at": "2026-11-04T03:09:14.298000+00:00",
+      "duration_s": 2277
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "fb3532e8-7fa1-4fd1-be54-dfd8e9a1fd1d"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "0bdee13f-4529-543d-9210-2387d855b40e",
+      "agent_id": null,
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-04",
+      "duration_s": 2277,
+      "tokens": {
+        "input": 172,
+        "output": 54752,
+        "cache_read": 18022893,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 210514
+      },
+      "cost_usd": 3.1922093,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 3.1922093,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 3.1922093,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 2277,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": []
+}

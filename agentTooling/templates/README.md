@@ -11,6 +11,7 @@ plans/features/README.md     generated
 plans/features/TEMPLATE.md   generated
 plans/.gitignore             generated
 plans/ORCHESTRATOR_BRIEF.md  generated — the template an orchestrator fills in to brief one implementer session
+plans/ORCHESTRATOR_SESSION_BRIEF.md  generated — the template a human fills in to brief one orchestrator session
 plans/PROJECT_FACTS.md       repo-owned — seeded once from the skeleton, never overwritten
 plans/BACKLOG.md             repo-owned — seeded once, never overwritten
 plans/gate.sh                repo-owned — seeded once, never overwritten
@@ -21,6 +22,13 @@ plans/environment.sh         repo-owned — seeded once (not executable: it is s
 plans/cloud-setup.sh         repo-owned — seeded once, never overwritten
 ```
 
+`SECURITY_AUDIT.md`, beside this README rather than under `plans/`, is synced nowhere either:
+`../run-review.sh` copies it into a feature's `review/incomplete/` as `NN-audit-opus.md`,
+filling `{{NN}}`, `{{SLUG}}`, `{{DIFF_BASE}}` and `{{FILES}}`, when the feature's diff changes
+the hook (`../LIFECYCLE.md` → "The security audit"). It also carries the blocking /
+non-blocking ruling and the report shape (`## Findings` table, first column the class;
+`## Non-blocking findings`) that `../feature-close.sh` checks a clean report against.
+
 `plans/TEMPLATE_VERSIONS` is not synced anywhere: it is the version-and-hash table for
 the six repo-owned scripts, described under `template-version` below.
 
@@ -29,6 +37,11 @@ fills the copy in, so nobody edits it in `plans/`, and a change here reaches eve
 its next pull (`../LIFECYCLE.md` → "Orchestrator and implementer sessions"). It carries no
 `template-version` line and is not in `TEMPLATE_VERSIONS`, which is only for the
 repo-owned scripts; `../self/tests/orchestrator-brief.sh` holds its contents.
+`ORCHESTRATOR_SESSION_BRIEF.md` is generated the same way and for the same reason, one level
+up: a human copies it to brief the **orchestrator** session itself — its first command is
+`orchestration-start.sh`, which makes its session id the record's `session`, the role the
+lifecycle scripts and the hook then enforce (`../LIFECYCLE.md` → "Orchestrator and implementer
+sessions"); it holds nothing repo-specific and follows the scripts when they change.
 
 The six stubs are repo-agnostic on purpose, which is why overwriting them is safe — they
 hold nothing a repo could have customized. The five folder stubs each describe their
@@ -91,7 +104,7 @@ from the manifest's `base`, so a stacked feature targets the one beneath it with
 waiting for a merge. Version 4 added its **second entry point**, `pr.sh --merge-request
 <slug>`: the close calls it after the cost record has been committed and pushed, and it is
 the only place `PR_AUTO_MERGE` is read, so nothing can ask a forge to merge a branch whose
-record is not on it yet. The skeleton is at `template-version: 7`. Version 5 handed the
+record is not on it yet. The skeleton is at `template-version: 8`. Version 5 handed the
 GitHub part of the open path to `../forge.sh` — `pr-find`, else `pr-open`, over `gh api`
 REST — found through `FORGE_SCRIPT`, which `../feature-close.sh` exports, or
 `./agentTooling/forge.sh` from the repo root when run by hand; version 6 sends the merge
@@ -101,7 +114,10 @@ route in a Claude Code cloud container (`../env-profile.sh` decides which; no ad
 PR found or a refusal is a warning and exit 0, as before); version 7 rewrites the body of
 a PR an earlier round's close opened, through `forge.sh pr-edit`, instead of only saying
 "already open" — a refused refresh exits non-zero (`../README.md` → "Adopting pr.sh
-version 7"). It has no `gh auth status`
+version 7"); version 8 composes the body through `../conformance.py` when `../feature-close.sh`
+exports `CONFORMANCE_SCRIPT` (the Acceptance table first, then the deviations section,
+and `[deviations] ` in the title when that section is not None; an older caller sets
+neither and the PR is as before — `../README.md` → "Adopting pr.sh version 8"). It has no `gh auth status`
 probe: the only `skip` (exit 0) left is a repo with no forge CLI at all, and a forge that
 refuses is a non-zero exit. A repo on another forge replaces the `forge.sh` calls with its
 own CLI (`../README.md` → "Adopting the forge adapter"). `worktree-setup.sh` is a no-op skeleton whose comments list the common steps —

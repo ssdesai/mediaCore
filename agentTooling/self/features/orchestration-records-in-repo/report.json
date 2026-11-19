@@ -1,0 +1,232 @@
+{
+  "slug": "orchestration-records-in-repo",
+  "generated_at": "2026-11-13T02:36:48.448578+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 23.0274912,
+    "build": 23.0274912,
+    "verify": 0.0,
+    "review": 4.800765600000001,
+    "total": 27.828256800000002,
+    "planning_pct": 0.0,
+    "build_pct": 82.7485938680859,
+    "verify_pct": 0.0,
+    "review_pct": 17.251406131914095,
+    "cost_per_plan": 6.9570642000000005,
+    "cost_per_file": 3.9754652571428575,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 92360,
+    "planning_subagents_s": 65219,
+    "planning_s": 0.0,
+    "implementer_s": 157579,
+    "build_s": 157579.0,
+    "verify_s": 0.0,
+    "review_s": 589.515,
+    "executor_s": 158168.515,
+    "total_s": 158168.515,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-12T16:27:18+00:00",
+      "last_at": "2026-11-13T02:36:47+00:00",
+      "batch_span_s": 36569.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 604.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 676.0,
+      "plan_runs": 4,
+      "pr_opened_at": "2026-11-13T02:36:47+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/141"
+    },
+    "tests_s": null,
+    "direct_build_s": null,
+    "gate_s": null
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 23.0274912,
+      "build_min": 2626.3166666666666,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.420886,
+      "review_min": 1.9371333333333332,
+      "review_plan": "01-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/01-review-opus.md"
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.0992544000000004,
+      "review_min": 2.0522,
+      "review_plan": "02-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 3,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.2806252000000002,
+      "review_min": 5.835916666666666,
+      "review_plan": "03-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 14.987585600000001,
+    "sessions": 8.039905599999999
+  },
+  "cold_start_tax_tokens": 307417,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 4,
+      "total_turns": 98,
+      "total_cost_usd": 4.800765600000001,
+      "total_duration_s": 589.515,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "02-review-opus",
+      "edit_count": 6,
+      "files_edited": 4,
+      "churn_ratio": 1.5
+    },
+    {
+      "plan": "03-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "03-audit-opus",
+      "edit_count": 5,
+      "files_edited": 3,
+      "churn_ratio": 1.6666666666666667
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 64,
+      "loc_changed": 58
+    },
+    {
+      "plan": "02-review-opus",
+      "plan_md_lines": 50,
+      "loc_changed": 107
+    },
+    {
+      "plan": "03-review-opus",
+      "plan_md_lines": 37,
+      "loc_changed": 54
+    },
+    {
+      "plan": "03-audit-opus",
+      "plan_md_lines": 51,
+      "loc_changed": 421
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/home/user/agentTooling/self/gate-report.txt",
+      "tool": "Read",
+      "plans": [
+        "01-review-opus",
+        "02-review-opus"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-opus",
+      "edited_not_listed": [
+        "analysis/README.md",
+        "analysis/roots.py",
+        "orchestration-start.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "03-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "03-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.nNNFCJ/scratch/audit.py",
+        "/tmp/plan-capture.nNNFCJ/scratch/audit2.py",
+        "self/features/orchestration-records-in-repo/audit-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "orchestration-start.sh",
+      "earlier_plan": "02-review-opus",
+      "later_plan": "02-review-opus",
+      "overlap_chars": 57
+    },
+    {
+      "file": "/tmp/plan-capture.nNNFCJ/scratch/audit.py",
+      "earlier_plan": "03-audit-opus",
+      "later_plan": "03-audit-opus",
+      "overlap_chars": 65
+    },
+    {
+      "file": "self/features/orchestration-records-in-repo/audit-report.md",
+      "earlier_plan": "03-audit-opus",
+      "later_plan": "03-audit-opus",
+      "overlap_chars": 184
+    }
+  ],
+  "warnings": [],
+  "profile": "cloud",
+  "gate": "green"
+}

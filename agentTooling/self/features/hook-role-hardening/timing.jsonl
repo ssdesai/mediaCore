@@ -1,0 +1,29 @@
+{"at":"2026-11-12T00:52:35Z","event":"pass_start","queue":"review","round":"1"}
+{"at":"2026-11-12T00:52:35Z","event":"plan_start","plan":"01-audit-opus","queue":"review","round":"1"}
+{"at":"2026-11-12T00:59:16Z","event":"plan_start","plan":"01-review-opus","queue":"review","round":"1"}
+{"at":"2026-11-12T01:00:56Z","event":"plan_end","plan":"01-audit-opus","queue":"review","rc":"0","round":"1"}
+{"at":"2026-11-12T01:00:56Z","event":"plan_end","plan":"01-review-opus","queue":"review","rc":"0","verdict":"escalated","head":"39420dfa66884e7b60a907faf2b6e65e5dd9c3c6","round":"1"}
+{"at":"2026-11-12T01:00:57Z","event":"audit_end","plan":"01-audit-opus","verdict":"escalated","head":"39420dfa66884e7b60a907faf2b6e65e5dd9c3c6","round":"1"}
+{"at":"2026-11-12T01:00:57Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"1"}
+{"at":"2026-11-12T01:23:55Z","event":"pass_start","queue":"review","round":"2"}
+{"at":"2026-11-12T01:23:55Z","event":"plan_start","plan":"02-audit-opus","queue":"review","round":"2"}
+{"at":"2026-11-12T01:30:45Z","event":"plan_start","plan":"02-review-opus","queue":"review","round":"2"}
+{"at":"2026-11-12T01:35:53Z","event":"plan_end","plan":"02-audit-opus","queue":"review","rc":"0","round":"2"}
+{"at":"2026-11-12T01:35:53Z","event":"plan_end","plan":"02-review-opus","queue":"review","rc":"0","verdict":"clean","head":"d4351f4bd0ac52bbd775c17e74b8fc5ba2ef43cf","round":"2"}
+{"at":"2026-11-12T01:35:54Z","event":"audit_end","plan":"02-audit-opus","verdict":"escalated","head":"d4351f4bd0ac52bbd775c17e74b8fc5ba2ef43cf","round":"2"}
+{"at":"2026-11-12T01:35:54Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"2"}
+{"at":"2026-11-12T02:10:37Z","event":"pass_start","queue":"review","round":"3"}
+{"at":"2026-11-12T02:10:37Z","event":"plan_start","plan":"03-audit-opus","queue":"review","round":"3"}
+{"at":"2026-11-12T02:13:57Z","event":"plan_start","plan":"03-review-opus","queue":"review","round":"3"}
+{"at":"2026-11-12T02:23:45Z","event":"plan_end","plan":"03-audit-opus","queue":"review","rc":"0","round":"3"}
+{"at":"2026-11-12T02:23:45Z","event":"plan_end","plan":"03-review-opus","queue":"review","rc":"0","verdict":"clean","head":"33f075b783d7421a7f388d2ae83795cd2580fa99","round":"3"}
+{"at":"2026-11-12T02:23:46Z","event":"audit_end","plan":"03-audit-opus","verdict":"escalated","head":"33f075b783d7421a7f388d2ae83795cd2580fa99","round":"3"}
+{"at":"2026-11-12T02:23:46Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"3"}
+{"at":"2026-11-12T02:41:01Z","event":"pass_start","queue":"review","round":"4"}
+{"at":"2026-11-12T02:41:01Z","event":"plan_start","plan":"04-audit-opus","queue":"review","round":"4"}
+{"at":"2026-11-12T02:43:44Z","event":"plan_start","plan":"04-review-opus","queue":"review","round":"4"}
+{"at":"2026-11-12T02:44:32Z","event":"plan_end","plan":"04-audit-opus","queue":"review","rc":"0","round":"4"}
+{"at":"2026-11-12T02:44:32Z","event":"plan_end","plan":"04-review-opus","queue":"review","rc":"0","verdict":"clean","head":"9da8088e9f8169da5057643ea9bbce7a9edccccd","round":"4"}
+{"at":"2026-11-12T02:44:32Z","event":"audit_end","plan":"04-audit-opus","verdict":"clean","head":"9da8088e9f8169da5057643ea9bbce7a9edccccd","round":"4"}
+{"at":"2026-11-12T02:44:32Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"4"}
+{"at":"2026-11-12T02:44:46Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/140","round":"4"}

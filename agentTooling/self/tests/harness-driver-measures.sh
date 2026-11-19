@@ -188,7 +188,10 @@ git init -q "$CONSUMER"
 gitq "$CONSUMER" config user.email test@example.invalid
 gitq "$CONSUMER" config user.name test
 mkdir -p "$CONSUMER/agentTooling/analysis"
+mkdir -p "$CONSUMER/agentTooling/hooks" && cp "$HERE/hooks/shared_rules.py" "$CONSUMER/agentTooling/hooks/"  # roots.py imports it
 cp "$HERE"/analysis/*.py "$HERE/analysis/rates_history.json" "$CONSUMER/agentTooling/analysis/"
+# capture_planning.py reads the brief header from ../hooks/brief_header.py (README.md).
+mkdir -p "$CONSUMER/agentTooling/hooks" && cp "$HERE/hooks/brief_header.py" "$CONSUMER/agentTooling/hooks/brief_header.py"
 echo seed > "$CONSUMER/seed.txt"
 gitq "$CONSUMER" add -A
 gitq "$CONSUMER" commit -q -m seed
@@ -196,7 +199,9 @@ ARM="$CONSUMER-$BRANCH"
 gitq "$CONSUMER" worktree add -b "$BRANCH" "$ARM"
 # The arm's vendored copy is old: its rates table has no price for today's model.
 mkdir -p "$ARM/agentTooling/analysis"
+mkdir -p "$ARM/agentTooling/hooks" && cp "$HERE/hooks/shared_rules.py" "$ARM/agentTooling/hooks/"  # roots.py imports it
 cp "$HERE"/analysis/*.py "$ARM/agentTooling/analysis/"
+mkdir -p "$ARM/agentTooling/hooks" && cp "$HERE/hooks/brief_header.py" "$ARM/agentTooling/hooks/brief_header.py"
 jq --arg m "$MODEL" 'del(.models[$m])' "$HERE/analysis/rates_history.json" > "$ARM/agentTooling/analysis/rates_history.json"
 check "T4a. premise: the arm's rates lack $MODEL and the driver's have it" \
   'jq -e --arg m "$MODEL" ".models | has(\$m) | not" "$ARM/agentTooling/analysis/rates_history.json" >/dev/null && jq -e --arg m "$MODEL" ".models | has(\$m)" "$CONSUMER/agentTooling/analysis/rates_history.json" >/dev/null'

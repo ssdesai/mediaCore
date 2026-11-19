@@ -1,0 +1,13 @@
+write: /tmp/plan-capture.ykpPzB/scratch/setup.sh
+write: /tmp/plan-capture.ykpPzB/scratch/hook.py
+write: /tmp/plan-capture.ykpPzB/scratch/cases1.json
+edit: /tmp/plan-capture.ykpPzB/scratch/cases1.json
+write: /tmp/plan-capture.ykpPzB/scratch/m59.sh
+write: /tmp/plan-capture.ykpPzB/scratch/m59b.sh
+write: /tmp/plan-capture.ykpPzB/scratch/cases2.json
+edit: /tmp/plan-capture.ykpPzB/scratch/cases2.json
+write: /tmp/plan-capture.ykpPzB/scratch/start.sh
+write: /tmp/plan-capture.ykpPzB/scratch/start-all.sh
+write: /tmp/plan-capture.ykpPzB/scratch/cases3.json
+write: /tmp/plan-capture.ykpPzB/scratch/start2.sh
+write: /home/user/agentTooling/self/features/orchestration-start-branch-v2/audit-report.md

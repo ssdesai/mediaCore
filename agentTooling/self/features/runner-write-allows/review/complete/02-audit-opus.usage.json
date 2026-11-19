@@ -1,0 +1,84 @@
+{
+  "plan": "02-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "28c69bb9-517a-4afb-ac28-409dbb1e7023",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 54,
+  "duration_ms": 719642,
+  "total_cost_usd": 2.7394003,
+  "usage": {
+    "input_tokens": 70,
+    "cache_creation_input_tokens": 128358,
+    "cache_read_input_tokens": 3200803,
+    "output_tokens": 53586
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 3662,
+      "outputTokens": 19,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0003757,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 70,
+      "outputTokens": 53586,
+      "cacheReadInputTokens": 3200803,
+      "cacheCreationInputTokens": 128358,
+      "webSearchRequests": 0,
+      "costUSD": 2.7390246,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 18899,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 128358,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 28,
+    "Edit": 5,
+    "Read": 7,
+    "Write": 13
+  },
+  "files_edited": [
+    "/tmp/plan-capture.JJksds/scratch/attack.py",
+    "/tmp/plan-capture.JJksds/scratch/cases1.txt",
+    "/tmp/plan-capture.JJksds/scratch/cases2.txt",
+    "/tmp/plan-capture.JJksds/scratch/cases3.txt",
+    "/tmp/plan-capture.JJksds/scratch/cases4.txt",
+    "/tmp/plan-capture.JJksds/scratch/flags.py",
+    "/tmp/plan-capture.JJksds/scratch/glob.sh",
+    "/tmp/plan-capture.JJksds/scratch/globreal.sh",
+    "/tmp/plan-capture.JJksds/scratch/malformed.py",
+    "/tmp/plan-capture.JJksds/scratch/real.sh",
+    "/tmp/plan-capture.JJksds/scratch/setup.sh",
+    "/tmp/plan-capture.JJksds/scratch/table.py",
+    "self/features/runner-write-allows/audit-report.md"
+  ],
+  "edit_count": 18,
+  "attempts": [
+    {
+      "session_id": "28c69bb9-517a-4afb-ac28-409dbb1e7023",
+      "outcome": "complete",
+      "total_cost_usd": 2.7394003,
+      "num_turns": 54,
+      "duration_ms": 719642
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "plan": "04-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "d42856bf-1f54-41f1-9dd5-5f55c994ca77",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 25,
+  "duration_ms": 160481,
+  "total_cost_usd": 0.9361797,
+  "usage": {
+    "input_tokens": 30,
+    "cache_creation_input_tokens": 56508,
+    "cache_read_input_tokens": 906628,
+    "output_tokens": 15118
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 3006,
+      "outputTokens": 19,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.00031010000000000006,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 30,
+      "outputTokens": 15118,
+      "cacheReadInputTokens": 906628,
+      "cacheCreationInputTokens": 56508,
+      "webSearchRequests": 0,
+      "costUSD": 0.9358695999999999,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 6109,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 56508,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 11,
+    "Edit": 1,
+    "Read": 5,
+    "Write": 7
+  },
+  "files_edited": [
+    "/tmp/plan-capture.kHk6GV/scratch/cmds1.txt",
+    "/tmp/plan-capture.kHk6GV/scratch/cmds2.txt",
+    "/tmp/plan-capture.kHk6GV/scratch/cmds3.txt",
+    "/tmp/plan-capture.kHk6GV/scratch/probe.py",
+    "/tmp/plan-capture.kHk6GV/scratch/realdate.sh",
+    "/tmp/plan-capture.kHk6GV/scratch/setup.sh",
+    "self/features/hook-role-hardening/audit-report.md"
+  ],
+  "edit_count": 8,
+  "attempts": [
+    {
+      "session_id": "d42856bf-1f54-41f1-9dd5-5f55c994ca77",
+      "outcome": "complete",
+      "total_cost_usd": 0.9361797,
+      "num_turns": 25,
+      "duration_ms": 160481
+    }
+  ]
+}

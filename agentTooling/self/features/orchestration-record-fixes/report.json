@@ -1,0 +1,1027 @@
+{
+  "slug": "orchestration-record-fixes",
+  "generated_at": "2026-11-16T01:36:55.277855+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 32.7785828,
+    "build": 32.7785828,
+    "verify": 0.0,
+    "review": 34.255043199999996,
+    "total": 67.033626,
+    "planning_pct": 0.0,
+    "build_pct": 48.89871659337062,
+    "verify_pct": 0.0,
+    "review_pct": 51.101283406629385,
+    "cost_per_plan": 2.4827268888888887,
+    "cost_per_file": 0.47541578723404254,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 59816,
+    "planning_subagents_s": 1142,
+    "planning_s": 0.0,
+    "implementer_s": 60958,
+    "build_s": 60958.0,
+    "verify_s": 0.0,
+    "review_s": 6630.504,
+    "executor_s": 67588.504,
+    "total_s": 67588.504,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-11T16:20:11+00:00",
+      "last_at": "2026-11-14T03:33:30+00:00",
+      "batch_span_s": 213199.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 6699.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 8391.0,
+      "plan_runs": 27,
+      "pr_opened_at": "2026-11-14T03:33:30+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/139"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 32.7785828,
+      "build_min": 1015.9666666666667,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.6418672000000001,
+      "review_min": 1.3832,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 0.3557066,
+      "review_min": 0.45498333333333335,
+      "review_plan": "02-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 3,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.410709,
+      "review_min": 3.7884,
+      "review_plan": "03-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/03-review-opus.md"
+    },
+    {
+      "round": 4,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 3.8358265,
+      "review_min": 10.783383333333333,
+      "review_plan": "04-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/04-review-opus.md"
+    },
+    {
+      "round": 5,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.0798042,
+      "review_min": 6.550916666666668,
+      "review_plan": "05-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/05-review-opus.md"
+    },
+    {
+      "round": 6,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.1770551000000005,
+      "review_min": 6.2448,
+      "review_plan": "06-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/06-review-opus.md"
+    },
+    {
+      "round": 7,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.421765,
+      "review_min": 7.67315,
+      "review_plan": "07-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/07-review-opus.md"
+    },
+    {
+      "round": 8,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 3.1477721000000005,
+      "review_min": 10.779499999999999,
+      "review_plan": "08-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/08-review-opus.md"
+    },
+    {
+      "round": 9,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 3.2906181,
+      "review_min": 22.8532,
+      "review_plan": "09-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 10,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.1655954,
+      "review_min": 5.999783333333333,
+      "review_plan": "10-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 11,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.2899540000000003,
+      "review_min": 6.6267499999999995,
+      "review_plan": "11-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 12,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 3.2837847,
+      "review_min": 9.526516666666666,
+      "review_plan": "12-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 13,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.0941232999999997,
+      "review_min": 5.513450000000001,
+      "review_plan": "13-review-opus",
+      "verdict": "escalated",
+      "escalations_file": "escalations/13-review-opus.md"
+    },
+    {
+      "round": 14,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.7378108,
+      "review_min": 6.44835,
+      "review_plan": "14-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 15,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.3226512,
+      "review_min": 5.882016666666666,
+      "review_plan": "15-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 5.689267,
+    "sessions": 27.0893158
+  },
+  "cold_start_tax_tokens": 1867836,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 27,
+      "total_turns": 802,
+      "total_cost_usd": 34.2550432,
+      "total_duration_s": 6630.504,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 3,
+      "files_edited": 3,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "02-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "03-review-opus",
+      "edit_count": 12,
+      "files_edited": 10,
+      "churn_ratio": 1.2
+    },
+    {
+      "plan": "04-review-opus",
+      "edit_count": 14,
+      "files_edited": 9,
+      "churn_ratio": 1.5555555555555556
+    },
+    {
+      "plan": "04-audit-opus",
+      "edit_count": 7,
+      "files_edited": 7,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "05-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "05-audit-opus",
+      "edit_count": 10,
+      "files_edited": 9,
+      "churn_ratio": 1.1111111111111112
+    },
+    {
+      "plan": "06-review-opus",
+      "edit_count": 3,
+      "files_edited": 3,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "06-audit-opus",
+      "edit_count": 9,
+      "files_edited": 7,
+      "churn_ratio": 1.2857142857142858
+    },
+    {
+      "plan": "07-review-opus",
+      "edit_count": 5,
+      "files_edited": 4,
+      "churn_ratio": 1.25
+    },
+    {
+      "plan": "07-audit-opus",
+      "edit_count": 12,
+      "files_edited": 10,
+      "churn_ratio": 1.2
+    },
+    {
+      "plan": "08-review-opus",
+      "edit_count": 6,
+      "files_edited": 4,
+      "churn_ratio": 1.5
+    },
+    {
+      "plan": "08-audit-opus",
+      "edit_count": 21,
+      "files_edited": 17,
+      "churn_ratio": 1.2352941176470589
+    },
+    {
+      "plan": "09-review-opus",
+      "edit_count": 7,
+      "files_edited": 5,
+      "churn_ratio": 1.4
+    },
+    {
+      "plan": "09-audit-opus",
+      "edit_count": 13,
+      "files_edited": 10,
+      "churn_ratio": 1.3
+    },
+    {
+      "plan": "10-review-opus",
+      "edit_count": 3,
+      "files_edited": 3,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "10-audit-opus",
+      "edit_count": 11,
+      "files_edited": 10,
+      "churn_ratio": 1.1
+    },
+    {
+      "plan": "11-review-opus",
+      "edit_count": 4,
+      "files_edited": 3,
+      "churn_ratio": 1.3333333333333333
+    },
+    {
+      "plan": "11-audit-opus",
+      "edit_count": 11,
+      "files_edited": 9,
+      "churn_ratio": 1.2222222222222223
+    },
+    {
+      "plan": "12-review-opus",
+      "edit_count": 4,
+      "files_edited": 4,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "12-audit-opus",
+      "edit_count": 13,
+      "files_edited": 12,
+      "churn_ratio": 1.0833333333333333
+    },
+    {
+      "plan": "13-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "13-audit-opus",
+      "edit_count": 6,
+      "files_edited": 6,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "14-review-opus",
+      "edit_count": 5,
+      "files_edited": 2,
+      "churn_ratio": 2.5
+    },
+    {
+      "plan": "14-audit-opus",
+      "edit_count": 11,
+      "files_edited": 10,
+      "churn_ratio": 1.1
+    },
+    {
+      "plan": "15-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "15-audit-opus",
+      "edit_count": 9,
+      "files_edited": 7,
+      "churn_ratio": 1.2857142857142858
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 51,
+      "loc_changed": 81
+    },
+    {
+      "plan": "02-review-opus",
+      "plan_md_lines": 31,
+      "loc_changed": 47
+    },
+    {
+      "plan": "03-review-opus",
+      "plan_md_lines": 42,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "04-review-opus",
+      "plan_md_lines": 43,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "04-audit-opus",
+      "plan_md_lines": 42,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "05-review-opus",
+      "plan_md_lines": 40,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "05-audit-opus",
+      "plan_md_lines": 42,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "06-review-opus",
+      "plan_md_lines": 40,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "06-audit-opus",
+      "plan_md_lines": 42,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "07-review-opus",
+      "plan_md_lines": 43,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "07-audit-opus",
+      "plan_md_lines": 42,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "08-review-opus",
+      "plan_md_lines": 45,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "08-audit-opus",
+      "plan_md_lines": 42,
+      "loc_changed": "not computed: streams unavailable"
+    },
+    {
+      "plan": "09-review-opus",
+      "plan_md_lines": 51,
+      "loc_changed": 227
+    },
+    {
+      "plan": "09-audit-opus",
+      "plan_md_lines": 42,
+      "loc_changed": 584
+    },
+    {
+      "plan": "10-review-opus",
+      "plan_md_lines": 41,
+      "loc_changed": 154
+    },
+    {
+      "plan": "10-audit-opus",
+      "plan_md_lines": 42,
+      "loc_changed": 409
+    },
+    {
+      "plan": "11-review-opus",
+      "plan_md_lines": 43,
+      "loc_changed": 163
+    },
+    {
+      "plan": "11-audit-opus",
+      "plan_md_lines": 42,
+      "loc_changed": 474
+    },
+    {
+      "plan": "12-review-opus",
+      "plan_md_lines": 49,
+      "loc_changed": 173
+    },
+    {
+      "plan": "12-audit-opus",
+      "plan_md_lines": 41,
+      "loc_changed": 634
+    },
+    {
+      "plan": "13-review-opus",
+      "plan_md_lines": 47,
+      "loc_changed": 123
+    },
+    {
+      "plan": "13-audit-opus",
+      "plan_md_lines": 41,
+      "loc_changed": 403
+    },
+    {
+      "plan": "14-review-opus",
+      "plan_md_lines": 59,
+      "loc_changed": 147
+    },
+    {
+      "plan": "14-audit-opus",
+      "plan_md_lines": 41,
+      "loc_changed": 607
+    },
+    {
+      "plan": "15-review-opus",
+      "plan_md_lines": 25,
+      "loc_changed": 58
+    },
+    {
+      "plan": "15-audit-opus",
+      "plan_md_lines": 41,
+      "loc_changed": 508
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/home/user/agentTooling/hooks/README.md",
+      "tool": "Read",
+      "plans": [
+        "10-review-opus",
+        "14-audit-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/hooks/allow-repo-commands.sh",
+      "tool": "Read",
+      "plans": [
+        "09-audit-opus",
+        "09-review-opus",
+        "10-audit-opus",
+        "10-review-opus",
+        "11-audit-opus",
+        "11-review-opus",
+        "13-audit-opus",
+        "13-review-opus",
+        "14-audit-opus",
+        "14-review-opus",
+        "15-audit-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/hooks/orchestrator_role.py",
+      "tool": "Read",
+      "plans": [
+        "09-audit-opus",
+        "13-audit-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/self/features/orchestration-record-fixes/NOTES.md",
+      "tool": "Read",
+      "plans": [
+        "14-audit-opus",
+        "14-review-opus"
+      ]
+    },
+    {
+      "target": "/home/user/agentTooling/self/features/orchestration-record-fixes/audit-report.md",
+      "tool": "Read",
+      "plans": [
+        "10-audit-opus",
+        "11-audit-opus",
+        "13-audit-opus",
+        "14-audit-opus",
+        "15-audit-opus"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "analysis/README.md",
+        "analysis/report.py",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-opus",
+      "edited_not_listed": [
+        "self/features/orchestration-record-fixes/README.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "03-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.t8jhTg/scratch/base.py",
+        "/tmp/plan-capture.t8jhTg/scratch/cmds1.txt",
+        "/tmp/plan-capture.t8jhTg/scratch/cmds2.txt",
+        "/tmp/plan-capture.t8jhTg/scratch/cmds3.txt",
+        "/tmp/plan-capture.t8jhTg/scratch/cmds4.txt",
+        "/tmp/plan-capture.t8jhTg/scratch/cmds5.txt",
+        "/tmp/plan-capture.t8jhTg/scratch/probe.py",
+        "hooks/allow-repo-commands.sh",
+        "self/features/orchestration-record-fixes/README.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "04-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.JFyHkf/scratch/assign.py",
+        "/tmp/plan-capture.JFyHkf/scratch/build_judge.py",
+        "/tmp/plan-capture.JFyHkf/scratch/cmds.txt",
+        "/tmp/plan-capture.JFyHkf/scratch/cmds2.txt",
+        "/tmp/plan-capture.JFyHkf/scratch/cmds3.txt",
+        "/tmp/plan-capture.JFyHkf/scratch/extract.py",
+        "/tmp/plan-capture.JFyHkf/scratch/probe.py",
+        "hooks/README.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "04-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.MMZErn/scratch/bashcheck.sh",
+        "/tmp/plan-capture.MMZErn/scratch/driver.py",
+        "/tmp/plan-capture.MMZErn/scratch/malformed.py",
+        "/tmp/plan-capture.MMZErn/scratch/p1.json",
+        "/tmp/plan-capture.MMZErn/scratch/p2.json",
+        "/tmp/plan-capture.MMZErn/scratch/p3.json",
+        "self/features/orchestration-record-fixes/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "05-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.mvy9Ey/scratch/drive.py",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "05-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.BsH7wj/scratch/bashcheck.sh",
+        "/tmp/plan-capture.BsH7wj/scratch/c1.json",
+        "/tmp/plan-capture.BsH7wj/scratch/c2.json",
+        "/tmp/plan-capture.BsH7wj/scratch/c3.json",
+        "/tmp/plan-capture.BsH7wj/scratch/c4.json",
+        "/tmp/plan-capture.BsH7wj/scratch/fixture.py",
+        "/tmp/plan-capture.BsH7wj/scratch/run.py",
+        "/tmp/plan-capture.BsH7wj/scratch/why.py",
+        "self/features/orchestration-record-fixes/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "06-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.YEWzCO/scratch/drive.py",
+        "/tmp/plan-capture.YEWzCO/scratch/reason.py",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "06-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.bvpezK/scratch/bashcheck.sh",
+        "/tmp/plan-capture.bvpezK/scratch/bashcheck2.sh",
+        "/tmp/plan-capture.bvpezK/scratch/cases1.json",
+        "/tmp/plan-capture.bvpezK/scratch/cases2.json",
+        "/tmp/plan-capture.bvpezK/scratch/harness.py",
+        "/tmp/plan-capture.bvpezK/scratch/malformed.py",
+        "self/features/orchestration-record-fixes/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "07-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.rPFQpB/scratch/cases2.txt",
+        "/tmp/plan-capture.rPFQpB/scratch/probe.py",
+        "hooks/allow-repo-commands.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "07-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.hPsVtB/scratch/b1.txt",
+        "/tmp/plan-capture.hPsVtB/scratch/b2.txt",
+        "/tmp/plan-capture.hPsVtB/scratch/b3.txt",
+        "/tmp/plan-capture.hPsVtB/scratch/b4.txt",
+        "/tmp/plan-capture.hPsVtB/scratch/bashcheck.sh",
+        "/tmp/plan-capture.hPsVtB/scratch/bashcheck2.sh",
+        "/tmp/plan-capture.hPsVtB/scratch/harness.py",
+        "/tmp/plan-capture.hPsVtB/scratch/malformed.py",
+        "/tmp/plan-capture.hPsVtB/scratch/reason.py",
+        "self/features/orchestration-record-fixes/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "08-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.3qP1ph/scratch/probe.py",
+        "/tmp/plan-capture.3qP1ph/scratch/regex.py",
+        "hooks/allow-repo-commands.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "08-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.Dck4Sp/scratch/cases1.txt",
+        "/tmp/plan-capture.Dck4Sp/scratch/cases2.txt",
+        "/tmp/plan-capture.Dck4Sp/scratch/cases3.txt",
+        "/tmp/plan-capture.Dck4Sp/scratch/cases4.txt",
+        "/tmp/plan-capture.Dck4Sp/scratch/drive.py",
+        "/tmp/plan-capture.Dck4Sp/scratch/fuzz.py",
+        "/tmp/plan-capture.Dck4Sp/scratch/gt.py",
+        "/tmp/plan-capture.Dck4Sp/scratch/mkstub.sh",
+        "/tmp/plan-capture.Dck4Sp/scratch/one.py",
+        "/tmp/plan-capture.Dck4Sp/scratch/payloads.py",
+        "/tmp/plan-capture.Dck4Sp/scratch/probe.py",
+        "/tmp/plan-capture.Dck4Sp/scratch/probe1.txt",
+        "/tmp/plan-capture.Dck4Sp/scratch/probe2.txt",
+        "/tmp/plan-capture.Dck4Sp/scratch/reasons.py",
+        "/tmp/plan-capture.Dck4Sp/scratch/setup-base.sh",
+        "/tmp/plan-capture.Dck4Sp/scratch/setup.sh",
+        "self/features/orchestration-record-fixes/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "09-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.Ioql8Q/scratch/cmp.py",
+        "/tmp/plan-capture.Ioql8Q/scratch/probes.txt",
+        "/tmp/plan-capture.Ioql8Q/scratch/probes2.txt",
+        "hooks/allow-repo-commands.sh",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "09-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.28k3NN/scratch/bs.py",
+        "/tmp/plan-capture.28k3NN/scratch/cases1.jsonl",
+        "/tmp/plan-capture.28k3NN/scratch/cases2.jsonl",
+        "/tmp/plan-capture.28k3NN/scratch/cases3.jsonl",
+        "/tmp/plan-capture.28k3NN/scratch/cases4.jsonl",
+        "/tmp/plan-capture.28k3NN/scratch/fuzz.py",
+        "/tmp/plan-capture.28k3NN/scratch/run.py",
+        "/tmp/plan-capture.28k3NN/scratch/setup.sh",
+        "/tmp/plan-capture.28k3NN/scratch/unreadable.py",
+        "self/features/orchestration-record-fixes/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "10-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.8kx58o/scratch/drive.py",
+        "/tmp/plan-capture.8kx58o/scratch/judge.py",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "10-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.WQPPAi/scratch/build_cases.json",
+        "/tmp/plan-capture.WQPPAi/scratch/build_cases2.json",
+        "/tmp/plan-capture.WQPPAi/scratch/build_cases3.json",
+        "/tmp/plan-capture.WQPPAi/scratch/build_cases4.json",
+        "/tmp/plan-capture.WQPPAi/scratch/dbg.py",
+        "/tmp/plan-capture.WQPPAi/scratch/driver.py",
+        "/tmp/plan-capture.WQPPAi/scratch/git_cases.json",
+        "/tmp/plan-capture.WQPPAi/scratch/run.py",
+        "/tmp/plan-capture.WQPPAi/scratch/setup.sh",
+        "self/features/orchestration-record-fixes/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "11-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.lL03AR/scratch/cmp.py",
+        "/tmp/plan-capture.lL03AR/scratch/full.py",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "11-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.J0fADf/scratch/bashcheck.sh",
+        "/tmp/plan-capture.J0fADf/scratch/build.txt",
+        "/tmp/plan-capture.J0fADf/scratch/driver.py",
+        "/tmp/plan-capture.J0fADf/scratch/fdcheck.sh",
+        "/tmp/plan-capture.J0fADf/scratch/git.txt",
+        "/tmp/plan-capture.J0fADf/scratch/more.txt",
+        "/tmp/plan-capture.J0fADf/scratch/run_one.py",
+        "/tmp/plan-capture.J0fADf/scratch/setup.sh",
+        "self/features/orchestration-record-fixes/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "12-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.Eli1ej/scratch/cmds.txt",
+        "/tmp/plan-capture.Eli1ej/scratch/drive.py",
+        "analysis/README.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "12-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.WAcSDk/scratch/bashcheck.sh",
+        "/tmp/plan-capture.WAcSDk/scratch/build.json",
+        "/tmp/plan-capture.WAcSDk/scratch/build2.json",
+        "/tmp/plan-capture.WAcSDk/scratch/chdir.json",
+        "/tmp/plan-capture.WAcSDk/scratch/direct.py",
+        "/tmp/plan-capture.WAcSDk/scratch/flow-build.json",
+        "/tmp/plan-capture.WAcSDk/scratch/flow.json",
+        "/tmp/plan-capture.WAcSDk/scratch/git.json",
+        "/tmp/plan-capture.WAcSDk/scratch/run.py",
+        "/tmp/plan-capture.WAcSDk/scratch/setup.sh",
+        "/tmp/plan-capture.WAcSDk/scratch/unr/.git",
+        "self/features/orchestration-record-fixes/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "13-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.JqwqAl/scratch/probe.py",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "13-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.XlhhS3/scratch/bashcheck.py",
+        "/tmp/plan-capture.XlhhS3/scratch/cases.json",
+        "/tmp/plan-capture.XlhhS3/scratch/drive.py",
+        "/tmp/plan-capture.XlhhS3/scratch/gitcases.json",
+        "/tmp/plan-capture.XlhhS3/scratch/repeat.py",
+        "self/features/orchestration-record-fixes/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "14-review-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.pPA3sD/scratch/probe.py",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "14-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.bib6rk/scratch/cases.txt",
+        "/tmp/plan-capture.bib6rk/scratch/cases2.txt",
+        "/tmp/plan-capture.bib6rk/scratch/cases3.txt",
+        "/tmp/plan-capture.bib6rk/scratch/drive.py",
+        "/tmp/plan-capture.bib6rk/scratch/extract.sh",
+        "/tmp/plan-capture.bib6rk/scratch/mkcases.py",
+        "/tmp/plan-capture.bib6rk/scratch/real.txt",
+        "/tmp/plan-capture.bib6rk/scratch/realbash.sh",
+        "/tmp/plan-capture.bib6rk/scratch/replay.sh",
+        "self/features/orchestration-record-fixes/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "15-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "15-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.BoD6v2/scratch/bashcheck.sh",
+        "/tmp/plan-capture.BoD6v2/scratch/cases.json",
+        "/tmp/plan-capture.BoD6v2/scratch/cases2.json",
+        "/tmp/plan-capture.BoD6v2/scratch/cases3.json",
+        "/tmp/plan-capture.BoD6v2/scratch/compare.py",
+        "/tmp/plan-capture.BoD6v2/scratch/drive.py",
+        "self/features/orchestration-record-fixes/audit-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "/tmp/plan-capture.28k3NN/scratch/run.py",
+      "earlier_plan": "09-audit-opus",
+      "later_plan": "09-audit-opus",
+      "overlap_chars": 58
+    },
+    {
+      "file": "/tmp/plan-capture.28k3NN/scratch/unreadable.py",
+      "earlier_plan": "09-audit-opus",
+      "later_plan": "09-audit-opus",
+      "overlap_chars": 86
+    },
+    {
+      "file": "self/features/orchestration-record-fixes/audit-report.md",
+      "earlier_plan": "09-audit-opus",
+      "later_plan": "09-audit-opus",
+      "overlap_chars": 164
+    },
+    {
+      "file": "/tmp/plan-capture.WQPPAi/scratch/run.py",
+      "earlier_plan": "10-audit-opus",
+      "later_plan": "10-audit-opus",
+      "overlap_chars": 80
+    },
+    {
+      "file": "self/review-report.md",
+      "earlier_plan": "11-review-opus",
+      "later_plan": "11-review-opus",
+      "overlap_chars": 133
+    },
+    {
+      "file": "/tmp/plan-capture.J0fADf/scratch/driver.py",
+      "earlier_plan": "11-audit-opus",
+      "later_plan": "11-audit-opus",
+      "overlap_chars": 150
+    },
+    {
+      "file": "self/features/orchestration-record-fixes/audit-report.md",
+      "earlier_plan": "11-audit-opus",
+      "later_plan": "11-audit-opus",
+      "overlap_chars": 58
+    },
+    {
+      "file": "/tmp/plan-capture.pPA3sD/scratch/probe.py",
+      "earlier_plan": "14-review-opus",
+      "later_plan": "14-review-opus",
+      "overlap_chars": 48
+    },
+    {
+      "file": "/tmp/plan-capture.pPA3sD/scratch/probe.py",
+      "earlier_plan": "14-review-opus",
+      "later_plan": "14-review-opus",
+      "overlap_chars": 83
+    },
+    {
+      "file": "/tmp/plan-capture.bib6rk/scratch/drive.py",
+      "earlier_plan": "14-audit-opus",
+      "later_plan": "14-audit-opus",
+      "overlap_chars": 166
+    }
+  ],
+  "warnings": [
+    "priced from LiteLLM live (litellm-live), not from analysis/rates_history.json: claude-fable-5-2 \u2014 refresh the history with analysis/refresh_rates.py in an agentTooling self feature, then capture_planning.py --recapture this feature"
+  ],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and this feature stamped no `checkpoint` event \u2014 nothing divides it by round, so all of it sits in round 1"
+    }
+  ],
+  "profile": "cloud",
+  "gate": "green",
+  "carried": {
+    "rows": 3,
+    "captured_at": [
+      "2026-11-11T16:23:25.346010+00:00",
+      "2026-11-14T03:33:31.131127+00:00"
+    ]
+  }
+}

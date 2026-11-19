@@ -11,8 +11,7 @@ the PR. **One shot — you will not be resumed.**
 
 ## Read, in this order
 
-1. `@@SPEC_TREE@@/@@SPEC_PATH@@`, sections **@@SPEC_SECTIONS@@** — read-only, checked
-   out detached at the commit this experiment pins. This is the spec you implement. It
+1. `@@SPEC_TREE@@/@@SPEC_PATH@@`, sections **@@SPEC_SECTIONS@@** — read-only, @@SPEC_PROVENANCE@@. This is the spec you implement. It
    pins names; use them exactly.
 2. `<tree>/CLAUDE.md` (it imports `agentTooling/CONVENTIONS.md` — the README rules and
    the named-constants rule are binding on this diff).

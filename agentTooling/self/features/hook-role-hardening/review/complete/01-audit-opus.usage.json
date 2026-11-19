@@ -1,0 +1,80 @@
+{
+  "plan": "01-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "8a131145-5df0-44af-8626-98f9321f266b",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 34,
+  "duration_ms": 397850,
+  "total_cost_usd": 2.3208121999999998,
+  "usage": {
+    "input_tokens": 50,
+    "cache_creation_input_tokens": 128964,
+    "cache_read_input_tokens": 2637659,
+    "output_tokens": 38053
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 2989,
+      "outputTokens": 19,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0003084,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 50,
+      "outputTokens": 38053,
+      "cacheReadInputTokens": 2637659,
+      "cacheCreationInputTokens": 128964,
+      "webSearchRequests": 0,
+      "costUSD": 2.3205038,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 19281,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 128964,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 19,
+    "Read": 4,
+    "Write": 10
+  },
+  "files_edited": [
+    "/tmp/plan-capture.WwybPB/scratch/auditpaths.sh",
+    "/tmp/plan-capture.WwybPB/scratch/p1.txt",
+    "/tmp/plan-capture.WwybPB/scratch/p2.txt",
+    "/tmp/plan-capture.WwybPB/scratch/payloads.py",
+    "/tmp/plan-capture.WwybPB/scratch/probe.py",
+    "/tmp/plan-capture.WwybPB/scratch/role.sh",
+    "/tmp/plan-capture.WwybPB/scratch/setup.sh",
+    "/tmp/plan-capture.WwybPB/scratch/uniq-demo.sh",
+    "/tmp/plan-capture.WwybPB/scratch/unreadable.sh",
+    "self/features/hook-role-hardening/audit-report.md"
+  ],
+  "edit_count": 10,
+  "attempts": [
+    {
+      "session_id": "8a131145-5df0-44af-8626-98f9321f266b",
+      "outcome": "complete",
+      "total_cost_usd": 2.3208121999999998,
+      "num_turns": 34,
+      "duration_ms": 397850
+    }
+  ]
+}

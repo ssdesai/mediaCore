@@ -153,12 +153,48 @@ for f in ["gate.sh", "check-plans.sh", "report.py"]:
     open(os.path.join(OUTSIDE, f), "w").close()
 os.symlink(OUTSIDE, os.path.join(ROOT, "link-out"))
 
+# runner-write-allows (F9): a file or link that only carries a script's name. `dir/analysis/`
+# and `x/` hold planted copies at paths that are not `<root>/analysis/` or `<root>/
+# agentTooling/analysis/`; `linked/` holds symlinks to the real scripts inside the root,
+# `alink` is a symlink to the real `analysis/` directory and `glink` one to `self/`.
+for d in ["dir/analysis", "x", "linked"]:
+    os.makedirs(os.path.join(ROOT, d))
+for f in ["dir/analysis/report.py", "x/report.py", "x/manifest.py", "x/capture_planning.py"]:
+    open(os.path.join(ROOT, f), "w").close()
+os.symlink(os.path.join(ROOT, "analysis/report.py"), os.path.join(ROOT, "linked/report.py"))
+os.symlink(os.path.join(ROOT, "analysis/manifest.py"), os.path.join(ROOT, "linked/manifest.py"))
+os.symlink(os.path.join(ROOT, "self/gate.sh"), os.path.join(ROOT, "linked/gate.sh"))
+os.symlink(os.path.join(ROOT, "check-plans.sh"), os.path.join(ROOT, "linked/check-plans.sh"))
+os.symlink(os.path.join(ROOT, "analysis"), os.path.join(ROOT, "alink"))
+os.symlink(os.path.join(ROOT, "self"), os.path.join(ROOT, "glink"))
+# an `@file` argument file and a settings file that is a directory, not a regular file
+open(os.path.join(ROOT, "args.txt"), "w").close()
 
-def decide(payload, root=ROOT, env_root=True):
+# hook-silent-allow-sweep (item 6): the analysis pin is the ONE directory beside the running
+# hook, so the hook is vendored into the fixture in both shapes — `<root>/hooks/` (this
+# checkout's own: pins `analysis/`) is the hook every case runs, and `<root>/agentTooling/
+# hooks/` (a consuming repo's: pins `agentTooling/analysis/`) runs the vendored spellings.
+# Planted same-basename gate and check-plans files, and settings files under names ruff and
+# mypy would not discover (item 5), sit beside them.
+import shutil
+for dest in (os.path.join(ROOT, "hooks"), os.path.join(ROOT, "agentTooling", "hooks")):
+    shutil.copytree(os.path.dirname(HOOK), dest,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+HOOK_VENDORED = os.path.join(ROOT, "agentTooling", "hooks", os.path.basename(HOOK))
+HOOK = os.path.join(ROOT, "hooks", os.path.basename(HOOK))
+VENDORED_PIN = "agentTooling/analysis/"
+for f in ["x/gate.sh", "x/check-plans.sh", "dir/gate.sh", "fix.toml", "cfg.ini", "ruff.toml",
+          "mypy.ini", "setup.cfg", "dir/pyproject.toml"]:
+    open(os.path.join(ROOT, f), "w").close()
+os.symlink(os.path.join(ROOT, "fix.toml"), os.path.join(ROOT, "dir", "ruff.toml"))
+
+
+def decide(payload, root=ROOT, env_root=True, hook=None):
     env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PROJECT_DIR"}
     if env_root:
         env["CLAUDE_PROJECT_DIR"] = root
-    p = subprocess.run([HOOK], input=json.dumps(payload), capture_output=True, text=True, env=env)
+    p = subprocess.run([hook or HOOK], input=json.dumps(payload), capture_output=True, text=True,
+                       env=env)
     if p.returncode != 0:
         return "ERR"
     if not p.stdout.strip():
@@ -170,8 +206,21 @@ def decide(payload, root=ROOT, env_root=True):
     return {"deny": "DENY", "allow": "ALLOW", "ask": "ASK"}.get(decision, "ERR")
 
 
-def run(cmd, cwd=ROOT, root=ROOT):
-    return decide({"tool_name": "Bash", "cwd": cwd, "tool_input": {"command": cmd}}, root)
+def run(cmd, cwd=ROOT, root=ROOT, hook=None):
+    return decide({"tool_name": "Bash", "cwd": cwd, "tool_input": {"command": cmd}}, root,
+                  hook=hook)
+
+
+def run_pinned(cmd):
+    """A case that names the vendored analysis/ runs under the vendored hook, which pins it;
+    every other case under the checkout's own."""
+    return run(cmd, hook=HOOK_VENDORED if VENDORED_PIN in cmd else HOOK)
+
+
+def run_both(cmd):
+    """A prompt case must prompt under both hooks: the answer that is not a prompt, if any."""
+    own, vendored = run(cmd), run(cmd, hook=HOOK_VENDORED)
+    return own if own != "prompt" else vendored
 
 
 def hook_output(cmd, cwd=ROOT, root=ROOT):
@@ -249,9 +298,6 @@ ALLOW = [
 ENTRY_ALLOW = [
     "plans/gate.sh", "./plans/gate.sh", "plans/gate.sh 08", "self/gate.sh", "./self/gate.sh",
     "self/gate.sh 12", f"{ROOT}/self/gate.sh",
-    # The approved twin of the bare `gate.sh` in ENTRY_PROMPT: the same root file, with
-    # the directory component the bare form lacks
-    "./gate.sh", "./gate.sh 08",
     "./check-plans.sh --self a-slug",
     "agentTooling/check-plans.sh a-slug", f"{ROOT}/agentTooling/check-plans.sh --self a-slug",
     "bash -n self/gate.sh", "bash -n plans/gate.sh self/gate.sh check-plans.sh",
@@ -259,12 +305,25 @@ ENTRY_ALLOW = [
     "python3 -m py_compile analysis/report.py",
     "python3 -B -m py_compile agentTooling/analysis/*.py",
     "python -m py_compile analysis/report.py analysis/manifest.py",
-    "python3 analysis/report.py --self a-slug", "python3 -B analysis/report.py --all",
+    # runner-write-allows: `<root>/analysis/report.py` needs --self (`--all` read
+    # `python3 -B analysis/report.py --all` here, which writes outside the root)
+    "python3 analysis/report.py --self a-slug", "python3 -B analysis/report.py --self --all",
     "python3 agentTooling/analysis/report.py a-slug 2>&1 | tail -20",
     "python3 analysis/capture_planning.py --self --list-sessions --unclaimed",
     "python3 -B agentTooling/analysis/capture_planning.py --list-subagents --since 2026-01-01",
     "python3 analysis/manifest.py --self a-slug get base",
     "python3 -B agentTooling/analysis/manifest.py a-slug get session_window.to",
+    # python-entry-exact: every documented read-only shape, matched word by word
+    "python3 analysis/manifest.py --orchestration a-slug get session",
+    "python3 analysis/manifest.py --self --orchestration a-slug get session_window.to",
+    "python3 agentTooling/analysis/capture_planning.py --list-sessions",
+    "python3 agentTooling/analysis/capture_planning.py --list-sessions --unclaimed --since 2026-01-01",
+    "python3 analysis/capture_planning.py --self --list-sessions --since 2026-01-01 --unclaimed",
+    "python3 agentTooling/analysis/capture_planning.py --list-subagents",
+    "python3 agentTooling/analysis/capture_planning.py --list-subagents --unclaimed",
+    "python3 agentTooling/analysis/capture_planning.py --list-subagents --everywhere",
+    "python3 agentTooling/analysis/capture_planning.py --list-subagents --unclaimed --for musicMap/a-slug",
+    "python3 analysis/capture_planning.py --self --list-subagents --everywhere --unclaimed --since 2026-01-01",
 ]
 # The same basenames outside the tree, through an escaping symlink, and every writing or
 # cost-freezing form: each falls through to the prompt.
@@ -293,6 +352,255 @@ ENTRY_PROMPT = [
     # not (self/BACKLOG.md, raised by the permissions-policy-inherit review).
     "check-plans.sh --self a-slug", "check-plans.sh", "gate.sh", "gate.sh 08",
 ]
+
+# python-entry-exact (humanNetworkMap's propagation audit of df98316): manifest.py and
+# capture_planning.py are approved only in their exact documented shapes. B1 — a repeated
+# `--orchestration` (argparse keeps the last) dressed a `set-window-to` as a `get`; B2 — an
+# abbreviation of a writing flag (`--forc` is `--force`) beside a decoy value that starts
+# `--list-`. Each is here as found, with its variants: the repeat in each position, the `=`
+# form, every abbreviation of each writing flag, decoy values, extra and missing words.
+CAPTURE_WRITING_MODES = ["--recapture", "--all", "--carry-lost", "--force", "--annotate-frozen"]
+CAPTURE_LISTINGS = ["--list-sessions", "--list-subagents"]
+ABBREVIATION_MIN_CHARS = 3                  # `--a`: the shortest prefix argparse could take
+
+
+def abbreviations(flag):
+    return [flag[:n] for n in range(ABBREVIATION_MIN_CHARS, len(flag) + 1)]
+
+
+def exact_shape_exploits(manifest, capture):
+    rows = [
+        "python3 %s --orchestration A --orchestration get --orchestration=orch-test "
+        "set-window-to 2030-01-01T00:00:00Z" % manifest,
+        "python3 %s --orchestration a-slug --orchestration get --orchestration=b-slug set-window-to now" % manifest,
+        "python3 %s --orchestration a-slug --orchestration b-slug get session" % manifest,
+        "python3 %s --orchestration a-slug get session --orchestration b-slug" % manifest,
+        "python3 %s --orchestration=a-slug get session" % manifest,
+        "python3 %s --orch a-slug get session" % manifest,
+        "python3 %s --self --self a-slug get base" % manifest,
+        "python3 %s --sel a-slug get base" % manifest,
+        "python3 %s a-slug --self get base" % manifest,
+        "python3 %s a-slug get base --self" % manifest,
+        "python3 %s a-slug get base extra" % manifest,
+        "python3 %s --self a-slug get base set-window-to now" % manifest,
+        "python3 %s a-slug get --key" % manifest,
+        "python3 %s a-slug get" % manifest,
+        "python3 %s A-SLUG get base" % manifest,
+        "python3 %s a-slug set-window-to now get" % manifest,
+        "python3 %s a-slug --forc --since '--list- x'" % capture,
+        "python3 %s a-slug --al --recapture --since '--list- x'" % capture,
+        "python3 %s --list-sessions --list-sessions" % capture,
+        "python3 %s --list-sessions --list-subagents" % capture,
+        "python3 %s --list-sessions --unclaimed --unclaimed" % capture,
+        "python3 %s --list-sessions --since 2026-01-01 --since 2026-02-01" % capture,
+        "python3 %s --list-sessions --since=2026-01-01" % capture,
+        "python3 %s --list-sessions --unclaimed=1" % capture,
+        "python3 %s --list-sessions=1" % capture,
+        "python3 %s --list-sessions --since '--list- x'" % capture,
+        "python3 %s --list-sessions --since --force" % capture,
+        "python3 %s --list-sessions --since" % capture,
+        "python3 %s --list-sessions --everywhere" % capture,
+        "python3 %s --list-sessions --for musicMap/a-slug" % capture,
+        "python3 %s --list-subagents --for --force" % capture,
+        "python3 %s --list-sessions a-slug" % capture,
+        "python3 %s a-slug --list-sessions" % capture,
+        "python3 %s --unclaimed --list-sessions" % capture,
+        "python3 %s --list-sessions --self" % capture,
+        "python3 %s --self --self --list-sessions" % capture,
+        "python3 %s --list-sessions -- x" % capture,
+        "python3 %s --list-sess" % capture,
+    ]
+    for listing in CAPTURE_LISTINGS:
+        for mode in CAPTURE_WRITING_MODES:
+            for abbreviation in abbreviations(mode):
+                rows.append("python3 %s %s %s" % (capture, listing, abbreviation))
+                rows.append("python3 %s a-slug %s --since '%s x'" % (capture, abbreviation, listing))
+    return rows
+
+
+ENTRY_PROMPT += exact_shape_exploits("agentTooling/analysis/manifest.py",
+                                     "agentTooling/analysis/capture_planning.py")
+ENTRY_PROMPT += [  # B1 and B2 as found, in this checkout's own spelling too
+    "python3 analysis/manifest.py --orchestration A --orchestration get "
+    "--orchestration=orch-test set-window-to 2030-01-01T00:00:00Z",
+    "python3 analysis/capture_planning.py a-slug --forc --since '--list- x'",
+    "python3 analysis/capture_planning.py a-slug --al --recapture --since '--list- x'",
+]
+
+# ── The runners and entry points that wrote (self/features/runner-write-allows/) ──
+# An independent audit found ruff, mypy and pytest approved with flags that write a file,
+# run an interpreter or upload, and `report.py` approved wherever it was named. Each F-case
+# below is the write form as found (F1-F7, F9) and must PROMPT, in the `python -m` and
+# `.venv/bin/` spellings too; the read forms beside them must stay approved.
+RUNNER_READ_ALLOW = [
+    "ruff check src/a.py", "ruff check src", "ruff check --select E,F --ignore E501 src",
+    "ruff check --output-format concise --statistics src",
+    "ruff format --check src/a.py", "ruff format --diff src", "ruff format --check --diff src",
+    "ruff check --config pyproject.toml src", "ruff check --config=pyproject.toml src",
+    "ruff --config pyproject.toml check src", "ruff --version", "ruff version",
+    "ruff rule E501", ".venv/bin/ruff check src", "python -m ruff check src",
+    "python3 -m ruff format --check src",
+    "mypy src/a.py", "python3 -m mypy src/a.py", ".venv/bin/mypy src", "mypy --strict src",
+    "mypy --strict --config-file pyproject.toml src",
+    "mypy --config-file=pyproject.toml src/a.py", "mypy -p pkg --ignore-missing-imports",
+    "mypy --follow-imports silent --python-version 3.11 src", "mypy --version",
+    "pytest -q tests/test_a.py", "python -m pytest -q tests/test_a.py",
+    "python3 -m pytest -q tests/test_a.py::test_x", ".venv/bin/pytest -x tests",
+    "pytest -qx -rfE tests -k 'not slow'", "pytest -vv --tb=short --maxfail 2 tests",
+    "pytest -n 4 -m unit tests", "pytest --deselect tests/test_a.py::test_x tests",
+    "pytest --co -q tests", "pytest --lf --ff tests", "pytest --version",
+    # the entry points at their pinned paths, in their exact shapes
+    "python3 analysis/report.py --self a-slug", "python3 analysis/report.py --self --all",
+    "python3 -B analysis/report.py --self --rounds-md a-slug",
+    "python3 analysis/report.py --self --orchestration a-slug",
+    "python3 agentTooling/analysis/report.py a-slug", "python3 agentTooling/analysis/report.py --all",
+    "python3 agentTooling/analysis/report.py --self a-slug",
+    "python3 ./agentTooling/analysis/report.py --rounds-md a-slug",
+    "python3 agentTooling/analysis/report.py --orchestration a-slug",
+    f"python3 {ROOT}/analysis/report.py --self a-slug",
+    f"python3 {ROOT}/agentTooling/analysis/report.py a-slug",
+    "python3 analysis/capture_planning.py --self --list-sessions",
+    "python3 analysis/manifest.py --self a-slug get base",
+    "./check-plans.sh --self a-slug", "self/gate.sh",
+]
+RUNNER_WRITE_PROMPT = [
+    # F1: an inline --config is a TOML override; only an existing in-root regular file passes
+    "ruff check --config 'fix = true' src/a.py", "ruff check --config fix=true src/a.py",
+    "ruff check --config=fix=true src/a.py", "ruff --config 'fix = true' check src/a.py",
+    "ruff format --check --config 'fix = true' src", "ruff check --config nosuch.toml src",
+    "ruff check --config dir src", "ruff check --config link-out/gate.sh src",
+    "ruff check --config link-home/notes.txt src", "ruff check --config",
+    f"ruff check --config {OUTSIDE}/gate.sh src", "ruff check --config @args.txt src",
+    "python -m ruff check --config 'fix = true' src", ".venv/bin/ruff check --config fix=true src",
+    # F2: the rewriting flags (and --add-noqa, which edits the source)
+    "ruff check --add-noqa src/a.py", "ruff check --add-noqa=E501 src",
+    "python3 -m ruff check --add-noqa src", ".venv/bin/ruff check --add-noqa src",
+    # F4 (ruff): an output file, a moved cache, and the subcommands that are not a lint
+    "ruff check --output-file=out.txt src", "ruff check --output-file out.txt src",
+    "ruff check -o out.txt src", "ruff check --show-settings -o out.txt src",
+    "ruff check --show-settings --output-file=out.txt src", "ruff check --cache-dir c src",
+    "ruff check --watch src", "ruff clean", "ruff server", "ruff analyze graph src",
+    "ruff format src", "ruff", "ruff src", "ruff rule", "ruff rule E501 F401",
+    "ruff version extra", "ruff check --select", "ruff check --select -E src",
+    "ruff check --stat src", "ruff check --sel E src", "ruff check -- src",
+    "ruff check @args.txt", "ruff check --isolated=1 src", "python -m ruff clean",
+    # F3: --python-executable runs a program of the caller's choosing
+    "mypy --python-executable ./py src/a.py", "mypy --python-executable=./py src/a.py",
+    "python3 -m mypy --python-executable py src", ".venv/bin/mypy --python-executable=py src",
+    "mypy --python-exec py src", "mypy --python-e py src",
+    # F4 (mypy): junit and every report writes files; the cache flags move them
+    "mypy --junit-xml j.xml src", "mypy --junit-xml=j.xml src", "mypy --junit-format x src",
+    "mypy --html-report r src", "mypy --txt-report r src", "mypy --xml-report r src",
+    "mypy --xslt-html-report r src", "mypy --xslt-txt-report r src",
+    "mypy --any-exprs-report r src", "mypy --cobertura-xml-report r src",
+    "mypy --linecount-report r src", "mypy --lineprecision-report r src",
+    "mypy --html-report=r src", "mypy --cache-dir c src", "mypy --cache-dir=c src",
+    "mypy --sqlite-cache src", "mypy --cache-fine-grained src",
+    "mypy -c 'x = 1'", "mypy --command 'x = 1'", "python3 -m mypy --junit-xml j.xml src",
+    # F5: abbreviations of the forbidden options, and an @file argument file
+    "mypy --install-types", "mypy --install-type", "mypy --install-typ src", "mypy --inst src",
+    "mypy --install src", "python3 -m mypy --install-type src",
+    "mypy --junit src", "mypy --html src", "mypy --cache src", "mypy --python src",
+    "mypy @args.txt src", "mypy src @args.txt", "mypy --strict @args.txt",
+    "mypy --config-file @args.txt src", "pytest @args.txt tests", "pytest tests @args.txt",
+    "python -m pytest @args.txt", "ruff check src @args.txt",
+    "mypy --strict=1 src", "mypy -p", "mypy -p -x", "mypy -ppkg", "mypy --config-file nosuch.ini src",
+    "mypy --config-file dir src", "mypy --config-file link-out/gate.sh src", "mypy --",
+    # F6: pytest's output files, ini overrides, plugins and a debug log that overwrites a file
+    "pytest --basetemp=bt tests", "pytest --basetemp bt tests", "pytest --junitxml=x.xml tests",
+    "pytest --junitxml x.xml tests", "pytest --junit-xml=x.xml tests",
+    "pytest --junit-xml x.xml tests", "pytest --log-file=l.log tests",
+    "pytest --log-file l.log tests", "pytest --log-file-level=INFO tests",
+    "pytest --debug tests", "pytest --debug=d.log tests", "pytest --debug d.log",
+    "pytest --resultlog=r tests", "pytest --resultlog r tests", "pytest --pastebin=failed tests",
+    "pytest --pastebin failed tests", "pytest --pastebin=all tests",
+    "pytest -o cache_dir=c tests", "pytest -o log_file=l tests", "pytest -o junit_family=x tests",
+    "pytest --override-ini cache_dir=c tests", "pytest --override-ini=cache_dir=c tests",
+    "pytest -ocache_dir=c tests", "pytest -p plug tests", "pytest -p no:cacheprovider tests",
+    "pytest -c o.ini tests", "pytest --config-file o.ini tests", "pytest --rootdir=. tests",
+    "pytest --confcutdir=. tests", "pytest --pdb tests", "pytest --trace tests",
+    "pytest --cache-clear tests", "pytest --setup-show tests", "pytest -- tests",
+    # B1: -W imports the module named in its category field (antigravity opens a browser)
+    "pytest -W ignore::antigravity.X tests/test_a.py", "python3 -m pytest -W ignore::this.X tests",
+    "pytest -W error tests/test_a.py", "pytest --pythonwarnings ignore::antigravity.X tests",
+    "pytest -ktest_a tests", "pytest -n4 tests", "pytest -k", "pytest -k -x tests",
+    "pytest --basete=bt tests", "pytest --junitx=x tests", "pytest --log-f=l tests",
+    "pytest --maxf=1 tests", "pytest --quiet=1 tests", "pytest -rZ tests",
+    "python -m pytest --basetemp=bt tests", "python3 -m pytest --junitxml=x.xml tests",
+    "python -m pytest -o cache_dir=c tests", ".venv/bin/pytest --log-file=l tests",
+    ".venv/bin/python -m pytest --debug tests", f"{ROOT}/.venv/bin/pytest --basetemp bt",
+    "python -m pytest -p plug tests",
+    # F7: `<root>/analysis/report.py` without --self writes to `<root>/../plans/features/`
+    "python3 analysis/report.py a-slug", "python3 -B analysis/report.py a-slug",
+    "python3 analysis/report.py --all", "python3 analysis/report.py --rounds-md a-slug",
+    "python3 analysis/report.py --orchestration a-slug", f"python3 {ROOT}/analysis/report.py a-slug",
+    "python3 analysis/report.py", "python3 analysis/report.py --self",
+    # ...and the exact shapes: nothing else is a report.py command
+    "python3 analysis/report.py --self --arm-root dir a-slug",
+    "python3 agentTooling/analysis/report.py --arm-root dir a-slug",
+    "python3 agentTooling/analysis/report.py --arm-root=dir a-slug",
+    "python3 analysis/report.py --self --orchestration a-slug --checkout r=dir",
+    "python3 agentTooling/analysis/report.py --orchestration a-slug --checkout r=dir",
+    "python3 agentTooling/analysis/report.py --self --self a-slug",
+    "python3 agentTooling/analysis/report.py a-slug --self", "python3 analysis/report.py --self a-slug extra",
+    "python3 analysis/report.py --self --all a-slug", "python3 analysis/report.py --self --all --all",
+    "python3 analysis/report.py --self --rounds-md", "python3 analysis/report.py --self --orchestration",
+    "python3 analysis/report.py --self --rounds-md --all", "python3 analysis/report.py --self A-SLUG",
+    "python3 analysis/report.py --self a-slug --all", "python3 analysis/report.py --self --al",
+    "python3 analysis/report.py --self --orch a-slug", "python3 analysis/report.py --self=1 a-slug",
+    "python3 analysis/report.py --self -- a-slug", "python3 analysis/report.py --self -x",
+    # F9: only the real analysis/ paths are the harness's own scripts
+    "python3 dir/analysis/report.py --self a-slug", "python3 x/report.py --self a-slug",
+    "python3 x/manifest.py --self a-slug get base", "python3 x/capture_planning.py --list-sessions",
+    "python3 linked/report.py --self a-slug", "python3 linked/manifest.py --self a-slug get base",
+    "python3 alink/report.py --self a-slug", "python3 alink/manifest.py --self a-slug get base",
+    "python3 alink/capture_planning.py --list-sessions",
+    "linked/gate.sh", "glink/gate.sh", "linked/check-plans.sh --self a-slug",
+]
+
+# ── hook-silent-allow-sweep: what used to be approved silently (self/BACKLOG.md, 2026-11-18) ──
+# Each SWEEP_PROMPT row was approved on main. Item 1: a `-C`/`--git-dir`/`--work-tree` value
+# bash expands as a glob named no directory to the planted-gitdir walk, which then found the
+# root's own `.git`, while bash ran git in whatever the pattern matched. Item 5: a settings
+# file under a name the tool would not discover. Item 6: the other analysis/ pin, and a
+# gate.sh or check-plans.sh at a spelling that is not the harness's own. Their controls stay
+# approved; the own-push rows (items 2-4) are hook-cloud-profile.sh's Q9.
+SWEEP_ALLOW = [
+    "git -C plans status", "git -C plans -C . log --oneline -1", "git --git-dir=.git log -1",
+    "ruff check --config ruff.toml src", "ruff check --config pyproject.toml src",
+    "mypy --config-file mypy.ini src", "mypy --config-file setup.cfg src",
+    "mypy --config-file=pyproject.toml src", "ruff check --config dir/pyproject.toml src",
+    "self/gate.sh", "plans/gate.sh 08", "./check-plans.sh --self a-slug",
+    "agentTooling/check-plans.sh a-slug",
+    "python3 analysis/report.py --self a-slug",
+    "python3 agentTooling/analysis/report.py a-slug",
+    "python3 agentTooling/analysis/manifest.py a-slug get base",
+]
+SWEEP_PROMPT = [
+    # item 1: a pattern in a location value
+    "git -C plans/e?il status", "git -C plans/e*l status", "git -C plans/evi[l] status",
+    "git -C plans -C e?il log", "git -C plans/e?il diff --no-index a b",
+    "git -C 'plans/e?il' status", "git --git-dir=plans/e?il/.git log",
+    "git --git-dir plans/e*/.git log", "git --work-tree=pl?ns status",
+    # item 5: a settings name the tool does not find by itself
+    "ruff check --config fix.toml src/a.py", "ruff --config fix.toml check src",
+    "ruff check --config=fix.toml src", "mypy --config-file cfg.ini src/a.py",
+    "mypy --config-file=cfg.ini src", "ruff check --config mypy.ini src",
+    "mypy --config-file ruff.toml src", "ruff check --config dir/ruff.toml src",
+    "ruff check --config README.md src",
+    # item 6: the other pin, and a same-basename gate or check-plans
+    "python3 agentTooling/analysis/report.py a-slug",
+    "python3 agentTooling/analysis/manifest.py a-slug get base",
+    "python3 agentTooling/analysis/capture_planning.py --list-sessions",
+    "./gate.sh", "./gate.sh 08", "x/gate.sh", "dir/gate.sh 08", f"{ROOT}/x/gate.sh",
+    "x/check-plans.sh --self a-slug", "x/check-plans.sh --anything",
+]
+SWEEP_VENDORED_PROMPT = [
+    "python3 analysis/report.py --self a-slug",
+    "python3 analysis/manifest.py --self a-slug get base",
+    "python3 analysis/capture_planning.py --self --list-sessions",
+]
+
 
 # ── The opaque shape (hooks/README.md → "The opaque shape") ──────────────────
 # A command the analysis cannot read is denied with the rewrite as its reason, instead
@@ -508,6 +816,14 @@ DENY = [
     "(cd /etc && cat passwd)", f"(cd {ROOT} && ls) && ls", f"cd {ROOT} && echo $(pwd)",
     f"x=$(pwd) && cd {ROOT}", f"echo $(cd {ROOT} && pwd) && cd {ROOT}",
     f"echo $(ls) cd && cd {ROOT}",
+    # a comment holds no command and is not read: a chain before it is still a chain (A), and
+    # so is one after a heredoc's body, however the operator is spelled (F1)
+    f"cd {ROOT}/src && cat a.py # read it", f"cd {ROOT} && ls # it's",
+    f"ls;<<EOF cat\nx\nEOF\ncd {ROOT} && ls", f"cat <<EOF\nx\nEOF\ncd {ROOT} && ls",
+    f"ls&&<<EOF cat\nx\nEOF\ncd {ROOT}; ls",
+    # round 3 (escalations/02-audit-opus.md, cd2): ... and where bash ends the body, at a
+    # terminator it has joined across a line continuation
+    f"cat <<EOF\nx\nEO\\\nF\ncd {ROOT} && ls\nEOF", "cat <<EOF\nx\nEO\\\nF\ncd /tmp && ls\nEOF",
     f"cd {ROOT} && git checkout -b x", f"cd {ROOT} && rm -rf src",
     "cd && ls", "cd - && ls", f"cd {HOME}/.ssh && ls", "cd .worktrees/wt && ls",
     f"cd {ROOT}/../other && ls", f"cd {ROOT}/src || cd /etc; ls",
@@ -521,7 +837,8 @@ DENY = [
     f"cd {ROOT} && grep \\$'#' README.md", f"cd {ROOT} && grep $$'#' README.md",
     f"cd {ROOT} && grep $'a\\\\' README.md",
 ]
-# A chain the deny cannot judge — an unquoted `#`, a `$'…'` escaping a quote — is never
+# A chain the deny cannot judge — a `#` inside a word (a `#` that starts one is a comment,
+# which the deny skips and DENY above judges around), a `$'…'` escaping a quote — is never
 # approved either: Claude Code's reads fence cannot follow a cd and stops it after any
 # hook approval, so the approval analysis refuses every chained cd and the line goes to
 # the ordinary flow. The `$'…\'…'` rows are lines bash and zsh do run the cd of; the
@@ -529,7 +846,7 @@ DENY = [
 # two are why: zsh reads a comment where bash reads a quoted `#`, and neither runs the
 # `cd` shlex finds in the last.
 CHAINED_NOT_APPROVED = [
-    f"cd {ROOT} && ls a#b", f"cd {ROOT}/src && cat a.py # read it", f"ls # && cd {ROOT}",
+    f"cd {ROOT} && ls a#b", f"cd {ROOT}/src && cat a#.py", f"ls # && cd {ROOT}",
     f"cd {ROOT} && grep $'\\'#' README.md", f"cd {ROOT} && grep $$$'\\'#' README.md",
     f"cd {ROOT} && grep $'it\\'s' README.md",
     f"ls $$'a\\' ' # '; cd {ROOT}", f"ls $'a\\'; cd {ROOT} '\\'",
@@ -634,9 +951,390 @@ GIT_NOT_DENIED = [
     ("cat <<'EOF'\ngit push --force\nEOF", "prompt"),
     ("cat a#<<EOF\ngit stash\nEOF", "prompt"),
     ("cat <<'EOF'\ngit rebase 'main\nEOF", "prompt"),
-    # The deny expands no braces, so a braced word is a word it cannot read: it prompts
-    # here and the approval analysis, which does expand, refuses it (BRACE_PROMPT).
-    ("git branch {-a,new}", "prompt"), ("git worktree {add,list} x", "prompt"),
+    # `-uq` and `-o<value>` hold no force: a cluster is a force only with an `f` before any `o`
+    ("git push -uq origin x", "prompt"), ("git push -ofoo origin x", "prompt"),
+    ("git push -u origin x", "prompt"),
+    # A comment holds no command, and its quote opens nothing (hook-audit-gaps, A)
+    ("git status # it's", "prompt"), ("git log --oneline -3 # '", "prompt"),
+    # The same body as a whole-argument `$(cat <<'EOF' …)`: a message, no command
+    ("git commit -m \"$(cat <<'EOF'\nmsg\nEOF\n)\"", "prompt"),
+    ("git commit -m \"$(cat <<-'EOF'\n\tmsg\n\tEOF\n)\"", "prompt"),
+    # round 3: the twins of GIT_AUDIT_DENY's joined-terminator rows that bash does NOT join —
+    # a quoted delimiter (the review's twin, and the audit's tc4), and an escaped backslash
+    # before the line break. The body runs to the last line and bash runs no push: a prompt
+    ("cat <<'EOF'\nEO\\\nF\ngit push -f origin y\nEOF", "prompt"),
+    ("cat <<'EOF'\nx\nEO\\\nF\ngit push -f origin y\nEOF", "prompt"),
+    ("cat <<\\EOF\nx\nEO\\\nF\ngit push -f origin y\nEOF", "prompt"),
+    ("cat <<EOF\nx\nEO\\\\\nF\ngit push -f origin y\nEOF", "prompt"),
+]
+# hook-audit-gaps: the gaps the audit of #139 and of humanNetworkMap found in the git deny. A
+# force bundled into short flags (`-fu`), a brace word the deny used to skip (F2: the deny
+# reads braces now, as the approval does), a quote inside a comment (A), and a command AFTER a
+# heredoc's body, however the operator is spelled (F1: the plain `cat <<EOF` among them)
+GIT_AUDIT_DENY = [
+    "git push -fu origin x", "git push -uf origin x", "git push -vfq origin x",
+    "git branch {-a,new}", "git worktree {add,list} x", "git branch -D old {a,b}",
+    "git branch -D old ';' {a,b}", "git branch -D old \\; {a,b}", "git branch -D old '|' {a,b}",
+    "git push origin main # '", "git reset --hard HEAD~1 # '", "git branch -D old # it's",
+    "cat <<EOF\nx\nEOF\ngit push origin main",
+    "true;<<EOF cat\nx\nEOF\ngit push origin main",
+    "true&<<EOF cat\nx\nEOF\ngit push origin main",
+    "true|<<EOF cat\nx\nEOF\ngit push origin main",
+    "true&&<<EOF cat\nx\nEOF\ngit push origin main",
+    "true||<<EOF cat\nx\nEOF\ngit push origin main",
+    "(<<EOF cat\nx\nEOF\n)\ngit push origin main",
+    "cat <<EOF\nx\nEOF\ngit push --force origin x", "cat <<EOF\nx\nEOF\ngit branch -D old",
+    "cat <<EOF\nx\nEOF\ngit stash", "cat <<EOF\nx\nEOF\ngit reset --hard",
+    "cat <<-EOF\n\tx\n\tEOF\ngit push origin main",
+    "cat <<A <<B\nx\nA\ny\nB\ngit push origin main",
+    # a body that never ends is read as commands rather than hidden in a body
+    "cat <<EOF\nx\nEOF)\ngit push origin main",
+    "cat <<EOF\nx\ngit push origin main",
+    # the audit's B1 shape, without the role: `EOF)` is body text, what follows is a command
+    "git commit -m \"$(cat <<'EOF'\nx\nEOF)\" ; git push --force origin x ; echo \"\nEOF\n)\"",
+    # phase 3, the self-audit of those fixes (self/tests/hook-cloud-profile.sh's table holds the
+    # full set, under both profiles). A `#` that starts no word hides nothing, and a `#` inside a
+    # word no longer leaves the line unjudged
+    "echo a#b ; git push --force origin x", "git push --force origin x a#b",
+    "echo a\\ # ; git push --force origin x", "echo $# ; git reset --hard",
+    "git push --force origin x # $'", "echo `echo a # b` ; git branch -D old",
+    # a `<<` that is a shift, a delimiter bash reads differently, a top-level `EOF)` line and a
+    # whole-argument body holding a quote: none hides the command after it
+    "echo $((1<<2))\ngit push --force origin x\n2", "a[1<<2]=5\ngit stash\n2]=5",
+    "cat <<EOF\r\nx\r\nEOF\r\ngit push --force origin x\nEOF",
+    "cat <<EOF\nit's\nEOF)\nEOF\ngit push --force origin x",
+    "git commit -m \"$(cat <<'EOF'\na \" b\nEOF\n)\" ; git push --force origin x",
+    # nested brace groups and sequences are expanded as bash expands them; past the cap a git
+    # command is refused rather than passed on
+    "git push --forc{e,{x,y}} origin z", "git push --forc{e..e} origin x",
+    "git reset --har{d..d}", "git branch -{D,{q,v}} old", "git push --forc{{1..300},e} origin x",
+    # round 2 (escalations/01-review-opus.md, item 1): only a `${` nests inside `${…}`, so a
+    # bare `{` there does not keep the walk inside the expansion and lose finding A's deny
+    "echo ${x:-{} ; git push --force origin x # '",
+    "echo ${x:-${y:-{}}} ; git stash # it's",
+    # round 2 (escalations/01-audit-opus.md). E1: inside `$(…)` bash 5.2 ends a heredoc at ANY
+    # body line that begins with the delimiter and goes on to a `)`, and runs the rest
+    "git commit -m \"$(cat <<'EOF'\nx\nEOF )\" ; git push --force origin x ; echo \"\nEOF\n)\"",
+    "git commit -m \"$(cat <<'EOF'\nx\nEOF\t)\" ; git push --force origin x ; echo \"\nEOF\n)\"",
+    "git commit -m \"$(cat <<'EOF'\nx\nEOFS)\" ; git push --force origin x ; echo \"\nEOF\n)\"",
+    "git commit -m \"$(cat <<'EOF'\nx\nEOF x)\" ; git push --force origin x ; echo \"\nEOF\n)\"",
+    "echo \"$(cat <<'EOF'\nx\nEOFxyz ; true)\" ; git push --force origin x ; echo \"\nEOF\n)\"",
+    "echo \"$(cat <<'EOF'\nx\nEOF'q')\" ; git push --force origin x ; echo \"\nEOF\n)\"",
+    # E3: a `#` right after a `)` that closed a word starts no comment — and one that does
+    # start a comment still hides no quote (both readings are judged)
+    "a=(x)#b; git push --force origin y", "echo $(echo a)#b; git push --force origin y",
+    "git push --force origin y; (ls)# it's", "a=(x)#b; git push --force origin y # '",
+    # ... nor does a `#` after a blank inside an arithmetic expression or a subscript
+    "echo $((1 #b))\ngit push --force origin y", "a[1 #b]=5\ngit reset --hard",
+    # `$$` is the PID: the quote after it is a plain one, and the comment after that a comment
+    "echo $$'a\\' ; git push --force origin y #'",
+    # round 3 (escalations/02-review-opus.md item 1; 02-audit-opus.md R2-1): with an UNQUOTED
+    # delimiter bash joins a body's lines at their line continuations BEFORE it looks for the
+    # terminator, so each body below ends at the joined line and bash runs the push after it
+    "cat <<EOF\nEO\\\nF\ngit push --force origin y\nEOF",
+    "cat <<EOF\nx\nEO\\\nF\ngit push --force origin y\nEOF",
+    "echo \"$(cat <<EOF\nEO\\\nF\ngit push --force origin y\nEOF\n)\"",
+    "cat <<EOF\nx\nEO\\\nF\ngit push -f origin y\nEOF",
+    "cat <<EOF\nx\nEOF\\\n\ngit push -f origin y\nEOF",
+    "cat <<-EOF\nx\n\tEO\\\nF\ngit push -f origin y\nEOF",
+    "ls; cat <<EOF\nx\nE\\\nO\\\nF\ngit push -f origin y\nEOF",
+    "echo $(cat <<EOF\nx\nEO\\\nF ) ; git push -f origin y\nEOF\n)",
+    # ... and a line bash joins to the one before it is no terminator: the body goes on to the
+    # next one, and an apostrophe in it hides nothing
+    "cat <<EOF\nx\\\nEOF\nit's\nEOF\ngit push -f origin y",
+    # R2-2: a substitution opener split by a continuation is the opener bash reads — `<\⏎(`
+    # reached no deny, and its twins were denied by other paths only
+    "cat <\\\n(cat <<EOF\nx\nEOF ) ; git push -f origin y\nEOF\n)",
+    "cat <\\\n(cat <<'EOF'\nx\nEOF) ; git push -f origin y\nEOF\n)",
+    "cat <\\\n(cat <<EOF\nx\nEOF ) ; git reset --hard\nEOF\n)",
+    "cat <\\\n(cat <<EOF\nx\nEOF ) ; git branch -D main\nEOF\n)",
+    "echo $\\\n(cat <<EOF\nx\nEOF ) ; git push -f origin y\nEOF\n)",
+    "echo \"$\\\n(cat <<'EOF'\nx\nEOF )\" ; git push -f origin y ; echo \"\nEOF\n)\"",
+    "git commit -m \"$\\\n(cat <<'EOF'\nx\nEOF)\" ; git push -f origin y ; echo \"\nEOF\n)\"",
+    "diff <\\\n(cat <<EOF\nx\nEOFS) <(true) ; git push -f origin y\nEOF\n)",
+    "echo >\\\n(cat <<EOF\nx\nEOF ) ; git push -f origin y\nEOF\n)",
+    "x=$\\\n(cat <<EOF\nx\nEOF ) ; git push -f origin y\nEOF\n)",
+    "(\\\n( x = 1<<2 ))\ngit push -f origin y\n2", "echo $\\\n[1<<2]\ngit push -f origin y\n2]",
+    "a[1\\\n<<2]=5\ngit push -f origin y\n2]=5", "echo $(\\\n(1<<2))\ngit push -f origin y\n2))",
+    "((\\\nx=1<<2))\ngit push -f origin y\n2))",
+    # the rest of the class: every other construct the walk looks ahead for, split the same
+    # way — the operator, the delimiter, a whole-argument heredoc's head and tail. Each body
+    # holds a quote, so a body read as commands would not lex and the deny would be lost
+    "cat <\\\n<EOF\nit's\nEOF\ngit push -f origin y",
+    "cat <<\\\nEOF\nit's\nEOF\ngit push -f origin y",
+    "cat <<E\\\nOF\nit's\nEOF\ngit push -f origin y",
+    "cat <<\\\n-EOF\nit's\n\tEOF\ngit push -f origin y",
+    "cat << \\\n EOF\nit's\nEOF\ngit push -f origin y",
+    "cat <<'EOF'\\\n\nit's\nEOF\ngit push -f origin y",
+    "cat <<\"E\\\nOF\"\nit's\nEOF\ngit push -f origin y",
+    "cat <<EOF\\\n; git push -f origin y\nit's\nEOF",
+    "git commit -m \"$\\\n(cat <<'EOF'\na \" b\nEOF\n)\" ; git push -f origin y",
+    "git commit -m \"$(cat <<\\\n'EOF'\na \" b\nEOF\n)\" ; git push -f origin y",
+    "git commit -m \"$(cat <<'EOF'\\\n\na \" b\nEOF\n)\" ; git push -f origin y",
+    "git commit -m \"$(c\\\nat <<'EOF'\na \" b\nEOF\n)\" ; git push -f origin y",
+    "git commit -m \"$(cat <<'EOF'\na \" b\nEOF\n\\\n)\" ; git push -f origin y",
+    "git commit -m \"$(cat <<'EOF'\na \" b\nEOF\n)\\\n\" ; git push -f origin y",
+    # inside backticks bash deletes a continuation before it reads the quotes there
+    "echo `cat <<'EOF'\nEO\\\nF\ngit push -f origin y\nEOF\n`",
+    "echo `ls\ngit 'pu\\\nsh' -f origin y\n`",
+    # ... and halves a run of backslashes first, so `\\⏎` is a continuation to the
+    # substitution's own parser: in a command, and in an unquoted delimiter's body
+    "echo `cat <<EOF\nit's\nEOF\ngit pu\\\\\nsh -f origin y\n`",
+    "echo `cat <<EOF\nit's\nEO\\\\\nF\ngit push -f origin y\n`",
+    # round 4 (escalations/03-audit-opus.md, R3-1): inside `"$(cat <<…)"` bash ends the body at
+    # a run-on line, closes the quote there and runs the push; the text after it leaves an odd
+    # `"`, so the reading the walk builds does not tokenize. It was dropped, and each line was
+    # a prompt: a built reading that cannot be lexed is a git command that cannot be read
+    # (the audit's w1, w2, o13p, w11, w12, w8, w9, x3, x4, x8, o13, o13s, o13t, o13v, o13u)
+    "echo \"$(cat <<'EOF'\nx\nEOF )\" ; git push -f origin y\nEOF\n)\"",
+    "echo \"$(cat <<\"EOF\"\nx\nEOF )\" ; git push -f origin y\nEOF\n)\"",
+    "echo \"$(cat <<EOF\nx\nEOF )\" ; git push -f origin y\nEOF\n)\"",
+    "echo \"$(cat <<EOF\nx\nEOFS)\" ; git push -f origin y\nEOF\n)\"",
+    "echo \"$(cat <<-EOF\nx\n\tEOF )\" ; git push -f origin y\nEOF\n)\"",
+    "echo \"$(cat <<EOF\nx\nEOF )\" ; git reset --hard\nEOF\n)\"",
+    "echo \"$(cat <<EOF\nx\nEOF )\" ; git branch -D main\nEOF\n)\"",
+    "echo \"$(cat <<'EOF'\nx\nEOF )\" ; git push -f origin y # \nEOF\n)\"",
+    "echo \"$(cat <<'EOF'\nx\nEOF )\" ; git push -f origin y ; echo \\\"\nEOF\n)\"",
+    "echo \"$(cat <<'EOF'\nx\nEOF )\" ; git push -f origin y\n)\"",
+    "echo \"$(cat <<EOF\nx\nEOF \\\n)\" ; git push -f origin y\nEOF\n)\"",
+    "echo \"$(cat <<EOF\nx\nEO\\\nF )\" ; git push -f origin y\nEOF\n)\"",
+    "echo \"$(cat <<EOF\nx\nEOF\\\n )\" ; git push -f origin y\nEOF\n)\"",
+    "echo \"$(cat <<EOF\nx\nEOF\\\n)\" ; git push -f origin y\nEOF\n)\"",
+    "git commit -m \"$(cat <<EOF\nx\nEOF \\\n)\" ; git push -f origin y\nEOF\n)\"",
+    # ... its controls, balanced for bash, which were denied already (w4, x1, x5)
+    "echo \"$(cat <<EOF\nx\nEOF )\" ; git push -f origin y ; echo \"\nEOF\n)\"",
+    "echo \"$(cat <<'EOF'\nx\nEOF )\" ; git push -f origin y ; : '\nEOF\n)\"'",
+    "echo \"$(cat <<'EOF'\nx\nEOF )\" ; git push -f origin y ; cat <<'Z'\nEOF\n)\"\nZ",
+    # ... and the same rule wherever the walk builds a reading: a body placed, a heredoc
+    # stood in, a comment dropped or a continuation deleted, and a quote left open after the
+    # command bash has run by then
+    "cat <<EOF\nx\nEOF\ngit push -f origin y\necho '",
+    "git commit -m \"$(cat <<'EOF'\nm\nEOF\n)\"\ngit push -f origin y\necho '",
+    "git push -f origin y # \\\n'", "git pu\\\nsh -f origin y ; echo '",
+    # a dropped `$$` is no built reading, but beside one it excuses nothing
+    "echo \"$(cat <<'EOF'\nx\nEOF )\" ; git push -f origin y ; echo $$'a'\nEOF\n)\"",
+    # R3-2: ruling 45's opened head in the spellings bash reads as the same head — blanks and
+    # a line break after the `$(`, blanks or none around the `<<`, a continuation inside (o3, o3p)
+    "echo \"$( cat <<EOF\nx\nEO\\\nF\ngit push -f origin y\nEOF\n)\"",
+    "echo \"$( cat <<EOF\nx\nEOF\ngit push -f origin y\nEOF\n)\"",
+    "echo \"$(\tcat  <<\tEOF\nx\nEOF\ngit push -f origin y\nEOF\n)\"",
+    "echo \"$(\ncat <<EOF\nx\nEOF\ngit push -f origin y\nEOF\n)\"",
+    "echo \"$(cat<<EOF\nx\nEOF\ngit push -f origin y\nEOF\n)\"",
+    "echo \"$(\\\n cat \\\n<<EOF\nx\nEOF\ngit push -f origin y\nEOF\n)\"",
+    "echo \"$( c\\\nat <\\\n<EOF\nx\nEOF\ngit push -f origin y\nEOF\n)\"",
+    # round 5 (escalations/04-audit-opus.md, R4-1): a whole-argument head whose delimiter is no
+    # bare or fully quoted identifier — partly quoted, backslash-quoted, empty, no identifier —
+    # was neither stood in nor opened, so the line was one quoted word and each of these was a
+    # prompt while bash ran the command after `)"`. Such a head is not read for a message at
+    # all: the line is a git command that cannot be read (the audit's p4, p5, p2, p3, p6, p7,
+    # p8, p13)
+    "echo \"$(cat <<E'O'F\nx\"\nEOF\n)\" ; git push -f origin y",
+    "echo \"$(cat <<E\"O\"F\nx\"\nEOF\n)\" ; git push -f origin y",
+    "echo \"$(cat <<E\"O\"F\nx\nEOF )\" ; git push -f origin y\nEOF\n)\"",
+    "echo \"$(cat <<E'O'F\nx\nEOF )\" ; git push -f origin y\nEOF\n)\"",
+    "echo \"$(cat <<'E'OF\nx\nEOF )\" ; git push -f origin y\nEOF\n)\"",
+    "echo \"$(cat <<E\\OF\nx\nEOF )\" ; git push -f origin y\nEOF\n)\"",
+    "git commit -m \"$(cat <<E\"O\"F\nx\nEOF )\" ; git push -f origin y\nEOF\n)\"",
+    "echo \"$(cat <<E'O'F\nx\nEOF )\" ; git reset --hard\nEOF\n)\"",
+    # ... an empty delimiter, whose body ends at the first empty line (e5, e6, e8, e9, e11, e14)
+    "echo \"$(cat <<''\nx\n)\" ; git push -f origin y\n\n)\"",
+    "echo \"$(cat <<''\nx\n )\" ; git push -f origin y\n\n)\"",
+    "echo \"$(cat <<''\nx\"\n\n)\" ; git push -f origin y",
+    "echo \"$(cat <<\"\"\nx\n )\" ; git push -f origin y\n\n)\"",
+    "echo \"$(cat <<''\nx\n)\" ; git reset --hard\n\n)\"",
+    "echo \"$(cat <<-''\nx\n\t)\" ; git push -f origin y\n\n)\"",
+    # ... the canonical message shape, no run-on line at all (c5, c6, c8, c10, c12, c13, c22)
+    "echo \"$(cat <<'E O F'\nx\"\nE O F\n)\" ; git push -f origin y",
+    "echo \"$(cat <<EO'F'\nx\"\nEOF\n)\" ; git push -f origin y",
+    "echo \"$(cat <<\"E\"'O'F\nx\"\nEOF\n)\" ; git push -f origin y",
+    "echo \"$(cat <<E-F\nx\"\nE-F\n)\" ; git push -f origin y",
+    "echo \"$(cat <<123\nx\"\n123\n)\" ; git push -f origin y",
+    "echo \"$(cat <<'EOF '\nx\"\nEOF \n)\" ; git push -f origin y",
+    "echo \"$(cat <<'E)F'\nx\"\nE)F\n)\" ; git push -f origin y",
+    # ... their run-on twins (the audit's rN), and more of its delimiter table
+    "echo \"$(cat <<'E O F'\nx\nE O F )\" ; git push -f origin y\nE O F\n)\"",
+    "echo \"$(cat <<E-F\nx\nE-F )\" ; git push -f origin y\nE-F\n)\"",
+    "echo \"$(cat <<123\nx\n123 )\" ; git push -f origin y\n123\n)\"",
+    "echo \"$(cat <<'E)F'\nx\nE)F )\" ; git push -f origin y\nE)F\n)\"",
+    "echo \"$(cat <<\\E\\O\\F\nx\nEOF )\" ; git push -f origin y\nEOF\n)\"",
+    "echo \"$(cat <<''EOF\nx\nEOF )\" ; git push -f origin y\nEOF\n)\"",
+    "echo \"$(cat <<'EOF'\"\"\nx\"\nEOF\n)\" ; git push -f origin y",
+    "echo \"$(cat <<'EOF'''\nx\"\nEOF\n)\" ; git push -f origin y",
+    "echo \"$(cat <<E.F\nx\"\nE.F\n)\" ; git push -f origin y",
+    "echo \"$(cat <<'!'\nx\"\n!\n)\" ; git push -f origin y",
+    "echo \"$(cat <<'E;F'\nx\"\nE;F\n)\" ; git push -f origin y",
+    "echo \"$(cat <<'E#F'\nx\"\nE#F\n)\" ; git push -f origin y",
+    "echo \"$(cat <<\"E'F\"\nx\nE'F )\" ; git push -f origin y\nE'F\n)\"",
+    "echo \"$(cat <<\\EOF\nx\"\nEOF\n)\" ; git push -f origin y",
+    # ... in the head's other spellings (round 4's), and beside a usual message
+    "echo \"$( cat <<E'O'F\nx\"\nEOF\n)\" ; git push -f origin y",
+    "echo \"$(\ncat<<''\nx\"\n\n)\" ; git push -f origin y",
+    "echo \"$(c\\\nat <\\\n<E-F\nx\"\nE-F\n)\" ; git push -f origin y",
+    "git commit -m \"$(cat <<'EOF'\nm\nEOF\n)\" ; echo \"$(cat <<E'O'F\nx\"\nEOF\n)\" ; git push -f origin y",
+    # ... the controls, denied before the round: the fully quoted and bare twins (q5, c1), and
+    # the two a balanced body let the plain reading deny (p1, e7)
+    "echo \"$(cat <<'EOF'\n\"\nEOF\n)\" ; git push -f origin y",
+    "echo \"$(cat <<EOF\nx\"\nEOF\n)\" ; git push -f origin y",
+    "echo \"$(cat <<E\"O\"F\nx\nEOF\n)\" ; git push -f origin y",
+    "echo \"$(cat <<''\nx\n\n)\" ; git push -f origin y",
+    # round 4's documented over-deny, pinned (round 4's review): a message with a line that
+    # begins with its own delimiter word and an odd quote after it. Bash runs the commit alone
+    "git commit -m \"$(cat <<'EOF'\nEOF notes\nit's fine\nEOF\n)\"",
+]
+# round 6 (escalations/05-audit-opus.md, B1): a git command on line 1 and a later line whose
+# quote never closes. Bash (and `eval`) runs line 1 before it meets the parse error; the hook
+# built no reading, and a `<<` or a `#` anywhere in the raw text — inside the open quote too —
+# excused the line from the does-not-tokenize deny, so each of these was a plain prompt. A line
+# that names git and that no reading tokenizes is a git command that cannot be read, whatever
+# `<<` or `#` it holds: every first line the audit names × every tail it names
+UNLEXED_GIT_FIRSTS = ["git push -f origin y", "git push origin main", "git reset --hard",
+                      "git clean -fdx", "git branch -D y", "git stash drop"]
+UNLEXED_GIT_TAILS = [
+    # the four reproductions
+    "echo '#", "echo \"$(cat <<EOF", "gh pr create --body \"$(cat <<'EOF'\nx", "echo '<<",
+    # ... and the audit's other tails of the family
+    "\"$(cat <<EOF", "echo \"$(cat <<'EOF'", "echo \"$(cat <<'EOF'\nbody", "echo \"#",
+    "echo a#'", ": '<<",
+    # ... with neither a `<<` nor a `#`: the does-not-tokenize rewrite deny before the round,
+    # which decayed to an ask (self/BACKLOG.md's entry; self/tests/hook-escalation.sh, 10)
+    "echo '", "echo \"x",
+]
+UNLEXED_GIT_DENY = [first + "\n" + tail
+                    for first in UNLEXED_GIT_FIRSTS for tail in UNLEXED_GIT_TAILS] + [
+    # the audit's last row of the family, a quoted `<<` on an earlier line; the git word
+    # spelled with quotes or a backslash; a `#` and a `<<` in one open quote
+    "echo '<<'\ngit push -f origin y\necho '",
+    "gi\"\"t push -f origin y\necho '<<", "g\\it push -f origin y\necho '#",
+    "git push -f origin y\necho '# <<EOF",
+    # a PR body after the push, its terminator dropped, and the push after the unclosed head
+    # (bash runs nothing of that one: the cost of the coarse rule, hooks/README.md)
+    "git push -f origin y\ngh pr create --title t --body \"$(cat <<'EOF'\nit's a body",
+    "gh pr create --body \"$(cat <<'EOF'\nx\ngit push -f origin y",
+    # the line the round moved from the rewrite deny to this one, and its twins: one line,
+    # a quote left open (UNREADABLE_DENY's `git rebase 'main` among them)
+    "git rebase 'main", "git commit -m 'unclosed", "git push --force origin x\necho '",
+    # a read on line 1 is refused with it — the line names git and cannot be read — and so
+    # is a message whose terminator AND closing quote were dropped (bash runs nothing)
+    "git status\necho '#", "git log --oneline -3\necho \"$(cat <<EOF",
+    "git commit -m \"$(cat <<'EOF'\nmsg, the terminator dropped",
+    # ... and the entry's other half: a body no reading places — a heredoc never terminated
+    # — whose text holds an odd quote. Bash reads that body to the end of the line and ran
+    # the push before it; the reading that takes the body for commands does not tokenize
+    "cat <<Z\nx\nZ\ngit push -f origin y\ncat <<EOF\necho '",
+    "git reset --hard\ncat <<EOF\nit's",
+    "echo $(cat <<'E O F'\nx\"\nE O F\n) ; git push -f origin y ; cat <<Z\n",
+]
+# round 7 (escalations/06-audit-opus.md, B1): the same line with one `$'…'` that escapes a
+# quote on it. Round 6 excused every reading `never_judged` holds back for that quote, broken
+# for bash or not, so each of these was still a prompt and bash still ran line 1. Bash itself
+# is asked now (`bash -n`, hooks/README.md): a line that names git, that no reading here
+# judges and that bash refuses is a git command that cannot be read — every first line the
+# audit names × every second line it names
+BASH_REFUSED_GIT_FIRSTS = ["git push -f origin y", "git push origin main", "git reset --hard",
+                           "git clean -fdx", "git branch -D y"]
+BASH_REFUSED_GIT_TAILS = ["echo $'\\'' \"", "echo $'\\'' '", "echo $'\\'' \"$(cat <<EOF",
+                          ": $'a\\'b' \"x", "echo ${x:-$'\\''} \""]
+BASH_REFUSED_GIT_DENY = [first + "\n" + tail for first in BASH_REFUSED_GIT_FIRSTS
+                         for tail in BASH_REFUSED_GIT_TAILS] + [
+    # the escaped quote on a complete line of its own, before the push and after it
+    "echo $'\\''\ngit push -f origin y\necho \"", "git push -f origin y\necho $'\\''\necho \"",
+    # ... beside a `#`, in a substitution, after a `$$`, before the push on its line; the git
+    # word spelled with a backslash; a PR body after it whose terminator was dropped
+    "git push -f origin y\necho $'\\'' '#", "git push -f origin y\necho $'\\'' \"\n#",
+    "git push -f origin y\necho `echo $'\\''` \"", "git push -f origin y\necho $(echo $'\\'') \"",
+    "git push -f origin y\n: $$'\\'' \"", "echo $'\\''; git push -f origin y\necho \"",
+    "g\\it push -f origin y\necho $'\\'' \"",
+    "git push -f origin y\ngh pr create --body $'it\\'s' \"$(cat <<'EOF'\nx\n",
+    # ... a heredoc that is never terminated, with the escaped quote in what bash reads as
+    # its body: bash warns and ran the push (no exit status says so — any output is a refusal)
+    "git push -f origin y\ncat <<EOF\n$'\\''",
+    # the round's own over-denies, pinned: one line bash runs nothing of, and a pattern only
+    # `shopt -s extglob` parses (nothing is executed for the check, so the `shopt` on the
+    # line turns nothing on) beside the escaped quote
+    "git push -f origin y; echo $'\\'' \"", "shopt -s extglob\ngit add !(x) $'\\''",
+]
+# round 7 (escalations/06-review-opus.md): what bash parses is NOT that deny, shlex or no
+# shlex — a quoted substitution whose inner double quotes hold an odd quote. Round 6 gave
+# these the git deny; they are back where round 5 had them: the does-not-tokenize deny, which
+# names the quote and decays (self/tests/hook-escalation.sh, 10c), ...
+BASH_PARSED_QUOTE_DENY = [
+    "git commit -m \"$(echo \"it's\")\"", "git commit -m \"$(printf \"%s\" \"don't\")\"",
+    "git commit -m \"`echo \"it's\"`\"", "git commit -m \"${x:-\"it's\"}\"",
+    "git log --grep \"$(echo \"it's\")\" -1",
+]
+# ... or, with a `#` in the raw text, the prompt `does_not_tokenize`'s guard leaves — after a
+# push as well: valid bash no reader here lexes is the BACKLOG's quoted-substitution class,
+# a prompt as before this feature, never an allow. A well-formed ANSI-C line stays a prompt
+BASH_PARSED_PROMPT = [
+    "git commit -m \"$(echo \"it's #1\")\"", "git push -f origin y\necho \"$(echo \"it's #\")\"",
+    "git commit -m $'it\\'s'", "git push -f origin y\necho $'\\''",
+    "echo $'\\'' && git push -f origin y", "echo $'it\\'s' ; git push --force origin x",
+    # ... and bash is not asked about a line that names no git: the prompt it had
+    "ls\necho $'\\'' \"",
+]
+# round 4 (R3-1, the audit's w10 and w14, and x7): a built reading that does not tokenize on a
+# line that names no git takes the deny a plain line with an open quote takes, with its reason
+# — the chained cd and the own assignment bash runs there are in a reading no reader can lex
+TORN_READING_DENY = [
+    "echo \"$(cat <<EOF\nx\nEOF )\" ; cd /tmp && ls\nEOF\n)\"",
+    "echo \"$(cat <<EOF\nx\nEOF )\"; X=/p; cat $X/f\nEOF\n)\"",
+    "ls # x\ncd /tmp && ls\necho '", "cat <<EOF\nx\nEOF\nX=/p; cat $X/f\necho \"",
+    # round 5 (R4-1, the audit's e12): the same deny for a line that holds a whole-argument
+    # head whose delimiter is no plain word and names no git — the chained cd, an own
+    # assignment, and such a head with nothing after it at all
+    "echo \"$(cat <<''\nx\n)\" ; cd /tmp && ls\n\n)\"",
+    "echo \"$(cat <<E'O'F\nx\"\nEOF\n)\" ; X=/p; cat $X/f",
+    "echo \"$(cat <<E-F\nx\nE-F\n)\"",
+    # round 4's two documented over-denies with no git on the line, pinned (round 4's review):
+    # after a heredoc, a quote nested in a later `"$(…)"` with an odd quote of the other kind
+    # inside; a PR body with a line that begins with its own delimiter word and an odd quote
+    # after it. Bash reads both whole
+    "cat <<EOF\nx\nEOF\necho \"$(grep \"don't\" f)\"",
+    "gh pr create --title t --body \"$(cat <<'EOF'\nEOF notes\nit's fine\nEOF\n)\"",
+]
+# ... and what is no built reading, or is one that tokenizes: as it was. The usual commit
+# message and PR body, with apostrophes, quotes, backticks and a `$(` in the body; an unquoted
+# delimiter over an odd quote; a comment in doubt read as text; a body that was never placed
+TORN_READING_NOT_DENIED = [
+    ("git commit -m \"$(cat <<'EOF'\nfix: it's \"quoted\", `ticked` and $(sub)\n\nbody's \"x\nEOF\n)\"", "prompt"),
+    ("git commit -m \"$(cat <<'EOF'\nan odd \" here\nEOF\n)\"", "prompt"),
+    ("gh pr create --title t --body \"$(cat <<'EOF'\nit's a \"body\nEOF\n)\"", "prompt"),
+    ("git commit -m \"$(cat <<EOF\nan odd \" here\nEOF\n)\"", "prompt"),
+    ("git commit -m \"$(cat <<EOF\nsay \"it's\" ok\nEOF\n)\"", "prompt"),
+    ("git commit -m \"$(cat <<EOF\nmsg\nEOF\n)\" # it's done", "prompt"),
+    ("(ls) # it's", "prompt"), ("cat <<EOF\nx\nEOF\n(ls) # it's", "prompt"),
+    ("cat <<EOF\nit's\nEOX", "prompt"), ("git status # it's", "prompt"),
+    # round 5: the usual message under each delimiter a message is written with — `'EOF'`,
+    # `"EOF"`, `EOF`, `-EOF`, `-'EOF'` — is where it was, quotes in its body and all
+    ("git commit -m \"$(cat <<\"EOF\"\nit's an odd \" here\nEOF\n)\"", "prompt"),
+    ("git commit -m \"$(cat <<EOF\nit's \"quoted\" and `ticked`\nEOF\n)\"", "prompt"),
+    ("git commit -m \"$(cat <<-EOF\n\tit's \"here\"\n\tEOF\n)\"", "prompt"),
+    ("git commit -m \"$(cat <<-'EOF'\n\tan odd \" here\n\tEOF\n)\"", "prompt"),
+    ("gh pr create --title t --body \"$(cat <<\"EOF\"\nit's a \"body\nEOF\n)\"", "prompt"),
+    ("gh pr create --title t --body \"$(cat <<-EOF\n\tit's a body\n\tEOF\n)\"", "prompt"),
+    ("git commit -m \"$(cat <<'END_OF_MSG'\nit's \"x\nEND_OF_MSG\n)\"", "prompt"),
+    # ... a message whose BODY names such a head is a body, stood in like any other
+    ("git commit -m \"$(cat <<'EOF'\nthe head \"$(cat <<E'O'F is refused, and <<''\nEOF\n)\"", "prompt"),
+    # ... a herestring is no head, nor is a head with a command on its own line (the
+    # documented class), and the same delimiters outside a quoted head are read as they were
+    ("echo \"$(cat <<<\"x\")\"", "prompt"), ("x=\"$(cat <<EOF | tr a b\nx\nEOF\n)\"", "prompt"),
+    ("cat <<E-F\nit's\nE-F", "prompt"), ("cat <<''\nit's\n", "prompt"),
+    ("grep -n '\"$(cat <<' README.md", "ALLOW"),
+    # round 6: UNLEXED_GIT_DENY's tails on a line that names NO git keep the verdict they had —
+    # the prompt a `<<` or a `#` in the raw text leaves (`does_not_tokenize`'s two guards),
+    # after a read, a write, a chained cd and an own assignment alike
+    ("ls\necho '#", "prompt"), ("ls\necho '<<", "prompt"),
+    ("cat README.md\necho \"$(cat <<EOF", "prompt"),
+    ("gh pr create --body \"$(cat <<'EOF'\nx", "prompt"),
+    ("rm -rf self '#", "prompt"), ("touch x '<<", "prompt"),
+    ("cd /tmp && ls\necho '#", "prompt"), ("X=/p; cat $X/f\necho '<<", "prompt"),
+    # ... and what tokenizes for bash on a line that names git is where it was: a quote in
+    # a comment, a placed body holding an odd quote, a body that is never terminated (bash
+    # reads it to the end of the line), and `never_judged`'s ANSI-C quote — shlex refuses
+    # it and bash reads it, so it excuses the line here as everywhere
+    ("git status # it's", "prompt"), ("git log --oneline -3 # '", "prompt"),
+    ("cat <<'EOF'\ngit rebase 'main\nEOF", "prompt"), ("cat <<EOF\ngit's\nEOX", "prompt"),
+    ("git commit -m $'it\\'s'", "prompt"),
 ]
 
 # ── git's global options, on BOTH sides (design 2026-09-18 §5b) ──────────────
@@ -689,6 +1387,77 @@ GIT_GLOBAL_OPTION_CASES = [
     (f"git -C {ROOT} branch -D main", "DENY"), (f"git --git-dir={ROOT}/.git stash", "DENY"),
 ]
 
+# ── A git directory planted in the tree (self/features/hook-planted-gitdir/) ──
+# A REAL repository (REAL, one commit) with a real linked worktree under `.worktrees/`, and
+# under `plans/evil/` a bare git directory written as plain files — `HEAD`, `objects/`,
+# `refs/` and a `config` whose `core.fsmonitor` and `diff.external` each touch a marker.
+# Git 2.43 discovers it (`safe.bareRepository=all`), so a read there runs the command:
+# PLANT_LIVE below proves it does, so the prompt rows are about a live plant. `plans/nested/`
+# is a nested repository (`git init`), whose `.git` is no linked worktree of REAL either.
+# Each read in or at a plant prompts; the same reads in REAL and in its worktree stay
+# approved. No git runs in the hook for any of them (hook-cloud-profile.sh X1-X3).
+REAL = os.path.join(TMP, "real")
+REAL_WT = os.path.join(REAL, ".worktrees", "feat")
+PLANT = os.path.join(REAL, "plans", "evil")
+PLANT_MARKERS = {"fsmonitor": os.path.join(TMP, "PWNED_FSMONITOR"),
+                 "diff": os.path.join(TMP, "PWNED_DIFF")}
+GIT_ISOLATED = ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid",
+                "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main"]
+subprocess.run(GIT_ISOLATED + ["init", "-q", REAL], check=True)
+subprocess.run(GIT_ISOLATED + ["-C", REAL, "commit", "-q", "--allow-empty", "-m", "init"],
+               check=True)
+subprocess.run(GIT_ISOLATED + ["-C", REAL, "worktree", "add", "-q", "-b", "feat", REAL_WT],
+               check=True)
+subprocess.run(GIT_ISOLATED + ["init", "-q", os.path.join(REAL, "plans", "nested")], check=True)
+for d in ["objects", "refs", "sub"]:
+    os.makedirs(os.path.join(PLANT, d))
+for name, text in [("HEAD", "ref: refs/heads/main\n"), ("a", "a\n"), ("b", "b\n"),
+                   ("config", "[core]\n\trepositoryformatversion = 0\n\tbare = false\n"
+                              f"\tworktree = {PLANT}\n"
+                              f"\tfsmonitor = touch {PLANT_MARKERS['fsmonitor']}\n"
+                              f"[diff]\n\texternal = touch {PLANT_MARKERS['diff']}\n")]:
+    with open(os.path.join(PLANT, name), "w") as handle:
+        handle.write(text)
+subprocess.run(["git", "-C", PLANT, "diff", "--no-index", "a", "b"], capture_output=True)
+subprocess.run(["git", "-C", PLANT, "status"], capture_output=True)
+PLANT_LIVE = all(os.path.exists(m) for m in PLANT_MARKERS.values())
+for marker in PLANT_MARKERS.values():
+    if os.path.exists(marker):
+        os.remove(marker)
+
+# (command, cwd, root, expected)
+PLANTED_GITDIR_CASES = [
+    # the four spellings the backlog entry names
+    (f"git -C {PLANT} status", REAL, REAL, "prompt"),
+    (f"git -C {PLANT} diff --no-index a b", REAL, REAL, "prompt"),
+    ("git status", PLANT, REAL, "prompt"),
+    ("git --git-dir=plans/evil log -1", REAL, REAL, "prompt"),
+    # the same plant by its other spellings: separate value, absolute, relative to a `-C`,
+    # from a subdirectory under it, a `-C` past it in a second option, a diff as cwd
+    (f"git --git-dir {PLANT} log -1", REAL, REAL, "prompt"),
+    (f"git -C {REAL}/plans --git-dir=evil log", REAL, REAL, "prompt"),
+    ("git status", os.path.join(PLANT, "sub"), REAL, "prompt"),
+    (f"git -C {REAL} -C plans/evil status", REAL, REAL, "prompt"),
+    ("git diff --no-index a b", PLANT, REAL, "prompt"),
+    ("git log -1", PLANT, REAL, "prompt"),
+    # a nested repository's own git directory is not the root's either
+    (f"git -C {REAL}/plans/nested status", REAL, REAL, "prompt"),
+    # the root's own reads are unchanged
+    ("git status", REAL, REAL, "ALLOW"), (f"git -C {REAL} log --oneline -1", REAL, REAL, "ALLOW"),
+    (f"git -C {REAL}/plans status", REAL, REAL, "ALLOW"),
+    ("git status", os.path.join(REAL, "plans"), REAL, "ALLOW"),
+    (f"git --git-dir={REAL}/.git log -1", REAL, REAL, "ALLOW"),
+    (f"git --work-tree={REAL} status", REAL, REAL, "ALLOW"),
+    (f"git -C {REAL} diff --no-index a b", REAL, REAL, "ALLOW"),
+    # a real linked worktree, from the root and as its own session's root
+    (f"git -C {REAL_WT} status", REAL, REAL, "ALLOW"),
+    ("git log -1", REAL_WT, REAL, "ALLOW"),
+    ("git status", REAL_WT, REAL_WT, "ALLOW"),
+    (f"git --git-dir={REAL}/.git/worktrees/feat log -1", REAL, REAL, "ALLOW"),
+    # a plant inside the worktree is a plant
+    (f"git -C {REAL_WT} --git-dir={PLANT} log", REAL, REAL, "prompt"),
+]
+
 # An assignment at command position followed by its own `$NAME` later on the line: the
 # path is decided at run time, the reads fence cannot check it, and the literal is always
 # available (design 2026-09-16 §3.7). Denied wherever the pair sits.
@@ -698,6 +1467,12 @@ ASSIGN_DENY = [
     f"R={ROOT}; ls $R/src", f"R={ROOT}\nls $R/src",
     f"R={ROOT}; sed -n 1,5p $R/README.md; grep -n x $R/src/a.py",
     f"export R={ROOT}; cat ${{R}}/README.md",
+    # a substitution inside the assigned word keeps the assign-then-use reason (round 4)
+    'X="$(pwd)"; cat $X/f', 'X="`pwd`"; cat $X/f', 'X="a$(pwd)"; cat $X/f',
+    # round 3 (escalations/02-audit-opus.md, R2-3): the use is looked for in every reading of
+    # the line, as the assignment is — here the pair sits past a `#` that starts no comment,
+    # and after a body bash ends at a joined terminator
+    "a=(x)#b; X=/p; cat $X/f", "cat <<EOF\nEO\\\nF\nX=/p; cat $X/f\nEOF",
 ]
 # The shapes that merely look like it. An assignment with no use of its own name, an
 # environment prefix on a command (which is not an assignment at command position), a
@@ -727,7 +1502,7 @@ BRACE_PROMPT = [
     "cat {/etc/passwd,}", f"cat {{{HOME}/.ssh/id_rsa,README.md}}",
     "cat {src/a.py,/etc/passwd}", "cat {src/a.py,dir/esc}", "ls {src,link-home}/",
     "cat {src/a.py,~/.zshrc}", "sed -{n,i} 5p README.md", "sort -{r,o}x README.md",
-    "sort --{output,x}=out.txt README.md", "git branch '{-a,-v}'", "git branch {-a,new}",
+    "sort --{output,x}=out.txt README.md", "git branch '{-a,-v}'",
     # A comma-less group and a sequence expression are braces bash itself leaves alone,
     # so there is nothing to expand and nothing to rewrite: they keep prompting.
     "cat {src/a.py}", "cat {a..c}", "find . -exec rm {} \\;",
@@ -923,9 +1698,21 @@ def group(name, pairs, judge):
 
 group("approves repo-confined reads and runs", [(c, "ALLOW") for c in ALLOW], run)
 group("refuses every audited bypass", [(c, "prompt") for c in PROMPT], run)
-group("approves the harness's own entry points", [(c, "ALLOW") for c in ENTRY_ALLOW], run)
+group("approves the harness's own entry points", [(c, "ALLOW") for c in ENTRY_ALLOW], run_pinned)
 group("refuses an entry point outside the tree or in a writing form",
-      [(c, "prompt") for c in ENTRY_PROMPT], run)
+      [(c, "prompt") for c in ENTRY_PROMPT], run_both)
+group("still approves the runners' read forms and the pinned entry points",
+      [(c, "ALLOW") for c in RUNNER_READ_ALLOW], run_pinned)
+group("refuses every write form of ruff, mypy, pytest and report.py (F1-F7, F9)",
+      [(c, "prompt") for c in RUNNER_WRITE_PROMPT], run_both)
+group("hook-silent-allow-sweep: approves a location value, an entry point and a settings "
+      "file at their real names", [(c, "ALLOW") for c in SWEEP_ALLOW], run_pinned)
+group("hook-silent-allow-sweep: refuses a pattern location, the other analysis/ pin, a "
+      "same-basename gate or check-plans, an undiscovered settings name",
+      [(c, "prompt") for c in SWEEP_PROMPT], run)
+group("hook-silent-allow-sweep: the vendored hook refuses this checkout's analysis/ (item 6)",
+      [(c, "prompt") for c in SWEEP_VENDORED_PROMPT],
+      lambda c: run(c, hook=HOOK_VENDORED))
 group("approves the unchained rewrites", [(cw, "ALLOW") for cw in UNCHAINED_ALLOW],
       lambda cw: run(cw[0], cwd=cw[1]))
 group("refuses an unchained escape", [(cw, "prompt") for cw in UNCHAINED_PROMPT],
@@ -938,12 +1725,21 @@ group("approves simple brace lists", [(c, "ALLOW") for c in BRACE_ALLOW], run)
 group("refuses brace bypasses", [(c, "prompt") for c in BRACE_PROMPT], run)
 group("denies every ref-moving git shape", [(c, "DENY") for c in GIT_DENY], run)
 group("does not deny read-only git or an unjudgeable line", GIT_NOT_DENIED, run)
+group("denies what the audits found the git deny missing", [(c, "DENY") for c in GIT_AUDIT_DENY], run)
 group("denies a push to main", [(c, "DENY") for c in GIT_PUSH_MAIN_DENY], run)
 group("the push-to-main deny names LIFECYCLE rule 2 and feature-close.sh",
       [(c, "ok") for c in ["git push origin main", "git push --repo origin main"]],
       lambda c: deny_reason_ok(c, GIT_PUSH_MAIN_REASON_WORDS))
 group("judges git by its subcommand behind the global location options",
       GIT_GLOBAL_OPTION_CASES, run)
+if PLANT_LIVE:
+    print("  ok    the planted git directory runs its commands under git (the rows below matter)")
+else:
+    print("  FAIL  the planted git directory ran nothing: the prompt rows prove nothing")
+    fails += 1
+group("a read-only git in a planted git directory prompts; the root and its worktree do not",
+      [((c, cwd, root), want) for c, cwd, root, want in PLANTED_GITDIR_CASES],
+      lambda t: run(t[0], cwd=t[1], root=t[2]))
 group("denies an assignment whose own $NAME is used later on the line",
       [(c, "DENY") for c in ASSIGN_DENY], run)
 group("does not deny an assignment nobody dereferences, or an env prefix",
@@ -1074,9 +1870,38 @@ group("the replay covers at least the 24 commands the design counted",
 group("denies a line that does not tokenize", [(c, "DENY") for c in UNREADABLE_DENY], run)
 group("does not judge an unbalanced quote inside a heredoc body or behind a #",
       UNREADABLE_NOT_DENIED, run)
+# round 6 moved the two rows of these reason groups that name git (`git rebase 'main`, and
+# `git push -f origin y⏎echo '` below) to the git deny: the same DENY, a reason that names
+# the lifecycle instead of the quote, and no decay. Both are asserted in the round's own
+# groups; `ls 'src` stands where `git rebase 'main` stood
 group("the unreadable deny names the quote",
-      [(c, "ok") for c in ["cat 'x", "git rebase 'main"]],
+      [(c, "ok") for c in ["cat 'x", "ls 'src"]],
       lambda c: deny_reason_ok(c, UNREADABLE_REASON_WORDS))
+group("denies a built reading that does not tokenize, on a line that names no git",
+      [(c, "DENY") for c in TORN_READING_DENY], run)
+group("... with the reason that names the quote",
+      [(c, "ok") for c in TORN_READING_DENY],
+      lambda c: deny_reason_ok(c, UNREADABLE_REASON_WORDS))
+group("denies a line that names git and does not tokenize, whatever << or # it holds",
+      [(c, "DENY") for c in UNLEXED_GIT_DENY], run)
+group("... as a git command that cannot be read: the git deny's reason, not the quote's",
+      [(c, "ok") for c in UNLEXED_GIT_DENY + ["git push -f origin y\necho '"]],
+      lambda c: deny_reason_ok(c, GIT_REASON_WORDS))
+group("denies a line that names git, that no reading judges and that bash refuses, ANSI-C quote or not",
+      [(c, "DENY") for c in BASH_REFUSED_GIT_DENY], run)
+group("... as a git command that cannot be read: the git deny's reason",
+      [(c, "ok") for c in BASH_REFUSED_GIT_DENY],
+      lambda c: deny_reason_ok(c, GIT_REASON_WORDS))
+group("a line bash parses is not that deny: the does-not-tokenize deny round 5 gave it",
+      [(c, "DENY") for c in BASH_PARSED_QUOTE_DENY], run)
+group("... with the reason that names the quote, and nothing of the git deny's",
+      [(c, "ok") for c in BASH_PARSED_QUOTE_DENY],
+      lambda c: deny_reason_ok(c, UNREADABLE_REASON_WORDS) if deny_reason_ok(
+          c, UNREADABLE_REASON_WORDS) != "ok" else reason_lacks(c, GIT_REASON_WORDS))
+group("... or the prompt it had, with a # in its text or an ANSI-C quote bash reads",
+      [(c, "prompt") for c in BASH_PARSED_PROMPT], run)
+group("does not deny the usual message, a reading that tokenizes or one the walk did not build",
+      TORN_READING_NOT_DENIED, run)
 group("worktree session stays in its tree", WT_CASES, lambda c: run(c, cwd=WT, root=WT))
 group("payload without cwd, outside cwd, or other tool approves nothing", PAYLOAD_CASES,
       lambda p: decide(p))

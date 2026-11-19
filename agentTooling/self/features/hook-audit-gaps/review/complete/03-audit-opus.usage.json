@@ -1,0 +1,84 @@
+{
+  "plan": "03-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "4e145f9a-a0d5-44ed-8419-882ac9f1db14",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 40,
+  "duration_ms": 365045,
+  "total_cost_usd": 1.9251432,
+  "usage": {
+    "input_tokens": 48,
+    "cache_creation_input_tokens": 98199,
+    "cache_read_input_tokens": 1945533,
+    "output_tokens": 37498
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 2836,
+      "outputTokens": 18,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0002926,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 48,
+      "outputTokens": 37498,
+      "cacheReadInputTokens": 1945533,
+      "cacheCreationInputTokens": 98199,
+      "webSearchRequests": 0,
+      "costUSD": 1.9248506,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 11185,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 98199,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 2,
+  "tool_counts": {
+    "Bash": 18,
+    "Edit": 3,
+    "Read": 5,
+    "Write": 13
+  },
+  "files_edited": [
+    "../../../tmp/plan-capture.f6AOGg/scratch/head/.git/agenttooling-orchestrators",
+    "/tmp/plan-capture.f6AOGg/scratch/cases_a.py",
+    "/tmp/plan-capture.f6AOGg/scratch/cases_b.py",
+    "/tmp/plan-capture.f6AOGg/scratch/cases_c.py",
+    "/tmp/plan-capture.f6AOGg/scratch/cases_d.py",
+    "/tmp/plan-capture.f6AOGg/scratch/cases_e.py",
+    "/tmp/plan-capture.f6AOGg/scratch/cases_f.py",
+    "/tmp/plan-capture.f6AOGg/scratch/cases_g.py",
+    "/tmp/plan-capture.f6AOGg/scratch/drive.py",
+    "/tmp/plan-capture.f6AOGg/scratch/main/.git/agenttooling-orchestrators",
+    "/tmp/plan-capture.f6AOGg/scratch/manifest_attack.py",
+    "/tmp/plan-capture.f6AOGg/scratch/setup.sh",
+    "self/features/hook-audit-gaps/audit-report.md"
+  ],
+  "edit_count": 16,
+  "attempts": [
+    {
+      "session_id": "4e145f9a-a0d5-44ed-8419-882ac9f1db14",
+      "outcome": "complete",
+      "total_cost_usd": 1.9251432,
+      "num_turns": 40,
+      "duration_ms": 365045
+    }
+  ]
+}

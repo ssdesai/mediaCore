@@ -1,0 +1,9 @@
+write: /tmp/plan-capture.oNrczl/scratch/setup.sh
+write: /tmp/plan-capture.oNrczl/scratch/setup.sh
+write: /tmp/plan-capture.oNrczl/scratch/plant.sh
+write: /tmp/plan-capture.oNrczl/scratch/drive.py
+write: /tmp/plan-capture.oNrczl/scratch/cred.cfg
+write: /tmp/plan-capture.oNrczl/scratch/drive2.py
+write: /tmp/plan-capture.oNrczl/scratch/cfg.sh
+write: /tmp/plan-capture.oNrczl/scratch/role.sh
+write: /home/user/agentTooling/self/features/hook-silent-allow-sweep/audit-report.md

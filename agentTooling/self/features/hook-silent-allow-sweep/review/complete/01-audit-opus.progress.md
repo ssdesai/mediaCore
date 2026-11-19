@@ -1,0 +1,10 @@
+write: /tmp/plan-capture.Uxvmm0/scratch/audit.py
+write: /tmp/plan-capture.Uxvmm0/scratch/gencases.py
+edit: /tmp/plan-capture.Uxvmm0/scratch/audit.py
+write: /tmp/plan-capture.Uxvmm0/scratch/one.py
+edit: /tmp/plan-capture.Uxvmm0/scratch/audit.py
+edit: /tmp/plan-capture.Uxvmm0/scratch/audit.py
+write: /tmp/plan-capture.Uxvmm0/scratch/refuse.sh
+write: /tmp/plan-capture.Uxvmm0/scratch/role.py
+write: /tmp/plan-capture.Uxvmm0/scratch/table.py
+write: /home/user/agentTooling/self/features/hook-silent-allow-sweep/audit-report.md

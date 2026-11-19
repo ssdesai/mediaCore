@@ -1,0 +1,224 @@
+{
+  "slug": "orchestration-records-in-repo",
+  "captured_at": "2026-11-13T02:36:48.282027+00:00",
+  "manifest_branches": [
+    "claude/cool-brown-p7cvcg"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "0ed8bd4b-fa9b-5b0d-84f6-213186a076a4",
+      "git_branch": "claude/cool-brown-p7cvcg",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-11-12",
+      "started_at": "2026-11-12T00:57:22.823000+00:00",
+      "ended_at": "2026-11-13T02:36:43.246000+00:00",
+      "duration_s": 92360
+    }
+  ],
+  "subagents": [
+    {
+      "agent_id": "a1877b7cdb889582c",
+      "parent_session_id": "0ed8bd4b-fa9b-5b0d-84f6-213186a076a4",
+      "date": "2026-11-12",
+      "started_at": "2026-11-12T22:59:35.701000+00:00",
+      "ended_at": "2026-11-12T23:01:18.183000+00:00",
+      "duration_s": 102,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a8678dd0809b1f5ff",
+      "parent_session_id": "0ed8bd4b-fa9b-5b0d-84f6-213186a076a4",
+      "date": "2026-11-12",
+      "started_at": "2026-11-12T16:42:11.258000+00:00",
+      "ended_at": "2026-11-12T17:16:24.870000+00:00",
+      "duration_s": 2053,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "a8f2e469206a9fd25",
+      "parent_session_id": "0ed8bd4b-fa9b-5b0d-84f6-213186a076a4",
+      "date": "2026-11-13",
+      "started_at": "2026-11-13T00:04:36.913000+00:00",
+      "ended_at": "2026-11-13T02:16:08.381000+00:00",
+      "duration_s": 7891,
+      "selected_by": "parent",
+      "cross_repo": false
+    },
+    {
+      "agent_id": "adcb52f3a7165f60c",
+      "parent_session_id": "0ed8bd4b-fa9b-5b0d-84f6-213186a076a4",
+      "date": "2026-11-12",
+      "started_at": "2026-11-12T01:09:30.368000+00:00",
+      "ended_at": "2026-11-12T16:29:03.629000+00:00",
+      "duration_s": 55173,
+      "selected_by": "parent",
+      "cross_repo": false
+    }
+  ],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "2ae89760-c864-498c-81c6-6afca8ae1e3a",
+    "78e8430f-1870-4a82-b8d9-97fc35f1a884",
+    "87dabfea-b233-4421-8490-2e3ece3b3eb9",
+    "f1eb64e2-4740-477c-bf40-11ed8be7959a"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "0ed8bd4b-fa9b-5b0d-84f6-213186a076a4",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-12",
+      "duration_s": 92360,
+      "tokens": {
+        "input": 261,
+        "output": 43131,
+        "cache_read": 17506208,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 459375
+      },
+      "cost_usd": 8.039905599999999,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "0ed8bd4b-fa9b-5b0d-84f6-213186a076a4",
+      "agent_id": "a1877b7cdb889582c",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-12",
+      "duration_s": 102,
+      "tokens": {
+        "input": 42,
+        "output": 9983,
+        "cache_read": 2093379,
+        "cache_creation_5m": 138541,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 1.3112088,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "0ed8bd4b-fa9b-5b0d-84f6-213186a076a4",
+      "agent_id": "a8678dd0809b1f5ff",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-12",
+      "duration_s": 2053,
+      "tokens": {
+        "input": 126,
+        "output": 49454,
+        "cache_read": 8806876,
+        "cache_creation_5m": 334845,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 2.2125921,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    },
+    {
+      "session_id": "0ed8bd4b-fa9b-5b0d-84f6-213186a076a4",
+      "agent_id": "a8f2e469206a9fd25",
+      "model": "claude-opus-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-13",
+      "duration_s": 7891,
+      "tokens": {
+        "input": 204,
+        "output": 56438,
+        "cache_read": 19111820,
+        "cache_creation_5m": 611290,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 8.00839,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    },
+    {
+      "session_id": "0ed8bd4b-fa9b-5b0d-84f6-213186a076a4",
+      "agent_id": "adcb52f3a7165f60c",
+      "model": "claude-sonnet-5-5",
+      "is_sidechain": true,
+      "date": "2026-11-12",
+      "duration_s": 55173,
+      "tokens": {
+        "input": 174,
+        "output": 71555,
+        "cache_read": 16522317,
+        "cache_creation_5m": 434906,
+        "cache_creation_1h": 0
+      },
+      "cost_usd": 3.4553947000000003,
+      "rates_applied": {
+        "model": "claude-sonnet-5-5",
+        "input": 2,
+        "output": 10,
+        "cache_read": 0.1,
+        "cache_creation_5m": 2.5,
+        "cache_creation_1h": 4,
+        "tier": "standard",
+        "from": "2026-10-13",
+        "source": "litellm"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 8.039905599999999,
+    "sidechain": 14.987585600000001,
+    "subagents": 14.987585600000001,
+    "total": 23.0274912,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 92360,
+    "subagents": 65219,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-10-13",
+  "warnings": [
+    "rate history is stale (checked 2026-10-13); refresh analysis/rates_history.json with analysis/refresh_rates.py in an agentTooling self feature"
+  ]
+}

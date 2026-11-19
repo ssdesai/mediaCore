@@ -1,0 +1,74 @@
+{
+  "plan": "02-review-sonnet",
+  "model": "sonnet",
+  "outcome": "complete",
+  "session_id": "6bb9345e-ef7c-44f0-ab84-8b3d6d27eaaa",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 11,
+  "duration_ms": 39903,
+  "total_cost_usd": 0.2274482,
+  "usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 34962,
+    "cache_read_input_tokens": 454812,
+    "output_tokens": 4162
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 4535,
+      "outputTokens": 19,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.00046300000000000003,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-sonnet-5-5": {
+      "inputTokens": 18,
+      "outputTokens": 4162,
+      "cacheReadInputTokens": 454812,
+      "cacheCreationInputTokens": 34962,
+      "webSearchRequests": 0,
+      "costUSD": 0.2269852,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 1479,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 34962,
+      "canonicalModel": "claude-sonnet-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 6,
+    "Edit": 3,
+    "Write": 1
+  },
+  "files_edited": [
+    "self/features/python-entry-exact/NOTES.md",
+    "self/review-report.md",
+    "self/tests/README.md",
+    "self/tests/manifest-window.sh"
+  ],
+  "edit_count": 4,
+  "attempts": [
+    {
+      "session_id": "6bb9345e-ef7c-44f0-ab84-8b3d6d27eaaa",
+      "outcome": "complete",
+      "total_cost_usd": 0.2274482,
+      "num_turns": 11,
+      "duration_ms": 39903
+    }
+  ]
+}

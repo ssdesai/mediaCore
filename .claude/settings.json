@@ -9,6 +9,15 @@
             "command": "${CLAUDE_PROJECT_DIR}/agentTooling/hooks/allow-repo-commands.sh"
           }
         ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/agentTooling/hooks/allow-repo-commands.sh"
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -67,7 +76,8 @@
       "Bash(git stash)"
     ],
     "ask": [
-      "Edit(**/agentTooling/hooks/**)"
+      "Edit(**/agentTooling/**)",
+      "Edit(**/plans/orchestrations/**)"
     ]
   },
   "sandbox": {

@@ -62,11 +62,20 @@ Usage: python3 agentTooling/analysis/capture_planning.py <slug>
        python3 agentTooling/analysis/capture_planning.py --list-subagents [--since YYYY-MM-DD]
        python3 agentTooling/analysis/capture_planning.py --list-subagents --unclaimed --for <repo>/<slug>
        python3 agentTooling/analysis/capture_planning.py --last-branch-instant <slug> [--ignore-to]
+       python3 agentTooling/analysis/capture_planning.py --claim-check <slug>
+
+A capture pins, through `manifest.py pin-subagent`, every unclaimed delegate whose brief's
+first line is `feature: <repo>/<slug>` naming the feature it captures (`auto_claim_briefed`;
+the header is `hooks/brief_header.py`'s). `--claim-check <slug>` is the close's read-only
+question before its PR: would the capture claim anything for the build, and if not, what
+did it meet (`claim_check`).
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
 import re
 import subprocess
@@ -101,6 +110,17 @@ from routing import (
     MANIFEST_NAME, WORKTREES_DIR_NAME, feature_worktree_path, is_router_lines, parse_manifest,
 )
 from transcript import add_usage, iter_billable_messages, iter_billable_messages_at, to_utc
+
+# The brief header's one definition (`hooks/brief_header.py`, `README.md` → "The brief
+# header"). The PreToolUse hook reads it too and may not import `analysis/`, so it lives on
+# the hook's side and is reached here by path — appended, so nothing in `hooks/` can shadow
+# a module of this directory. Unguarded on purpose: every copy of agentTooling ships both
+# directories, and a missing definition is an ImportError rather than every brief silently
+# read another way.
+HOOKS_DIR = Path(__file__).resolve().parent.parent / "hooks"
+if str(HOOKS_DIR) not in sys.path:
+    sys.path.append(str(HOOKS_DIR))
+import brief_header  # noqa: E402
 
 # Claude Code's project-directory naming: every one of these characters in the launch cwd
 # becomes `TRANSCRIPT_DIR_MANGLE_TO`, which is why `<R>/.worktrees/<slug>` is filed under
@@ -820,11 +840,30 @@ SELECTED_BY_PINNED = "pinned"
 SELECTED_BY_PARENT = "parent"
 # What a refusal names for re-running another feature's capture (`check_claims`).
 FEATURE_CAPTURE_SCRIPT = "./feature-capture.sh"
-# The first line of a delegate's brief names the feature it is for (ORCHESTRATION.md):
-#   feature: <repo>/<slug>
-BRIEF_FEATURE_RE = re.compile(r"^\s*feature:\s*([\w.-]+)/([\w.-]+)\s*$", re.MULTILINE)
+# The first line of a delegate's brief names the feature it is for — `feature: <repo>/<slug>`
+# or `feature: none — <reason>` — read through `brief_header`, the one definition.
 # The same `<repo>/<slug>` as an argument rather than a brief line: what `--for` takes.
 FEATURE_REF_RE = re.compile(r"^([\w.-]+)/([\w.-]+)$")
+# The capture's auto-claim of a delegate whose brief names the feature being captured
+# (`auto_claim_briefed`), and the label its lines carry.
+AUTO_CLAIM_LABEL = "auto-claim"
+# `--claim-check <slug>`, the close's question before its PR (`claim_check`): its label, and
+# the exit code that means "nothing is claimed for the build, and something was met".
+# Not 1 (a crash or any other refusal) and not 2 (argparse's usage error): the close reads
+# this one code as the stop and refuses on every other non-zero one as a check that could
+# not run.
+CLAIM_CHECK_LABEL = "claim-check"
+CLAIM_CHECK_UNCLAIMED_EXIT = 5
+# The exact pin command the check prints for each id it met: `manifest.py` beside this file,
+# by absolute path, `--self` for agentTooling's own corpus.
+MANIFEST_SCRIPT = Path(__file__).resolve().with_name("manifest.py")
+MANIFEST_COMMAND = "python3 {manifest} {self_flag}{slug} {verb} {id}"
+SELF_FLAG_WORD = "--self "
+PIN_SUBAGENT_VERB = "pin-subagent"
+PIN_SESSION_VERB = "pin-session"
+# The manifest key `feature-close.sh --allow-unclaimed "<reason>"` writes (through
+# `manifest.py allow-unclaimed`), copied into `planning.json` under the same name.
+ALLOW_UNCLAIMED_KEY = "allow_unclaimed"
 
 
 def claims_ledger_path():
@@ -1029,11 +1068,25 @@ def corpus_identity(features_dir):
     return repo_identity(features_dir.parents[1])
 
 
+def brief_header_of(lines):
+    """The header on the first non-empty line of a delegate's brief —
+    `("feature", repo, slug)`, `("none", reason)` or None (`brief_header.parse`)."""
+    return brief_header.parse(first_user_text(lines, limit=None))
+
+
 def brief_feature_of(lines):
-    """`(repo, slug)` from the `feature: <repo>/<slug>` line of a delegate's brief, or
-    None when the brief carries none."""
-    match = BRIEF_FEATURE_RE.search(first_user_text(lines, limit=None))
-    return (match.group(1), match.group(2)) if match else None
+    """`(repo, slug)` from the `feature: <repo>/<slug>` header on the FIRST non-empty line
+    of a delegate's brief, or None when that line is no such header (`brief_header`): a
+    header further down, or one with a remark after the slug, names nothing."""
+    return brief_header.feature_of(first_user_text(lines, limit=None))
+
+
+def brief_is_ambiguous(lines):
+    """Whether a delegate's brief carries header lines naming more than one feature — the
+    opening one and another further down, compared by `feature_mention_key` (the repo half
+    case-insensitively). Such a brief is no claim on any of them."""
+    named = brief_header.feature_lines(first_user_text(lines, limit=None))
+    return len({feature_mention_key(f"{repo}/{slug}") for repo, slug in named}) > 1
 
 
 def parse_feature_ref(text):
@@ -1812,13 +1865,12 @@ def claimed_session_ids(features_dirs):
     return claimed
 
 
-def list_sessions(sessions_dir, since, unclaimed, features_dirs):
-    """Print every top-level session launched in this repo's primary checkout — which
-    holds every feature worktree, under `<primary>/.worktrees/` — or in a legacy sibling
-    worktree (`<primary>-*`): date, id, branch, cwd, model, cost, minutes and opening
-    prompt. Every feature's, not one feature's: this is discovery, so no fence applies. The twin of `--list-subagents`, and the close step's question:
-    `unclaimed` keeps only the sessions no planning.json lists, no manifest pins and no
-    usage.json holds — cost that belongs to somebody and is counted by nobody."""
+def session_rows(sessions_dir, since, unclaimed, features_dirs):
+    """The rows `--list-sessions` prints, as dicts sorted by start date then id: `start`
+    (UTC date), `started_at` (the first instant), `session_id`, `branch`, `cwd`, `model`,
+    `cost`, `minutes`, `prompt`. Every top-level session launched in this repo's primary
+    checkout or a legacy sibling; `unclaimed` keeps the ones nothing accounts for, routers
+    excluded. What `list_sessions` prints and `claim_check` filters to a window."""
     session_dir_str = str(sessions_dir)
     claimed = claimed_session_ids(features_dirs) if unclaimed else set()
     rows = []
@@ -1867,8 +1919,27 @@ def list_sessions(sessions_dir, since, unclaimed, features_dirs):
                 priced, _ = compute_cost(model, totals[model], as_of=start)
                 cost += priced or 0.0
                 models.append(model)
-            rows.append((start, session_id, branch, cwd, "/".join(models), cost, minutes, first_user_text(lines)))
-    rows.sort()
+            rows.append({
+                "start": start, "started_at": min(timestamps), "session_id": session_id,
+                "branch": branch, "cwd": cwd, "model": "/".join(models), "cost": cost,
+                "minutes": minutes, "prompt": first_user_text(lines),
+            })
+    rows.sort(key=lambda row: (row["start"], row["session_id"]))
+    return rows
+
+
+def list_sessions(sessions_dir, since, unclaimed, features_dirs):
+    """Print every top-level session launched in this repo's primary checkout — which
+    holds every feature worktree, under `<primary>/.worktrees/` — or in a legacy sibling
+    worktree (`<primary>-*`): date, id, branch, cwd, model, cost, minutes and opening
+    prompt. Every feature's, not one feature's: this is discovery, so no fence applies. The twin of `--list-subagents`, and the close step's question:
+    `unclaimed` keeps only the sessions no planning.json lists, no manifest pins and no
+    usage.json holds — cost that belongs to somebody and is counted by nobody."""
+    rows = [
+        (r["start"], r["session_id"], r["branch"], r["cwd"], r["model"], r["cost"],
+         r["minutes"], r["prompt"])
+        for r in session_rows(sessions_dir, since, unclaimed, features_dirs)
+    ]
     if not rows:
         print("no unclaimed sessions" if unclaimed else "no sessions found under this repo's project directories")
         return
@@ -1890,32 +1961,17 @@ def list_sessions(sessions_dir, since, unclaimed, features_dirs):
         print(f"{len(rows)} session(s).")
 
 
-def list_subagents(
+def subagent_rows(
     sessions_dir, since, everywhere=False, unclaimed=False, only_feature=None,
     features_dirs=(), preferred_features_dir=None,
 ):
-    """Print every subagent transcript reachable from this repo's project directories:
-    start date, agent id, parent session, the parent's branch, the model, its priced
-    cost and its opening prompt. `since` (a UTC date string) drops older ones. This is
-    the discovery step for a manifest's `subagents` pin — the ids are not written
-    anywhere a human would otherwise read. `everywhere` widens the scan to every
-    project directory and adds the parent's cwd, for the delegate a coordinator in
-    another repo spawned to work on this one. `unclaimed` (implies `everywhere`)
-    keeps only the ones no feature has claimed in the ledger, and shows the feature
-    each one's brief names — the pin to write.
-
-    `only_feature`, a `(repo, slug)` pair (`--for`, which the caller pairs with
-    `unclaimed`), keeps only the rows whose brief names exactly that feature, compared
-    as the pair `brief_feature_of` returns by `same_feature_ref` (the repo half
-    case-insensitively). It exists because `feature-capture.sh`'s
-    unclaimed-delegate warning reads this list: matching text in the printed table instead
-    both over-fired on `<slug>-two` and under-fired on a `<repo>/<slug>` too long for
-    the pin column. For the same caller, the agent-id column is never truncated. A
-    delegate that feature's own manifest already pins is not unclaimed and is dropped
-    from the list (`manifest_pinned_subagents`, read from `features_dirs`, preferring
-    `preferred_features_dir` — the corpus this run is for — when a same-slug feature
-    exists in both), so the advice line below — and `feature-capture.sh`'s warning,
-    which reads these rows — speak only about pins still to write."""
+    """The rows `--list-subagents` prints, as dicts sorted by start date then id — every
+    filter `list_subagents` documents applied here, once, so the listing, the capture's
+    auto-claim (`briefed_delegates`) and the close's claim check (`claim_check`) select by
+    the same code. Keys: `start` (UTC date), `started_at` (first instant), `agent_id`,
+    `parent`, `branch`, `model`, `cost`, `minutes`, `cwd_name`, `header` (`brief_header_of`),
+    `named` (`brief_feature_of`), `named_text` (`<repo>/<slug>`, `none` or `-`),
+    `ambiguous` (`brief_is_ambiguous`) and `prompt`."""
     everywhere = everywhere or unclaimed
     claims = load_claims() if unclaimed else {}
     pinned_already = (
@@ -1981,21 +2037,70 @@ def list_subagents(
                 named = brief_feature_of(lines)
                 if only_feature is not None and not same_feature_ref(named, only_feature):
                     continue
-                rows.append(
-                    (
-                        start,
-                        agent_id_of(agent_path, lines),
-                        session_dir.name,
-                        branch,
-                        "/".join(models),
-                        cost,
-                        minutes,
-                        Path(cwd).name if cwd else "",
-                        f"{named[0]}/{named[1]}" if named else "-",
-                        first_user_text(lines),
-                    )
-                )
-    rows.sort()
+                header = brief_header_of(lines)
+                if named:
+                    named_text = f"{named[0]}/{named[1]}"
+                elif header:
+                    named_text = brief_header.KIND_NONE
+                else:
+                    named_text = "-"
+                rows.append({
+                    "start": start,
+                    "started_at": min(timestamps),
+                    "agent_id": agent_id_of(agent_path, lines),
+                    "parent": session_dir.name,
+                    "branch": branch,
+                    "model": "/".join(models),
+                    "cost": cost,
+                    "minutes": minutes,
+                    "cwd_name": Path(cwd).name if cwd else "",
+                    "header": header,
+                    "named": named,
+                    "named_text": named_text,
+                    "ambiguous": brief_is_ambiguous(lines),
+                    "prompt": first_user_text(lines),
+                })
+    rows.sort(key=lambda row: (row["start"], row["agent_id"]))
+    return rows
+
+
+def list_subagents(
+    sessions_dir, since, everywhere=False, unclaimed=False, only_feature=None,
+    features_dirs=(), preferred_features_dir=None,
+):
+    """Print every subagent transcript reachable from this repo's project directories:
+    start date, agent id, parent session, the parent's branch, the model, its priced
+    cost and its opening prompt. `since` (a UTC date string) drops older ones. This is
+    the discovery step for a manifest's `subagents` pin — the ids are not written
+    anywhere a human would otherwise read. `everywhere` widens the scan to every
+    project directory and adds the parent's cwd, for the delegate a coordinator in
+    another repo spawned to work on this one. `unclaimed` (implies `everywhere`)
+    keeps only the ones no feature has claimed in the ledger, and shows the feature
+    each one's brief names — the pin to write.
+
+    `only_feature`, a `(repo, slug)` pair (`--for`, which the caller pairs with
+    `unclaimed`), keeps only the rows whose brief names exactly that feature, compared
+    as the pair `brief_feature_of` returns by `same_feature_ref` (the repo half
+    case-insensitively). It exists because `feature-capture.sh`'s
+    unclaimed-delegate warning reads this list: matching text in the printed table instead
+    both over-fired on `<slug>-two` and under-fired on a `<repo>/<slug>` too long for
+    the pin column. For the same caller, the agent-id column is never truncated. A
+    delegate that feature's own manifest already pins is not unclaimed and is dropped
+    from the list (`manifest_pinned_subagents`, read from `features_dirs`, preferring
+    `preferred_features_dir` — the corpus this run is for — when a same-slug feature
+    exists in both), so the advice line below — and `feature-capture.sh`'s warning,
+    which reads these rows — speak only about pins still to write. The rows are
+    `subagent_rows`', which the capture's auto-claim and the close's claim check read too."""
+    rows = subagent_rows(
+        sessions_dir, since, everywhere, unclaimed, only_feature, features_dirs,
+        preferred_features_dir,
+    )
+    everywhere = everywhere or unclaimed
+    rows = [
+        (r["start"], r["agent_id"], r["parent"], r["branch"], r["model"], r["cost"],
+         r["minutes"], r["cwd_name"], r["named_text"], r["prompt"])
+        for r in rows
+    ]
     feature_ref = f"{only_feature[0]}/{only_feature[1]}" if only_feature else ""
     if not rows:
         # An empty scan has two very different causes and the message must not read like
@@ -2050,6 +2155,235 @@ def list_subagents(
         f"{PIN_SUBAGENT_COMMAND.format(slug='<slug>')}; it is then priced regardless of "
         "its parent's branch or the session_window."
     )
+
+
+def self_flag_word(features_dir):
+    """`--self ` for agentTooling's own corpus, "" for a consuming repo's — the flag a
+    printed `manifest.py` command needs to edit the manifest under `features_dir`."""
+    return SELF_FLAG_WORD if Path(features_dir) == features_root(True) else ""
+
+
+def manifest_command(features_dir, slug, verb, item_id):
+    """The exact `manifest.py` command a human runs to pin `item_id` to `<slug>`."""
+    return MANIFEST_COMMAND.format(
+        manifest=MANIFEST_SCRIPT, self_flag=self_flag_word(features_dir), slug=slug,
+        verb=verb, id=item_id,
+    )
+
+
+def briefed_delegates(features_dir, sessions_dir, slug, manifest, runner_ids=()):
+    """`(to_claim, left)` for `<slug>`'s auto-claim: the unclaimed delegates whose brief
+    names this feature, split into the ids the capture may pin and `(id, why)` for the ones
+    it leaves alone. `capture_feature` drops from `to_claim`, after its walk, any delegate a
+    parent it selected already priced (`auto_claim_briefed`'s `priced_by_parent`).
+
+    **The listing's rules, by the listing's code.** The candidates are exactly the rows
+    `--list-subagents --unclaimed --for <repo>/<slug> --since <from-date>` prints — what
+    `feature-capture.sh`'s unclaimed-delegate warning reads (`subagent_rows`): every
+    project directory, no claims-ledger entry, not already pinned by this manifest, the
+    brief's FIRST line naming this feature by `same_feature_ref`, started on or after the
+    window's `from` date. A partial match is no match there — `<slug>-two`, or a remark
+    after the slug, which `brief_header` does not read as a header — and so none here.
+    Three more refusals, each a claim this capture cannot make on the brief's word alone:
+
+      * another feature pins it — a manifest in this corpus's copies or a ledger pin
+        (`other_feature_pins`): a pin is a human's word and outranks a brief;
+      * this feature lists it in `exclude_subagents`: the manifest disowned it;
+      * the brief is ambiguous — a second header line further down names a different
+        feature (`brief_is_ambiguous`).
+
+    And one that is not a refusal but a claim already made: a delegate whose parent is a
+    runner session (`runner_ids`, `runner_session_sidecars`) is in that runner's
+    `usage.json` already, and the capture never prices a runner-only session's delegate,
+    so a pin on it would only ever read back as "matches no transcript"."""
+    runner_ids = set(runner_ids)
+    repo = corpus_identity(features_dir)
+    repo_name = repo_display_name(repo)
+    window_from = normalize_window(manifest)["from"]
+    since = window_from.date().isoformat() if window_from else None
+    rows = subagent_rows(
+        sessions_dir, since, unclaimed=True, only_feature=(repo_name, slug),
+        features_dirs=all_features_roots(), preferred_features_dir=features_dir,
+    )
+    other_pins = other_feature_pins(features_dir, slug, repo, repo_name, load_claims())
+    excluded = set(manifest.get("exclude_subagents") or [])
+    to_claim, left = [], []
+    for row in rows:
+        agent_id = row["agent_id"]
+        if row["parent"] in runner_ids:
+            left.append((
+                agent_id,
+                f"its parent {row['parent']} is a runner session, whose usage.json holds "
+                "its cost already",
+            ))
+        elif agent_id in other_pins:
+            left.append((agent_id, f"{other_pins[agent_id]} pins it"))
+        elif agent_id in excluded:
+            left.append((agent_id, "this manifest's exclude_subagents names it"))
+        elif row["ambiguous"]:
+            left.append((agent_id, "ambiguous — its brief names more than one feature"))
+        else:
+            to_claim.append(agent_id)
+    return to_claim, left
+
+
+def auto_claim_briefed(
+    features_dir, sessions_dir, slug, manifest, dry_run=False, runner_ids=(),
+    priced_by_parent=None,
+):
+    """Pin every delegate `briefed_delegates` says this capture may claim, and say so,
+    one line per delegate, naming the ones it left and why. Returns the ids pinned — or,
+    under `dry_run`, the ids it WOULD pin, with nothing written: `--claim-check` counts
+    them as claimed and leaves the write to the capture, whose commit carries cost records.
+
+    Called after the capture's walk: `runner_ids` are the runner-only sessions (a
+    collided id is not one), and `priced_by_parent` maps each delegate the walk already
+    priced through a parent it selected to that parent. Such a delegate is claimed by the
+    parent route and is not pinned — a pin would duplicate a claim the record states.
+
+    The pin is written by `manifest.py`'s own `pin-subagent` (`cmd_pin_subagent`, called
+    in-process with the arguments its CLI parses — the same id check, the same fence
+    rendering, the process-wide `--arm-root` honoured), never by editing the fence here:
+    `manifest.py` is the fence's one writer (LIFECYCLE.md rule 3). Imported where it is
+    used: a sandbox that copies `analysis/` without it fails only when there is a delegate
+    to pin, and says so rather than ending the capture."""
+    to_claim, left = briefed_delegates(
+        features_dir, sessions_dir, slug, manifest, runner_ids=runner_ids
+    )
+    priced_by_parent = priced_by_parent or {}
+    for agent_id in [a for a in to_claim if a in priced_by_parent]:
+        to_claim.remove(agent_id)
+        left.append((
+            agent_id,
+            f"its parent {priced_by_parent[agent_id]} is selected by this capture, which "
+            "claims it already",
+        ))
+    named = f"{repo_display_name(corpus_identity(features_dir))}/{slug}"
+    for agent_id, why in left:
+        print(f"{slug}: {AUTO_CLAIM_LABEL} left delegate {agent_id} unpinned — {why}")
+    claimed = []
+    for agent_id in to_claim:
+        command = manifest_command(features_dir, slug, PIN_SUBAGENT_VERB, agent_id)
+        if dry_run:
+            print(
+                f"{slug}: {AUTO_CLAIM_LABEL} would pin delegate {agent_id}, whose brief "
+                f"names {named} — the capture runs {command}"
+            )
+            claimed.append(agent_id)
+            continue
+        try:
+            import manifest as manifest_writer
+        except ImportError as exc:
+            print(f"{slug}: {AUTO_CLAIM_LABEL} could not pin delegate {agent_id} — {exc}")
+            continue
+        said = io.StringIO()
+        with contextlib.redirect_stdout(said), contextlib.redirect_stderr(said):
+            rc = manifest_writer.cmd_pin_subagent(argparse.Namespace(
+                self_mode=Path(features_dir) == features_root(True), slug=slug,
+                agent_id=agent_id,
+            ))
+        said = " ".join(said.getvalue().split())
+        if rc != 0:
+            print(f"{slug}: {AUTO_CLAIM_LABEL} could not pin delegate {agent_id} — {said}")
+            continue
+        print(
+            f"{slug}: {AUTO_CLAIM_LABEL} pinned delegate {agent_id}, whose brief names "
+            f"{named} ({command}): {said}"
+        )
+        claimed.append(agent_id)
+    return claimed
+
+
+def claim_check(slug, features_dir, sessions_dir, both_corpora):
+    """The close's question, asked before its PR: will this feature's capture claim any
+    session or subagent for its build — and if not, what did it meet that might be the
+    build? Returns the exit code: 0 when something is claimed (a delegate the capture
+    would auto-claim counts, and so does a runner session on the branch — the capture
+    writes that zero as evidenced, its cost being in a `usage.json`) or nothing was met at
+    all — the capture's own zero refusal then speaks for the feature — and
+    `CLAIM_CHECK_UNCLAIMED_EXIT` when nothing is claimed but something was met. Writes
+    nothing — no manifest, no ledger, no `planning.json`.
+
+    **The selection is the capture's own**, `capture_feature(..., dry_run=True)`, read the
+    way the on-branch capture reads it: `to` ignored up to a later feature chained on the
+    same branch name, as `last_branch_instant(..., ignore_to=True)` reads it, since the
+    capture re-stamps `to` from that evidence first. What it met is three lists:
+
+      * excluded sessions on this feature's branch, from a directory it can claim from —
+        the set behind the capture's "the zero is evidenced" note (`excluded_on_branch`).
+        Only manual `exclude_sessions` entries reach this list (a runner session among
+        them returned 0 above); each gets its pin, which wins over the exclusion;
+      * unclaimed sessions under this repo's directories that started in the window —
+        `--list-sessions --unclaimed`'s rows (`session_rows`), routers excluded;
+      * unclaimed delegates that started in the window whose brief names this feature or
+        nothing — `--list-subagents --unclaimed`'s rows (`subagent_rows`). A brief naming
+        another feature, or `feature: none — …`, is not this build, and offering its pin
+        here would invite the mis-pin the header exists to prevent."""
+    result = capture_feature(
+        slug, features_dir, sessions_dir, both_corpora, recapture=True, force=False,
+        dry_run=True, ignore_to=True,
+    )
+    if result["sessions"] or result["subagents"]:
+        print(
+            f"{CLAIM_CHECK_LABEL}  {slug}: the build is claimed — "
+            f"{len(result['sessions'])} session(s), {len(result['subagents'])} subagent(s)"
+        )
+        return 0
+    # A runner session on this branch IS the build, its cost already in a usage.json: the
+    # capture writes this zero as evidenced and accepts it, and so does the check — a
+    # feature built entirely by `run-batch.sh` is claimed, not unclaimed.
+    runners = [s for s in result["excluded_on_branch"] if s in result["runner_ids"]]
+    if runners:
+        print(
+            f"{CLAIM_CHECK_LABEL}  {slug}: the build is claimed — {len(runners)} runner "
+            "session(s) on its branch, whose cost is in a usage.json"
+        )
+        return 0
+    window = result["window"]
+    since = window["from"].date().isoformat() if window["from"] else None
+    own = (result["repo_name"], slug)
+    met = []
+    for session_id in result["excluded_on_branch"]:
+        met.append(
+            f"  excluded  {session_id}  in exclude_sessions — if it built this feature "
+            "(a pin wins over the exclusion): "
+            + manifest_command(features_dir, slug, PIN_SESSION_VERB, session_id)
+        )
+    for row in session_rows(sessions_dir, since, True, both_corpora):
+        if not in_window(row["started_at"], window):
+            continue
+        met.append(
+            f"  session   {row['session_id']}  {row['start']} {row['branch'] or '-'} "
+            f"{row['cwd']} ${row['cost']:.2f} — if it built this feature: "
+            + manifest_command(features_dir, slug, PIN_SESSION_VERB, row["session_id"])
+        )
+    for row in subagent_rows(
+        sessions_dir, since, unclaimed=True, features_dirs=both_corpora,
+        preferred_features_dir=features_dir,
+    ):
+        if not in_window(row["started_at"], window):
+            continue
+        if row["header"] is not None and not same_feature_ref(row["named"], own):
+            continue
+        met.append(
+            f"  delegate  {row['agent_id']}  {row['start']} ${row['cost']:.2f} brief "
+            f"{row['named_text']}: {row['prompt']!r} — if it built this feature: "
+            + manifest_command(features_dir, slug, PIN_SUBAGENT_VERB, row["agent_id"])
+        )
+    if not met:
+        print(
+            f"{CLAIM_CHECK_LABEL}  {slug}: nothing is claimed and nothing was met in its "
+            "window — the capture's own refusal speaks for it"
+        )
+        return 0
+    print(
+        f"{CLAIM_CHECK_LABEL}  {slug}: no session and no subagent is claimed for this "
+        f"feature's build, and {len(met)} were met in its window — closing now would "
+        "record the build at $0:"
+    )
+    for line in met:
+        print(line)
+    return CLAIM_CHECK_UNCLAIMED_EXIT
 
 
 def windows_overlap(a, b):
@@ -2827,7 +3161,7 @@ def latest_instant(lines):
     return max(moments) if moments else None
 
 
-def price_session_in_window(session_id, window, projects_root=None):
+def price_session_in_window(session_id, window, projects_root=None, subagent_filter=None):
     """One session id, priced inside a window — what the orchestration capture
     (`orchestration_capture.py`) records, and the one pricing path for a session whose
     claim is a bare id and a window rather than a branch.
@@ -2839,7 +3173,13 @@ def price_session_in_window(session_id, window, projects_root=None):
     inside `window` (`in_window`: half-open, `to` None meaning open) — the dating rule
     `outside_window_cost` and the share walk use. The session's own subagents
     (`<project>/<session_id>/subagents/agent-*.jsonl`) are priced the same way, as
-    sidechain cost, and dated by their own first in-window response.
+    sidechain cost, and dated by their own first in-window response — unless
+    `subagent_filter` is given, the coordinator capture's case
+    (self/features/coordinator-cost-records/): `subagent_filter(agent_id, lines)` is called
+    for each subagent with an in-window response, only those it returns True for are
+    priced, and the extra key `subagents_not_priced` lists the agent ids of the rest, so the
+    exclusion is visible rather than silent (a coordinator's feature delegates are claimed
+    by the features they built).
 
     Returns a dict shaped like `planning.json`'s fields — `sessions[]`, `subagents[]`,
     `priced[]` (rows carry `session_id`, `agent_id`, `model`, `is_sidechain`, `date`,
@@ -2899,13 +3239,16 @@ def price_session_in_window(session_id, window, projects_root=None):
     }
     if tokens:
         rows_of(tokens, first, None)
-    subagents, entries_without_duration = [], []
+    subagents, entries_without_duration, not_priced = [], [], []
     for agent_path in subagent_transcript_paths(path.parent, session_id):
         agent_lines = load_transcript_lines(agent_path)
         agent_tokens, a_first, a_last = price(agent_lines, True)
         if not agent_tokens:
             continue
         agent_id = agent_id_of(agent_path, agent_lines)
+        if subagent_filter is not None and not subagent_filter(agent_id, agent_lines):
+            not_priced.append(agent_id)
+            continue
         rows_of(agent_tokens, a_first, agent_id)
         subagents.append({
             "agent_id": agent_id, "parent_session_id": session_id,
@@ -2918,7 +3261,9 @@ def price_session_in_window(session_id, window, projects_root=None):
     subagent_cost = sum(r["cost_usd"] or 0.0 for r in rows if r["agent_id"])
     if session["duration_s"] is None:
         entries_without_duration.append(session_id)
+    excluded = {} if subagent_filter is None else {"subagents_not_priced": sorted(not_priced)}
     return {
+        **excluded,
         "sessions": [session],
         "subagents": subagents,
         "priced": rows,
@@ -3313,11 +3658,25 @@ def select_parent(
     return True
 
 
-def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, force):
+def capture_feature(
+    slug, features_dir, sessions_dir, both_corpora, recapture, force,
+    dry_run=False, ignore_to=False,
+):
     """Capture one feature, printing its own result line. Returns one of "captured",
     "annotated", "skipped", "refused" or "conflict" — `main` counts these and picks the
     exit code from them. "annotated" is the frozen-record path below: the record was left
     alone except for its `sessions[].also_claimed_by`, which the claims ledger changed.
+
+    Before the walk, an unclaimed delegate whose brief names this feature is pinned
+    (`auto_claim_briefed`), so it is claimed below like any pin.
+
+    `dry_run` (`claim_check`, with `recapture` and `ignore_to`) runs the same selection and
+    returns, before any record, ledger or manifest is written, a dict: `sessions` and
+    `subagents` (the ids this capture would claim — a delegate the auto-claim WOULD pin
+    among them), `excluded_on_branch`, `runner_ids` (the runner sessions among them),
+    `window` and `repo_name`. `ignore_to` reads the window with no `to`, up to the `from`
+    of a later feature chained on the same branch name — the on-branch capture's reading,
+    whose `to` is re-stamped from evidence before it runs.
 
     A whole feature per call, including its own transcript scan: `--all` is a loop over
     this, not a shared walk. The scan is the expensive part, and the skip above it means
@@ -3337,6 +3696,8 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     # route skips them; a pin on the same id is a contradiction and is warned about.
     excluded_agent_ids = set(manifest.get("exclude_subagents", []) or [])
     window = normalize_window(manifest)
+    if ignore_to:
+        window["to"] = chained_successor_from(slug, features_dir, set(branches), window["from"])
 
     warnings = check_naive_bounds(manifest)
     warnings += check_empty_window(window)
@@ -3698,6 +4059,24 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
                 agent_parent[agent_id] = session_id
                 agent_selected_by[agent_id] = selected_by
                 price_subagent(totals, session_id, agent_id, agent_lines)
+
+    # A delegate whose brief names this feature and that nobody claims is pinned now, by
+    # manifest.py's own writer, and then claimed by the pin fallback below like any other
+    # pin — or, on a dry run, counted as if it were (self/features/delegate-cost-claims/).
+    # After the walk, not before it: a delegate of a parent the walk selected is claimed
+    # already, and one of a runner-only session is in that runner's usage.json, so
+    # neither is pinned. The walk saw a newly pinned id unpinned, so it is taken out of
+    # `reachable_agent_ids` for the fallback to find and price it.
+    auto_claimed = set(auto_claim_briefed(
+        features_dir, sessions_dir, slug, manifest, dry_run=dry_run,
+        runner_ids=runner_excluded_ids - collided_ids,
+        priced_by_parent={
+            agent_id: agent_parent[agent_id] for agent_id in agent_start
+            if agent_selected_by.get(agent_id) == SELECTED_BY_PARENT
+        },
+    ))
+    pinned_agent_ids |= auto_claimed
+    reachable_agent_ids -= auto_claimed
 
     # A pin the walk above did not reach is looked for EVERYWHERE, this repo's directories
     # included (design 2026-10-05 §4, rule 3): the transcript is filed under the *parent's*
@@ -4179,6 +4558,22 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
     # scan's own.
     if carried_from:
         data["carried_from"] = carried_from
+    # Why the close was let through with this build unclaimed (`feature-close.sh
+    # --allow-unclaimed`, written to the fence by `manifest.py allow-unclaimed`): the record
+    # carries the reason, and report.py prints it. Absent otherwise.
+    if manifest.get(ALLOW_UNCLAIMED_KEY):
+        data[ALLOW_UNCLAIMED_KEY] = manifest[ALLOW_UNCLAIMED_KEY]
+
+    # The close's question stops here, having written nothing (`claim_check`).
+    if dry_run:
+        return {
+            "sessions": [entry["session_id"] for entry in sessions],
+            "subagents": [entry["agent_id"] for entry in subagents],
+            "excluded_on_branch": sorted(excluded_on_branch),
+            "runner_ids": runner_excluded_ids,
+            "window": window,
+            "repo_name": repo_name,
+        }
 
     # Three causes for an unmatched zero are indistinguishable from here — a wrong branch
     # name, sessions launched outside this worktree, or aged-out transcripts — so the
@@ -4302,7 +4697,9 @@ def capture_feature(slug, features_dir, sessions_dir, both_corpora, recapture, f
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    # No abbreviations: `--forc` would be `--force` to argparse and a word the hook's exact
+    # listing shape never names (self/features/python-entry-exact/)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument(
         "slug",
         nargs="?",
@@ -4354,6 +4751,16 @@ def main():
         "nothing at all (exit 0) when it has no branch-selected session. Pins are not "
         "consulted: the coordinator a manifest pins outlives the feature. Reads "
         "timestamps only; writes nothing",
+    )
+    parser.add_argument(
+        "--claim-check",
+        metavar="SLUG",
+        help="ask what feature-close.sh asks before its PR: would this feature's capture "
+        "claim any session or subagent for its build (a delegate it would auto-claim "
+        "counts)? Exit 0 when it would, or when nothing at all was met; exit "
+        f"{CLAIM_CHECK_UNCLAIMED_EXIT} when nothing is claimed but excluded or unclaimed "
+        "sessions or delegates were met in its window, each printed with the manifest.py "
+        "command that pins it. Writes nothing",
     )
     parser.add_argument(
         "--ignore-to",
@@ -4474,6 +4881,13 @@ def main():
         return
     if args.ignore_to:
         parser.error("--ignore-to takes --last-branch-instant")
+    if args.claim_check:
+        if args.slug or args.all_features:
+            parser.error("--claim-check takes its own slug and no --all")
+        sys.exit(claim_check(
+            args.claim_check, features_root(args.self_mode), session_root(args.self_mode),
+            all_features_roots(),
+        ))
 
     if args.all_features == bool(args.slug):
         parser.error("give either a feature slug or --all, not both and not neither")

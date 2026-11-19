@@ -1,0 +1,14 @@
+write: /tmp/plan-capture.IZa4DY/scratch/setup.sh
+write: /tmp/plan-capture.IZa4DY/scratch/attack.sh
+edit: /tmp/plan-capture.IZa4DY/scratch/attack.sh
+edit: /tmp/plan-capture.IZa4DY/scratch/attack.sh
+edit: /tmp/plan-capture.IZa4DY/scratch/attack.sh
+edit: /tmp/plan-capture.IZa4DY/scratch/attack.sh
+edit: /tmp/plan-capture.IZa4DY/scratch/attack.sh
+edit: /tmp/plan-capture.IZa4DY/scratch/attack.sh
+write: /tmp/plan-capture.IZa4DY/scratch/mkfix.sh
+write: /tmp/plan-capture.IZa4DY/scratch/patch.py
+write: /tmp/plan-capture.IZa4DY/scratch/pushcheck.sh
+write: /tmp/plan-capture.IZa4DY/scratch/cgpatch.py
+edit: /tmp/plan-capture.IZa4DY/scratch/attack.sh
+write: /home/user/agentTooling/self/features/close-after-filing/audit-report.md

@@ -32,7 +32,10 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 AT="$TMP/agentTooling"
 mkdir -p "$AT/self/features" "$TMP/bin"
-for f in run-plans.sh run-verify.sh run-review.sh run-batch.sh run-escalation-plan.sh plan-runner-lib.sh plan-runner-roots.sh; do
+mkdir -p "$AT/hooks"
+# hooks/orchestrator_role.py and shared_rules.py: the role reader refuses a copy without them
+# (self/features/hook-silent-allow-sweep/, item 7)
+for f in run-plans.sh run-verify.sh run-review.sh run-batch.sh run-escalation-plan.sh plan-runner-lib.sh plan-runner-roots.sh hooks/orchestrator_role.py hooks/shared_rules.py; do
   cp "$HERE/$f" "$AT/$f"
 done
 

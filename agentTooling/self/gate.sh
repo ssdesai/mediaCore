@@ -257,6 +257,7 @@ shell_scripts=(
   env-profile.sh
   session-start.sh
   attach-branch.sh
+  feature-sync.sh
   check-plans.sh
   update.sh
   self/gate.sh
@@ -281,6 +282,8 @@ shell_scripts=(
   self/tests/manifest-unpin.sh
   self/tests/direct-timing.sh
   self/tests/direct-bare-pair.sh
+  self/tests/vanilla-pair.sh
+  self/tests/split-tests-pair.sh
   self/tests/stale-failed-sidecars.sh
   self/tests/stream-capture.sh
   self/tests/usage-limit-kill.sh
@@ -288,6 +291,9 @@ shell_scripts=(
   self/tests/report-footnotes.sh
   self/tests/report-rounds.sh
   self/tests/orchestration-records.sh
+  self/tests/coordinator-records.sh
+  self/tests/orchestration-records-in-repo.sh
+  self/tests/consumer-record-guard.sh
   self/tests/report-carried-streams.sh
   self/tests/feature-lifecycle.sh
   self/tests/verdict-readers.sh
@@ -295,6 +301,8 @@ shell_scripts=(
   self/tests/capture-from-worktree.sh
   self/tests/worktree-claims.sh
   self/tests/recover-at-close.sh
+  self/tests/security-audit.sh
+  self/tests/close-backlog.sh
   self/tests/recover-duration.sh
   self/tests/check-plans.sh
   self/tests/model-suffix.sh
@@ -314,6 +322,11 @@ shell_scripts=(
   self/tests/hook-escalation.sh
   self/tests/hook-cloud-profile.sh
   self/tests/hook-wiring.sh
+  self/tests/hook-orchestrator-role.sh
+  self/tests/hook-brief-header.sh
+  self/tests/delegate-cost-claims.sh
+  self/tests/orchestrator-role.sh
+  self/tests/shared-rules.sh
   self/tests/self-settings.sh
   self/tests/policy-table.sh
   self/tests/plan-numbering.sh
@@ -325,13 +338,18 @@ shell_scripts=(
   self/tests/cloud-setup-wait.sh
   self/tests/session-start.sh
   self/tests/attach-branch.sh
+  self/tests/feature-sync.sh
   self/tests/gate-resume.sh
   self/tests/review-base.sh
+  self/tests/cloud-checkpoint-push.sh
   self/tests/pr-body-refresh.sh
+  self/tests/brief-conformance.sh
   self/tests/review-report-untrack.sh
   self/tests/readme-index.sh
+  self/tests/feature-readme-check.sh
+  self/tests/resolve-commit.sh
   harness/*.sh
-  harness/methods/*/run.sh
+  harness/methods/*/*.sh
   harness/tests/*.sh
   run-escalation-plan.sh
   templates/plans/gate.sh
@@ -386,6 +404,13 @@ record "direct timing self-test" bash self/tests/direct-timing.sh
 # direct-bare is the control arm of direct's procedure steps: its brief must stay direct's
 # minus exactly those steps (harness/methods/direct-bare/README.md).
 record "direct-bare pair self-test" bash self/tests/direct-bare-pair.sh
+# vanilla and vanilla-conv are the ablation ladder's bottom rungs: one brief, byte for byte,
+# differing only in vanilla's neutralization of the conventions and the hook
+# (harness/methods/vanilla/README.md).
+record "vanilla pair self-test" bash self/tests/vanilla-pair.sh
+# split-tests is vanilla-conv plus an independent test author: its implementer brief must
+# stay vanilla-conv's plus exactly one paragraph (harness/methods/split-tests/README.md).
+record "split-tests pair self-test" bash self/tests/split-tests-pair.sh
 record "stale failed sidecars self-test" bash self/tests/stale-failed-sidecars.sh
 record "stream capture self-test" bash self/tests/stream-capture.sh
 record "usage limit kill self-test" bash self/tests/usage-limit-kill.sh
@@ -393,6 +418,15 @@ record "batch sigpipe self-test" bash self/tests/batch-sigpipe.sh
 record "report footnotes self-test" bash self/tests/report-footnotes.sh
 record "report rounds self-test" bash self/tests/report-rounds.sh
 record "orchestration records self-test" bash self/tests/orchestration-records.sh
+# A coordinator record (self/features/coordinator-cost-records/): no role, its own transcript
+# and `feature: none` delegates priced beside the features, and the start's advisory.
+record "coordinator records self-test" bash self/tests/coordinator-records.sh
+# A record lives in the repo that ran it (self/features/orchestration-records-in-repo/):
+# plans/orchestrations/ in a consuming repo, self/orchestrations/ under --self.
+record "orchestration records in repo self-test" bash self/tests/orchestration-records-in-repo.sh
+# No record tool writes under a vendored copy's own self/orchestrations/, --self included
+# (self/features/consumer-record-guard/).
+record "consumer record guard self-test" bash self/tests/consumer-record-guard.sh
 record "report carried streams self-test" bash self/tests/report-carried-streams.sh
 record "feature lifecycle self-test" bash self/tests/feature-lifecycle.sh
 # The round readers the close and the batch branch on, called directly: the first line
@@ -402,6 +436,7 @@ record "routing record self-test" bash self/tests/routing-record.sh
 record "capture from worktree self-test" bash self/tests/capture-from-worktree.sh
 record "worktree claims self-test" bash self/tests/worktree-claims.sh
 record "recover at close self-test" bash self/tests/recover-at-close.sh
+record "close backlog self-test" bash self/tests/close-backlog.sh
 record "recover duration self-test" bash self/tests/recover-duration.sh
 record "check plans self-test" bash self/tests/check-plans.sh
 record "model suffix self-test" bash self/tests/model-suffix.sh
@@ -458,6 +493,20 @@ record "hook escalation self-test" bash self/tests/hook-escalation.sh
 # its cloud answer, each run under both profiles, plus the fallbacks to today's answers.
 record "hook cloud profile self-test" bash self/tests/hook-cloud-profile.sh
 record "hook wiring self-test" bash self/tests/hook-wiring.sh
+# The orchestrator role guard (self/features/orchestrator-role-guard/): an orchestration
+# record's session may not build a feature. The hook half denies the build scripts and an
+# implementer delegate; the script half refuses before any write, and the reverse guard
+# refuses an orchestration started mid-feature.
+record "hook orchestrator role self-test" bash self/tests/hook-orchestrator-role.sh
+record "orchestrator role self-test" bash self/tests/orchestrator-role.sh
+# The shared rules (self/features/shared-hook-rules/): each rule the hook shares with
+# analysis/ or a top-level script is defined once, in hooks/shared_rules.py.
+record "shared rules self-test" bash self/tests/shared-rules.sh
+# Delegate cost claims (self/features/delegate-cost-claims/): the brief header is one
+# definition the hook enforces on Agent calls, the capture auto-claims a delegate whose
+# brief names the feature, and the close's claim check names what it met before a $0 build.
+record "hook brief header self-test" bash self/tests/hook-brief-header.sh
+record "delegate cost claims self-test" bash self/tests/delegate-cost-claims.sh
 # This checkout's own policy file is tracked and generated: the check below fails on a
 # missing or drifted copy, its guarded hook command is a no-op where the hook script is
 # absent, and a vendored copy is held to the same bytes with the fix named upstream.
@@ -500,6 +549,10 @@ record "session start self-test" bash self/tests/session-start.sh
 # behind it, is re-attached moving nothing — and every other shape is refused untouched
 # (self/features/detached-at-branch-tip-attach/).
 record "attach branch self-test" bash self/tests/attach-branch.sh
+# A feature's branch takes a moved origin/main in by an ordinary merge commit — refused
+# untouched on a dirty tree or off the started branch, a conflict left in progress with
+# its files named (self/features/branch-sync-and-fanout-docs/).
+record "feature sync self-test" bash self/tests/feature-sync.sh
 # A gate killed with its container re-runs only what had not finished on the same tree,
 # and everything on a changed one (design §8) — the template gate and this one, each
 # copied into a sandbox with stub checks, killed mid-run and resumed.
@@ -508,10 +561,21 @@ record "gate resume self-test" bash self/tests/gate-resume.sh
 # <base> — a feature that merged a newer origin/main mid-way shows only its own commits,
 # under both profiles alike (self/features/review-base-and-cloud-hook/, Part B).
 record "review base self-test" bash self/tests/review-base.sh
+# A cloud container is reclaimed with whatever it never pushed: under the cloud profile the
+# review round pushes the feature's branch once its commits are made (and the start pushes
+# its start commit, asserted in cloud-start.sh), advisory, and the local profile pushes
+# nothing (self/features/cloud-checkpoint-push/).
+record "cloud checkpoint push self-test" bash self/tests/cloud-checkpoint-push.sh
 # Every round's close re-runs pr.sh, and a PR an earlier round opened has its body
 # replaced with the current review's (forge.sh pr-edit, pr.sh template-version 7) — both
 # copies against a stub forge, and the PATCH itself (self/features/pr-body-refresh/).
 record "pr body refresh self-test" bash self/tests/pr-body-refresh.sh
+# A review can no longer be clean while the PR does something other than what the owner
+# asked: the owner's brief committed by the start and handed to every review, the review's
+# acceptance table, the independent conformance check and the deviations mark — through the
+# real start, review runner, close and pr.sh against a stubbed claude and forge
+# (self/features/brief-conformance-checks/).
+record "brief conformance self-test" bash self/tests/brief-conformance.sh
 # A plans/review-report.md committed before its ignore line arrived is untracked by the
 # next review's commit or the next sync-plans.sh, whichever comes first, so two features
 # reviewed at once no longer conflict on it; each round's verdict is committed at
@@ -522,21 +586,44 @@ record "review report untrack self-test" bash self/tests/review-report-untrack.s
 # generated README checked against the repo-owned file its header names, report-only
 # exiting 0, errors exiting 2, and nothing written (self/features/readme-index-check/).
 record "readme index self-test" bash self/tests/readme-index.sh
+# A feature README still matching its template is refused by the close (manifest.py
+# check-prose; self/features/lifecycle-loose-ends/), and harness_resolve_commit's
+# fallbacks — deepen, then the pull heads — against a local bare repo.
+record "feature readme check self-test" bash self/tests/feature-readme-check.sh
+record "resolve commit self-test" bash self/tests/resolve-commit.sh
 
 echo "=== gate: experiment harness ==="
 # harness/ is most of what a harness feature changes, and was covered by nothing here until
 # self/features/harness-cloud-pins (round 2 ruling): its scripts are syntax-checked above
-# and py_compiled below, and its five tests run here. All are offline and need only jq, git
+# and py_compiled below, and its eight tests run here. All are offline and need only jq, git
 # and python3. The scorecard tests are seconds; the smoke test drives every stage of a run
 # against a throwaway repo with a fake claude and a fake forge, and takes about 50 seconds.
 record "harness scorecard arms self-test" bash harness/tests/scorecard-arms.sh
 # The program section: kind "program" ledger rows get their own tables and comparison line,
 # and a ledger with none renders byte for byte as before (harness/README.md → "File shapes").
 record "harness scorecard programs self-test" bash harness/tests/scorecard-programs.sh
+# Time columns: the Runs table's wall to PR / wall to green / total and the Per cell means.
+record "harness scorecard time self-test" bash harness/tests/scorecard-time.sh
+# Failed runs out of the cell means (Failed, Spend), mean wall to green, and the Acceptance
+# section: pass counts at PR-open and at green, and the probe's checks per run.
+record "harness scorecard accept self-test" bash harness/tests/scorecard-accept.sh
 # Base arms (experiment.json base_arms): the arm-kind helpers and the scorecard's labels.
 record "harness arm base self-test" bash harness/tests/arm-base.sh
+record "harness arm spec self-test" bash harness/tests/arm-spec.sh
 # Reading metrics: harness/reading_metrics.py on fabricated transcripts, and the scorecard's table.
 record "harness reading metrics self-test" bash harness/tests/reading-metrics.sh
+# The plans method's batch half: the log stays out of the tree, and only positive
+# usage-limit evidence is resumable (self/features/harness-plans-close).
+record "harness plans method self-test" bash harness/tests/plans-method.sh
+# Long runs: the time budget and resume line, repeated --only, the --from refusal, the
+# per-experiment lock and --reset, all through run.sh (self/features/harness-long-runs).
+record "harness long-runs self-test" bash harness/tests/long-runs.sh
+# HARNESS_REVIEW_MODEL: its resolution and the dry run's per-stage models; the review call
+# and the row are asserted in the smoke test (self/features/harness-review-model).
+record "harness review model self-test" bash harness/tests/review-model.sh
+# HARNESS_REVIEW_EFFORT, offline: resolution, validation and the dry run's per-stage efforts.
+# The review call's argv and the row are asserted in the smoke test (self/features/harness-review-effort).
+record "harness review effort self-test" bash harness/tests/review-effort.sh
 record "harness smoke test" bash harness/tests/smoke.sh
 
 echo "=== gate: profile confinement ==="
@@ -563,8 +650,9 @@ record "py_compile analysis" python3 -m py_compile analysis/*.py
 record "py_compile harness" python3 -m py_compile harness/scorecard.py harness/reading_metrics.py
 # The hook keeps a .sh name so its settings.json entry reads as a hook script; it is
 # Python, and this is the one place its syntax is checked without running it.
-record "py_compile hooks" python3 -m py_compile hooks/policy.py hooks/env_profile.py hooks/wire-settings.py hooks/allow-repo-commands.sh
+record "py_compile hooks" python3 -m py_compile hooks/policy.py hooks/env_profile.py hooks/wire-settings.py hooks/allow-repo-commands.sh hooks/brief_header.py hooks/shared_rules.py
 record "py_compile readme index" python3 -m py_compile check-readme-index.py
+record "py_compile conformance" python3 -m py_compile conformance.py
 
 echo "=== gate: permission policy ==="
 # This checkout's .claude/settings.json is tracked but not hand-authored:

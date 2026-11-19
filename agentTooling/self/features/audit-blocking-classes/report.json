@@ -1,0 +1,155 @@
+{
+  "slug": "audit-blocking-classes",
+  "generated_at": "2026-11-16T14:46:00.193139+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 4.674561000000001,
+    "build": 4.674561000000001,
+    "verify": 0.0,
+    "review": 1.9315448000000002,
+    "total": 6.606105800000001,
+    "planning_pct": 0.0,
+    "build_pct": 70.76121911338447,
+    "verify_pct": 0.0,
+    "review_pct": 29.23878088661553,
+    "cost_per_plan": 3.3030529000000004,
+    "cost_per_file": 0.8257632250000001,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 4066,
+    "planning_subagents_s": 950,
+    "planning_s": 0.0,
+    "implementer_s": 5016,
+    "build_s": 5016.0,
+    "verify_s": 0.0,
+    "review_s": 346.25100000000003,
+    "executor_s": 5362.251,
+    "total_s": 5362.251,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-16T14:39:43+00:00",
+      "last_at": "2026-11-16T14:45:59+00:00",
+      "batch_span_s": 376.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 356.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 430.0,
+      "plan_runs": 2,
+      "pr_opened_at": "2026-11-16T14:45:59+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/148"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 4.674561000000001,
+      "build_min": 83.6,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.9315448000000002,
+      "review_min": 5.77085,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 1.225892,
+    "sessions": 3.4486690000000007
+  },
+  "cold_start_tax_tokens": 112517,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 2,
+      "total_turns": 37,
+      "total_cost_usd": 1.9315448000000002,
+      "total_duration_s": 346.25100000000003,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 4,
+      "files_edited": 2,
+      "churn_ratio": 2.0
+    },
+    {
+      "plan": "01-audit-opus",
+      "edit_count": 7,
+      "files_edited": 6,
+      "churn_ratio": 1.1666666666666667
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 81,
+      "loc_changed": 68
+    },
+    {
+      "plan": "01-audit-opus",
+      "plan_md_lines": 76,
+      "loc_changed": 356
+    }
+  ],
+  "re_hunting": [],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "self/features/audit-blocking-classes/NOTES.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "01-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.cmiRqc/scratch/close.sh",
+        "/tmp/plan-capture.cmiRqc/scratch/gen.py",
+        "/tmp/plan-capture.cmiRqc/scratch/hook.sh",
+        "/tmp/plan-capture.cmiRqc/scratch/start.sh",
+        "/tmp/plan-capture.cmiRqc/scratch/unit.sh",
+        "self/features/audit-blocking-classes/audit-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "self/features/audit-blocking-classes/NOTES.md",
+      "earlier_plan": "01-review-opus",
+      "later_plan": "01-review-opus",
+      "overlap_chars": 184
+    },
+    {
+      "file": "/tmp/plan-capture.cmiRqc/scratch/hook.sh",
+      "earlier_plan": "01-audit-opus",
+      "later_plan": "01-audit-opus",
+      "overlap_chars": 41
+    }
+  ],
+  "warnings": [],
+  "profile": "cloud",
+  "gate": "green"
+}

@@ -1,0 +1,79 @@
+{
+  "plan": "04-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "32da15e1-b129-40e4-bf01-a2e16553db74",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 25,
+  "duration_ms": 520636,
+  "total_cost_usd": 1.2744087,
+  "usage": {
+    "input_tokens": 30,
+    "cache_creation_input_tokens": 79394,
+    "cache_read_input_tokens": 1055844,
+    "output_tokens": 21383
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 2984,
+      "outputTokens": 19,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.00030790000000000006,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 30,
+      "outputTokens": 21383,
+      "cacheReadInputTokens": 1055844,
+      "cacheCreationInputTokens": 79394,
+      "webSearchRequests": 0,
+      "costUSD": 1.2741007999999998,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 5115,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 79394,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 14,
+    "Read": 1,
+    "Write": 9
+  },
+  "files_edited": [
+    "/tmp/plan-capture.EbAaPC/scratch/ostart.sh",
+    "/tmp/plan-capture.EbAaPC/scratch/probe.py",
+    "/tmp/plan-capture.EbAaPC/scratch/probe2.py",
+    "/tmp/plan-capture.EbAaPC/scratch/probe3.py",
+    "/tmp/plan-capture.EbAaPC/scratch/rest.sh",
+    "/tmp/plan-capture.EbAaPC/scratch/setup.sh",
+    "/tmp/plan-capture.EbAaPC/scratch/variants.py",
+    "/tmp/plan-capture.EbAaPC/scratch/wsdump.py",
+    "self/features/shared-hook-rules/audit-report.md"
+  ],
+  "edit_count": 9,
+  "attempts": [
+    {
+      "session_id": "32da15e1-b129-40e4-bf01-a2e16553db74",
+      "outcome": "complete",
+      "total_cost_usd": 1.2744087,
+      "num_turns": 25,
+      "duration_ms": 520636
+    }
+  ]
+}

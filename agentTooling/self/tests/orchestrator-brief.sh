@@ -37,6 +37,12 @@ check "B2. it carries the literal $BRANCH_LINE" 'grep -qF -- "$BRANCH_LINE" "$BR
 check "B3. it carries the feature-start.sh invocation shape" 'grep -qF -- "$START_SHAPE" "$BRIEF"'
 check "B3b. it tells the implementer to run the start in the background and wait for its exit notification before touching the tree" \
   'grep -qF -- "$BACKGROUND_PHRASE" "$BRIEF" && grep -qF -- "$CAPTURE_PHRASE" "$BRIEF" && grep -qF -- "$WAIT_PHRASE" "$BRIEF" && grep -qF -- "$REFUSAL_PHRASE" "$BRIEF"'
+check "B3c. it tells the implementer to fill the review brief before building" \
+  'grep -qF -- "fill the review brief" "$BRIEF" && grep -qF -- "Before you build anything" "$BRIEF"'
+check "B3d. it carries the never-move-bytes-through-a-model rule, naming git show and git archive" \
+  'grep -qF -- "Never move bytes through a model" "$BRIEF" && grep -qF -- "git show" "$BRIEF" && grep -qF -- "git archive" "$BRIEF" && grep -qF -- "base64" "$BRIEF"'
+check "B3e. ORCHESTRATION.md carries the same rule" \
+  'grep -qF -- "Never move bytes through a model" "$AT/ORCHESTRATION.md" && grep -qF -- "git archive" "$AT/ORCHESTRATION.md"'
 check "B4. it never says \"$FORBIDDEN_PHRASE\"" '! grep -qiF -- "$FORBIDDEN_PHRASE" "$BRIEF"'
 check "B5. it stays under 80 lines of prose (got $(wc -l < "$BRIEF" 2>/dev/null))" '[[ "$(wc -l < "$BRIEF")" -le 80 ]]'
 check "B6. LIFECYCLE.md names its path in a consumer ($BRIEF_IN_CONSUMER)" 'grep -qF -- "$BRIEF_IN_CONSUMER" "$AT/LIFECYCLE.md"'

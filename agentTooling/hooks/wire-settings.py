@@ -6,17 +6,22 @@ for agentTooling's own checkout, by hand after a change to the policy constants
 (`--write`, then commit the file) and by `self/gate.sh` (`--check`).
 
 **In a consuming repo the file is repo-owned and may hold anything, so this merges
-rather than copies**: it appends the `PreToolUse` entry for `allow-repo-commands.sh`
-when no hook already references the script, the `SessionStart` entry running
+rather than copies**: it appends the `PreToolUse` entry for `allow-repo-commands.sh` for
+each matcher (`Bash`, and `Agent` for the orchestrator role's and the brief header's delegate denies) that has no
+entry already referencing the script — a repo's customized entry for a matcher is kept —
+the `SessionStart` entry running
 agentTooling's `session-start.sh` when no SessionStart hook already names that script
 (the session's orientation in every profile, then the repo's `plans/cloud-setup.sh` in a
 Claude Code cloud container), and appends each `Edit` deny, `Bash` deny
 and `Edit` ask rule that is absent. It never reorders or rewrites another entry, and it
-removes exactly three kinds, each something this helper itself once wrote and has since
+removes exactly four kinds, each something this helper itself once wrote and has since
 retired: a `Bash` deny rule the policy table dropped (`policy.retired_bash_deny_rules()` —
 `Bash(git stash:*)`, which denied `git stash list` too, and a deny rule beats the hook's
 allow), an `Edit` deny rule its ask rule replaced (`RETIRED_EDIT_DENY_RULES` —
-`Edit(**/agentTooling/hooks/**)`, which beat the ask wherever both stood), and the
+`Edit(**/agentTooling/hooks/**)`, which beat the ask wherever both stood), the two narrow
+vendored `Edit` ask rules the tree-wide one subsumes (`RETIRED_EDIT_ASK_RULES` —
+`Edit(**/agentTooling/hooks/**)` and `Edit(**/agentTooling/self/orchestrations/**)`,
+removed in the same write that adds `Edit(**/agentTooling/**)`), and the
 SessionStart command that ran `plans/cloud-setup.sh` directly
 (`RETIRED_SESSION_COMMANDS`), which `session-start.sh` now calls. Everything it adds
 is a restriction or a prompt-remover for reads; it never adds an allow rule.
@@ -67,7 +72,14 @@ that runs on the next test). Deny rules bind in every permission mode and cannot
 overridden by a mode or an allow rule. They cover the Edit and Write tools and `> file`
 redirects, not a subprocess that opens a file itself.
 
-The `hooks/` directory is an **ask** rule rather than a deny: an ask is evaluated before
+In a consuming repo the ask rule covers the WHOLE vendored tree, `agentTooling/**`, not
+just `hooks/`: the orchestrator allowlist in `allow-repo-commands.sh` runs vendored entry
+points (`analysis/report.py`, `orchestration-start.sh`, ...) with no prompt, so an Edit or
+Write to any of them would be code that then runs silently. Vendored code changes only by
+`git subtree pull`, which writes through git and not the Edit tool, so the rule never
+fires on the sanctioned path. (Under `--self`, `hooks/` alone: agentTooling IS the repo.)
+
+The vendored tree and `hooks/` are **ask** rules rather than denies: an ask is evaluated before
 allow rules and forces a prompt even under `acceptEdits`, and in a headless `claude -p`
 there is no terminal to answer it, so it is refused. That is exactly the policy wanted —
 a human may edit the policy, an unattended executor may not — where a deny refused
@@ -97,6 +109,10 @@ import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import policy                                                        # noqa: E402
+# The record roots the ask rules below name: shared_rules.py holds them once, for the role
+# rule and the record tools too. Unguarded: it ships in this directory, and a wiring written
+# without the record rules would be a settings file that quietly asks for less.
+import shared_rules                                                  # noqa: E402
 
 # Where the wiring lives: the consuming repo's own file, and under `--self` agentTooling's
 # tracked, generated policy (self/features/self-cloud-bootstrap)
@@ -117,7 +133,14 @@ SELF_HOOK_PATH = "${CLAUDE_PROJECT_DIR}/hooks/allow-repo-commands.sh"
 # on untouched — `test` reads none of it (self/tests/self-settings.sh F).
 SELF_HOOK_COMMAND = 'test ! -f "%s" || "%s"' % (SELF_HOOK_PATH, SELF_HOOK_PATH)
 HOOK_EVENT = "PreToolUse"
-HOOK_MATCHER = "Bash"
+# One entry per matcher, running the same script (self/features/orchestrator-role-guard/):
+# `Bash` for the command judgements, `Agent` for the orchestrator role's delegate deny and
+# the brief-header deny (self/features/delegate-cost-claims/). An
+# ordered tuple, not a set: under `--self` the file is compared byte for byte, so the order
+# the entries are written in is part of the contract.
+HOOK_MATCHERS = ("Bash", "Agent")
+# How a missing entry is named in the one-line message (`no Agent hook entry`)
+HOOK_ENTRY_LABEL = "hook entry"
 
 # The SessionStart entry (self/DESIGN-2026-10-05-cloud-execution.md §7): agentTooling's own
 # session-start.sh, which prints the session's orientation in every profile and then, in
@@ -163,7 +186,40 @@ RETIRED_EDIT_DENY_RULES = ("Edit(**/agentTooling/hooks/**)",)
 # Spelled at any depth so a worktree's copy is covered from a session rooted at the
 # primary checkout — the hole the root-anchored deny left open — with the root form
 # beside it under `--self`, the insurance the deny pairs have.
-POLICY_ASK_RULES = ("Edit(**/agentTooling/hooks/**)",)
+# A consuming repo asks about the WHOLE vendored tree, `agentTooling/**`
+# (self/features/vendored-edit-ask/): the orchestrator allowlist in allow-repo-commands.sh
+# runs vendored entry points silently (analysis/report.py, analysis/manifest.py,
+# orchestration-start.sh, orchestration-capture.sh and the plan-runner-roots.sh /
+# plan-runner-lib.sh they source), so an Edit or Write to any of them would be code that then
+# runs with no prompt. A per-file rule would have to track every entry point the allowlist
+# ever gains; the tree-wide one does not. Vendored code is never edited in a consumer — it
+# changes only by `git subtree pull` (update.sh), which writes through git, not the Edit
+# tool, and so is not seen by the rule. It subsumes the narrower `agentTooling/hooks/**` and
+# `agentTooling/self/orchestrations/**` asks, which RETIRED_EDIT_ASK_RULES removes.
+# The orchestration records are the same kind of thing (self/features/hook-role-hardening/,
+# F1): a record whose fence names a session IS that session's orchestrator role
+# (hooks/orchestrator_role.py), so one Edit to it — the `session` changed, a `kind` added —
+# drops the role the hook and the lifecycle scripts enforce. A consuming repo's records live
+# in `plans/orchestrations/` (self/features/orchestration-records-in-repo/; analysis/roots.py's
+# orchestrations_root(False), shared_rules.ORCHESTRATIONS_CONSUMER_REL), and a legacy
+# one, still a role until it is moved, under the vendored `agentTooling/self/orchestrations/`
+# (shared_rules.ORCHESTRATIONS_SELF_REL), which the tree-wide rule above already asks about.
+# An Edit rule covers the Write tool too.
+# analysis/manifest.py and orchestration-start.sh write them as subprocesses, which no Edit
+# rule sees, so the sanctioned writers are not prompted. Consumer layout only: the `--self`
+# spelling was dropped by the owner — the record as first committed holds the role in every
+# clone and the ledger before that, and an ask there would only stall an unattended
+# orchestrator's edits to its own record (self/features/hook-role-hardening/NOTES.md,
+# "Dropped: the `--self` ask rule (F9)").
+POLICY_ASK_RULES = ("Edit(**/agentTooling/**)",
+                    "Edit(**/%s/**)" % shared_rules.ORCHESTRATIONS_CONSUMER_REL)
+# The Edit ask rules this helper once wrote and has since retired, removed wherever they
+# stand (consumer mode only; `--self` never carried them): both are strictly subsumed by the
+# tree-wide `Edit(**/agentTooling/**)`, and a stale narrow rule would read as if it were the
+# boundary. Removed in the same write that adds the broad rule, so there is no moment with
+# neither. Only the exact strings this helper wrote — a repo's own spelling is the repo's.
+RETIRED_EDIT_ASK_RULES = ("Edit(**/agentTooling/hooks/**)",
+                          "Edit(**/agentTooling/%s/**)" % shared_rules.ORCHESTRATIONS_SELF_REL)
 SELF_POLICY_ASK_RULES = ("Edit(**/hooks/**)", "Edit(/hooks/**)")
 
 # The OS sandbox (Claude Code's `sandbox` settings key; Seatbelt on macOS, bubblewrap on
@@ -276,13 +332,14 @@ def hook_command(self_mode):
 
 
 def edit_ask_rules(self_mode):
-    """The `hooks/` rule, in this mode's spelling."""
+    """The `hooks/` rule under `--self`; for a consumer the vendored-tree rule and the
+    orchestration-records rule."""
     return SELF_POLICY_ASK_RULES if self_mode else POLICY_ASK_RULES
 
 
-def entry_for_hook(self_mode):
+def entry_for_hook(self_mode, matcher):
     return {
-        "matcher": HOOK_MATCHER,
+        "matcher": matcher,
         "hooks": [{"type": "command", "command": hook_command(self_mode)}],
     }
 
@@ -335,9 +392,22 @@ def event_wired(settings, event, marker):
     return False
 
 
-def hook_wired(settings):
-    """True when any PreToolUse hook command mentions the script, however spelled."""
-    return event_wired(settings, HOOK_EVENT, HOOK_MARKER)
+def hook_wired(settings, matcher):
+    """True when a PreToolUse entry with this `matcher` has a hook command mentioning the
+    script, however spelled — per matcher, so a repo wired before the `Agent` entry existed
+    gets that one added and keeps its own `Bash` entry."""
+    for entry in (settings.get("hooks") or {}).get(HOOK_EVENT) or []:
+        if (entry or {}).get("matcher") != matcher:
+            continue
+        for hook in (entry or {}).get("hooks") or []:
+            if HOOK_MARKER in str((hook or {}).get("command", "")):
+                return True
+    return False
+
+
+def missing_matchers(settings):
+    """The HOOK_MATCHERS with no entry running the script, in order."""
+    return [matcher for matcher in HOOK_MATCHERS if not hook_wired(settings, matcher)]
 
 
 def session_needed(settings):
@@ -395,20 +465,21 @@ def missing_entries(present, wanted):
 
 
 def gaps_in(settings, self_mode):
-    """(need_hook, missing Edit denies, missing Bash denies, missing ask rules, retired
-    Bash denies still present, retired Edit denies still present, wrong owned sandbox
-    settings, missing denyRead paths, missing allowed domains, need_session, retired
-    SessionStart commands still present).
+    """(missing hook matchers, missing Edit denies, missing Bash denies, missing ask rules, retired
+    Bash denies still present, retired Edit denies still present, retired Edit asks still
+    present, wrong owned sandbox settings, missing denyRead paths, missing allowed domains,
+    need_session, retired SessionStart commands still present).
     Only the two hook commands and the ask spelling differ between the modes; the deny
     rules and the sandbox block are the same in both, since the policy's own rule left it
     for `permissions.ask`."""
     return (
-        not hook_wired(settings),
+        missing_matchers(settings),
         missing_rules(settings, DENY_KEY, EDIT_DENY_RULES),
         missing_rules(settings, DENY_KEY, policy.bash_deny_rules()),
         missing_rules(settings, ASK_KEY, edit_ask_rules(self_mode)),
         present_rules(settings, DENY_KEY, policy.retired_bash_deny_rules()),
         present_rules(settings, DENY_KEY, RETIRED_EDIT_DENY_RULES),
+        [] if self_mode else present_rules(settings, ASK_KEY, RETIRED_EDIT_ASK_RULES),
         wrong_sandbox_settings(settings),
         missing_entries(sandbox_section(settings, SANDBOX_FILESYSTEM_KEY).get(
             SANDBOX_DENY_READ_KEY), SANDBOX_DENY_READ),
@@ -437,9 +508,9 @@ def apply_sandbox(settings, wrong_owned, missing_deny_read, missing_domains):
             SANDBOX_DOMAINS_KEY, []).extend(missing_domains)
 
 
-def apply_gaps(settings, self_mode, need_hook, missing_edit, missing_bash, missing_ask,
-               retired_bash, retired_edit, wrong_owned, missing_deny_read, missing_domains,
-               need_session, retired_session):
+def apply_gaps(settings, self_mode, missing_hooks, missing_edit, missing_bash, missing_ask,
+               retired_bash, retired_edit, retired_ask, wrong_owned, missing_deny_read,
+               missing_domains, need_session, retired_session):
     """Remove the retired rules and SessionStart commands where they stand, append what
     is absent, in the documented order, set the owned sandbox keys, and change nothing
     else."""
@@ -447,11 +518,14 @@ def apply_gaps(settings, self_mode, need_hook, missing_edit, missing_bash, missi
     if retired:
         deny = settings[PERMISSIONS_KEY][DENY_KEY]
         deny[:] = [rule for rule in deny if rule not in retired]
+    if retired_ask:
+        ask = settings[PERMISSIONS_KEY][ASK_KEY]
+        ask[:] = [rule for rule in ask if rule not in retired_ask]
     if retired_session:
         remove_session_commands(settings, retired_session)
-    if need_hook:
+    for matcher in missing_hooks:
         settings.setdefault("hooks", {}).setdefault(HOOK_EVENT, []).append(
-            entry_for_hook(self_mode))
+            entry_for_hook(self_mode, matcher))
     if need_session:
         settings.setdefault("hooks", {}).setdefault(SESSION_EVENT, []).append(
             entry_for_session(self_mode))
@@ -551,11 +625,11 @@ def describe_sandbox(wrong_owned, missing_deny_read, missing_domains):
     return ("%s %s" % (SANDBOX_LABEL, ", ".join(parts))) if parts else ""
 
 
-def describe_gaps(need_hook, missing_edit, missing_bash, missing_ask, wrong_owned,
+def describe_gaps(missing_hooks, missing_edit, missing_bash, missing_ask, wrong_owned,
                   missing_deny_read, missing_domains, need_session):
     gaps = []
-    if need_hook:
-        gaps.append("%s hook" % HOOK_MARKER)
+    for matcher in missing_hooks:
+        gaps.append("%s %s" % (matcher, HOOK_ENTRY_LABEL))
     if need_session:
         gaps.append("%s %s hook" % (SESSION_MARKER, SESSION_EVENT))
     for label, kind, missing in ((EDIT_RULE_LABEL, DENY_RULE_KIND, missing_edit),
@@ -572,15 +646,17 @@ def describe_gaps(need_hook, missing_edit, missing_bash, missing_ask, wrong_owne
 def describe_changes(gaps, check):
     """The whole gap as one clause: what is missing (`no …` for a check, `added …` for a
     write) and the retired rules (`… to remove`, `removed …`)."""
-    (need_hook, missing_edit, missing_bash, missing_ask, retired_bash, retired_edit,
-     wrong_owned, missing_deny_read, missing_domains, need_session, retired_session) = gaps
+    (missing_hooks, missing_edit, missing_bash, missing_ask, retired_bash, retired_edit,
+     retired_ask, wrong_owned, missing_deny_read, missing_domains, need_session,
+     retired_session) = gaps
     parts = []
-    missing = describe_gaps(need_hook, missing_edit, missing_bash, missing_ask,
+    missing = describe_gaps(missing_hooks, missing_edit, missing_bash, missing_ask,
                             wrong_owned, missing_deny_read, missing_domains, need_session)
     if missing:
         parts.append((CHECK_MISSING_LEAD if check else WRITE_MISSING_LEAD) + missing)
     for retired_items, what in ((retired_bash, "%s %s rule(s)" % (BASH_RULE_LABEL, DENY_RULE_KIND)),
                                 (retired_edit, "%s %s rule(s)" % (EDIT_RULE_LABEL, DENY_RULE_KIND)),
+                                (retired_ask, "%s %s rule(s)" % (EDIT_RULE_LABEL, ASK_RULE_KIND)),
                                 (retired_session, "%s command(s)" % SESSION_EVENT)):
         if retired_items:
             retired = "%d %s %s (%s)" % (
@@ -674,8 +750,8 @@ def main():
     if not any(gaps):
         return report(
             STATUS_IN_SYNC if args.check else STATUS_KEPT,
-            "%s (%s hook, %s %s hook, Edit and Bash deny rules, the hooks/ ask rule and "
-            "the sandbox block present)"
+            "%s (%s hook, %s %s hook, Edit and Bash deny rules, the vendored-tree and "
+            "orchestration-records ask rules and the sandbox block present)"
             % (SETTINGS_REL, HOOK_MARKER, SESSION_MARKER, SESSION_EVENT),
         )
 

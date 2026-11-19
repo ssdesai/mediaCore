@@ -1,0 +1,178 @@
+{
+  "slug": "tooling-wave-2026-11-17",
+  "kind": "orchestrator",
+  "generated_at": "2026-11-18T14:11:21Z",
+  "session": "2fec175d-1543-582c-9f4f-1132527f84d6",
+  "agent_tooling": "19f8d9795600af68d19f24a8737ad5faa9683e81",
+  "agent_tooling_short": "19f8d97",
+  "session_window": {
+    "from": "2026-11-17T17:20:57Z",
+    "to": "2026-11-18T14:11:20Z"
+  },
+  "features": [
+    {
+      "repo": "agentTooling",
+      "slug": "audit-round-cap",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/160",
+      "total_usd": 1.7112666,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "lifecycle-t5-brief",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/159",
+      "total_usd": 1.8554201000000003,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "hook-planted-gitdir",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/161",
+      "total_usd": 6.2809116000000005,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "start-squash-merged-branch",
+      "pr": null,
+      "total_usd": null,
+      "unpriced_reason": "no report path in the record"
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "orchestration-start-branch",
+      "pr": null,
+      "total_usd": null,
+      "unpriced_reason": "no report path in the record"
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "article-pictures-beside-text",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/354",
+      "total_usd": 18.2903383,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "fetch-pin-vetted-address",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/353",
+      "total_usd": 3.9313641,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "new-branch-per-feature",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/162",
+      "total_usd": 0.9806438,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-verify-context",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/355",
+      "total_usd": 13.209553399999999,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-run-gaps",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/357",
+      "total_usd": 27.8492621,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "public-read-contract-flake",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/356",
+      "total_usd": 6.3556936,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-owner-options",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/358",
+      "total_usd": 25.1971004,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-completeness-pass",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/359",
+      "total_usd": 25.606159700000003,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-candidate-hygiene",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/360",
+      "total_usd": 29.405594500000003,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-commit-statement",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/361",
+      "total_usd": 21.621352,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "article-lead-picture",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/362",
+      "total_usd": 11.1750839,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-gaps-name-noise",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/363",
+      "total_usd": 12.957178200000001,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-verify-names",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/364",
+      "total_usd": 14.994266300000001,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-multi-span",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/365",
+      "total_usd": 16.423023,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-review-followups",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/366",
+      "total_usd": 9.7729974,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "rates-refresh-2026-11",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/163",
+      "total_usd": 3.6184246,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "article-best-rendition",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/367",
+      "total_usd": 8.9406381,
+      "unpriced_reason": null
+    }
+  ],
+  "overhead": {
+    "usd": 33.189787,
+    "unpriced_reason": null,
+    "total_is_partial": false
+  },
+  "features_total_usd": 260.17627170000003,
+  "priced_count": 20,
+  "unpriced_count": 2,
+  "group_total_usd": 293.36605870000005,
+  "overhead_pct": 11.31343794407393
+}

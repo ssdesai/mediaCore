@@ -1,0 +1,75 @@
+{
+  "plan": "01-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "5209e175-3405-4bc3-b2cf-a982d64c9d40",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 24,
+  "duration_ms": 207749,
+  "total_cost_usd": 1.0596880999999998,
+  "usage": {
+    "input_tokens": 36,
+    "cache_creation_input_tokens": 55187,
+    "cache_read_input_tokens": 1075530,
+    "output_tokens": 20120
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 3676,
+      "outputTokens": 349,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0005421,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 326,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 36,
+      "outputTokens": 20120,
+      "cacheReadInputTokens": 1075530,
+      "cacheCreationInputTokens": 55187,
+      "webSearchRequests": 0,
+      "costUSD": 1.059146,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 5471,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 55187,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 13,
+    "Edit": 1,
+    "Read": 5,
+    "Write": 4
+  },
+  "files_edited": [
+    "/tmp/plan-capture.SdyQqi/scratch/attack.py",
+    "/tmp/plan-capture.SdyQqi/scratch/emptysub.sh",
+    "/tmp/plan-capture.SdyQqi/scratch/extract.sh",
+    "self/features/own-push-credential-keys/audit-report.md"
+  ],
+  "edit_count": 5,
+  "attempts": [
+    {
+      "session_id": "5209e175-3405-4bc3-b2cf-a982d64c9d40",
+      "outcome": "complete",
+      "total_cost_usd": 1.0596880999999998,
+      "num_turns": 24,
+      "duration_ms": 207749
+    }
+  ]
+}

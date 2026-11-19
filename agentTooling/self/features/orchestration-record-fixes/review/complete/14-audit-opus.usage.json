@@ -1,0 +1,81 @@
+{
+  "plan": "14-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "85e4298b-8eff-4bcc-be05-d29d8cc83fe9",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 44,
+  "duration_ms": 257668,
+  "total_cost_usd": 1.7408042,
+  "usage": {
+    "input_tokens": 54,
+    "cache_creation_input_tokens": 94297,
+    "cache_read_input_tokens": 2326974,
+    "output_tokens": 26026
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 2859,
+      "outputTokens": 23,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0002974,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 54,
+      "outputTokens": 26026,
+      "cacheReadInputTokens": 2326974,
+      "cacheCreationInputTokens": 94297,
+      "webSearchRequests": 0,
+      "costUSD": 1.7405068,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 9953,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 94297,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 25,
+    "Edit": 1,
+    "Read": 7,
+    "Write": 10
+  },
+  "files_edited": [
+    "/tmp/plan-capture.bib6rk/scratch/cases.txt",
+    "/tmp/plan-capture.bib6rk/scratch/cases2.txt",
+    "/tmp/plan-capture.bib6rk/scratch/cases3.txt",
+    "/tmp/plan-capture.bib6rk/scratch/drive.py",
+    "/tmp/plan-capture.bib6rk/scratch/extract.sh",
+    "/tmp/plan-capture.bib6rk/scratch/mkcases.py",
+    "/tmp/plan-capture.bib6rk/scratch/real.txt",
+    "/tmp/plan-capture.bib6rk/scratch/realbash.sh",
+    "/tmp/plan-capture.bib6rk/scratch/replay.sh",
+    "self/features/orchestration-record-fixes/audit-report.md"
+  ],
+  "edit_count": 11,
+  "attempts": [
+    {
+      "session_id": "85e4298b-8eff-4bcc-be05-d29d8cc83fe9",
+      "outcome": "complete",
+      "total_cost_usd": 1.7408042,
+      "num_turns": 44,
+      "duration_ms": 257668
+    }
+  ]
+}

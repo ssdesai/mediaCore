@@ -41,9 +41,10 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 TMP="$(cd "$TMP" && pwd -P)"
 AT="$TMP/agentTooling"
-mkdir -p "$AT" "$TMP/plans/features"
+mkdir -p "$AT/hooks" "$TMP/plans/features"
 
-for f in check-plans.sh plan-runner-roots.sh; do
+# the role reader refuses a copy without its two modules (hook-silent-allow-sweep, item 7)
+for f in check-plans.sh plan-runner-roots.sh hooks/orchestrator_role.py hooks/shared_rules.py; do
   cp "$HERE/$f" "$AT/$f" 2>/dev/null || true
 done
 chmod +x "$AT/check-plans.sh" 2>/dev/null || true

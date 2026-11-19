@@ -1,5 +1,5 @@
 {
-  "checked": "2026-10-13",
+  "checked": "2026-11-18",
   "source_url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
   "models": {
     "claude-opus-5-5": [
@@ -66,6 +66,12 @@
     ],
     "claude-haiku-5-5": [
       {"from": "0000-01-01", "input": 0.1, "output": 0.5, "cache_read": 0.01, "cache_creation_5m": 0.125, "cache_creation_1h": 0.2, "source": "litellm"}
+    ],
+    "claude-fable-5-2": [
+      {"from": "0000-01-01", "input": 8, "output": 40, "cache_read": 0.2, "cache_creation_5m": 10, "cache_creation_1h": 16, "source": "litellm"}
+    ],
+    "claude-mythos-5-2": [
+      {"from": "0000-01-01", "input": 8, "output": 40, "cache_read": 0.2, "cache_creation_5m": 10, "cache_creation_1h": 16, "source": "litellm"}
     ]
   }
 }

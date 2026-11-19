@@ -6,15 +6,16 @@ set -uo pipefail
 #   forge.sh pr-find <head>                             the open PR whose head is <head>:
 #                                                       prints its html_url, or nothing
 #   forge.sh pr-open <head> <base> <title> <body-file>  opens one: prints its html_url
-#   forge.sh pr-edit <pr-url> <body-file>               replaces that PR's body with the
-#                                                       file's bytes: prints its html_url
+#   forge.sh pr-edit <pr-url> <body-file> [title]       replaces that PR's body with the
+#                                                       file's bytes — and its title, when one
+#                                                       is given: prints its html_url
 #   forge.sh auto-merge <pr-url>                        asks the forge to merge that PR
 #                                                       once its checks pass: prints the url
 #   forge.sh reachable                                  whether the forge answers: prints
 #                                                       `reachable <o>/<r>`
 #
 # The one piece of agentTooling that talks to the forge (self/DESIGN-2026-10-05-cloud-
-# execution.md §5). It is called by a repo's `pr.sh` (template-version 7), which keeps its
+# execution.md §5). It is called by a repo's `pr.sh` (template-version 8), which keeps its
 # repo-owned shell — the commit, the push, the "already open" line — and hands the forge
 # part here: `pr-find`, then `pr-open` when that finds nothing and `pr-edit` when it finds
 # the PR a previous round's close opened (a feature is a sequence of rounds and every
@@ -28,7 +29,7 @@ set -uo pipefail
 #
 #   pr-find     GET  /repos/{o}/{r}/pulls?head={o}:{head}&state=open   → .[0].html_url
 #   pr-open     POST /repos/{o}/{r}/pulls  head, base, title, body     → .html_url
-#   pr-edit     PATCH /repos/{o}/{r}/pulls/{n}  body                   → .html_url
+#   pr-edit     PATCH /repos/{o}/{r}/pulls/{n}  body [, title]         → .html_url
 #   auto-merge  local: gh pr merge <url> --auto --merge --delete-branch
 #               cloud: PUT /repos/{o}/{r}/pulls/{n}/ccr/auto_merge  merge_method=merge
 #   reachable   local: gh auth status
@@ -106,7 +107,7 @@ ORIGIN_DIR="${FORGE_CHECKOUT:-$SCRIPT_DIR}"
 usage() {
   echo "usage: $FORGE_SCRIPT_NAME pr-find <head>" >&2
   echo "       $FORGE_SCRIPT_NAME pr-open <head> <base> <title> <body-file>" >&2
-  echo "       $FORGE_SCRIPT_NAME pr-edit <pr-url> <body-file>" >&2
+  echo "       $FORGE_SCRIPT_NAME pr-edit <pr-url> <body-file> [title]" >&2
   echo "       $FORGE_SCRIPT_NAME auto-merge <pr-url>" >&2
   echo "       $FORGE_SCRIPT_NAME reachable" >&2
   exit "$USAGE_RC"
@@ -147,7 +148,8 @@ case "$VERB" in
   pr-open)
     if (( $# != 4 )) || [[ -z "$1" || -z "$2" || -z "$3" || -z "$4" ]]; then usage; fi ;;
   pr-edit)
-    if (( $# != 2 )) || [[ -z "$1" || -z "$2" ]]; then usage; fi ;;
+    if (( $# != 2 && $# != 3 )) || [[ -z "$1" || -z "$2" ]]; then usage; fi
+    if (( $# == 3 )) && [[ -z "$3" ]]; then usage; fi ;;
   auto-merge)
     if (( $# != 1 )) || [[ -z "$1" ]]; then usage; fi ;;
   reachable)
@@ -205,8 +207,12 @@ case "$VERB" in
       fail "no readable body file at $BODY_FILE — nothing was asked of the forge"
     fi
     EDIT_ENDPOINT="$PULLS_ENDPOINT/$PR_NUMBER"
+    # An optional third word is the PR's new title (`[deviations] <slug>` or the bare slug,
+    # pr.sh template-version 8); without it the title is left exactly as it was.
+    TITLE_ARGS=()
+    if (( $# == 3 )); then TITLE_ARGS=(-f "title=$3"); fi
     if ! EDITED="$("$FORGE_CLI" api -X PATCH "$EDIT_ENDPOINT" \
-        -F "body=@$BODY_FILE" --jq "$EDIT_URL_JQ")"; then
+        -F "body=@$BODY_FILE" ${TITLE_ARGS[@]+"${TITLE_ARGS[@]}"} --jq "$EDIT_URL_JQ")"; then
       fail "PATCH $EDIT_ENDPOINT failed — see $FORGE_CLI's message above; the PR body was not changed"
     fi
     if [[ -z "$EDITED" ]]; then

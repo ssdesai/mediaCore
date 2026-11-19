@@ -5,6 +5,210 @@ the assertion that would catch it, with the feature that raised it. Remove an en
 feature that closes it. Same shape as a consuming repo's `plans/BACKLOG.md`; this one is
 agentTooling's own, for the harness rather than for a product.
 
+- **The silent own-branch push rests on the `.git` Edit-deny rules, and nothing checks
+  that a consuming repo kept them.** `own_push_allowed` trusts the root checkout's `.git`
+  because `Edit(**/.git)` and `Edit(**/.git/**)` (`hooks/wire-settings.py`'s
+  `EDIT_DENY_RULES`) stop an agent from writing a `.git` file that points at a planted
+  gitdir. `wire-settings.py --check` runs only in agentTooling's own gate, so a consuming
+  repo that drops those rules from `.claude/settings.json` silently reopens the hole
+  `own-push-real-gitdir` closed. Proposal: `own_push_allowed` reads the project's
+  `.claude/settings.json` and prompts unless both rules are present; failing that, a
+  consumer-side check in `update.sh`. Assertion: with either rule removed from a fixture's
+  settings, a plain `git push origin <started-branch>` prompts. Raised by
+  `own-push-real-gitdir`'s round-2 audit.
+
+- **A nested settings file with a discovered name is accepted by `--config`.** `ruff check
+  --config sub/ruff.toml src`, with `sub/ruff.toml` holding `fix = true`, is approved: item 5
+  of `hook-silent-allow-sweep` checks only the basename, and ruff applies a nested
+  `ruff.toml` by itself only to files under its own directory, so `--config` extends it to
+  files it never governed. Pre-existing (head and base both allow it); needs a planted file.
+  Assertion: a `--config`/`--config-file` value is approved only at the project root (or the
+  cwd inside the root); a nested one prompts. Raised by `hook-silent-allow-sweep`'s round-1
+  audit (N1).
+
+- **The gate and check-plans spellings are shared by both layouts.** A planted `self/gate.sh`
+  or root `./check-plans.sh` in a consuming repo, and a planted `plans/gate.sh` in
+  agentTooling's own checkout, are approved. Pre-existing (the base approved any path).
+  Assertion: the spellings are pinned by the hook's layout, as `hook_analysis_pins` pins
+  `report.py` — `<root>/hooks/`: `self/gate.sh`, `check-plans.sh`; `<root>/agentTooling/
+  hooks/`: `plans/gate.sh`, `agentTooling/check-plans.sh` — and every other spelling prompts.
+  Raised by `hook-silent-allow-sweep`'s round-1 audit (N2).
+
+- **The role rule reads "no record" without proving it ran.** A `shared_rules.py` that raises
+  `SystemExit(0)` at import, or an `orchestrator_role.py` replaced by `sys.exit(0)`, exits 0
+  with no output, which `orchestrator_record_for_session` reads as no record. Pre-existing;
+  needs an edit to the tooling itself. Assertion: the module prints a positive sentinel on a
+  clean no-match (for example `none`), and the shell refuses on anything that is neither the
+  sentinel nor a record path. Raised by `hook-silent-allow-sweep`'s round-1 audit (N3).
+
+- **A git trace variable in the hook's environment does not stop the own-push approval.**
+  With `GIT_TRACE`, `GIT_TRACE_PACKET` or `GIT_TRACE2_EVENT` already set in the session's
+  environment, the own-branch push is approved and git writes to the file it names.
+  Pre-existing. Assertion: any `GIT_TRACE*` set to a path prompts, beside
+  `OWN_PUSH_HELPER_ENVS`. Raised by `hook-silent-allow-sweep`'s round-2 audit.
+
+- **The git deny does not read a pattern location.** `git -C se?f switch main`, `git -C se?f
+  push origin other` and `git -C @(self) reset --hard` prompt where the literal path is
+  denied: the deny side, like the read approval before `hook-silent-allow-sweep`, judges the
+  location word as written. Prompt-only, no silent allow. Assertion: a ref-moving git command
+  behind a pattern location is denied with the same reason as behind the literal path.
+  Raised by `hook-silent-allow-sweep`'s round-2 audit.
+
+- **Two narrowings of `hook-silent-allow-sweep` may be wider than needed.** A quoted
+  location (`git -C 'plans/e?il' status`) prompts though bash does not expand it, and in a
+  vendored copy `./agentTooling/self/gate.sh` prompts where the base approved it. Neither is
+  a security problem. Assertion, if the owner wants them back: a single-quoted location
+  value is read literally, and the vendored copy's own `self/gate.sh` is a known spelling.
+  Raised by `hook-silent-allow-sweep`'s round-2 audit.
+
+- **A writable git config defeats the hook's approvals generally.** The hook reads the
+  effective config and trusts it: a `.git/config` an attacker can write, or a global or
+  included config outside the root, can add a key the hook does not list (a `!` alias, a
+  `core.pager`, `diff.external`, `http.proxy`, ...) and the read-only or own-push approval
+  then runs it silently. `own-push-credential-keys` closed one slice (credential programs on
+  the own-branch push) by listing keys, which cannot be complete. The real `.git/config` is
+  Edit-denied, so the threat needs a prior approved write or a file outside the root.
+  Assertion: the approvals are made against a config the hook controls (for example
+  `GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL=/dev/null` and an allowlist of repo keys) rather
+  than a denylist of keys. Raised by humanNetworkMap's `pull-agenttooling-pr141` round 4,
+  F2-F4.
+
+- **`analysis/report.py` does no containment check on a record's `report` path.** A
+  manifest's `report` field is read as a path and opened as given, so a record naming a file
+  outside the repo makes the report read it. Assertion: `report.py` refuses (or ignores,
+  with a note) a `report` path that resolves outside the checkout, and a test feeds it
+  `../x`. Older than #139, not urgent. Raised by the independent audit of
+  `orchestration-record-fixes`, carried by `hook-audit-gaps`.
+
+- **The git deny reads git only at command position.** `X=1 git push --force origin x`,
+  `env git …`, `command git …`, `time git …`, `sudo git …`, `xargs git …`, `! git …` and
+  `{ git …; }` are prompts: `git_subcommand_args` wants `git` as the command's first word.
+  Assertion: each is denied in both profiles (`self/tests/hook-cloud-profile.sh` T), with the
+  env-prefix and keyword handling the build-script judge already has
+  (`ENV_ASSIGNMENT_RE`, `BUILD_SCRIPT_LEAD_KEYWORDS`). Never an allow; older than this
+  feature. Found by the phase-3 self-audit of `hook-audit-gaps`, not fixed there (a class of
+  its own).
+
+- **The git deny matches flags as written, not as git reads them.** A long option
+  abbreviated as git accepts it (`git push --force-w origin x` is `--force-with-lease`;
+  `git reset --har`), and a short-flag cluster on a subcommand other than `push`
+  (`git checkout -qb x`, and `git switch -qc x` locally), are prompts. Assertion: each is
+  denied; `bundles_push_force` is the model for the clusters, `orchestrator_option_hits` for
+  the prefixes. A `+<refspec>` push naming no protected branch (`git push origin +x`) is a
+  prompt by decision — `hook-cloud-profile.sh` pins `git push origin +<current>` as one — and
+  wants an owner ruling before it changes. Found by the phase-3 self-audit of
+  `hook-audit-gaps`.
+
+- **A line the hook cannot tokenize: three leftovers.** `hook-audit-gaps` closed the git
+  half: a line that names git, that no reading judges and that bash refuses (`bash_refuses`,
+  `bash -n` over the line) is a git command that cannot be read, denied without decay
+  (`UNLEXED_GIT_DENY` and `BASH_REFUSED_GIT_DENY` in `self/tests/allow-repo-commands.sh`). A
+  line bash PARSES and no reader judges (`git push -f origin y⏎echo $'\''`, still a prompt,
+  `BASH_PARSED_PROMPT`), this entry's old (a), is the next entry's class. What is left, each a prompt and never an
+  allow: (b) a line that names NO git, does not tokenize and holds a `<<` or a `#` in its
+  raw text (`cd /tmp && ls⏎echo '#`) is a prompt, where the same line without them is the
+  does-not-tokenize deny — a rewrite lost; assertion: `does_not_tokenize` excuses a line
+  only for a `<<` or a `#` OUTSIDE its quotes. (c) A line that names git of which one
+  reading tokenizes, though not bash's — a comment in doubt kept as text, its apostrophe
+  pairing with a later odd quote, beside a body no reading places (`(ls) # it's⏎git push -f
+  origin y⏎cat <<EOF⏎echo '`) — is a prompt; assertion: the reading that keeps a doubtful
+  comment as text does not count toward "some reading tokenizes". (d) The bash asked is the
+  system's (`BASH_SYNTAX_ENV`, `/usr/bin:/bin`) with no option set, not the shell the
+  session runs: a line that shell refuses and the system bash parses keeps the verdict it
+  had, and one that parses only there (`git add !(x) $'it\'s'` under extglob) is denied;
+  assertion: the check is made by the shell, and under the options, the command will run
+  with — which the hook is not told. Found by `hook-audit-gaps`'s phase-3 self-audit, its
+  round-5 and round-6 audits and round 7's build.
+
+- **The deny side does not follow a substitution's scope.** `cat <<EOF⏎$(git push --force
+  origin x)⏎EOF` (an unquoted delimiter: bash runs the body's `$(…)`), a command INSIDE a
+  quoted substitution (`echo "$(git push --force origin x)"`, and the same on a heredoc's
+  run-on line there: `git commit -m "$(cat <<'EOF'⏎x⏎EOF git push --force origin x)"`, which
+  bash 5.2 runs), a body line holding a `"` inside quoted backticks (``echo "`cat
+  <<EOF⏎a " b⏎EOF⏎`" ; git push --force origin x``), and `echo $'it\'s' ; git push --force
+  origin x` (an ANSI-C quote escaping a quote: `never_judged`; `$$$'a\''` the same) are
+  prompts, as they were on `main`. Assertion: each is denied, by a reader that follows `$(…)`
+  scope and decodes `$'…'`; rounds 4–8 of `orchestration-record-fixes` tried a scoped
+  reading and took it out, so this wants a design, not a patch. Found by the phase-3
+  self-audit of `hook-audit-gaps`; round 2 closed the `"$(echo " #")"` spelling (a comment
+  past an opener is read both ways) and `$$'…'`, and its differential check counted the rest.
+  Round 3 closed the whole-argument spelling — a `"$(cat <<…` head that is not stood in is
+  also read opened, so the run-on line above and a command after the body inside the quotes
+  are denied — and left every other `"$(…)"` (`echo "$(true; cat <<EOF⏎x⏎EOF⏎git push
+  --force origin x⏎)"`, `echo "\\⏎$(cat <<EOF …)"`) where it was. Round 4 widened that head
+  to the spellings bash reads as the same one (`"$( cat <<`, tabs, a line break after the
+  `$(`, `cat<<`, a continuation inside: `HEREDOC_OPENED_HEAD_RE`); text before the `$(`
+  (`echo "x$(cat <<EOF⏎x⏎EOF⏎git push -f origin y⏎EOF⏎)"`) and a command word other than a
+  bare `cat` are still the one quoted word, and still this entry. Round 5 refused that head
+  outright when its delimiter is no bare or fully quoted identifier (`unread_head`); the
+  same odd delimiter behind text before the `$(`, a command word other than a bare `cat`, or
+  a command on the head's own line (`"$(cat <<'EOF' -A`, `"$(cat <<EOF | tr a b`) is still
+  the one quoted word.
+
+- **On the unreadable-ledger path, a build script's name built at run time is not seen.**
+  awk's string concatenation (`awk 'BEGIN{system("./run-pl" "ans.sh")}'`), a quote glued
+  inside a sed `e` script (`sed -n '1e ./run-pl""ans.sh' README.md`), `printf
+  './run-pl%sns.sh' a | sh`, `echo ./run-plbns.sh | tr b a | sh` and a filter that selects
+  the name (`ls | grep plans | xargs sh`) each run a build script and are prompts (or the
+  opaque rewrite, which decays to an ask): no line reader can see a name that is not on the
+  line. Assertion: with the ledger unreadable, a pipe INTO a shell or `xargs <shell>` and an
+  awk `system(` or sed `e` are refused whatever they name. Each was a prompt on `main` too.
+  Listed by round 1's audit of `hook-audit-gaps` (escalations/01-audit-opus.md, "not
+  regressions") and counted by round 2's differential check.
+
+- **`hooks/README.md` promises more than "never silently approved".** Each
+  `hook-audit-gaps` round wrote a stronger guarantee there ("both readings judged",
+  "denied wherever bash runs it"), and each became the next audit's target. Proposal: the
+  README guarantees only that nothing outside the approved shapes is approved silently,
+  and documents the stronger denies as best-effort. Assertion: every guarantee the README
+  states has a gate test row. Raised by `hook-audit-gaps`.
+
+- **The hook judges by re-implementing bash's reader, which cannot converge.** It uses
+  `shlex` plus a custom walk, and an auditor can always find another spelling where it and
+  bash disagree. Proposal: make silent approval an allowlist (a single line, no
+  `\`-continuation, no `$'…'`, the heredoc only in its canonical commit form) that
+  prompts or denies everything else, and use bash itself (`bash -n`, which
+  `hook-audit-gaps` round 7 introduces) as the parse oracle. Assertion: no silent-approval
+  path depends on the hook's tokenizer agreeing with bash outside the allowlisted shapes.
+  Raised by `hook-audit-gaps`.
+
+- **The bash-vs-hook differential harness is not committed.** `hook-audit-gaps` built one
+  in a scratchpad; implementers should find divergences before audits do. Proposal: commit
+  it as a `self/tests/` gate test. Assertion: the gate fails on any generated command that
+  the hook approves silently while bash would run a command the hook denies. Raised by
+  `hook-audit-gaps`.
+
+- **The shell lifecycle scripts each carry their own `SLUG_PATTERN`.** `feature-start.sh`,
+  `orchestration-capture.sh` and the other lifecycle scripts spell
+  `^[a-z0-9]+(-[a-z0-9]+)*$` themselves, a shell-to-shell rule the hook does not share
+  (`hooks/shared_rules.py`'s `SLUG_PATTERN` is the Python side's one definition, which
+  `orchestration-start.sh` reads). Reading it from the module in each script would add a
+  python process to every script start, so `shared-hook-rules` left it. Assertion: no
+  lifecycle script restates the pattern, or one shell file defines it and the rest source
+  it (`self/tests/shared-rules.sh`'s `SHELL_PAIRS_LEFT` loses its `SLUG_PATTERN` rows).
+  Raised by `shared-hook-rules`.
+
+- **Pairs the hook forms with `analysis/` or a shell file that still hold a literal each.**
+  The hook may not depend on `shared_rules.py` for anything but the role rule (a missing
+  module must leave every other answer unchanged), so these stayed: the FEATURE manifest's
+  name `README.md` (`allow-repo-commands.sh`, `routing.MANIFEST_NAME`, the shells'), the
+  feature corpus roots `self/features` / `plans/features` (`allow-repo-commands.sh`,
+  `orchestration-start.sh`, `plan-runner-roots.sh`, `update.sh`, `roots.features_root`),
+  the build-script names, and the profile words `env-profile.sh` restates from
+  `env_profile.py`. Decide, per pair, a guarded read with a fail-safe answer or a rule that
+  moves to the shell side; `NOTES.md` of `shared-hook-rules` lists them. Assertion: the
+  exception tables in `self/tests/shared-rules.sh` hold only pairs with different meanings.
+  Raised by `shared-hook-rules`.
+
+- **A plans-method cell whose review escalates opens no PR, so the experiment harness
+  records it `no-pr`.** The plans workflow stops after an escalated review (no close, no
+  PR — `LIFECYCLE.md` step 5), which is right for a feature but leaves an experiment arm
+  with no PR to measure at PR-open; the harness then opens one itself (`settle_pr`) or
+  fails the cell. Decide whether an arm should run a rework round, or the harness should
+  treat "escalated, pushed" as its own outcome. Assertion: a plans cell whose review
+  escalates yields a row whose outcome names the escalation, not `no-pr`. Seen in
+  vinylCatalogue's toolingAblation; raised by `ablation-harness-fixes`.
+
 - **`recover_attempts.py` prices a collided session's null-cost attempt from the whole
   transcript.** A usage.json attempt whose `session_id` is a coordinator's (a runner child
   that inherited the parent's id, design 2026-10-05 §4) and whose `total_cost_usd` is null
@@ -94,16 +298,6 @@ agentTooling's own, for the harness rather than for a product.
   PID is killed while its stub gate sleeps is refused by a re-run of its slug until the
   gate exits.
   Raised by `start-takeover`.
-
-- **`feature-lifecycle.sh` T5 writes its brief into a directory that does not exist.**
-  Line ~1450 prints `No such file or directory` for
-  `$AT/self/features/lifecycle-one/review/incomplete/99-review-opus.md` — the primary's
-  `main` does not carry `lifecycle-one`'s feature directory at that point — on `main` as
-  well as on `start-takeover`. The run still reports all assertions passed, so T5 ("a
-  review run from the primary on main commits nothing") may be passing without the brief
-  it meant to run. Assertion: T5's brief exists before its review runs, and the test
-  prints nothing on stderr.
-  Raised by `start-takeover` (seen while gating it).
 
 - **Long-context (above 200k input tokens) and other tiered pricing is not priced —
   parked until the tier report flips.** `analysis/rates_history.json` holds one flat rate
@@ -209,7 +403,7 @@ agentTooling's own, for the harness rather than for a product.
   (`.git/hooks`, `.git/config`, `.claude/settings*`, …), none of which names
   `agentTooling/hooks/` — it is inside the working directory, which the sandbox leaves
   writable. So `allow-repo-commands.sh` and `policy.py`, which the
-  `Edit(**/agentTooling/hooks/**)` ask rule keeps from an unattended Edit, stay open to a
+  `Edit(**/agentTooling/**)` ask rule keeps from an unattended Edit, stay open to a
   `python3 <script>` a verify or review pass auto-approves; a prompt-injected executor
   could widen the policy every later session runs under. `hooks/README.md` → "Cross-layer
   dependencies" states the gap. A `filesystem.denyWrite` on that path in consumer mode is
@@ -218,17 +412,6 @@ agentTooling's own, for the harness rather than for a product.
   sessions may write it. Assertion: in a consuming repo, a sandboxed Bash subprocess that
   opens `agentTooling/hooks/allow-repo-commands.sh` for writing fails with `Operation not
   permitted`, and `update.sh` still pulls. Raised by `runner-sandbox`'s review.
-
-- **Consuming repos' records short on `claude-sonnet-5-5` / `claude-mythos-preview` are
-  not repaired.** live-model-rates refreshed the history and recaptured this corpus's one
-  short record (`sandbox-consumer-reads`); records in a consuming repo's `plans/features/`
-  captured before that refresh reached it still say `total_is_partial: true` with a "no
-  rate for model" warning for either model, and only that repo can recapture them, after
-  its next `subtree pull` and while their transcripts survive (about four weeks).
-  Deliberately excluded from live-model-rates ("Consuming repos' own corpora"). Known
-  case: humanNetworkMap `access-views-write` ($29.03 partial, four sonnet-5-5 helpers).
-  Assertion: in each consuming repo, no `planning.json` carries a "no rate for model
-  'claude-sonnet-5-5'" warning. Raised by `live-model-rates`.
 
 - **Cross-repo pin over a parent claim.** A delegate yields to the feature that pins it
   when the parent-selecting capture can see the pin — a manifest in its own corpus copies,
@@ -265,36 +448,6 @@ agentTooling's own, for the harness rather than for a product.
   run twice under `GATE_RESUME=1` on the same tree with its ignored input broken between
   the runs, fails the second run and writes no `plans/gate-state/` record. Raised by
   `session-start-precision`.
-
-- **A squash-merged cloud branch can't start its next feature.** After a PR is
-  squash-merged, the session's assigned `claude/…` branch still carries commits that are
-  not on `origin/main`, though its tree is identical. So `feature-start.sh` refuses a next
-  feature there ("somebody's work"), and no agent can reset the branch: the hook denies
-  `reset --hard`, `checkout -B` and a force-push (`LIFECYCLE.md` rule 2). Possible fix: the
-  start recognises a branch whose tree equals `origin/<base>` (or whose own commits are all
-  patch-equivalent, `git cherry`) and resets it itself, since the start is the one place
-  allowed to move refs; the close then pushes with `--force-with-lease`. Assertion: a cloud
-  start on a branch whose commits a squash merge already carried to `origin/main` starts
-  the next feature on that branch, and one with a genuinely unmerged commit is still
-  refused. Raised by the session that merged ssdesai/agentTooling#85 (recorded by
-  `review-base-and-cloud-hook`).
-
-- **Running several features at once from one cloud orchestrator is undocumented.**
-  Agent-tool subagents share the orchestrator's container and branch, so they can't hold a
-  second feature; child cloud sessions (`create_session`) each get their own container and
-  `claude/…` branch, so each can run `feature-start.sh` and coordinate one feature.
-  `ORCHESTRATION.md` covers routers, coordinators and in-session delegates, but not this.
-  It should say: how the orchestrator spawns and briefs children; how it monitors them —
-  `get_session` and `list_events`, steering with `send_message` — and that a cloud child
-  can't message its parent back, the parent being notified only when a child's turn fails;
-  that permission prompts must be answered in each child's session; that overlapping
-  features merge in PR order, the later one resolving conflicts; and where the
-  orchestrator's own cost goes — it never runs a start, so no routing record is written
-  and its spend is attributed to no feature (decide whether that is acceptable or needs a
-  record of its own). Until then `create_session` has only been used to acceptance-test
-  `self-cloud-bootstrap`. Assertion: `ORCHESTRATION.md` has a section on cloud fan-out
-  naming each point above. Raised by the same session (recorded by
-  `review-base-and-cloud-hook`).
 
 - **A recapture re-prices a record from the table instead of from the rates it already
   recorded.** `planning.json` stores `rates_applied` (five rates, `from`, `source`) for
@@ -333,12 +486,6 @@ agentTooling's own, for the harness rather than for a product.
   at its next real bump. Assertion: every `templates/plans/*.sh` header says comments
   count. Raised by `cloud-pull-fixes`.
 
-- **Directory names still label where a transcript ran.** `capture_planning.py
-  --list-subagents`' `cwd` column (`Path(cwd).name`) and similar displays name the launch
-  directory, which in a cloud container is the lowercase clone. They are labels of a place,
-  not a feature's identity, and compare nothing — left as they are. Assertion: none needed
-  unless one of them starts being compared. Raised by `cloud-pull-fixes`.
-
 - **A consuming repo's `plans/worktree-setup.sh` printed ".venv created" on a resumed
   start although `uv` refused to recreate it.** Repo-owned, not agentTooling's: the seeded
   skeleton prints nothing of the kind. Noted so the next propagation round tells that repo.
@@ -354,3 +501,296 @@ agentTooling's own, for the harness rather than for a product.
   `base_arms` with `programs` is refused. Assertion: an experiment with `base_arms` and
   `programs` cuts each program cell's program branch and non-dependent feature branches at
   the arm's commit instead of `program.json`'s `base`. Raised by `harness-arm-base`.
+
+- **Program cells cannot be reset, and `--from` does not check their preconditions.**
+  `run.sh --reset` refuses a program cell, and the `--from` check for missing state, setup start
+  or worktree covers fixture cells only. Assertion: `--reset` on a killed program cell moves its
+  program branch, feature branches, worktrees and state aside, and `--from loop` on one with
+  those missing is refused naming `--reset`. Raised by `harness-long-runs`.
+
+- **`run-plans.sh` has no time budget between plans.** A plan run killed at the 2-hour background
+  limit resumes on re-run, and `run-batch.sh` has no between-plans loop (plan iteration is in
+  `plan-runner-lib.sh`), so a budget would be a new mechanism there, not the harness's. Left out
+  of `harness-long-runs` (`harness/SPEC.md` §17). Assertion: a run given a budget stops before a
+  plan that would not fit, exits `HARNESS_BUDGET_STOP_RC`-style and prints the command that
+  resumes it. Raised by `harness-long-runs`.
+
+- **The orchestrator role has three gaps.** Each is one assertion. (A fourth, that it could not `git mv`
+  its own stranded record, was closed by `orchestration-start-branch-v2`.)
+  2. *The role hook reads only this checkout.* `hooks/orchestrator_role.py`'s
+     `record_roots` looks under the hook's own `<tooling>/self/orchestrations/` and, from a
+     vendored copy, its consuming repo's `plans/orchestrations/`, so an orchestrator whose
+     record lives in another repository is not denied by the hook here; the scripts in the
+     copy that holds the record still refuse. Assertion: a session whose record sits in
+     checkout A, running `feature-start.sh` of checkout B, is refused.
+  3. *The reverse guard needs git.* `orchestration-start.sh`'s `held_feature` finds
+     manifests with `git ls-files`, and the whole guard is skipped when `git rev-parse
+     --show-toplevel` finds no repository, with nothing printed. It reads the consuming
+     repo's `plans/features/` too, but `self/tests/orchestrator-role.sh` V covers only
+     `self/features/`. Assertion: a vendored copy whose consuming repo tracks a manifest
+     naming the current branch refuses the start (`plans/features/<slug>/README.md`
+     named), and a copy with no git above it says it could not check.
+  4. *Edit isn't stopped by the role.* The hook judges only `Bash` and `Agent` calls
+     (`MATCHED_TOOL`, `AGENT_TOOL`), so an orchestrator that builds by hand through the
+     Edit or Write tool is not stopped at all; only the lifecycle scripts refuse.
+     Assertion: an orchestrator session's Edit under a feature's checkout is denied or
+     asked.
+
+  Raised by `orchestrator-role-guard` (2–4); a delegate briefed without the `feature: ` first line was closed by `delegate-cost-claims`.
+
+- **A delegate briefed with another repo's name in front of a `--self` slug is never
+  auto-claimed.** A vendored coordinator that writes `feature: musicMap/<self-slug>` names a
+  different `(repo, slug)` than the self corpus's `agentTooling/<self-slug>`, so the capture
+  leaves it and the close's claim check does not list it (it names another feature).
+  Assertion: a capture of `--self <slug>` pins a delegate briefed `<consumer>/<slug>` only
+  when no consumer manifest holds that slug. Raised by `delegate-cost-claims`.
+
+## Parked: README/spec structure
+
+**Parked by the owner on 2026-11-07: do not start any of the next eight entries without the
+owner's word.** They are the rest of the `readme-structure` orchestration
+(`self/orchestrations/readme-structure/README.md`), whose vinylCatalogue A/B
+(`discogsPrefillStructure`, #231) found the restructured READMEs and split spec cut bytes read
+before the first edit by 30%, README bytes read by 77% and cost to green by 5.5% (n=2). Consumer
+state below is the orchestration record's or the orchestrator's note as of 2026-11-07, not
+checked from this tree.
+
+- **The README/spec structure is rolled out only partly beyond vinylCatalogue.** The
+  restructure merged in vinylCatalogue (#218); parts shipped in humanNetworkMap (#273, #275,
+  #277) and musicMap (#73, #74). What is left (record items 1, 2, 8): README entries as an index
+  line plus contracts, test READMEs one line per test file, and monolithic specs split one file
+  per top-level section, wherever humanNetworkMap, musicMap and mediaCore do not yet have them.
+  Assertion: in each of those repos a README entry is an index line plus its contracts, a test
+  README has one line per test file, and no spec is a single file holding several top-level
+  sections. Raised by `readme-structure`.
+
+- **humanNetworkMap, musicMap and mediaCore do not run the README-index check.**
+  `check-readme-index.py` shipped here (#119); consumers opt in per `agentTooling/README.md` →
+  "Adopting the README-index check", once their agentTooling pull has landed. As of 2026-11-07
+  none has. Assertion: each repo's gate runs it blocking, with a repo-owned ignore list for
+  record and fixture directories only. Raised by `readme-structure`.
+
+- **vinylCatalogue's root `CLAUDE.md` carries the CLI reference and the spec-amendment
+  history.** It is long and loads into every session. Move both to files read on demand.
+  Assertion: the root `CLAUDE.md` holds neither section and names where each now lives.
+  Raised by `readme-structure`.
+
+- **Repo facts are not scoped by path.** Facts that matter only under one folder load in every
+  session. Scope them with `.claude/rules/` path-scoped rules, musicMap first (it already moved
+  folder-scoped facts under #73). Assertion: a musicMap session that touches no file under a
+  rule's path does not load that rule's text. Raised by `readme-structure`.
+
+- **No mechanical check that a README still matches the code.** #119 checks that an entry
+  exists, not that it is true. Wanted in the consumers' gates: a field list that no longer
+  matches its schema, a named file that no longer exists. Assertion: a README that names a
+  deleted file, or lists a field its schema lacks, turns the gate red. Raised by
+  `readme-structure`.
+
+- **humanNetworkMap's root README still carries the Data Model, Delegated plan execution and
+  Notes for Claude Code sections.** Move them out of the root README (the split of that README
+  started under #273). Assertion: the root README carries none of the three and points to
+  where each lives. Raised by `readme-structure`.
+
+- **Optional: humanNetworkMap's `scripts/check_test_spec_split.py` is not wired into its
+  gate.** It shipped with the test-spec split (#277); as of 2026-11-07 the orchestrator's note
+  is that the gate does not run it. Assertion: a test file the split spec does not name turns
+  that repo's gate red. Raised by `readme-structure`.
+
+- **The README traversal-rule A/B has not been run; decide whether it is still worth running.**
+  It compares the old `CONVENTIONS.md` traversal ritual with the new one. The
+  `discogsPrefillStructure` A/B may already have answered what it was for. Assertion: the
+  entry is either removed with a line saying what answered it, or planned as a feature.
+  Raised by `readme-structure`.
+
+## Loose harness items
+
+- **`self/tests/feature-sync.sh` never runs the script from outside the repo root.** Every
+  case `cd`s to the clone's root first, which is how a cwd-relative `MERGE_HEAD` check
+  passed every assertion until the review of `branch-sync-and-fanout-docs` found it (fixed
+  there). Assertion: a conflict case run from a subdirectory exits 3 and names the file.
+  Raised by `branch-sync-and-fanout-docs`.
+
+- **No `feature-sync.sh` case is on a named branch other than the manifest's.** The
+  off-branch refusal is reached only through a detached HEAD (R4) and `main` (R3, where the
+  manifest is absent). Assertion: on another named branch carrying the manifest, the script
+  exits 1 naming both branches, nothing moved. Raised by `branch-sync-and-fanout-docs`.
+
+- **Arm-spec rows carry a `spec_commit` the cell did not read.** On a row whose `spec_source`
+  is `"arm"`, `spec_commit` is still the fixture's `spec.commit`, while that cell's spec is at
+  `base` (`harness/README.md`, spec-per-arm section). Assertion: such a row's `spec_commit` is
+  the commit its spec was read at, or is absent, so no reader takes it for the cell's. Raised
+  by `orchestrator notes 2026-11-07`.
+
+- **`plans/experiments/README.md` lacks index lines for newer experiment folders.** As of
+  2026-11-07 the orchestrator's note is that a consumer's experiments index is behind its
+  folders; `harness/new-experiment.sh` writes the experiment's own `README.md` but no line in
+  that index.
+  Assertion: the README-index check (#119) run over `plans/experiments/` finds every
+  experiment folder named. Raised by `orchestrator notes 2026-11-07`.
+
+- **`publish.sh` with several experiments on one branch opens a PR whose body carries only the
+  first experiment's scorecard.** It takes one experiment directory, uses its `SCORECARD.md`
+  as the PR body, and does nothing when a PR is already open for the branch, so a second
+  publish adds its commit and leaves the body alone. Assertion: after two experiments publish
+  from one branch, the PR body carries both scorecards. Raised by
+  `orchestrator notes 2026-11-07`.
+
+- **`feature-start.sh` for an experiment run writes a full feature README and a review
+  stub.** It has one manifest-and-review-stub step for every start, with no experiment case.
+  An experiment run wants a manifest-only README that points at the experiment, and no review
+  stub. Assertion: a start for an experiment run writes a README holding the manifest fence
+  and a pointer, and no `review/` plan. Raised by `orchestrator notes 2026-11-07`.
+
+- **Open question for the owner: should `run-plans.sh` push after each plan in a cloud
+  container?** Neither `run-plans.sh` nor `run-verify.sh` commits (the executors may, under
+  the plans method), and the cloud checkpoints stop at the start commit and the review
+  round's, so a container reclaimed mid-build loses the executors' commits since the start.
+  The default taken is no: the round's push carries them, and a plan run is not a
+  checkpoint the lifecycle names. Assertion if decided yes: under the cloud profile a
+  `run-plans.sh` pass that filed a plan to `complete/` leaves `origin/<branch>` at the local
+  head, via `checkpoint_push`, and the local profile pushes nothing. Raised by
+  `cloud-checkpoint-push`.
+
+- **A harness experiment driver has no sanctioned path onto its own branch.** It ran
+  `feature-start.sh --method hand` only to get a branch. `orchestration-start.sh --branch`
+  now cuts an orchestrator's (`orchestration-start-branch-v2`); the experiment driver gets
+  the same. Assertion: the driver on a detached HEAD is refused without a branch flag, and
+  given one cuts that branch off `origin/main` without starting a feature. Raised by the
+  2026-11-17 wave.
+
+- **`orchestration-start.sh --branch` has five refusals no test exercises.** Five refusals have
+  no assertion in `self/tests/orchestrator-role.sh` B: a local branch of that name,
+  `--branch` while on another non-`main` branch, a record already on
+  `origin/main`, commits on HEAD not on `origin/main`, and uncommitted changes. Each must
+  exit 1 and leave no record, no ledger line and no new branch. (A name that is not
+  `claude/<slug>`, `main` included, is B7 since round 4.) Raised by the
+  `orchestration-start-branch-v2` review.
+
+- **An assigned cloud branch that is not `claude/<slug>` cannot be named to
+  `orchestration-start.sh --branch`.** Round 4 of `orchestration-start-branch-v2` narrowed
+  `--branch` to `claude/<slug>` (owner ruling). A session already launched on an assigned branch
+  of another shape (a mixed-case or suffixed name) still works by dropping `--branch`, and the
+  "on another branch" refusal says so; but `templates/plans/ORCHESTRATOR_SESSION_BRIEF.md` and
+  `ORCHESTRATION.md` → "Cloud sessions" tell it to pass `--branch` always, and say only that the
+  assigned name "must have that shape". Fix: one sentence in each — on a non-`main` assigned
+  branch of another shape, run the start without `--branch`. Raised by the
+  `orchestration-start-branch-v2` round-4 review.
+
+- **`started_features_on` (`plan-runner-roots.sh`) enumerates with `git grep -l` without
+  `-z`.** It has the C-quoting gap `orchestration-start-branch-v2` closed in `held_feature`:
+  git C-quotes a manifest path holding a non-ASCII byte, a tab or a quote, and
+  `session-start.sh` and `update.sh` then skip that feature silently. Fix: `git grep -z -l`
+  with `read -r -d ''`. Assertion: a manifest under a non-ASCII directory naming the branch is
+  found. Raised by the `orchestration-start-branch-v2` review.
+
+- **No test asserts that `push_feature_branch` still sets the upstream.** Round 3 of
+  `orchestration-start-branch-v2` changed the push to the explicit refspec
+  `refs/heads/<b>:refs/heads/<b>` with `-u`; git sets `branch.<b>.remote`/`.merge` for it, but
+  `orchestrator-role.sh` B2d and `cloud-checkpoint-push.sh` assert only that the branch
+  reached origin. Assertion (beside B2d): `git -C "$AT" rev-parse --abbrev-ref
+  '@{upstream}'` is `origin/<branch>`. Raised by the `orchestration-start-branch-v2` round-3
+  review.
+
+- **The other `-u origin <branch>` pushes still take a bare branch name.** Round 3 of
+  `orchestration-start-branch-v2` wrote `push_feature_branch`'s refspec out in full because a
+  name beginning `+` is read as a force refspec (`git check-ref-format --branch` accepts
+  `+main`). `templates/plans/pr.sh` (and `self/pr.sh`, which ships from it) pushes
+  `"$current_branch"`, and `harness/lib.sh` pushes `"$branch"`, both bare. A local branch
+  named `+main` is unlikely but creatable, and pr.sh ships to every consuming repo. Fix: the
+  same `refs/heads/<b>:refs/heads/<b>` form (pr.sh is a template: bump its version). Raised
+  by the `orchestration-start-branch-v2` round-3 review.
+
+- **`CONVENTIONS.md` → "Shell commands" no longer names every write the hook approves
+  silently.** Its "Approved silently" paragraph lists reads and tests plus one write, the
+  cloud `git push` of the started feature's branch. `orchestration-start-branch-v2` added a
+  second write approved outright under both profiles: an orchestrator's
+  `[mkdir -p plans/orchestrations && ] git mv <tooling>/self/orchestrations/<slug>
+  plans/orchestrations/<slug>` of its own stranded record (`ORCHESTRATOR_MOVE_REASON` in
+  `hooks/allow-repo-commands.sh`). `ORCHESTRATION.md` and `hooks/README.md` document it; the
+  shipped conventions do not. Fix: one sentence in that paragraph naming it and pointing at
+  `ORCHESTRATION.md` → "Cloud sessions". Raised by the `orchestration-start-branch-v2` round-2
+  review.
+
+- **An orchestration record cannot hold an experiment, nor a feature in a repo the
+  orchestrator cannot clone.** `report.py`'s `compute_orchestration_report` prices each
+  `features[]` entry from its `report` path's `report.json` (`cost.total`). A harness
+  experiment writes no `report.json`, so on 2026-11-17 the humanNetworkMap
+  `records-gate-models` experiment's scorecard total and its driver's cost were added to the
+  group total by hand. A feature in another repo is priced with `--checkout <repo>=<path>`,
+  but the orchestrator's Bash allowlist holds no `git clone`, so it has no path to name and
+  the entry stays `UNPRICED_NEEDS_CHECKOUT`. Fix: an entry kind for an experiment that reads
+  its scorecard's total and driver cost; and a way to price a foreign feature from its
+  merged `report.json` without a checkout (or a sanctioned clone). Assertion: a record
+  holding an experiment and a feature of another repo reports a group total that includes
+  both, with no hand arithmetic. Raised by the 2026-11-17 wave.
+
+- **When `harness/publish.sh` and `feature-close.sh` share a branch's PR, the PR keeps
+  publish's title.** `publish.sh` opens the PR titled `<experiment>: results, run <N>`
+  with `SCORECARD.md` as its body; the close's `pr.sh` finds it open and refreshes only its
+  body (`forge.sh pr-edit` takes a body file and nothing else), so the merged PR is titled
+  as the experiment's results run and carries the review's body. Fix: `pr-edit` takes the
+  title too, and the close sets it. Assertion: after a publish and then a close on one
+  branch, the PR's title is the close's. Raised by the 2026-11-17 wave.
+
+- **Experiment names must be camelCase, and nothing says so.** `harness/new-experiment.sh`
+  refuses any name not matching `^[a-z][A-Za-z0-9]*$` ("experiment name must be bare
+  camelCase"), while feature slugs are kebab-case (`SLUG_PATTERN`). `harness/README.md`
+  documents camelCase for program names and branch stems but not for the experiment name.
+  Fix: state the rule and its reason in `new-experiment.sh`'s row in `harness/README.md`,
+  or accept kebab-case if nothing the name feeds needs camelCase. Assertion: either `new-experiment.sh`
+  accepts a kebab-case name, or the README states the rule. Raised by the 2026-11-17 wave.
+
+- **Arm worktrees sit outside the project root.** `harness_worktree_path` (`harness/lib.sh`)
+  puts a cell's worktree at `<repo path>-<branch>`, a sibling of the checkout, so the
+  command hook treats every read there as outside the root and hands it to the human.
+  Fix: put arm worktrees under the root (an ignored directory such as the `.worktrees/`
+  `feature-start.sh` already excludes). Assertion: a driver's `ls` and `cat` inside an arm
+  worktree are approved silently. Raised by the 2026-11-17 wave.
+
+- **Rework runs on `HARNESS_MODEL`.** Only the review stage has its own model
+  (`HARNESS_REVIEW_MODEL`); `harness/run.sh`'s `do_rework` and the program stages' rework
+  pass `--model "$HARNESS_MODEL"`, so a rework round cannot use a different model from the
+  build. Fix: `HARNESS_REWORK_MODEL`, defaulting to `HARNESS_MODEL`. Assertion: with it set,
+  the rework's `claude -p` carries that model and the build's does not. Raised by the
+  2026-11-17 wave.
+
+- **The judge is not blind to the arm.** The harness's judging stage (`review`,
+  `HARNESS_REVIEW_MODEL`) is given `@@TREE@@` and `@@BRANCH@@`
+  (`harness/templates/review-preamble.md`), both built from `<stem><Method><Arm><n>`, so an
+  arm labelled by model, or an experiment named for one, names the build's model to the
+  judge; a blind judge a driver runs over that tree sees the same paths and branches. Fix:
+  the judge gets a neutral alias per cell, and arm and experiment names are redacted from
+  the paths, branches and diff it is shown. Assertion: no prompt the judge receives
+  contains an arm label or the experiment name. Raised by the 2026-11-17 wave.
+
+- **A `claude -p` check run before any start is priced by no feature.** On 2026-11-17 a
+  session ran a pre-start `claude -p` check ($0.29) on a detached HEAD, before its feature
+  existed, so no manifest's branch or window selects it and nothing pinned it. Fix: list it
+  in `capture_planning.py --list-sessions --unclaimed` for the owner to pin, or record it
+  as the orchestration's overhead. Assertion: after the wave's captures,
+  `--list-sessions --unclaimed` lists no session of that wave. Raised by the 2026-11-17
+  wave.
+
+- **The owner brief is optional, so an orchestrated feature can still skip the yardstick.**
+  `feature-start.sh --owner-brief` and the conformance check degrade to today's behaviour with
+  one notice when a feature has no `OWNER_BRIEF.md`, which is the rollout that kept every
+  consuming repo working on its next pull. Fix: once one wave has used it, make it mandatory
+  for orchestrated features. Assertion: `feature-start.sh --orchestration <slug>` without
+  `--owner-brief` is refused before anything is written, naming the flag, and
+  `templates/plans/ORCHESTRATOR_BRIEF.md`'s start line already carries it. Raised by
+  brief-conformance-checks.
+
+- **A lazily numbered owner list collapses its items onto one id.** An `OWNER_BRIEF.md`
+  written `1. **Add A.** …` / `1. **Add B.** …` (ordinary Markdown auto-numbering, rendered
+  1, 2) gives `conformance.py items` two items sharing id `1`, so one acceptance row and one
+  conformance row for `1` satisfy both and the close goes on. Fix: number list items by
+  position as a renderer does (the first item's number, then +1 each), or at least exit
+  non-zero on a duplicate id so the runner and the close refuse the brief. Assertion: `items`
+  on the lazy brief prints ids `1` and `2`, or refuses. Raised by
+  `self/features/brief-conformance-checks/audit-report.md` (rounds 2 and 3, non-blocking).
+
+- **A clean audit is stamped stale, and counted toward the audit round cap as escalated,
+  when a later review edits an audit path, even a whitespace-only change.** Assertion: an
+  audit-path change that leaves the audited content's meaning unchanged, or any review fix
+  after a clean audit, either re-runs the audit within the same round or does not count as
+  an escalated audit round. Raised by brief-conformance-checks round 2.
