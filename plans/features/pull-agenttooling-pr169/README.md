@@ -1,39 +1,22 @@
-# <Feature title>
+# Propagate agentTooling PR 169
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+Pull agentTooling PR 169 (`114e7ea3..a130257f`, which also carries #166–#168) into the
+vendored `agentTooling/` subtree, commit the regenerated `plans/` sync output and the
+`.claude/settings.json` wiring `sync-plans.sh` wrote, and merge `plans/pr.sh` up to
+template-version 8 (the repo's copy had no local customisation, so it is now the template).
+No change to `src/` or `tests/`, so the mediaCore contract in `INTEGRATION.md` is untouched.
 
 ## Plans
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
-
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| `review/incomplete/01-review-opus.md` | Reviews the repo-owned diff of the pull against the paragraph above. |
+| `review/incomplete/01-audit-opus.md` | Security audit, since the pull changes `.claude/settings.json` hook wiring. |
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- The vendored `agentTooling/` tree itself: it is upstream code, reviewed in agentTooling.
+- Any change to `src/` or `tests/`: the pull does not touch the contract package.
 
 ## Machine-readable
 
@@ -41,7 +24,7 @@ Delete this section when the batch has a single level.
 {
   "slug": "pull-agenttooling-pr169",
   "method": "hand",
-  "plans": ["01-review-opus", "01-audit-opus"],
+  "plans": ["01-review-opus", "01-audit-opus", "02-review-opus"],
   "branches": ["claude/pull-agenttooling-pr169"],
   "base": "main",
   "profile": "cloud",
