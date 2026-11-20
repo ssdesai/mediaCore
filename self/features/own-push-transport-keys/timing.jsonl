@@ -1,0 +1,10 @@
+{"at":"2026-11-20T14:43:26Z","event":"pass_start","queue":"review","round":"1"}
+{"at":"2026-11-20T14:43:26Z","event":"plan_start","plan":"01-audit-opus","queue":"review","round":"1"}
+{"at":"2026-11-20T14:52:48Z","event":"plan_start","plan":"01-conformance-opus","queue":"review","round":"1"}
+{"at":"2026-11-20T14:53:06Z","event":"plan_end","plan":"01-audit-opus","queue":"review","rc":"0","round":"1"}
+{"at":"2026-11-20T14:53:06Z","event":"plan_start","plan":"01-review-opus","queue":"review","round":"1"}
+{"at":"2026-11-20T14:54:03Z","event":"plan_end","plan":"01-conformance-opus","queue":"review","rc":"0","round":"1"}
+{"at":"2026-11-20T14:54:03Z","event":"plan_end","plan":"01-review-opus","queue":"review","rc":"0","verdict":"clean","head":"1a79c7ad77dc464ff7ba5e5f6e27fe7f46a78ef9","round":"1"}
+{"at":"2026-11-20T14:54:03Z","event":"audit_end","plan":"01-audit-opus","verdict":"clean","head":"1a79c7ad77dc464ff7ba5e5f6e27fe7f46a78ef9","round":"1"}
+{"at":"2026-11-20T14:54:03Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"1"}
+{"at":"2026-11-20T14:54:21Z","event":"pr_opened","rc":"0","url":"https://github.com/ssdesai/agentTooling/pull/173","round":"1"}

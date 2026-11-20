@@ -1,0 +1,71 @@
+{
+  "plan": "01-review-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "e0062120-62d3-4df5-b0e4-5752beca0e5e",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 12,
+  "duration_ms": 55246,
+  "total_cost_usd": 0.5342601,
+  "usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 41624,
+    "cache_read_input_tokens": 447959,
+    "output_tokens": 5542
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 7633,
+      "outputTokens": 18,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0007723000000000001,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 16,
+      "outputTokens": 5542,
+      "cacheReadInputTokens": 447959,
+      "cacheCreationInputTokens": 41624,
+      "webSearchRequests": 0,
+      "costUSD": 0.5334878000000001,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 1157,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 41624,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 6,
+    "Read": 4,
+    "Write": 1
+  },
+  "files_edited": [
+    "self/review-report.md"
+  ],
+  "edit_count": 1,
+  "attempts": [
+    {
+      "session_id": "e0062120-62d3-4df5-b0e4-5752beca0e5e",
+      "outcome": "complete",
+      "total_cost_usd": 0.5342601,
+      "num_turns": 12,
+      "duration_ms": 55246
+    }
+  ]
+}

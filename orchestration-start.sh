@@ -10,8 +10,10 @@ set -uo pipefail
 # `plans/orchestrations/<slug>/` by default, agentTooling's own `self/orchestrations/<slug>/`
 # under `--self`. A slug that exists only at the old vendored place,
 # `agentTooling/self/orchestrations/<slug>` AND is the consuming repo's own (its last fence
-# lists a feature of that repo: `roots.is_stranded_record`) is refused with the `git mv` that
-# moves it; agentTooling's own shipped records there block nothing. Without `--self` in
+# lists a feature of that repo and none of agentTooling: stranded) is refused with the `git mv`
+# that moves it; one whose fence lists both (ambiguous: an agentTooling cross-repo wave reads
+# the same as a consumer-run one) is refused naming both readings; agentTooling's own shipped
+# records there block nothing (`roots.legacy_record_claim`, self/features/pull-round-cleanups/). Without `--self` in
 # agentTooling's own checkout (no consuming repo above it) the start is refused, naming `--self`;
 # WITH `--self` in a copy vendored in a consuming repo it is refused too, before any write,
 # naming `plans/orchestrations/<slug>/` (roots.py's `record_write_refusal`;
@@ -93,21 +95,23 @@ REFUSED_RC=1
 # The rules this script shares with the hook and analysis/ — where records live (`--self`
 # relative to this script, otherwise relative to the consuming repo's root), the record's file
 # name, the `.git` entry that marks a standalone checkout, a coordinator record's `kind`, the
-# orchestrator ledger's name, the slug pattern, and the refusal for a slug found only at the
-# old vendored place and for a no-`--self` start in agentTooling's own checkout — are READ
+# orchestrator ledger's name, the slug pattern, and the refusal for a no-`--self` start in
+# agentTooling's own checkout — are READ
 # from their one definition, hooks/shared_rules.py, never restated here
 # (self/features/shared-hook-rules/): one `python3 -B` call prints the values below in order.
 # A script that cannot read them refuses, naming the module; there is no literal to fall back to.
 SHARED_RULES_MODULE="hooks/shared_rules.py"
 SHARED_RULES_NAMES=(ORCHESTRATIONS_SELF_REL ORCHESTRATIONS_CONSUMER_REL RECORD_NAME GIT_ENTRY
-  KIND_COORDINATOR LEDGER_NAME SLUG_PATTERN LEGACY_RECORD_REFUSAL STANDALONE_REFUSAL)
-# The refusal's `{slug}` placeholder, filled with the slug
-LEGACY_SLUG_PLACEHOLDER='{slug}'
-# ... but only a STRANDED one (the consuming repo's own, by its last fence's features): the
-# classifier is analysis/roots.py's `is_stranded_record`, asked through `roots.py stranded`.
-# A vendored record that is not stranded is agentTooling's own and blocks nothing.
+  KIND_COORDINATOR LEDGER_NAME SLUG_PATTERN STANDALONE_REFUSAL)
+# ... but only a STRANDED one (the consuming repo's own, by its last fence's features), or one
+# whose fence cannot say who ran it (AMBIGUOUS: both repos listed): the classifier is
+# analysis/roots.py's `legacy_record_claim`, and the refusal text its `legacy_start_refusal`,
+# asked through `roots.py start-refusal <slug>` — exit 0 to go on, else the text. Any other
+# outcome, a crash included, refuses: the check fails closed. A vendored record that is
+# agentTooling's own blocks nothing (self/features/pull-round-cleanups/).
 STRANDED_CLASSIFIER="analysis/roots.py"
-STRANDED_ARGV="stranded"
+START_REFUSAL_ARGV="start-refusal"
+START_OK_RC=0
 # Under --self, a copy vendored in a consuming repo writes no record into its own
 # self/orchestrations/ (self/features/consumer-record-guard/): the decision is roots.py's
 # `record_write_refusal`, asked through `roots.py self-write <slug>` — exit 0 to write, else
@@ -238,9 +242,12 @@ else
   FOLDER="$REPO_DIR/$ORCHESTRATIONS_REL/$SLUG"
 fi
 [[ ! -e "$FOLDER" ]] || refuse "$FOLDER already exists — a record is started once; edit it with analysis/manifest.py ${SELF_ARG}--orchestration $SLUG"
-if (( ! SELF_MODE )) && [[ -e "$SCRIPT_DIR/$ORCHESTRATIONS_SELF_REL/$SLUG" ]] \
-    && python3 -B "$SCRIPT_DIR/$STRANDED_CLASSIFIER" "$STRANDED_ARGV" "$SLUG"; then
-  refuse "${LEGACY_RECORD_REFUSAL//$LEGACY_SLUG_PLACEHOLDER/$SLUG}"
+if (( ! SELF_MODE )) && [[ -e "$SCRIPT_DIR/$ORCHESTRATIONS_SELF_REL/$SLUG" ]]; then
+  start_refusal="$(python3 -B "$SCRIPT_DIR/$STRANDED_CLASSIFIER" "$START_REFUSAL_ARGV" "$SLUG" 2>/dev/null)"
+  start_rc=$?
+  if (( start_rc != START_OK_RC )); then
+    refuse "${start_refusal:-$STRANDED_CLASSIFIER $START_REFUSAL_ARGV $SLUG failed (exit $start_rc) — the vendored record at $ORCHESTRATIONS_SELF_REL/$SLUG could not be classified}"
+  fi
 fi
 
 # held_feature <checkout-dir> <features-label> <branch> <session> — the first TRACKED manifest

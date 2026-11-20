@@ -24,7 +24,10 @@ agentTooling's own, for the harness rather than for a product.
   files it never governed. Pre-existing (head and base both allow it); needs a planted file.
   Assertion: a `--config`/`--config-file` value is approved only at the project root (or the
   cwd inside the root); a nested one prompts. Raised by `hook-silent-allow-sweep`'s round-1
-  audit (N1).
+  audit (N1), and again by humanNetworkMap's pull audit 04 on #172: `--config
+  plans/ruff.toml` with a planted `fix = true` is accepted, because `RUNNER_CONFIG_NAMES`
+  is checked against the basename only (non-blocking, pre-existing; filed by
+  `own-push-transport-keys` at the orchestrator's request).
 
 - **The gate and check-plans spellings are shared by both layouts.** A planted `self/gate.sh`
   or root `./check-plans.sh` in a consuming repo, and a planted `plans/gate.sh` in
@@ -53,6 +56,7 @@ agentTooling's own, for the harness rather than for a product.
   location word as written. Prompt-only, no silent allow. Assertion: a ref-moving git command
   behind a pattern location is denied with the same reason as behind the literal path.
   Raised by `hook-silent-allow-sweep`'s round-2 audit.
+  Superseded by `DESIGN-2026-11-19-hook-allowlist.md` §3 (closed by its third build feature).
 
 - **Two narrowings of `hook-silent-allow-sweep` may be wider than needed.** A quoted
   location (`git -C 'plans/e?il' status`) prompts though bash does not expand it, and in a
@@ -88,6 +92,7 @@ agentTooling's own, for the harness rather than for a product.
   (`ENV_ASSIGNMENT_RE`, `BUILD_SCRIPT_LEAD_KEYWORDS`). Never an allow; older than this
   feature. Found by the phase-3 self-audit of `hook-audit-gaps`, not fixed there (a class of
   its own).
+  Superseded by `DESIGN-2026-11-19-hook-allowlist.md` §3 (closed by its third build feature).
 
 - **The git deny matches flags as written, not as git reads them.** A long option
   abbreviated as git accepts it (`git push --force-w origin x` is `--force-with-lease`;
@@ -98,6 +103,7 @@ agentTooling's own, for the harness rather than for a product.
   prompt by decision — `hook-cloud-profile.sh` pins `git push origin +<current>` as one — and
   wants an owner ruling before it changes. Found by the phase-3 self-audit of
   `hook-audit-gaps`.
+  Superseded by `DESIGN-2026-11-19-hook-allowlist.md` §3 (two spellings built, the rest best-effort by design).
 
 - **A line the hook cannot tokenize: three leftovers.** `hook-audit-gaps` closed the git
   half: a line that names git, that no reading judges and that bash refuses (`bash_refuses`,
@@ -119,6 +125,7 @@ agentTooling's own, for the harness rather than for a product.
   assertion: the check is made by the shell, and under the options, the command will run
   with — which the hook is not told. Found by `hook-audit-gaps`'s phase-3 self-audit, its
   round-5 and round-6 audits and round 7's build.
+  Superseded by `DESIGN-2026-11-19-hook-allowlist.md` §§2–3 ((b), (c) closed by its build; (d) by design).
 
 - **The deny side does not follow a substitution's scope.** `cat <<EOF⏎$(git push --force
   origin x)⏎EOF` (an unquoted delimiter: bash runs the body's `$(…)`), a command INSIDE a
@@ -144,6 +151,7 @@ agentTooling's own, for the harness rather than for a product.
   same odd delimiter behind text before the `$(`, a command word other than a bare `cat`, or
   a command on the head's own line (`"$(cat <<'EOF' -A`, `"$(cat <<EOF | tr a b`) is still
   the one quoted word.
+  Superseded by `DESIGN-2026-11-19-hook-allowlist.md` §3 (a line naming git: closed by its build; any other: best-effort by design).
 
 - **On the unreadable-ledger path, a build script's name built at run time is not seen.**
   awk's string concatenation (`awk 'BEGIN{system("./run-pl" "ans.sh")}'`), a quote glued
@@ -155,6 +163,7 @@ agentTooling's own, for the harness rather than for a product.
   awk `system(` or sed `e` are refused whatever they name. Each was a prompt on `main` too.
   Listed by round 1's audit of `hook-audit-gaps` (escalations/01-audit-opus.md, "not
   regressions") and counted by round 2's differential check.
+  Superseded by `DESIGN-2026-11-19-hook-allowlist.md` §3 (closed as best-effort by design).
 
 - **`hooks/README.md` promises more than "never silently approved".** Each
   `hook-audit-gaps` round wrote a stronger guarantee there ("both readings judged",
@@ -162,6 +171,7 @@ agentTooling's own, for the harness rather than for a product.
   README guarantees only that nothing outside the approved shapes is approved silently,
   and documents the stronger denies as best-effort. Assertion: every guarantee the README
   states has a gate test row. Raised by `hook-audit-gaps`.
+  Superseded by `DESIGN-2026-11-19-hook-allowlist.md` §5 (closed by its third build feature).
 
 - **The hook judges by re-implementing bash's reader, which cannot converge.** It uses
   `shlex` plus a custom walk, and an auditor can always find another spelling where it and
@@ -171,12 +181,14 @@ agentTooling's own, for the harness rather than for a product.
   `hook-audit-gaps` round 7 introduces) as the parse oracle. Assertion: no silent-approval
   path depends on the hook's tokenizer agreeing with bash outside the allowlisted shapes.
   Raised by `hook-audit-gaps`.
+  Superseded by `DESIGN-2026-11-19-hook-allowlist.md` §§1–2 (closed by its second build feature).
 
 - **The bash-vs-hook differential harness is not committed.** `hook-audit-gaps` built one
   in a scratchpad; implementers should find divergences before audits do. Proposal: commit
   it as a `self/tests/` gate test. Assertion: the gate fails on any generated command that
   the hook approves silently while bash would run a command the hook denies. Raised by
   `hook-audit-gaps`.
+  Superseded by `DESIGN-2026-11-19-hook-allowlist.md` §4 (closed by its first build feature).
 
 - **The shell lifecycle scripts each carry their own `SLUG_PATTERN`.** `feature-start.sh`,
   `orchestration-capture.sh` and the other lifecycle scripts spell
@@ -794,3 +806,67 @@ checked from this tree.
   audit-path change that leaves the audited content's meaning unchanged, or any review fix
   after a clean audit, either re-runs the audit within the same round or does not count as
   an escalated audit round. Raised by brief-conformance-checks round 2.
+
+- **Three pre-existing silent approvals behind a planted link.** `cat 'a >/dev/null b'`
+  (`HARMLESS_REDIRECT_RE.sub` strips the redirect before any quote is read),
+  `cat dir/[^i]*` (Python `glob` reads `[^i]` as the set of `^` and `i`; bash as every file
+  not starting with `i`) and ``cat "dir/\`x"`` (shlex keeps the backslash bash drops) are
+  each approved while bash opens a path the hook never judged. Each is confirmed against bash,
+  and each needs a symlink already in the tree to read outside the root. No separate fix: the
+  second build feature of `self/DESIGN-2026-11-19-hook-allowlist.md` (§8,
+  `hook-allowlist-approval`) removes all three, owner ruling on that design's question 7
+  (2026-11-19). Assertion: with a link planted at the path bash opens, none of the three is
+  approved. Raised by the `hook-allowlist-design` (#170) prototype, "The defect"; filed by
+  `pull-round-cleanups`.
+
+- **The gate report drops a failing test's FAIL lines.** `self/gate.sh` keeps only the last
+  `OUTPUT_TAIL_LINES` (40) lines of a section's output (`gate.sh`, the section writer), and a
+  self-test prints its `FAIL` lines where they occur, then a summary. On 2026-11-19
+  `orchestrator-role.sh` failed 21 checks inside a cloud `feature-start.sh` and the report kept
+  only its last 37 `ok` lines and `21 check(s) FAILED`, so the start's refusal named no failing
+  check and the cause took a separate reproduction to find. Fix: a section that exits non-zero
+  keeps every line matching the test's failure marker (`FAIL`) ahead of the tail, or its whole
+  output. Assertion: a stub check printing one `FAIL` line followed by 60 `ok` lines and
+  exiting 1 leaves that `FAIL` line in `self/gate-report.txt`. Raised by
+  `pull-round-cleanups`.
+
+- **A vendored record whose last fence cannot be read counts as agentTooling's own.**
+  `roots.legacy_record_claim` answers `CLAIM_OWN` for a `README.md` that exists but whose last
+  fence does not parse, or whose `features` is not a list of dicts with string `repo`s. So a
+  no-`--self` start of that slug goes on, writing a second record under the same slug, and the
+  record tools call it agentTooling's own. This is pre-existing: the base's `is_stranded_record`
+  answered no too. Fix: such a record is unclassifiable, and the start refuses naming the file, as
+  it already does when `roots.py` cannot run. Assertion: a vendored record with an unparseable
+  last fence, or `features` a dict, makes `orchestration-start.sh <slug>` exit 1 and write
+  nothing. Raised by `pull-round-cleanups`'s audits (rounds 1–3, non-blocking).
+
+- **`legacy_record_claim` compares raw `repo` strings, lower-cased only.** `features[].repo` of
+  `" consumer"` or `"consumer.git"` is not matched to the consumer, so the record reads as
+  agentTooling's own and its start goes on. A mixed wave whose agentTooling entry is spelled
+  `agentTooling.git`, `"agentTooling "` or an origin URL is classed stranded, not ambiguous, and
+  is prescribed the `git mv` that deletes an agentTooling wave from the consumer's
+  `agentTooling/`. Both are pre-existing. Fix: normalize each `repo` the way the home names are
+  derived (`capture_planning.repo_display_name`: last path segment, `.git` stripped), with
+  whitespace stripped and `casefold()`, before comparing. Assertion: `" consumer"` and
+  `"consumer.git"` read as the consumer's, and a fence listing `consumer` and `agentTooling.git`
+  is ambiguous. Raised by `pull-round-cleanups`'s audits (rounds 2–3, non-blocking).
+
+- **The record-move classifier can run three times for one denied line, and the comment says
+  once.** In `hooks/allow-repo-commands.sh`, `main()` judges `orchestrator_moves_own_record` first,
+  and the comment there says the move is "judged once here". That holds only for an approved
+  move. A refused one (O18, ambiguous) is judged again by `orchestrator_command_allowed`, through
+  `orchestrator_moves_own_record` and, for a bare `git mv`, `orchestrator_git_allowed`. That is up
+  to three `roots.py stranded` subprocesses, so 3 × `ORCHESTRATOR_MOVE_CLASSIFIER_TIMEOUT_SECONDS`
+  (15 s) in the worst case. That is still under the 60 s hook timeout. Fix: pass `moves` into
+  `orchestrator_command_allowed` so it skips the move judgment it already has, or cache the
+  classifier's answer per call. Then make the comment true. Assertion: with a counting stub
+  classifier, a refused own-record move runs it once. Raised by `orchestrator-record-move-guard`'s
+  review (round 1, non-blocking).
+
+- **No test pins the record-move classifier's fail-closed paths.** H28 has no row where the
+  vendored `analysis/roots.py` is a symlink or is missing beside an otherwise approvable own
+  stranded record. The code refuses both: `orchestrator_stranded_own_record` checks `islink` and
+  `isfile`, and a missing script also exits non-zero. Fix: two rows in
+  `self/tests/hook-orchestrator-role.sh` H28. Assertion: each is the allowlist denial, and
+  restoring the file approves the move again. Raised by `orchestrator-record-move-guard`'s
+  review (round 1, non-blocking).

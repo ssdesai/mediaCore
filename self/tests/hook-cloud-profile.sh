@@ -79,6 +79,13 @@ set -uo pipefail
 #      hook's environment. An empty GIT_ASKPASS or SSH_ASKPASS, `credential.interactive=false`
 #      and `credential.<sub>.username` still approve. Each mutation is undone after its row.
 #      hook_env gives the hook no inherited askpass and no system or global git config;
+#   Q10 (own-push-transport-keys). The own-branch push prompts when the effective config holds
+#      any `http.*` variable outside the hook's short safe set (bare and `http.<url>.`, mixed
+#      case: proxy, sslVerify, curloptResolve, sslCAInfo/CAPath/Cert/Key, cookieFile,
+#      saveCookies, proxySSL*, sslBackend, extraHeader, emptyAuth, followRedirects,
+#      pinnedPubkey, an unknown variable) or a `remote.<any>.proxy`, from the repo or the
+#      global config; `http.proxyAuthMethod` (the cloud sets it) and the other kept tuning
+#      variables still approve. Each mutation is undone after its row;
 #   H17 (hook-audit-gaps, round 3: escalations/02-review-opus.md, 02-audit-opus.md R2-1 to
 #      R2-3). The walk reads no construct bash has joined across a line continuation as two
 #      pieces: an unquoted delimiter's body ends at a terminator joined across one
@@ -1791,7 +1798,7 @@ def q7(label, want, cmd=BR_PLAIN, mutate=None, restore=None, hook=HOOK_C, root=C
         if restore:
             restore()
     # a Q8 row names itself; every other row is a Q7 one
-    prefix = "" if label.startswith("Q8. ") else "Q7. "
+    prefix = "" if label.startswith(("Q8. ", "Q10. ")) else "Q7. "
     check("%s%s (got %s)" % (prefix, label, got), got == want, reason)
 
 
@@ -2082,6 +2089,59 @@ check("Q9. ... with a reason that says to run the push alone",
       "run the push alone" in (_reason or ""), _reason)
 q7("Q9. the fixture is restored: the plain push is approved again", A)
 check("Q9. no credential helper ran", not os.path.exists(CRED_PWNED))
+
+# ── Q10. own-push-transport-keys: a config that moves or weakens the transport prompts ──────
+# `http.*` is deny-by-default: any variable outside the hook's OWN_PUSH_HTTP_SAFE_VARS, bare or
+# in its `http.<url>.` form, prompts; so does `remote.<any>.proxy`. One row per family, each
+# key written in mixed case as a human types it (git lists section and variable lower-case,
+# the url subsection as written), from the repo config and from the global config only.
+TRANSPORT_URL_SUB = "https://GitHub.COM/"
+TRANSPORT_FILE = os.path.join(TMP, "planted-transport-file")
+TRANSPORT_PROXY = "http://127.0.0.1:9"
+TRANSPORT_KEYS = (
+    ("http.proxy", TRANSPORT_PROXY),
+    ("http.%s.Proxy" % TRANSPORT_URL_SUB, TRANSPORT_PROXY),
+    ("remote.origin.Proxy", TRANSPORT_PROXY),
+    ("remote.other.proxy", TRANSPORT_PROXY),
+    ("http.sslVerify", "false"),
+    ("http.%s.SSLVerify" % TRANSPORT_URL_SUB, "false"),
+    ("http.curloptResolve", "github.com:443:127.0.0.1"),
+    ("http.%s.curloptResolve" % TRANSPORT_URL_SUB, "github.com:443:127.0.0.1"),
+    ("http.sslCAInfo", TRANSPORT_FILE),
+    ("http.%s.sslCAInfo" % TRANSPORT_URL_SUB, TRANSPORT_FILE),
+    ("http.sslCAPath", TMP),
+    ("http.sslCert", TRANSPORT_FILE),
+    ("http.%s.SslCert" % TRANSPORT_URL_SUB, TRANSPORT_FILE),
+    ("http.sslKey", TRANSPORT_FILE),
+    ("http.cookieFile", TRANSPORT_FILE),
+    ("http.%s.cookieFile" % TRANSPORT_URL_SUB, TRANSPORT_FILE),
+    ("http.saveCookies", "true"),
+    ("http.proxySSLCert", TRANSPORT_FILE),
+    ("http.proxySSLCAInfo", TRANSPORT_FILE),
+    ("http.sslBackend", "openssl"),
+    ("http.extraHeader", "Authorization: Basic eDp5"),
+    ("http.%s.extraHeader" % TRANSPORT_URL_SUB, "Authorization: Basic eDp5"),
+    ("http.emptyAuth", "true"),
+    ("http.followRedirects", "true"),
+    ("http.pinnedPubkey", TRANSPORT_FILE),
+    ("http.someFutureVariable", "x"),
+)
+for key, value in TRANSPORT_KEYS:
+    q7("Q10. config %s is present: not approved" % key, P, mutate=cfg(C, key, value),
+       restore=cfg(C, "--unset-all", key))
+TRANSPORT_GLOBAL_CONFIG = os.path.join(TMP, "transport-gitconfig")
+with open(TRANSPORT_GLOBAL_CONFIG, "w") as f:
+    f.write('[http "%s"]\n\tsslVerify = false\n' % TRANSPORT_URL_SUB)
+q7("Q10. an http.<url>.sslVerify in the global config only is not approved", P,
+   extra_env={"GIT_CONFIG_GLOBAL": TRANSPORT_GLOBAL_CONFIG})
+# The kept variables, the cloud's own `http.proxyAuthMethod=basic` first, still approve
+for key, value in (("http.proxyAuthMethod", "basic"), ("http.postBuffer", "524288000"),
+                   ("http.%s.lowSpeedLimit" % TRANSPORT_URL_SUB, "1000"),
+                   ("http.lowSpeedTime", "60"), ("http.version", "HTTP/1.1"),
+                   ("http.maxRequests", "5"), ("http.minSessions", "1")):
+    q7("Q10. config %s is approved" % key, A, mutate=cfg(C, key, value),
+       restore=cfg(C, "--unset-all", key))
+q7("Q10. the fixture is restored: the plain push is approved again", A)
 
 # ── R. the reasons ─────────────────────────────────────────────────────────────
 LOCAL_WORDS = (".worktrees/<slug>", "primary checkout", "LIFECYCLE", "rule 2",

@@ -249,7 +249,13 @@ session's assigned branch and then `<repo>/agentTooling/update.sh` itself. **Fir
 read access. The container's git proxy serves only the repositories attached to the
 session, so a session opened on the consuming repo alone fails the subtree fetch to
 authenticate; `update.sh` then prints one `remedy` line naming the repo to attach, and
-the rerun after attaching it pulls.
+the rerun after attaching it pulls. A **child session** a parent created for the pull
+cannot attach it by itself: the session's auto-mode permission check refuses the child's
+`add_repo` call, even with the owner's OK relayed by the parent. It goes through only when
+the owner types the OK in the child's own session, or has a permission rule for
+`mcp__claude-code-remote__add_repo`; the parent says so to the owner before the round.
+The parent can merge a consumer's propagation PR only if that repo is in its own GitHub
+scope (`LIFECYCLE.md` → "Propagate").
 
 `update.sh` runs `git subtree pull --squash` onto the feature's branch and then the
 freshly pulled `sync-plans.sh`. It refuses `main`, a detached HEAD and any branch no

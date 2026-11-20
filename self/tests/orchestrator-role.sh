@@ -91,7 +91,12 @@ trap 'rm -rf "$TMP"' EXIT
 TMP="$(cd "$TMP" && pwd -P)"
 source "$HERE/self/tests/fixtures/transcripts/build-transcript.sh"
 export RATES_LIVE_LOOKUP=off  # pricing.py never fetches LiteLLM here (self/tests/README.md)
-unset CLAUDE_CODE_SESSION_ID GATE_RESUME CLAUDE_CODE_REMOTE
+# AGENTTOOLING_PROFILE too: a cloud feature-start.sh exports it (env-profile.sh) and runs the
+# gate under it, and the fixture's own setup must not inherit the caller's profile
+# (self/features/pull-round-cleanups/). The export first stands in for that caller on every
+# run, standalone included, so dropping the variable from the unset fails 21 checks here.
+export AGENTTOOLING_PROFILE=cloud
+unset CLAUDE_CODE_SESSION_ID GATE_RESUME CLAUDE_CODE_REMOTE AGENTTOOLING_PROFILE
 
 BASE="main"
 FEATURE_BRANCH="claude/feat-x"

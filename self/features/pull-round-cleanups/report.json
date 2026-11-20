@@ -1,0 +1,262 @@
+{
+  "slug": "pull-round-cleanups",
+  "generated_at": "2026-11-20T04:00:26.084510+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 14.815275,
+    "build": 14.815275,
+    "verify": 0.0,
+    "review": 4.5746073,
+    "total": 19.3898823,
+    "planning_pct": 0.0,
+    "build_pct": 76.4072456489331,
+    "verify_pct": 0.0,
+    "review_pct": 23.592754351066898,
+    "cost_per_plan": 3.23164705,
+    "cost_per_file": 1.93898823,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 26791,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 26791,
+    "build_s": 26791.0,
+    "verify_s": 0.0,
+    "review_s": 735.837,
+    "executor_s": 27526.837,
+    "total_s": 27526.837,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-20T01:29:49+00:00",
+      "last_at": "2026-11-20T04:00:25+00:00",
+      "batch_span_s": 9036.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 753.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 918.0,
+      "plan_runs": 6,
+      "pr_opened_at": "2026-11-20T04:00:25+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/171"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 14.815275,
+      "build_min": 446.51666666666665,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.5570068,
+      "review_min": 4.426433333333334,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 2,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.5318059,
+      "review_min": 3.7334000000000005,
+      "review_plan": "02-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    },
+    {
+      "round": 3,
+      "build_usd": 0.0,
+      "build_min": 0.0,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 1.4857946000000002,
+      "review_min": 4.104116666666666,
+      "review_plan": "03-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 14.815275
+  },
+  "cold_start_tax_tokens": 299573,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 6,
+      "total_turns": 96,
+      "total_cost_usd": 4.5746073,
+      "total_duration_s": 735.837,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "01-audit-opus",
+      "edit_count": 3,
+      "files_edited": 2,
+      "churn_ratio": 1.5
+    },
+    {
+      "plan": "02-review-opus",
+      "edit_count": 4,
+      "files_edited": 3,
+      "churn_ratio": 1.3333333333333333
+    },
+    {
+      "plan": "02-audit-opus",
+      "edit_count": 2,
+      "files_edited": 2,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "03-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "03-audit-opus",
+      "edit_count": 4,
+      "files_edited": 4,
+      "churn_ratio": 1.0
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 85,
+      "loc_changed": 56
+    },
+    {
+      "plan": "01-audit-opus",
+      "plan_md_lines": 79,
+      "loc_changed": 256
+    },
+    {
+      "plan": "02-review-opus",
+      "plan_md_lines": 67,
+      "loc_changed": 67
+    },
+    {
+      "plan": "02-audit-opus",
+      "plan_md_lines": 80,
+      "loc_changed": 221
+    },
+    {
+      "plan": "03-review-opus",
+      "plan_md_lines": 45,
+      "loc_changed": 50
+    },
+    {
+      "plan": "03-audit-opus",
+      "plan_md_lines": 80,
+      "loc_changed": 289
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/home/user/agentTooling/analysis/roots.py",
+      "tool": "Read",
+      "plans": [
+        "01-audit-opus",
+        "02-review-opus"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "LIFECYCLE.md",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "01-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.ihSZih/scratch/audit.sh",
+        "self/features/pull-round-cleanups/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-review-opus",
+      "edited_not_listed": [
+        "analysis/README.md",
+        "analysis/roots.py",
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "02-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.EydcRy/scratch/attack.sh",
+        "self/features/pull-round-cleanups/audit-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "03-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "03-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.w8wSNu/scratch/attack.sh",
+        "/tmp/plan-capture.w8wSNu/scratch/attack2.sh",
+        "/tmp/plan-capture.w8wSNu/scratch/attack3.sh",
+        "self/features/pull-round-cleanups/audit-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "/tmp/plan-capture.ihSZih/scratch/audit.sh",
+      "earlier_plan": "01-audit-opus",
+      "later_plan": "01-audit-opus",
+      "overlap_chars": 714
+    }
+  ],
+  "warnings": [],
+  "rounds_unpartitioned": [
+    {
+      "bucket": "build",
+      "reason": "the build is the implementer's transcript, priced as one figure, and this feature stamped no `checkpoint` event \u2014 nothing divides it by round, so all of it sits in round 1"
+    }
+  ],
+  "profile": "cloud",
+  "gate": "skipped"
+}
