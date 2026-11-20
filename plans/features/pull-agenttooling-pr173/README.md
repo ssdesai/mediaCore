@@ -1,7 +1,22 @@
-# <Feature title>
+# Propagate agentTooling PR #173
 
-<One paragraph: what this feature delivers and why the work exists. No plan-level
-detail — that's what the table below is for.>
+Propagate agentTooling main at `25b332c9` (PR #173, which also carries #170–#172) into
+mediaCore's vendored `agentTooling/` with `agentTooling/update.sh`: a `git subtree pull
+--squash` from split `a130257f`, then `sync-plans.sh`. The pull must leave `agentTooling/`
+byte-for-byte upstream's tree (no local edit under it), the trailer chain intact, `plans/`
+and the `.claude/settings.json` wiring in sync (the sync wrote nothing), and `src/`,
+`tests/` and the fixtures untouched. The gate (`plans/gate.sh`) must stay green. Because
+the pull changes `hooks/`, it also gets the security audit.
+
+**Owner's ruling, round 2 (relayed by the orchestrator session):** the audit's one
+blocking finding — in `agentTooling/hooks/allow-repo-commands.sh` (from #172) the
+orchestrator's own-record move (`git mv agentTooling/self/orchestrations/<slug>
+plans/orchestrations/<slug>`) is checked before `ORCHESTRATOR_MAX_LINE_CHARS`, so a move
+padded past 20,000 characters is allowed where origin/main denies it — is **accepted for
+this pull**. It is fixed upstream as a separate agentTooling feature; it is not fixed here,
+because an edit under `agentTooling/` would be overwritten by the next pull. The audit's two
+non-blocking findings (an edited `analysis/roots.py` defeats the new classifier; only the
+last fence of a record is counted) are filed in the report only, for agentTooling's backlog.
 
 ## Plans
 
@@ -33,7 +48,11 @@ Delete this section when the batch has a single level.
 
 ## Deliberately excluded
 
-- <Something that looked in-scope but isn't — and why.>
+- The length-check ordering regression in `agentTooling/hooks/allow-repo-commands.sh`:
+  accepted by the owner's ruling above, fixed upstream, not edited here.
+- The audit's two non-blocking findings (`analysis/roots.py` trust; last-fence-only
+  record check): agentTooling's backlog, not this repo's.
+- Any change under `src/`, `tests/` or the fixtures: the pull touches none.
 
 ## Machine-readable
 
@@ -41,7 +60,7 @@ Delete this section when the batch has a single level.
 {
   "slug": "pull-agenttooling-pr173",
   "method": "hand",
-  "plans": ["01-review-opus", "01-audit-opus"],
+  "plans": ["01-review-opus", "01-audit-opus", "02-review-opus", "02-audit-opus"],
   "branches": ["claude/pull-agenttooling-pr173"],
   "base": "main",
   "profile": "cloud",
