@@ -255,11 +255,17 @@ Who reads it:
   `all_orchestrations_roots()` (both,
   self first, for readers; only the self root from agentTooling's own checkout, as the hook's
   `record_roots`), `legacy_orchestrations_root()`,
-  `is_stranded_record(slug)` (the ONE classifier: the vendored record's LAST fence lists a
-  feature whose `repo` equals `orchestration_home_repo(False)` case-insensitively; agentTooling's
-  shipped records, or a record with no such feature, are not stranded; also
-  `python3 roots.py stranded <slug>`, exit 0 for stranded, which `../orchestration-start.sh`
-  asks), `is_standalone_checkout()` / `standalone_refusal(self_mode)` (`checkout_of(AGENT_TOOLING_DIR)
+  `legacy_record_claim(slug)` (the ONE classifier, by the vendored record's LAST fence's
+  `features[].repo`, case-insensitively: `CLAIM_STRANDED` when it lists the consumer
+  (`orchestration_home_repo(False)`) and not agentTooling (`orchestration_home_repo(True)`);
+  `CLAIM_AMBIGUOUS` when it lists both, or the consumer's name is agentTooling's and it lists
+  it; `CLAIM_OWN` otherwise, an unreadable fence or a non-list `features` included —
+  `../self/features/pull-round-cleanups/`), `is_stranded_record(slug)` (claim is stranded; also
+  `python3 roots.py stranded <slug>`, exit 0 for stranded), `legacy_start_refusal(slug)` (the
+  start's refusal: `LEGACY_RECORD_REFUSAL` when stranded, `AMBIGUOUS_RECORD_REFUSAL` — both
+  readings named, no bare `git mv` — when ambiguous, None for agentTooling's own or no record;
+  also `python3 roots.py start-refusal <slug>`, exit 0 to go on, else the text and 1, which
+  `../orchestration-start.sh` asks and fails closed on), `is_standalone_checkout()` / `standalone_refusal(self_mode)` (`checkout_of(AGENT_TOOLING_DIR)
   == AGENT_TOOLING_DIR`, never under `--arm-root`: agentTooling's own checkout has no consuming
   repo, so `STANDALONE_REFUSAL` names `--self`; it is `shared_rules.STANDALONE_REFUSAL`, which
   `../orchestration-start.sh` reads), `orchestration_home_repo(self_mode)` (the repo name a record's own
@@ -267,7 +273,8 @@ Who reads it:
   it) and `record_refusal(self_mode, slug)` (without `--self`: the standalone refusal; else, for a
   slug with no record in the consuming repo but one at the old vendored
   `agentTooling/self/orchestrations/<slug>`, `LEGACY_RECORD_REFUSAL` ending in the `git mv` when
-  stranded, `OWN_RECORD_NOTE` — agentTooling's own record, read it with `--self` — when not;
+  stranded, `AMBIGUOUS_RECORD_REFUSAL` when ambiguous (both through `legacy_start_refusal`),
+  `OWN_RECORD_NOTE` — agentTooling's own record, read it with `--self` — when neither;
   else `None`; every record tool prints it, exit 1, writing nothing; `LEGACY_RECORD_REFUSAL`
   and `LEGACY_RECORD_MOVE` are `shared_rules`' too, so the shell's start prints the same text,
   asserted as output by `../self/tests/orchestration-records-in-repo.sh` R3/R7),

@@ -698,7 +698,14 @@ agentTooling PR `N` merged, in each consuming repo `R`:
    not read Username`). Run the `add_repo` tool (claude-code-remote MCP) for
    `ssdesai/agentTooling` with read access, then the pull; on 2026-10-26 three of four
    cloud pulls of PR 90 rediscovered this. `update.sh` says so itself — one `remedy` line
-   after git's error when such a fetch fails under the cloud profile. Its `pull` line names the branch and the feature;
+   after git's error when such a fetch fails under the cloud profile. **A cloud child
+   session cannot attach agentTooling by itself** (2026-11-19, the pulls of PR 169): its
+   `add_repo` call is refused by the session's auto-mode permission check, even with the
+   owner's OK relayed by the parent in a message. It goes through only when the owner types
+   the OK in the child's own session, or when the owner has a permission rule allowing
+   `mcp__claude-code-remote__add_repo`. So a parent that creates pull children tells the
+   owner up front: approve `add_repo` in each child's session in the Claude app, or add that
+   permission rule once before the round. `update.sh`'s `pull` line names the branch and the feature;
    its `split` line is the agentTooling sha pulled. Commit what the sync wrote, and any
    hand-merge its `DRIFT` lines ask for, on the branch. A pull that changes an audit path
    gets the security audit (below) under the same blocking / non-blocking ruling, its base
@@ -761,7 +768,9 @@ agentTooling PR `N` merged, in each consuming repo `R`:
      `--branch claude/pull-agenttooling-pr<N>`, and is that feature's coordinator, with no
      pin. The parent is the router: it pins nothing in the child's repo, checks
      on the child with `get_session` and `list_events`, and archives it once its PR is
-     open.
+     open. It can merge a consumer's propagation PR (step 7) only if that repo is in its
+     own GitHub scope: a parent whose session holds agentTooling alone cannot, and hands
+     the merge to the owner or to a session that holds the repo.
 5. **Review** — yes, every pull: write the brief (what was pulled, that the prefix diff
    is the upstream range and nothing else, that `sync-plans.sh --check` is clean and the
    gate green) and run `run-review.sh` (step 5). The close refuses without a clean one,
