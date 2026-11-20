@@ -41,7 +41,7 @@ Delete this section when the batch has a single level.
 {
   "slug": "pull-agenttooling-pr173",
   "method": "hand",
-  "plans": ["01-review-opus"],
+  "plans": ["01-review-opus", "01-audit-opus"],
   "branches": ["claude/pull-agenttooling-pr173"],
   "base": "main",
   "profile": "cloud",
