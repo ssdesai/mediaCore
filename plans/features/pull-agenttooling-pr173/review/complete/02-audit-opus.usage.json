@@ -1,0 +1,76 @@
+{
+  "plan": "02-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "5dc6ad4e-8648-43ed-9a47-615af44a7c48",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 26,
+  "duration_ms": 440896,
+  "total_cost_usd": 1.5992035000000002,
+  "usage": {
+    "input_tokens": 40,
+    "cache_creation_input_tokens": 89034,
+    "cache_read_input_tokens": 1623140,
+    "output_tokens": 28078
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 3960,
+      "outputTokens": 375,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0005835,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 349,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 40,
+      "outputTokens": 28078,
+      "cacheReadInputTokens": 1623140,
+      "cacheCreationInputTokens": 89034,
+      "webSearchRequests": 0,
+      "costUSD": 1.5986200000000004,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 5812,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 89034,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 16,
+    "Read": 3,
+    "Write": 6
+  },
+  "files_edited": [
+    "/tmp/plan-capture.ixuKVT/scratch/attack2.py",
+    "/tmp/plan-capture.ixuKVT/scratch/attack_hook_empty.py",
+    "/tmp/plan-capture.ixuKVT/scratch/attack_move.py",
+    "/tmp/plan-capture.ixuKVT/scratch/attack_start.py",
+    "/tmp/plan-capture.ixuKVT/scratch/setup.sh",
+    "plans/features/pull-agenttooling-pr173/audit-report.md"
+  ],
+  "edit_count": 6,
+  "attempts": [
+    {
+      "session_id": "5dc6ad4e-8648-43ed-9a47-615af44a7c48",
+      "outcome": "complete",
+      "total_cost_usd": 1.5992035000000002,
+      "num_turns": 26,
+      "duration_ms": 440896
+    }
+  ]
+}

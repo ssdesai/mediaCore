@@ -22,29 +22,14 @@ last fence of a record is counted) are filed in the report only, for agentToolin
 
 | Plan | What it does |
 |---|---|
-| `auto/incomplete/NN-description-MODEL.md` | <one line> |
-| `verify/incomplete/NN-verify-MODEL.md` | <one line> |
-| `review/incomplete/NN-review-opus.md` | <one line> |
+A hand build: the coordinator ran the pull itself, so there are no build or verify plans.
 
-## Levels
-
-| Level | Plans | Sentinel | Level-verify | Must be green |
-|---|---|---|---|---|
-| <1> | <NN-NN> | `NN-gate.md` | `NN-level-*-MODEL.md` or — | <gate sections> |
-
-Delete this section when the batch has a single level.
-
-## Contracts across levels
-
-| Value / identifier | Produced by (plan, file:line) | Consumed by (plan, file:line) | Fixture | Asserted by |
-|---|---|---|---|---|
-| <name> | <NN, path:line> | <NN, path:line> | `tests/fixtures/contracts/<name>.json` or — | <producer test> / <consumer test> |
-
-An allowed-actions contract (state × action) is one row per cell, not one row. A row
-whose Fixture is `—` needs a reason in the Deliberately-excluded list below.
-
-Delete this section when the batch has a single level.
-
+| Plan | What it does |
+|---|---|
+| `review/complete/01-review-opus.md` | Round 1 review of the pull's diff (escalated: placeholder spec paragraph) |
+| `review/complete/01-audit-opus.md` | Round 1 security audit of the `hooks/` change (escalated: length-check ordering) |
+| `review/02-review-opus.md` | Round 2 review against the written spec and the owner's ruling |
+| `review/02-audit-opus.md` | Round 2 security audit, queued by `run-review.sh` |
 
 ## Deliberately excluded
 
