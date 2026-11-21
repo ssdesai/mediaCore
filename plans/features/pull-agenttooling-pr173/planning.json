@@ -1,0 +1,38 @@
+{
+  "slug": "pull-agenttooling-pr173",
+  "captured_at": "2026-11-21T03:37:04.677059+00:00",
+  "manifest_branches": [
+    "claude/pull-agenttooling-pr173"
+  ],
+  "manifest_subagents": [],
+  "sessions": [],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "36ba0021-72c6-479a-8833-f522f18deb64",
+    "4d59f5e0-326b-46ce-88f1-f7933815aa50",
+    "5dc6ad4e-8648-43ed-9a47-615af44a7c48",
+    "6ef36a03-a69e-478d-a40e-7643c357477e",
+    "705542cb-8250-4af9-a00a-6fa9327f5b08",
+    "c0f4bdce-e82a-46e4-8ba5-e16443551afb"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [],
+  "cost_usd": {
+    "main": 0.0,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 0.0,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 0,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-11-18",
+  "warnings": [
+    "no planning session matched, but 6 excluded session(s) on ['claude/pull-agenttooling-pr173'] were met \u2014 the branch name is right and the zero is evidenced; their cost is in usage.json or belongs to the feature that excluded them"
+  ]
+}
