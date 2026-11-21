@@ -1,12 +1,17 @@
 # Propagate agentTooling PR #173
 
-Propagate agentTooling main at `25b332c9` (PR #173, which also carries #170–#172) into
-mediaCore's vendored `agentTooling/` with `agentTooling/update.sh`: a `git subtree pull
---squash` from split `a130257f`, then `sync-plans.sh`. The pull must leave `agentTooling/`
+Propagate agentTooling main (first `25b332c9`, PR #173, which also carries #170–#172;
+then, in round 3, `b9b7f2d4`, which adds the upstream `orchestrator-move-length-cap` fix)
+into mediaCore's vendored `agentTooling/` with `agentTooling/update.sh`: a `git subtree
+pull --squash` from split `a130257f`, then `sync-plans.sh`. The pull must leave `agentTooling/`
 byte-for-byte upstream's tree (no local edit under it), the trailer chain intact, `plans/`
 and the `.claude/settings.json` wiring in sync (the sync wrote nothing), and `src/`,
 `tests/` and the fixtures untouched. The gate (`plans/gate.sh`) must stay green. Because
 the pull changes `hooks/`, it also gets the security audit.
+
+**Round 3:** the two defects below (and the audit's B1 in `orchestration-start.sh`) are
+fixed upstream by `orchestrator-move-length-cap`, pulled in at `b9b7f2d4`; the ruling below
+applied to round 2 and is superseded.
 
 **Owner's ruling, round 2 (relayed by the orchestrator session):** the audit's one
 blocking finding — in `agentTooling/hooks/allow-repo-commands.sh` (from #172) the
@@ -45,7 +50,7 @@ A hand build: the coordinator ran the pull itself, so there are no build or veri
 {
   "slug": "pull-agenttooling-pr173",
   "method": "hand",
-  "plans": ["01-review-opus", "01-audit-opus", "02-review-opus", "02-audit-opus"],
+  "plans": ["01-review-opus", "01-audit-opus", "02-review-opus", "02-audit-opus", "03-review-opus"],
   "branches": ["claude/pull-agenttooling-pr173"],
   "base": "main",
   "profile": "cloud",
