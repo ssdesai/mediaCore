@@ -56,7 +56,7 @@ A hand build: the coordinator ran the pull itself, so there are no build or veri
   "base": "main",
   "profile": "cloud",
   "gate": "green",
-  "session_window": {"from": "2026-11-20T15:29:37.610Z", "to": null},
+  "session_window": {"from": "2026-11-20T15:29:37.610Z", "to": "2026-11-21T02:33:50Z"},
   "exclude_sessions": [],
   "exclude_subagents": [],
   "sessions": [],
