@@ -102,20 +102,23 @@ REFUSED_RC=1
 # A script that cannot read them refuses, naming the module; there is no literal to fall back to.
 SHARED_RULES_MODULE="hooks/shared_rules.py"
 SHARED_RULES_NAMES=(ORCHESTRATIONS_SELF_REL ORCHESTRATIONS_CONSUMER_REL RECORD_NAME GIT_ENTRY
-  KIND_COORDINATOR LEDGER_NAME SLUG_PATTERN STANDALONE_REFUSAL)
+  KIND_COORDINATOR LEDGER_NAME SLUG_PATTERN STANDALONE_REFUSAL ROOTS_CLI_GO_AHEAD)
 # ... but only a STRANDED one (the consuming repo's own, by its last fence's features), or one
 # whose fence cannot say who ran it (AMBIGUOUS: both repos listed): the classifier is
 # analysis/roots.py's `legacy_record_claim`, and the refusal text its `legacy_start_refusal`,
-# asked through `roots.py start-refusal <slug>` — exit 0 to go on, else the text. Any other
-# outcome, a crash included, refuses: the check fails closed. A vendored record that is
-# agentTooling's own blocks nothing (self/features/pull-round-cleanups/).
+# asked through `roots.py start-refusal <slug>` — exit 0 printing exactly ROOTS_CLI_GO_AHEAD
+# (a shared rule) to go on, else the text. Any other outcome, a crash or an exit 0 without the
+# go-ahead (an emptied or stubbed roots.py) included, refuses: the check fails closed
+# (self/features/orchestrator-move-length-cap/). A vendored record that is agentTooling's own
+# blocks nothing (self/features/pull-round-cleanups/).
 STRANDED_CLASSIFIER="analysis/roots.py"
 START_REFUSAL_ARGV="start-refusal"
 START_OK_RC=0
 # Under --self, a copy vendored in a consuming repo writes no record into its own
 # self/orchestrations/ (self/features/consumer-record-guard/): the decision is roots.py's
-# `record_write_refusal`, asked through `roots.py self-write <slug>` — exit 0 to write, else
-# its refusal text. Any other outcome, a crash included, refuses: the check fails closed.
+# `record_write_refusal`, asked through `roots.py self-write <slug>` — exit 0 printing exactly
+# ROOTS_CLI_GO_AHEAD to write, else its refusal text. Any other outcome, a crash or an exit 0
+# without the go-ahead included, refuses: the check fails closed.
 SELF_WRITE_ARGV="self-write"
 SELF_WRITE_OK_RC=0
 UTC_STAMP_FORMAT='+%Y-%m-%dT%H:%M:%SZ'
@@ -227,6 +230,8 @@ if (( SELF_MODE )); then
   if (( SELF_WRITE_RC != SELF_WRITE_OK_RC )); then
     refuse "${SELF_WRITE_TEXT:-cannot ask $STRANDED_CLASSIFIER whether a --self record may be written here (exit $SELF_WRITE_RC), so nothing is written}"
   fi
+  [[ "$SELF_WRITE_TEXT" == "$ROOTS_CLI_GO_AHEAD" ]] \
+    || refuse "$STRANDED_CLASSIFIER $SELF_WRITE_ARGV $SLUG exited $SELF_WRITE_RC without its go-ahead ('$ROOTS_CLI_GO_AHEAD'), so nothing is written"
 fi
 SESSION="${SESSION_OPT:-${CLAUDE_CODE_SESSION_ID:-}}"
 [[ -n "$SESSION" ]] || refuse "no session id: \$CLAUDE_CODE_SESSION_ID is unset and --session was not given"
@@ -248,6 +253,8 @@ if (( ! SELF_MODE )) && [[ -e "$SCRIPT_DIR/$ORCHESTRATIONS_SELF_REL/$SLUG" ]]; t
   if (( start_rc != START_OK_RC )); then
     refuse "${start_refusal:-$STRANDED_CLASSIFIER $START_REFUSAL_ARGV $SLUG failed (exit $start_rc) — the vendored record at $ORCHESTRATIONS_SELF_REL/$SLUG could not be classified}"
   fi
+  [[ "$start_refusal" == "$ROOTS_CLI_GO_AHEAD" ]] \
+    || refuse "$STRANDED_CLASSIFIER $START_REFUSAL_ARGV $SLUG exited $start_rc without its go-ahead ('$ROOTS_CLI_GO_AHEAD') — the vendored record at $ORCHESTRATIONS_SELF_REL/$SLUG could not be classified"
 fi
 
 # held_feature <checkout-dir> <features-label> <branch> <session> — the first TRACKED manifest

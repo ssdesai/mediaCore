@@ -62,6 +62,9 @@ set -uo pipefail
 #   R13. a consumer whose name is agentTooling's (any case): a record listing that name is
 #       refused at start with the ambiguous text, and one listing only another repo blocks
 #       nothing.
+#   R14. (orchestrator-move-length-cap) `roots.py start-refusal` goes ahead with exit 0 printing
+#       exactly shared_rules.ROOTS_CLI_GO_AHEAD; with roots.py emptied, or a stub that exits 0
+#       printing nothing or another line, a start past a vendored record refuses (1), writing nothing.
 # Round 3 (merged with hook-role-hardening; NOTES.md round-3 rulings):
 #   R11. the role's history and ledger sources span both roots: a COMMITTED plans/orchestrations
 #       record edited to a coordinator or deleted still names its session; a consumer ledger line
@@ -133,6 +136,8 @@ roots_text() {
   python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import roots; print(getattr(roots, sys.argv[2]).format(slug=sys.argv[3]))' \
     "$HERE/analysis" "$1" "${2:-x}"
 }
+# The one line roots.py's start-refusal prints on the go-ahead (a shared rule, read, not restated)
+GO_AHEAD="$(python3 -B "$HERE/hooks/shared_rules.py" ROOTS_CLI_GO_AHEAD)"
 
 # The features the record will price: two reports in the consuming repo, one in agentTooling
 mkdir -p "$CONSUMER/plans/features/feat-x" "$CONSUMER/plans/features/feat-y" "$AT/self/features/feat-s"
@@ -341,6 +346,22 @@ before="$(find "$CONSUMER/$PLANS_REL" "$LEGACY" | sort)"
 out="$("$AT/orchestration-start.sh" idle-one --coordinator --session "$O" 2>&1)"; rc=$?
 mv "$AT/analysis/roots.py.away" "$AT/analysis/roots.py"
 check "R12 with roots.py unreadable, a start of a slug with a vendored record is refused (1), writing nothing (got $rc)" '[[ $rc -eq 1 && "$out" == *"could not be classified"* && "$(find "$CONSUMER/$PLANS_REL" "$LEGACY" | sort)" == "$before" ]]'
+# R14 (self/features/orchestrator-move-length-cap/): the go-ahead is exit 0 WITH roots.py's
+# fixed token, so an emptied roots.py, or a stub that exits 0 printing nothing or anything else,
+# refuses the start of idle-one (agentTooling's own record, which the real classifier lets go on)
+out="$(python3 -B "$AT/analysis/roots.py" start-refusal idle-one)"; rc=$?
+check "R14 roots.py start-refusal (idle-one): exit 0 printing exactly the go-ahead '$GO_AHEAD' (got $rc, '$out')" '[[ $rc -eq 0 && "$out" == "$GO_AHEAD" ]]'
+mv "$AT/analysis/roots.py" "$AT/analysis/roots.py.away"
+for stub in empty exit0 other; do
+  case "$stub" in
+    empty) : > "$AT/analysis/roots.py" ;;
+    exit0) printf 'import sys\nsys.exit(0)\n' > "$AT/analysis/roots.py" ;;
+    other) printf 'print("go")\n' > "$AT/analysis/roots.py" ;;
+  esac
+  out="$("$AT/orchestration-start.sh" idle-one --coordinator --session "$O" 2>&1)"; rc=$?
+  check "R14 with a $stub stub roots.py (exit 0, no go-ahead), the start of idle-one is refused (1), writing nothing (got $rc)" '[[ $rc -eq 1 && "$out" == *"without its go-ahead"* && "$(find "$CONSUMER/$PLANS_REL" "$LEGACY" | sort)" == "$before" ]]'
+done
+mv "$AT/analysis/roots.py.away" "$AT/analysis/roots.py"
 
 echo "== R13 a consumer whose name is agentTooling's cannot tell its records apart (pull-round-cleanups) =="
 # The consuming repo's name equals agentTooling's, ignoring case (no origin: the name is the

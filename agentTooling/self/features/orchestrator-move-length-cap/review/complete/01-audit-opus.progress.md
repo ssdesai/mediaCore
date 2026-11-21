@@ -1,0 +1,9 @@
+edit: /tmp/plan-capture.BpXieR/scratch/head/self/tests/hook-orchestrator-role.sh
+write: /tmp/plan-capture.BpXieR/scratch/carry_attack.py
+write: /tmp/plan-capture.BpXieR/scratch/rename.sh
+edit: /tmp/plan-capture.BpXieR/scratch/carry_attack.py
+edit: /tmp/plan-capture.BpXieR/scratch/carry_attack.py
+edit: /tmp/plan-capture.BpXieR/scratch/head/self/tests/consumer-record-guard.sh
+edit: /tmp/plan-capture.BpXieR/scratch/head/self/tests/orchestration-records-in-repo.sh
+write: /tmp/plan-capture.BpXieR/scratch/stubs.sh
+write: /home/user/agentTooling/self/features/orchestrator-move-length-cap/audit-report.md

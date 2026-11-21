@@ -10,8 +10,8 @@ these literals.
 
 What is here: where the orchestration records live and what they are called, the fence keys
 that make a record a role or a coordinator record, the orchestrator ledger's name, the slug
-pattern, how git marks a checkout, and the two refusal texts `orchestration-start.sh` and
-`analysis/roots.py` both give.
+pattern, how git marks a checkout, the two refusal texts `orchestration-start.sh` and
+`analysis/roots.py` both give, and the go-ahead token roots.py's CLI prints to the start.
 
 The shell reads these through the command line, one value per line in the order asked:
 
@@ -71,6 +71,11 @@ STANDALONE_REFUSAL = (
     "this is agentTooling's own checkout, not a consuming repo: without --self a record "
     "would land outside it — pass --self for agentTooling's own records ("
     + ORCHESTRATIONS_SELF_REL + "/)")
+# The one line `analysis/roots.py start-refusal` and `roots.py self-write` print on the
+# go-ahead; `orchestration-start.sh` goes on only on exit 0 WITH exactly this output, so an
+# emptied or stubbed roots.py that exits 0 printing nothing refuses
+# (self/features/orchestrator-move-length-cap/)
+ROOTS_CLI_GO_AHEAD = "ok"
 
 # CLI
 USAGE_RC = 2
