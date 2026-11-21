@@ -1,0 +1,9 @@
+write: /tmp/plan-capture.Nim8gW/scratch/build.sh
+write: /tmp/plan-capture.Nim8gW/scratch/inject.py
+write: /tmp/plan-capture.Nim8gW/scratch/build.sh
+write: /tmp/plan-capture.Nim8gW/scratch/inject_stubs.py
+edit: /tmp/plan-capture.Nim8gW/scratch/inject_stubs.py
+write: /tmp/plan-capture.Nim8gW/scratch/goahead.sh
+write: /tmp/plan-capture.Nim8gW/scratch/sr.sh
+write: /tmp/plan-capture.Nim8gW/scratch/compare.py
+write: /home/user/agentTooling/self/features/orchestrator-move-length-cap/audit-report.md

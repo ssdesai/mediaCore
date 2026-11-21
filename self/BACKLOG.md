@@ -870,3 +870,75 @@ checked from this tree.
   `self/tests/hook-orchestrator-role.sh` H28. Assertion: each is the allowlist denial, and
   restoring the file approves the move again. Raised by `orchestrator-record-move-guard`'s
   review (round 1, non-blocking).
+
+- **An edited `analysis/roots.py` defeats the legacy-record classifier.** The hook's record
+  move and `orchestration-start.sh` both ask the vendored `analysis/roots.py` whether a record
+  is stranded, and an agent that can edit that file (it is an ordinary tracked file in the
+  consuming repo) can make it answer "stranded" for any record. The go-ahead token
+  (`shared_rules.ROOTS_CLI_GO_AHEAD`, `orchestrator-move-length-cap`) stops only an emptied or
+  stubbed file, not a working classifier with a changed rule. Proposal: deny `Edit` on the
+  vendored `analysis/roots.py` and `hooks/shared_rules.py` in the consuming repo's settings
+  (`wire-settings.py`), or have the hook decide "stranded" itself from the fence rather than
+  through a subprocess. Assertion: with `roots.py`'s `legacy_record_claim` edited to return
+  `stranded` always, an orchestrator's move of agentTooling's shipped record is not approved.
+  Raised by mediaCore's pull audit of #173 (`plans/features/pull-agenttooling-pr173/`,
+  non-blocking).
+
+- **Only a record's last fence is counted when it is classified.** `legacy_record_claim`
+  reads the features of the record's last JSON fence; a record whose earlier fence lists an
+  agentTooling feature and whose last lists only the consumer's is classed stranded, not
+  ambiguous, and prescribed a `git mv` that takes an agentTooling wave out of the consumer's
+  `agentTooling/`. Fix: classify on the union of every fence's `features`, or refuse a record
+  with more than one fence. Assertion: a record whose first fence lists `agentTooling` and
+  whose last lists only the consumer is ambiguous. Raised by mediaCore's pull audit of #173
+  (non-blocking).
+
+- **`run-review.sh` adds the audit's stem to `plans` without checking it is already
+  there.** When a hook change queues the security audit, `run-review.sh` (the audit-queueing
+  block, `plans+=("$stem")` before `manifest.py set-plans`) appends the stem whether or not
+  the manifest's `plans` list already holds it, so a re-run writes a duplicate (seen as two
+  `02-audit-opus` entries). Fix: skip the append when the stem is present. Assertion: queueing
+  the same audit twice leaves one entry in `plans`. Raised by mediaCore's pull audit of #173,
+  round 2 (filed by `orchestrator-move-length-cap` at the orchestrator's request).
+
+- **The conformance check flips an owner item from `done` to `partial` on unchanged
+  evidence, and every flip costs a round.** Seen on humanNetworkMap #385, where item 1 was
+  done in rounds 4 and 5 and partial in round 6, with nothing touching it changed.
+
+  Why it happens: each round's check (`run-review.sh` `build_conformance_prompt`) is a fresh
+  model run that sees only the brief, the item list and the whole diff, with the feature's
+  own directory excluded. It sees no owner ruling, no review and no earlier verdict. The diff
+  changes every rework round, even where an item's own lines did not move. A judgment-call
+  item, such as a prose section that describes rather than asks, sits near the done/partial
+  line. A downgrade needs no reason. And `feature-close.sh` refuses on any non-`done`.
+
+  A second, structural cause: an owner item whose evidence lives only in the feature's own
+  records can never be `done` for the check. Examples are "start the feature", "gate,
+  review, close" and "diagnose in NOTES". Its diff leaves the feature directory out, and the
+  close is what runs it.
+
+  Proposal, built and audited for three rounds in `orchestrator-move-length-cap` and then
+  split out by the owner (its `NOTES.md` has the full diagnosis and every audit finding).
+  `conformance.py check-close` gains `--tracked <ls-tree -z at the judged head>` and, for
+  each earlier round newest first, `--round <report> <git diff -z --no-renames from that
+  round's commit^>`. An item is carried as done when all of these hold:
+
+  - the review says done;
+  - the newest earlier round that said done named a tracked file in its evidence;
+  - no evidence since then is about a changed path. "About" means the path in any spelling,
+    its file name, its module stem or a `<folder>/`, matched as text in NFC with `/.`
+    normalised.
+
+  Evidence holding any of `*?[{` carries nothing, by the owner's ruling: every audit round had
+  found a new pattern spelling. Separately, an owner brief should be able to mark process
+  items the check skips.
+
+  Assertions:
+  - an unchanged item judged done in round N stays done in rounds N+1 and N+2;
+  - a changed evidence file in any spelling (absolute, `~`, folder, extensionless, dotfile,
+    space, non-ASCII, NFD, a renamed file's old name) refuses the carry;
+  - a dotted identifier anchors nothing;
+  - a process item marked so is not judged by the check.
+
+  Raised by the owner via the entity-linking-2026-11-20 orchestrator; filed by
+  `orchestrator-move-length-cap`, round 3.

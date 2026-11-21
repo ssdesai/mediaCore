@@ -15,7 +15,7 @@ set -uo pipefail
 #   S1. the module: its CLI prints the values it is asked for, one per line, and exits 2 with
 #       nothing on stdout for an unknown name or no name; its values are the ones the rules
 #       have always had (record roots, record name, ledger name, kind, slug pattern, both
-#       refusal texts); it imports only re and sys and does no I/O at import;
+#       refusal texts, roots.py's CLI go-ahead token); it imports only re and sys and does no I/O at import;
 #   S2. every name `roots.py`, `orchestrator_role.py`, `manifest.py`, `routing.py`,
 #       `coordinator_check.py`, `orchestration_capture.py` and the hook bind to a shared rule
 #       IS the shared_rules object (a reference, never an equal copy); roots.py's *_PARTS are
@@ -96,6 +96,8 @@ EXPECTED = {
         "mkdir -p plans/orchestrations && "
         "git mv agentTooling/self/orchestrations/{slug} plans/orchestrations/{slug}"),
     "LEGACY_RECORD_MKDIR": "mkdir -p plans/orchestrations",
+    # self/features/orchestrator-move-length-cap/: roots.py's CLI go-ahead to the start
+    "ROOTS_CLI_GO_AHEAD": "ok",
 }
 EXPECTED_TUPLES = {
     "ORCHESTRATOR_FEATURE_KEYS": ("session", "branch"),
@@ -154,6 +156,7 @@ BOUND = [
     (roots, "LEGACY_RECORD_MOVE", "LEGACY_RECORD_MOVE"),
     (roots, "LEGACY_RECORD_REFUSAL", "LEGACY_RECORD_REFUSAL"),
     (roots, "STANDALONE_REFUSAL", "STANDALONE_REFUSAL"),
+    (roots, "CLI_GO_AHEAD", "ROOTS_CLI_GO_AHEAD"),
     (roots, "ORCH_FEATURES_KEY", "FEATURES_KEY"),
     (roots, "ORCH_FEATURE_REPO_KEY", "FEATURE_REPO_KEY"),
     (roots, "ORCH_KIND_KEY", "KIND_KEY"),

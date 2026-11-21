@@ -3133,7 +3133,11 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   the tools and the start; `roots.py start-refusal` exits 0 for an agentTooling-own record and
   for none, and the start fails closed when `roots.py` cannot run. R13: in a consumer whose name
   is agentTooling's, a record listing that name is refused at start with the ambiguous text, and
-  one listing only another repo blocks nothing. No model, no network.
+  one listing only another repo blocks nothing. R14 (`../features/orchestrator-move-length-cap/`):
+  `roots.py start-refusal` goes ahead by exiting 0 printing exactly
+  `shared_rules.ROOTS_CLI_GO_AHEAD`; with `roots.py` emptied, or a stub that exits 0 printing
+  nothing or another line, the start past a vendored record refuses (1) and writes nothing.
+  No model, no network.
 - `consumer-record-guard.sh` — no record tool writes under a vendored copy's own
   `self/orchestrations/`, `--self` included (`../features/consumer-record-guard/`). Two
   throwaway trees with the same copied files as `orchestration-records-in-repo.sh`: a consuming
@@ -3154,7 +3158,11 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   the three manifest writes, `planning.json`, `report.json`/`report.md`). C6: `roots.py
   self-write <slug>`, what the shell start asks, refuses with the text in the vendored copy and
   allows in the standalone one; with `roots.py` moved aside the standalone `--self` start
-  refuses (1) saying it cannot ask, and writes nothing — it fails closed. No model, no network.
+  refuses (1) saying it cannot ask, and writes nothing — it fails closed. C7
+  (`../features/orchestrator-move-length-cap/`): the standalone `self-write` go-ahead is exit 0
+  printing exactly `shared_rules.ROOTS_CLI_GO_AHEAD`; with `roots.py` emptied, or a stub that
+  exits 0 printing nothing or another line, the `--self` start refuses (1) and writes nothing.
+  No model, no network.
 - `security-audit.sh` — the security audit of a hook change (`../features/hook-role-hardening/`,
   item 4; `../../LIFECYCLE.md` → "The security audit"). Throwaway agentTooling checkouts
   with a bare origin (the real runners, `feature-close.sh`, `analysis/`, `hooks/`,
@@ -3273,7 +3281,8 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   equality-of-copies checks the mirrors needed. S1: `hooks/shared_rules.py`'s CLI prints the
   values asked for, one per line, and exits 2 with nothing on stdout for an unknown name or
   none; its values are the ones the rules have always had (record roots, record name, ledger
-  name, fence keys, slug pattern, both refusal texts); it imports only `re` and `sys` and
+  name, fence keys, slug pattern, both refusal texts, `roots.py`'s CLI go-ahead token
+  `ROOTS_CLI_GO_AHEAD`, bound by `roots.CLI_GO_AHEAD`); it imports only `re` and `sys` and
   opens nothing. S2: every name `roots.py`, `orchestrator_role.py`, `manifest.py`,
   `routing.py`, `coordinator_check.py`, `orchestration_capture.py` and the hook bind to a
   shared rule IS the `shared_rules` object (identity, not equality), `roots.py`'s `*_PARTS`
@@ -3364,7 +3373,10 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `analysis/` in the fixture's vendored copy (`../features/orchestrator-record-move-guard/`),
   S's record that is not stranded (O18) or is ambiguous, and, for a session only the ledger
   names, another session's stranded record (O39) and an empty folder (O40), are the allowlist
-  denial; H27 (`../features/python-entry-exact/`): the
+  denial; H29 (`../features/orchestrator-move-length-cap/`): the line cap
+  `ORCHESTRATOR_MAX_LINE_CHARS`, read from the hook module itself, holds for the move — the
+  move and the `mkdir -p` remedy, padded with spaces to exactly the cap, are approved, and one
+  character past it each is the allowlist denial; H27 (`../features/python-entry-exact/`): the
   propagation audit's B1 (`manifest.py --orchestration A --orchestration get
   --orchestration=x set-window-to …`) and B2 (an abbreviated writing flag beside a decoy
   `--since '--list- x'`), with the repeat in each position, `=` forms, every abbreviation of

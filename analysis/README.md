@@ -264,8 +264,10 @@ Who reads it:
   `python3 roots.py stranded <slug>`, exit 0 for stranded), `legacy_start_refusal(slug)` (the
   start's refusal: `LEGACY_RECORD_REFUSAL` when stranded, `AMBIGUOUS_RECORD_REFUSAL` — both
   readings named, no bare `git mv` — when ambiguous, None for agentTooling's own or no record;
-  also `python3 roots.py start-refusal <slug>`, exit 0 to go on, else the text and 1, which
-  `../orchestration-start.sh` asks and fails closed on), `is_standalone_checkout()` / `standalone_refusal(self_mode)` (`checkout_of(AGENT_TOOLING_DIR)
+  also `python3 roots.py start-refusal <slug>`, exit 0 printing exactly `CLI_GO_AHEAD`
+  (`shared_rules.ROOTS_CLI_GO_AHEAD`) to go on, else the text and 1, which
+  `../orchestration-start.sh` asks and fails closed on — an exit 0 without that line included,
+  `../self/features/orchestrator-move-length-cap/`), `is_standalone_checkout()` / `standalone_refusal(self_mode)` (`checkout_of(AGENT_TOOLING_DIR)
   == AGENT_TOOLING_DIR`, never under `--arm-root`: agentTooling's own checkout has no consuming
   repo, so `STANDALONE_REFUSAL` names `--self`; it is `shared_rules.STANDALONE_REFUSAL`, which
   `../orchestration-start.sh` reads), `orchestration_home_repo(self_mode)` (the repo name a record's own
@@ -290,7 +292,8 @@ Who reads it:
   `self/orchestrations/` is a local edit to code every repo receives; otherwise
   `record_refusal`'s answer. A read — `manifest.py --self --orchestration … get`, the role
   hook, the coordinator advisory — is not refused, so a shipped record stays readable; also
-  `python3 roots.py self-write <slug>`, exit 0 to write, else the text and exit 1, which
+  `python3 roots.py self-write <slug>`, exit 0 printing exactly `CLI_GO_AHEAD` to write, else
+  the text and exit 1, which
   `../orchestration-start.sh --self` asks before any write and treats any other outcome as a
   refusal; `../self/features/consumer-record-guard/`, asserted by
   `../self/tests/consumer-record-guard.sh`),

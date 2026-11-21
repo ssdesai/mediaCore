@@ -221,14 +221,18 @@ CLI_STRANDED_RC = 0
 CLI_NOT_STRANDED_RC = 1
 CLI_USAGE_RC = 2
 # ... and into the start's decision: `python3 roots.py start-refusal <slug>` exits 0, printing
-# nothing, when a no-`--self` start of <slug> may go on past the vendored record; else it prints
-# the refusal and exits 1. orchestration-start.sh refuses on anything but 0, a crash included.
+# CLI_GO_AHEAD, when a no-`--self` start of <slug> may go on past the vendored record; else it
+# prints the refusal and exits 1. orchestration-start.sh refuses on anything but exit 0 with
+# exactly CLI_GO_AHEAD — a crash, or an emptied or stubbed roots.py that exits 0 printing
+# nothing, included (self/features/orchestrator-move-length-cap/).
+CLI_GO_AHEAD = shared_rules.ROOTS_CLI_GO_AHEAD
 CLI_START_REFUSAL = "start-refusal"
 CLI_START_OK_RC = 0
 CLI_START_REFUSED_RC = 1
-# ... and into the write guard: `python3 roots.py self-write <slug>` exits 0 when a `--self`
-# record write is allowed here, else prints VENDORED_SELF_WRITE_REFUSAL and exits 1 — so a
-# crash (also 1, printing no text) fails closed in orchestration-start.sh
+# ... and into the write guard: `python3 roots.py self-write <slug>` exits 0 printing
+# CLI_GO_AHEAD when a `--self` record write is allowed here, else prints
+# VENDORED_SELF_WRITE_REFUSAL and exits 1 — so a crash (also 1, printing no text), or an exit 0
+# without the go-ahead, fails closed in orchestration-start.sh
 CLI_SELF_WRITE = "self-write"
 CLI_SELF_WRITE_OK_RC = 0
 CLI_SELF_WRITE_REFUSED_RC = 1
@@ -460,8 +464,10 @@ if __name__ == "__main__":
     import sys
 
     # `roots.py stranded <slug>`: exit 0 when the legacy vendored record is stranded;
-    # `roots.py start-refusal <slug>`: exit 0 when a no-`--self` start may go on, else the refusal;
-    # `roots.py self-write <slug>`: exit 0 when a `--self` record write is allowed here
+    # `roots.py start-refusal <slug>`: exit 0 printing CLI_GO_AHEAD when a no-`--self` start
+    # may go on, else the refusal;
+    # `roots.py self-write <slug>`: exit 0 printing CLI_GO_AHEAD when a `--self` record write
+    # is allowed here
     # (orchestration-start.sh asks these instead of re-implementing any of the decisions)
     if len(sys.argv) != CLI_ARGC or sys.argv[1] not in (CLI_STRANDED, CLI_START_REFUSAL,
                                                         CLI_SELF_WRITE):
@@ -471,11 +477,13 @@ if __name__ == "__main__":
         if refusal:
             print(refusal)
             sys.exit(CLI_START_REFUSED_RC)
+        print(CLI_GO_AHEAD)
         sys.exit(CLI_START_OK_RC)
     if sys.argv[1] == CLI_SELF_WRITE:
         refusal = record_write_refusal(True, sys.argv[2])
         if refusal:
             print(refusal)
             sys.exit(CLI_SELF_WRITE_REFUSED_RC)
+        print(CLI_GO_AHEAD)
         sys.exit(CLI_SELF_WRITE_OK_RC)
     sys.exit(CLI_STRANDED_RC if is_stranded_record(sys.argv[2]) else CLI_NOT_STRANDED_RC)

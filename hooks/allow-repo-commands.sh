@@ -5680,7 +5680,11 @@ def orchestrator_moves_own_record(command, cwd, record, session=None):
     """True when the whole line is `git mv` with exactly the operands orchestrator_record_move
     admits, alone or after exactly ORCHESTRATOR_MOVE_MKDIR_LEAD (the remedy
     shared_rules.LEGACY_RECORD_MOVE prints) — the one orchestrator write the hook approves
-    outright."""
+    outright. A line past ORCHESTRATOR_MAX_LINE_CHARS is refused unread here too (R1), before
+    any judgment, so no caller can reach the move ahead of the cap (mediaCore's pull audit:
+    main() asks this before orchestrator_command_allowed, whose own check came too late)."""
+    if len(command) > ORCHESTRATOR_MAX_LINE_CHARS:
+        return False
     line = ORCHESTRATOR_HARMLESS_REDIRECT_RE.sub(" ", command).strip()
     if ORCHESTRATOR_MOVE_MKDIR_LEAD and line.startswith(ORCHESTRATOR_MOVE_MKDIR_LEAD):
         line = line[len(ORCHESTRATOR_MOVE_MKDIR_LEAD):]

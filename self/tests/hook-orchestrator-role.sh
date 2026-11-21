@@ -130,6 +130,10 @@ set -uo pipefail
 #       agentTooling feature too (ambiguous) are the allowlist denial, as are, for a session the
 #       ledger alone names, the move of a stranded record naming another session (O39) and of an
 #       empty folder (O40); S's own stranded record is approved and really moved;
+#   H29. (self/features/orchestrator-move-length-cap/) the line cap (R1,
+#       ORCHESTRATOR_MAX_LINE_CHARS) holds for the move too: the move, and the `mkdir -p` lead
+#       form, padded with whitespace to exactly the cap are approved; one character past it,
+#       the allowlist denial;
 #   H16. (F8a) from S, pytest, `python3 -m pytest`, `npm run test`, `npm test`,
 #       `./self/gate.sh` and `./check-plans.sh` are never `allow`; from another session they
 #       are never the role denial.
@@ -142,7 +146,7 @@ TMP="$(cd "$TMP" && pwd -P)"
 
 echo "hook-orchestrator-role"
 python3 - "$AT" "$TMP" <<'PY'
-import json, os, shutil, subprocess, sys
+import importlib.machinery, importlib.util, json, os, shutil, subprocess, sys
 
 AT, TMP = sys.argv[1], sys.argv[2]
 HOOK_FILES = ("allow-repo-commands.sh", "policy.py", "env_profile.py", "orchestrator_role.py",
@@ -2160,6 +2164,26 @@ for profile in PROFILES:
     decision, reason = bash("consumer", profile, OWN_MOVE, SESSION_S)
     check("H28 [consumer/%s] ... and the move alone is still approved" % profile,
           decision == ALLOW, "%s: %s" % (decision, reason))
+# H29 (self/features/orchestrator-move-length-cap/): the line cap (R1) comes before the move is
+# judged — main() asks orchestrator_moves_own_record first, so the cap is checked there too.
+# Padded with whitespace to exactly the cap the move is still approved; one character past it,
+# refused unread with the allowlist denial.
+_hook_loader = importlib.machinery.SourceFileLoader(
+    "allow_repo_commands_cap", os.path.join(AT, "hooks", HOOK_NAME))
+_hook_spec = importlib.util.spec_from_loader(_hook_loader.name, _hook_loader)
+HOOK_MODULE = importlib.util.module_from_spec(_hook_spec)
+_hook_loader.exec_module(HOOK_MODULE)
+LINE_CAP = HOOK_MODULE.ORCHESTRATOR_MAX_LINE_CHARS
+for profile in PROFILES:
+    for padded, verdict in ((OWN_MOVE.ljust(LINE_CAP), "at"), (OWN_MOVE.ljust(LINE_CAP + 1), "past")):
+        decision, reason = bash("consumer", profile, padded, SESSION_S)
+        if verdict == "at":
+            check("H29 [consumer/%s] the move padded to exactly %d characters is approved" % (profile, LINE_CAP),
+                  len(padded) == LINE_CAP and decision == ALLOW, "%s: %s" % (decision, reason))
+        else:
+            check("H29 [consumer/%s] the move padded to %d characters is the allowlist denial" % (profile, LINE_CAP + 1),
+                  len(padded) == LINE_CAP + 1 and decision == DENY and ALLOWLIST_MARK in reason,
+                  "%s: %s" % (decision, reason))
 # O39 / O40 (self/features/orchestrator-record-move-guard/): a session only the ledger names
 # gets its slug from the ledger, which reads no record. Its move of a stranded record that
 # names ANOTHER session (O39), or of an empty folder (O40), is the allowlist denial.
@@ -2213,6 +2237,13 @@ for profile in PROFILES:
         decision, reason = bash("consumer", profile, command, SESSION_S)
         check("H28 [consumer/%s] %r is not approved outright" % (profile, command),
               decision != ALLOW, "%s: %s" % (decision, reason))
+    # H29: the same cap for the `mkdir -p` lead form
+    decision, reason = bash("consumer", profile, REMEDY.ljust(LINE_CAP), SESSION_S)
+    check("H29 [consumer/%s] the remedy padded to exactly %d characters is approved" % (profile, LINE_CAP),
+          decision == ALLOW, "%s: %s" % (decision, reason))
+    decision, reason = bash("consumer", profile, REMEDY.ljust(LINE_CAP + 1), SESSION_S)
+    check("H29 [consumer/%s] the remedy padded to %d characters is the allowlist denial" % (profile, LINE_CAP + 1),
+          decision == DENY and ALLOWLIST_MARK in reason, "%s: %s" % (decision, reason))
 # ... and it really moves the record once committed (git mv takes tracked files only)
 GIT_ID = ["-c", "user.name=t", "-c", "user.email=t@example.com"]
 subprocess.run(["git", "-C", CONSUMER, "add", "--", os.path.relpath(RECORD_C, CONSUMER)], check=True)

@@ -1,0 +1,27 @@
+{"at":"2026-11-20T23:02:28Z","event":"pass_start","queue":"review","round":"1"}
+{"at":"2026-11-20T23:02:28Z","event":"plan_start","plan":"01-audit-opus","queue":"review","round":"1"}
+{"at":"2026-11-20T23:10:31Z","event":"plan_start","plan":"01-conformance-opus","queue":"review","round":"1"}
+{"at":"2026-11-20T23:10:49Z","event":"plan_end","plan":"01-audit-opus","queue":"review","rc":"0","round":"1"}
+{"at":"2026-11-20T23:10:49Z","event":"plan_start","plan":"01-review-opus","queue":"review","round":"1"}
+{"at":"2026-11-20T23:12:38Z","event":"plan_end","plan":"01-conformance-opus","queue":"review","rc":"0","round":"1"}
+{"at":"2026-11-20T23:12:38Z","event":"plan_end","plan":"01-review-opus","queue":"review","rc":"0","verdict":"escalated","head":"cd493a68b44906b273e4562c2aa280c803ca6066","round":"1"}
+{"at":"2026-11-20T23:12:38Z","event":"audit_end","plan":"01-audit-opus","verdict":"escalated","head":"cd493a68b44906b273e4562c2aa280c803ca6066","round":"1"}
+{"at":"2026-11-20T23:12:38Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"1"}
+{"at":"2026-11-20T23:46:12Z","event":"pass_start","queue":"review","round":"2"}
+{"at":"2026-11-20T23:46:12Z","event":"plan_start","plan":"02-audit-opus","queue":"review","round":"2"}
+{"at":"2026-11-20T23:54:31Z","event":"plan_start","plan":"02-conformance-opus","queue":"review","round":"2"}
+{"at":"2026-11-20T23:54:56Z","event":"plan_end","plan":"02-audit-opus","queue":"review","rc":"0","round":"2"}
+{"at":"2026-11-20T23:54:56Z","event":"plan_start","plan":"02-review-opus","queue":"review","round":"2"}
+{"at":"2026-11-20T23:58:06Z","event":"plan_end","plan":"02-conformance-opus","queue":"review","rc":"0","round":"2"}
+{"at":"2026-11-20T23:58:06Z","event":"plan_end","plan":"02-review-opus","queue":"review","rc":"0","verdict":"clean","head":"72f6feff5b2bd4bc5fecca22474f9253d7fe930e","round":"2"}
+{"at":"2026-11-20T23:58:07Z","event":"audit_end","plan":"02-audit-opus","verdict":"stale","head":"72f6feff5b2bd4bc5fecca22474f9253d7fe930e","round":"2"}
+{"at":"2026-11-20T23:58:07Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"2"}
+{"at":"2026-11-21T01:27:51Z","event":"pass_start","queue":"review","round":"3"}
+{"at":"2026-11-21T01:27:51Z","event":"plan_start","plan":"03-audit-opus","queue":"review","round":"3"}
+{"at":"2026-11-21T01:35:42Z","event":"plan_start","plan":"03-conformance-opus","queue":"review","round":"3"}
+{"at":"2026-11-21T01:36:03Z","event":"plan_end","plan":"03-audit-opus","queue":"review","rc":"0","round":"3"}
+{"at":"2026-11-21T01:36:03Z","event":"plan_start","plan":"03-review-opus","queue":"review","round":"3"}
+{"at":"2026-11-21T01:37:16Z","event":"plan_end","plan":"03-conformance-opus","queue":"review","rc":"0","round":"3"}
+{"at":"2026-11-21T01:37:16Z","event":"plan_end","plan":"03-review-opus","queue":"review","rc":"0","verdict":"clean","head":"5287061e0c51e8d416e0dcf131f254a32ef91739","round":"3"}
+{"at":"2026-11-21T01:37:16Z","event":"audit_end","plan":"03-audit-opus","verdict":"clean","head":"5287061e0c51e8d416e0dcf131f254a32ef91739","round":"3"}
+{"at":"2026-11-21T01:37:16Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"3"}

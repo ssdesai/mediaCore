@@ -184,7 +184,11 @@ only.
   `FEATURE_REPO_KEY`, `FEATURE_BRANCH_KEY`, `ORCHESTRATOR_FEATURE_KEYS` =
   `(session, branch)`, `ORCH_FEATURE_KEYS` = the six of a `features[]` entry), `LEDGER_NAME`,
   `SLUG_PATTERN` / `SLUG_RE`, and the refusal texts `LEGACY_RECORD_MOVE`,
-  `LEGACY_RECORD_REFUSAL` and `STANDALONE_REFUSAL` (with `{slug}` placeholders). Readers:
+  `LEGACY_RECORD_REFUSAL` and `STANDALONE_REFUSAL` (with `{slug}` placeholders), and
+  `ROOTS_CLI_GO_AHEAD` (`ok`: the one line `../analysis/roots.py start-refusal` and
+  `self-write` print on the go-ahead, bound there as `CLI_GO_AHEAD`; `../orchestration-start.sh`
+  goes on only on exit 0 with exactly that line, so an emptied or stubbed `roots.py` refuses,
+  `self/features/orchestrator-move-length-cap/`). Readers:
   `orchestrator_role.py` (imports it, unguarded; so a hooks/ without it leaves the role rule
   silent through the hook's own guarded import, exactly as one without `orchestrator_role.py`
   does, and every other answer is unchanged); `../analysis/roots.py` (appends this directory
