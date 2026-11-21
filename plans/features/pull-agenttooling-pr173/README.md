@@ -25,21 +25,22 @@ last fence of a record is counted) are filed in the report only, for agentToolin
 
 ## Plans
 
-| Plan | What it does |
-|---|---|
 A hand build: the coordinator ran the pull itself, so there are no build or verify plans.
 
 | Plan | What it does |
 |---|---|
 | `review/complete/01-review-opus.md` | Round 1 review of the pull's diff (escalated: placeholder spec paragraph) |
 | `review/complete/01-audit-opus.md` | Round 1 security audit of the `hooks/` change (escalated: length-check ordering) |
-| `review/02-review-opus.md` | Round 2 review against the written spec and the owner's ruling |
-| `review/02-audit-opus.md` | Round 2 security audit, queued by `run-review.sh` |
+| `review/complete/02-review-opus.md` | Round 2 review against the written spec and the owner's ruling (clean) |
+| `review/complete/02-audit-opus.md` | Round 2 security audit, queued by `run-review.sh` (escalated) |
+| `review/03-review-opus.md` | Round 3 review of the re-pull at `b9b7f2d4` |
+| `review/03-audit-opus.md` | Round 3 security audit, queued by `run-review.sh` |
 
 ## Deliberately excluded
 
-- The length-check ordering regression in `agentTooling/hooks/allow-repo-commands.sh`:
-  accepted by the owner's ruling above, fixed upstream, not edited here.
+- Any local fix for the length-check ordering regression in
+  `agentTooling/hooks/allow-repo-commands.sh`: fixed upstream by
+  `orchestrator-move-length-cap` and arrived with the `b9b7f2d4` re-pull, not edited here.
 - The audit's two non-blocking findings (`analysis/roots.py` trust; last-fence-only
   record check): agentTooling's backlog, not this repo's.
 - Any change under `src/`, `tests/` or the fixtures: the pull touches none.
@@ -50,7 +51,7 @@ A hand build: the coordinator ran the pull itself, so there are no build or veri
 {
   "slug": "pull-agenttooling-pr173",
   "method": "hand",
-  "plans": ["01-review-opus", "01-audit-opus", "02-review-opus", "02-audit-opus", "03-review-opus"],
+  "plans": ["01-review-opus", "01-audit-opus", "02-review-opus", "02-audit-opus", "03-review-opus", "03-audit-opus"],
   "branches": ["claude/pull-agenttooling-pr173"],
   "base": "main",
   "profile": "cloud",

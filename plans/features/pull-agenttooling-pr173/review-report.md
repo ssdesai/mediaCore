@@ -1,73 +1,73 @@
 Verdict: clean
 
-# Review, round 2: pull-agenttooling-pr173
+# Review (round 3): pull-agenttooling-pr173
 
 ## What the batch was supposed to do
 
-Pull agentTooling `main` at `25b332c9` (PR #173, which also brings in #170–#172) into
-mediaCore's vendored `agentTooling/` with a squashed subtree pull from split `a130257f`.
-The pull had to:
-
-- leave `agentTooling/` exactly as it is upstream,
-- keep the trailer chain intact,
-- leave `plans/` and the `.claude/settings.json` wiring in sync,
-- not touch `src/`, `tests/` or the fixtures,
-- and keep the gate green.
-
-Because the pull changes `hooks/`, it also gets the security audit.
+Bring agentTooling main into mediaCore's vendored `agentTooling/` with `update.sh`: first
+`25b332c9` (PR #173, which also carries #170–#172), then in round 3 `b9b7f2d4`, which adds
+the upstream `orchestrator-move-length-cap` fix. The pull had to leave `agentTooling/`
+byte-for-byte upstream's tree, keep the subtree trailer chain intact, keep `plans/` and the
+`.claude/settings.json` wiring in sync, leave `src/`, `tests/` and the fixtures untouched,
+and keep the gate green.
 
 ## Does it do it
 
 Yes.
 
-- **Upstream tree:** `HEAD:agentTooling` and the squash commit `38d1e381` have the same
-  tree (`f59c4443…`). So `agentTooling/` is upstream's tree with no local edit.
-- **Trailers:** the squash commit carries `git-subtree-dir: agentTooling` and
-  `git-subtree-split: 25b332c9…`.
-- **Untouched paths:** `git diff origin/main...HEAD --stat` touches nothing under `src/`,
-  `tests/`, `fixtures/`, `.claude/` or the synced `plans/` templates. The only files
-  outside `agentTooling/` are this feature's own records under
-  `plans/features/pull-agenttooling-pr173/`.
-- **Gate:** `plans/gate-report.txt` says all checks passed (307 tests, lint clean, fixture
-  idempotent). I did not re-run it. The round-2 commits after that report changed only
-  files under this feature's folder.
-- **READMEs:** `plans/features/README.md` is generated. `plans/PROJECT_FACTS.md` already
-  covers the `pull-agenttooling-pr<N>` folder pattern, so no README index needs a new line.
-- **Owner's ruling:** the round-1 audit's blocking finding is accepted for this pull and is
-  not escalated here. In `agentTooling/hooks/allow-repo-commands.sh` (from #172), the
-  orchestrator's own-record move is checked before `ORCHESTRATOR_MAX_LINE_CHARS`. As a
-  result, a move padded past 20,000 characters is allowed where origin/main denies it.
-  The ruling was relayed by the orchestrator session `tooling-wave-2026-11-18`. The fix is
-  a separate agentTooling feature and is not edited here.
-- **Non-blocking audit findings, for agentTooling's backlog only:**
-  - an edited `analysis/roots.py` defeats the new classifier;
-  - the record check counts only the last fence of a record.
+- **Vendored tree is upstream's.** `HEAD:agentTooling` and the tree of the squash commit
+  `358887cb` ("Squashed 'agentTooling/' changes from 25b332c9..b9b7f2d4", trailer
+  `git-subtree-split: b9b7f2d4…`) are both `d743d3b1`. Nothing under `agentTooling/` has an
+  uncommitted change, so there is no local edit.
+- **Out-of-scope paths are untouched.** `git diff origin/main...HEAD` is empty for `src/`,
+  `tests/`, `fixtures/`, `.claude/`, `plans/README.md` and `plans/gate.sh`. The pull changes
+  nothing under `agentTooling/templates/`, so the sync had nothing to write.
+- **Gate.** `plans/gate-report.txt` was generated at 02:24:25Z, three seconds after the
+  squash commit, and reports all checks passed: install, lint, fixture idempotence, the
+  wheel's fixture, and tests (307 passed). Nothing was skipped.
+- **Upstream fix is present.** The round-3 audit confirms the move is judged first, under
+  its own 20,000-character cap, and that `roots.py` start-refusal and self-write now need the
+  `ok` token. This removes the round-1/2 length-ordering regression that the owner's ruling
+  had accepted.
+- **The `tooling-wave-2026-11-18` orchestration record** arrives under
+  `agentTooling/self/orchestrations/`. Its fence lists features from both agentTooling and
+  mediaCore, so upstream's classifier (`roots.legacy_record_claim`) rates it `ambiguous`.
+  That means it ships with agentTooling and is not moved, which is correct for a cross-repo
+  wave that agentTooling ran.
+- **Manifest `plans` list.** It names each stem once: 01–03 review and audit, six stems in
+  batch order.
+
+The round-3 **security audit** (`audit-report.md`) came back `escalated` on its own. Its
+blocking finding is that if `agentTooling/analysis/roots.py` is replaced by a stub (or a
+symlink to one) that prints `ok`, `orchestration-start.sh` goes on past a stranded record.
+That is a trust issue in upstream code, and it can only be fixed upstream: an edit under
+`agentTooling/` here would be undone by the next pull. This review does not rule on it. The
+owner rules on the audit separately.
 
 ## Fixed in this pass
 
-- **Duplicate plan stem in the manifest.** The `plans` list in
-  `plans/features/pull-agenttooling-pr173/README.md` (uncommitted, written by the runner
-  this round) listed `"02-audit-opus"` twice. `analysis/report.py` (around line 449) loads
-  one usage record per listed stem and does not remove duplicates. The round-2 audit's
-  cost would therefore have been counted twice in this feature's report. I removed the
-  duplicate.
-  - **Cause, for agentTooling's backlog:** `queue_security_audit` in
-    `agentTooling/run-review.sh:440-447` adds the audit stem to `plans[]` without checking
-    whether it is already there. The coordinator had already listed `02-audit-opus` in
-    commit `42704dba`. The conformance path a few lines down (`run-review.sh:504-508`) does
-    check for an existing entry, with a comment saying `set-plans` does not remove
-    duplicates. The audit path needs the same check.
-  - **Missing test:** an agentTooling self-test should assert that `run-review.sh`, run
-    against a manifest that already lists the audit stem, leaves the stem listed once.
-- **Template placeholders left in the manifest.** The same README still had the template's
-  placeholder Plans table (`<one line>`) and the "Levels" and "Contracts across levels"
-  sections. Both of those sections say to delete them when the batch has a single level.
-  I replaced the table with this feature's four real review and audit plans and deleted
-  the two sections.
+- `plans/features/pull-agenttooling-pr173/README.md` → "Plans": removed a stray, empty
+  `| Plan | What it does |` table header that came before the prose line. Added the missing
+  round-3 rows (`03-review-opus`, `03-audit-opus`), so the table matches the fence's
+  `plans` list. Corrected the round-2 rows to their `review/complete/` paths and verdicts.
+- Same file → "Deliberately excluded": the first bullet still said the length-check
+  ordering regression was "accepted by the owner's ruling". That ruling was superseded in
+  round 3. The bullet now says the regression is fixed upstream by
+  `orchestrator-move-length-cap`, arrived with the `b9b7f2d4` re-pull, and was not edited
+  here.
 
 ## Escalated to the next round
 
 None.
+
+For agentTooling's backlog, report only (not this repo's work):
+
+- The round-1/2 non-blocking audit findings: an edited `analysis/roots.py` defeats the
+  classifier, and only a record's last fence is counted.
+- The `run-review.sh` duplicate-stem finding from an earlier round.
+- Round 3's non-blocking items: `HTTPS_PROXY` / `GIT_SSL_NO_VERIFY` in the hook's
+  environment are not checked by the own-push rule, and a stubbed `roots.py` still allows
+  the move of a record that is not stranded. Both behave the same way on the base.
 
 ## Deviations from the brief
 

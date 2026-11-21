@@ -1,257 +1,221 @@
 Verdict: escalated
 
-# Security audit — pull-agenttooling-pr173 (round 02)
+# Security audit — pull-agenttooling-pr173
 
-Head `d354d70d`, base `origin/main` `08fb89f5`. Two throwaway copies were built under the
-pass's scratch directory: `git archive HEAD` → `head/` and `git archive origin/main` → `base/`.
-Each was `git init`-ed and committed, with `origin` set to an https URL. The same payloads
-ran against both. The scripts were run by name from the scratch directory (`attack_move.py`,
-`attack2.py`, `attack_start.py`, `attack_hook_empty.py`). The hook ran as the PreToolUse
-executable with `CLAUDE_PROJECT_DIR=<copy>`, `HOME`/`TMPDIR` in scratch and
-`AGENTTOOLING_PROFILE=cloud` unless a row says `local`. Record-move payloads came from session
-S (`5e5e…0001`), whose record is the vendored `agentTooling/self/orchestrations/zzmine/README.md`.
+Head `HEAD` of `claude/pull-agenttooling-pr173` against base `origin/main` (the vendored
+agentTooling this pull replaces). Both trees were extracted with `git archive` into
+`/tmp/plan-capture.rXBQCL/scratch/{head,base}`, and every input below was run against each
+copy's own hook or script. Nothing in this checkout was run or edited.
 
 ## Rules the diff adds or changes
 
-1. **R1 — orchestrator record move (`allow-repo-commands.sh`, `orchestrator_stranded_own_record`).**
-   For an orchestrator session, the hook approves `git mv agentTooling/self/orchestrations/<slug> plans/orchestrations/<slug>`
-   outright only when the folder's README is a regular file naming the session and
-   `roots.py stranded <slug>` exits 0. Any other line is held to the allowlist. A `git mv` inside a larger line is now denied
-   (`orchestrator_git_allowed` returns False).
-2. **R2 — own-push transport keys (`own_push_config_allows`).** The cloud own-push approval
-   is refused when the effective config holds `remote.<any>.proxy`, or any `http.<var>` /
-   `http.<url>.<var>` whose variable is outside `OWN_PUSH_HTTP_SAFE_VARS`.
-3. **R3 — `orchestration-start.sh` vendored-record refusal (with `roots.py start-refusal` /
-   `legacy_record_claim`).** A start without `--self` of a slug that has a vendored record is refused when the
-   record is stranded (consumer feature only) or ambiguous (consumer and agentTooling features).
-   It now goes on only on exit 0 of `roots.py start-refusal`. Any other exit refuses (fail closed).
+1. **own-push transport keys** (`own_push_config_allows`, cloud profile, any session): the
+   plain own-branch push is no longer approved silently when the effective config holds
+   `remote.<any>.proxy`, or any `http.<var>` / `http.<url>.<var>` whose variable is outside
+   `OWN_PUSH_HTTP_SAFE_VARS`. Prompts instead.
+2. **Orchestrator record move guard** (`orchestrator_stranded_own_record`, orchestrator
+   sessions): the `git mv` of a vendored record is approved outright only if the folder's
+   README is a regular file naming this session and `roots.py stranded <slug>` (run with
+   `-B -E -s`, a 15 s timeout, no symlinked classifier) exits 0. Any other move is the
+   allowlist denial.
+3. **Orchestrator move order / line cap** (`main`, `orchestrator_moves_own_record`,
+   `orchestrator_git_allowed`): the move is judged first, with its own 20000-char cap. A
+   `git mv` on any other line is the allowlist denial, where the base admitted it to the
+   allowlist and let it fall through.
+4. **Legacy record classifier** (`roots.legacy_record_claim`, every record tool, the start
+   and the hook): a vendored record that lists both a consumer feature and an agentTooling
+   one (or a consumer whose name is agentTooling's) is `ambiguous`. That means it is
+   refused, but not counted as stranded.
+5. **Start refusal through the go-ahead** (`orchestration-start.sh`, anyone running a
+   no-`--self` start, and `--self` self-write): the start goes on past a vendored record
+   only on `roots.py start-refusal <slug>` (or `self-write`) exiting 0 **and** printing
+   exactly `ok` (`ROOTS_CLI_GO_AHEAD`). The base refused when `roots.py stranded` exited 0
+   and went on otherwise.
 
-## Inputs tried and results
+## Inputs tried
 
-Legend: `allow[move]` means the hook approved the move outright (`ORCHESTRATOR_MOVE_REASON`).
-`deny[role]` means the orchestrator role or allowlist denial. `deny` means another denial.
-`ask(silent)` means no output, so the human judges.
+Commands that produced the evidence (all in `/tmp/plan-capture.rXBQCL/scratch/`):
 
-### R1 — record move, by record shape (command: the plain move, then `mkdir -p plans/orchestrations && ` + move)
+- `bash setup.sh`: the two `git archive` copies, plus `base-headtests/`, which is the base
+  tree carrying the head's two hook test files.
+- `python3 push_attack.py`: rule 1, calling `own_push_config_allows` from each copy's hook
+  against one crafted repo config.
+- `bash head/agentTooling/self/tests/hook-cloud-profile.sh` and
+  `bash base-headtests/self/tests/hook-cloud-profile.sh`: rule 1 end to end. Each runs the
+  full hook in its fixture with the cloud profile and the Q10 rows.
+- `python3 move_attack.py`: rules 2–4 end to end. Each copy's hook runs in a consumer
+  fixture with the head's/base's `analysis/`, using PreToolUse payloads, cloud profile.
+- `bash head/agentTooling/self/tests/hook-orchestrator-role.sh` and
+  `bash base-headtests/self/tests/hook-orchestrator-role.sh`: rules 2–3 end to end.
+- `bash start_attack.sh`: rules 4–5. Each copy's `orchestration-start.sh <slug>
+  --coordinator` runs in a consumer fixture with crafted legacy records and a tampered
+  `roots.py`.
 
-| record (last fence `features`) | plain: head | plain: base | lead: head | lead: base |
-|---|---|---|---|---|
-| stranded `[{repo: mediaCore}]` | allow[move] | allow[move] | allow[move] | allow[move] |
-| own `[]` | deny[role] | allow[move] | deny[role] | allow[move] |
-| ambiguous `[mediaCore, agentTooling]` | deny[role] | allow[move] | deny[role] | allow[move] |
-| case-variant ambiguous `[MEDIACORE, AgentTooling]` | deny[role] | allow[move] | deny[role] | allow[move] |
-| `[mediaCore, "agentTooling "]` (trailing space) | allow[move] | allow[move] | allow[move] | allow[move] |
-| `features` a dict, not a list | deny[role] | allow[move] | deny[role] | allow[move] |
-| `[mediaCore, "agentTooling"]` (string, not dict) | allow[move] | allow[move] | allow[move] | allow[move] |
-| `[mediaCore, {repo: null}]` | allow[move] | allow[move] | allow[move] | allow[move] |
-| two fences, first stranded, last own | deny[role] | allow[move] | deny[role] | allow[move] |
-| two fences, first stranded, last ambiguous | deny[role] | allow[move] | deny[role] | allow[move] |
-| README a symlink to a stranded README in another folder | deny[role] | deny[role] | deny[role] | deny[role] |
-| classifier `analysis/roots.py` a symlink (stranded record) | deny[role] | allow[move] | deny[role] | allow[move] |
-| classifier missing (stranded record) | deny[role] | allow[move] | deny[role] | allow[move] |
-| `plans/orchestrations` a symlink | deny[role] | deny[role] | deny[role] | deny[role] |
-| destination already exists | deny[role] | deny[role] | deny[role] | deny[role] |
-| classifier empty file, own record | allow[move] | allow[move] | — | — |
-| classifier `sys.exit(0)`, own record | allow[move] | allow[move] | — | — |
-| classifier empty file, ambiguous record | allow[move] | allow[move] | — | — |
-| classifier `sys.exit(0)`, ambiguous record | allow[move] | allow[move] | — | — |
-| ledger names S for `zzmine`, README names session T (stranded) | deny[role] | allow[move] | — | — |
-| ledger names S, folder empty (no README) | deny[role] | allow[move] | — | — |
-| ledger names S, README is a directory | deny[role] | allow[move] | — | — |
-
-### R1 — record move, by command shape (the same results for the stranded, own and ambiguous records unless noted)
-
-| command | stranded: head / base | own: head / base | ambiguous: head / base |
-|---|---|---|---|
-| `git mv SRC DST` | allow[move] / allow[move] | deny[role] / allow[move] | deny[role] / allow[move] |
-| `mkdir -p plans/orchestrations && git mv SRC DST` | allow[move] / allow[move] | deny[role] / allow[move] | deny[role] / allow[move] |
-| `git mv SRC DST ; ls` | deny[role] / deny | deny[role] / deny | deny[role] / deny |
-| `ls && git mv SRC DST` | deny[role] / deny | deny[role] / deny | deny[role] / deny |
-| `git mv SRC DST \| cat` | deny[role] / ask(silent) | deny[role] / ask(silent) | deny[role] / ask(silent) |
-| `git mv SRC DST && git mv SRC DST` | deny[role] / ask(silent) | deny[role] / ask(silent) | deny[role] / ask(silent) |
-| `env git mv …` | deny[role] / deny[role] | same | same |
-| `env env git mv …` | deny[role] / deny[role] | same | same |
-| `/usr/bin/env git mv …` | deny[role] / deny[role] | same | same |
-| `command git mv …` | deny[role] / deny[role] | same | same |
-| `exec -a x git mv …` | deny[role] / deny[role] | same | same |
-| `nohup git mv …` | deny[role] / deny[role] | same | same |
-| `sudo git mv …` | deny[role] / deny[role] | same | same |
-| `bash -c 'git mv …'` | deny[role] / deny[role] | same | same |
-| `echo 'git mv …' \| sh` | deny[role] / deny[role] | same | same |
-| `echo SRC DST \| xargs git mv` | deny[role] / deny[role] | same | same |
-| `find … -name zzmine -exec git mv {} DST \;` | deny[role] / deny[role] | same | same |
-| `/usr/bin/git mv …` | deny[role] / deny[role] | same | same |
-| `"git" mv SRC DST` | allow[move] / allow[move] | deny[role] / allow[move] | deny[role] / allow[move] |
-| `git mv agentTooling/self/orch""estrations/zzmine DST` | allow[move] / allow[move] | deny[role] / allow[move] | deny[role] / allow[move] |
-| `git mv …/\zzmine DST` (backslash) | deny[role] / deny[role] | same | same |
-| `git mv ./SRC DST` | deny[role] / deny[role] | same | same |
-| `git mv SRC/ DST` | deny[role] / deny[role] | same | same |
-| `git mv -- SRC DST` | deny[role] / deny[role] | same | same |
-| `git mv -f SRC DST` | deny[role] / deny[role] | same | same |
-| `git -C . mv SRC DST` | deny[role] / deny[role] | same | same |
-| `git -c a.b=c mv SRC DST` | deny[role] / deny[role] | same | same |
-| `GIT_DIR=x git mv SRC DST` | deny[role] / deny[role] | same | same |
-| `git mv SRC DST > /dev/null` | allow[move] / allow[move] | deny[role] / allow[move] | deny[role] / allow[move] |
-| `git mv SRC DST 2>&1` | allow[move] / allow[move] | deny[role] / allow[move] | deny[role] / allow[move] |
-| `git mv SRC DST > out.txt` | deny[role] / deny[role] | same | same |
-| `git mv …/zzmin? DST` (glob) | deny[role] / deny[role] | same | same |
-| `git mv …/{zzmine,x} DST` (brace) | deny[role] / deny[role] | same | same |
-| `git mv $SRC DST` | deny[role] / deny[role] | same | same |
-| `git mv $(echo SRC) DST` | deny[role] / deny[role] | same | same |
-| `git mv SRC DST⏎ls` | deny[role] / deny[role] | same | same |
-| `mkdir -p plans/orchestrations \|\| git mv …` | deny[role] / deny[role] | same | same |
-| `mkdir -p plans/orchestrations ; git mv …` | deny[role] / deny[role] | same | same |
-| lead twice, then the move | deny[role] / deny[role] | same | same |
-| two leading spaces, then the move | allow[move] / allow[move] | deny[role] / allow[move] | deny[role] / allow[move] |
-| tabs instead of spaces | allow[move] / allow[move] | deny[role] / allow[move] | deny[role] / allow[move] |
-| `cat <<'EOF'⏎x⏎EOF⏎git mv …` | deny[role] / deny[role] | same | same |
-| `git mv SRC DST extra` | deny[role] / deny[role] | same | same |
-| plain move, `AGENTTOOLING_PROFILE=local` | allow[move] / allow[move] | deny[role] / allow[move] | deny[role] / allow[move] |
-
-The rows that differ only in quoting or blanks (`"git"`, `pa""th`, leading space, tabs,
-`> /dev/null`, `2>&1`) are the same move once the shell has read them. Both trees approve them
-only where they approve the plain move.
-
-### R1 — payload fields (stranded record, plain move)
-
-| payload | head | base |
-|---|---|---|
-| `session_id` = T (another session) | ask(silent) | ask(silent) |
-| no `session_id` | ask(silent) | ask(silent) |
-| `session_id` = `""` | ask(silent) | ask(silent) |
-| `session_id` = `7` (int) | ask(silent) | ask(silent) |
-| `cwd` = `<root>/agentTooling` | deny[role] | deny[role] |
-| `cwd` = `<root>/plans` | deny[role] | deny[role] |
-
-### R2 — own-push transport keys (`own_push_config_allows(root)`, imported from each tree's hook; `True` = approval possible)
-
-The global config was an empty file (`GIT_CONFIG_GLOBAL`) and `GIT_CONFIG_NOSYSTEM=1` was set.
-Each key was set with `git config --local` in the copy, then unset.
+### Rule 1: own-push config (`push_attack.py`; allow = approved silently, ask = prompts)
 
 | config / environment | head | base |
 |---|---|---|
-| none | True | True |
-| `http.proxyAuthMethod=anyauth` | True | True |
-| `http.proxy` | False | True |
-| `http.sslVerify=false` | False | True |
-| `http.https://github.com/.proxy` | False | True |
-| `http.https://x.version/.proxy` (URL holding a safe var's name) | False | True |
-| `http.https://github.com.sslVerify` | False | True |
-| `http.https://github.com/.version` | True | True |
-| `http.extraHeader` | False | True |
-| `http.curloptResolve` | False | True |
-| `http.cookieFile` | False | True |
-| `http.sslCAInfo` | False | True |
-| `http.postBuffer` | True | True |
-| `http.someNewVar` | False | True |
-| `remote.origin.proxy` | False | True |
-| `remote..proxy` (empty subsection) | False | True |
-| `remote.x.proxy` | False | True |
-| `remote.origin.proxyAuthMethod=basic` | True | True |
-| `https.proxy` (not a git key) | True | True |
-| `HTTP.Proxy` (case) | False | True |
-| `core.sshCommand` | False | False |
-| `include.path` → file with `[http] proxy` | False | False |
-| env `GIT_CONFIG_PARAMETERS='http.proxy'=…` | False | True |
-| env `GIT_CONFIG_COUNT=1`, `http.sslVerify=false` | False | True |
-| env `HTTPS_PROXY=http://evil` | True | True |
-| env `GIT_SSL_NO_VERIFY=1` | True | True |
-| env `GIT_PROXY_SSL_CAINFO=/tmp/x` | True | True |
+| pristine (cloud's own `credential.interactive`, two `url.*.insteadof`) | allow | allow |
+| `http.sslVerify=false` | ask | allow |
+| `[HTTP] SSLVERIFY=false` (case) | ask | allow |
+| `http.https://a.postbuffer.example/.sslVerify` (safe word inside url) | ask | allow |
+| `http.x.postbuffer.sslVerify` (subsection ending in a safe var) | ask | allow |
+| `http..sslVerify` (empty subsection) | ask | allow |
+| old-style `[http.github.com] sslVerify` | ask | allow |
+| `[http "a\npostbuffer"]` (escaped newline in subsection) | ask | allow |
+| `http.<url>.postBuffer` (kept var) | allow | allow |
+| `http.proxyAuthMethod=basic` (kept var, cloud's own) | allow | allow |
+| `http.version`, bare `http.postBuffer` (kept vars) | allow | allow |
+| `http.sslVerify` with no value (bool true) | ask | allow |
+| `http.proxy` | ask | allow |
+| `http.<url>.proxy` | ask | allow |
+| `remote.origin.proxy` | ask | allow |
+| `remote..proxy` (empty subsection) | ask | allow |
+| `remote.origin.proxyAuthMethod` (not a proxy) | allow | allow |
+| `http.curloptResolve` | ask | allow |
+| `http.extraHeader` | ask | allow |
+| `http.followRedirects` | ask | allow |
+| `http.sslVerify` reached through `include.path` | ask | ask (include.path already listed) |
+| `core.gitProxy` (git:// only; origin is https) | allow | allow |
+| `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.sslVerify` in the hook's env | ask | allow |
+| `HTTPS_PROXY` set in the hook's env | allow | allow |
+| `GIT_SSL_NO_VERIFY=1` set in the hook's env | allow | allow |
+| hook-cloud-profile.sh Q10: 26 transport keys from the repo config, plus `http.<url>.sslVerify` from a global config only (full hook) | prompt on all 27 (suite: all checks passed) | ALLOW on all 27 (the suite's only failures) |
+| hook-cloud-profile.sh Q10: the 7 kept vars, and the restored fixture | ALLOW | ALLOW |
 
-### R3 — `orchestration-start.sh zzmine` (local profile, `CLAUDE_CODE_SESSION_ID`=S, run from the copy's root)
+### Rules 2–4: orchestrator move (`move_attack.py`, full hook, session S)
 
-"went on" means the script wrote `plans/orchestrations/zzmine/README.md`.
+`deny(allowlist)` is the orchestrator allowlist denial. `allow(move)` is
+`ORCHESTRATOR_MOVE_REASON`.
 
-| vendored record / classifier | head | base |
+| input | head | base |
 |---|---|---|
-| stranded | refused (git mv text) | refused (git mv text) |
-| own `[]` | went on | went on |
-| ambiguous | refused (ambiguous text) | refused (git mv text) |
-| case-variant ambiguous | refused (ambiguous text) | refused (git mv text) |
-| `[mediaCore, "agentTooling "]` | refused (git mv text) | refused (git mv text) |
+| S's stranded record, `git mv …/wave plans/orchestrations/wave` alone | allow(move) | allow(move) |
+| the printed remedy `mkdir -p plans/orchestrations && git mv …` (no `plans/`) | allow(move) | allow(move) |
+| record listing only an agentTooling feature (shipped shape) | deny(allowlist) | allow(move) |
+| record with `features: []` | deny(allowlist) | allow(move) |
+| ambiguous record (consumer + agentTooling) | deny(allowlist) | allow(move) |
+| stranded first fence, ambiguous last fence | deny(allowlist) | allow(move) |
+| agentTooling first fence, stranded last fence | allow(move) | allow(move) |
+| the only record names another session; S sends the move | ask(silent) | ask(silent) |
+| another session sends the move | ask(silent) | ask(silent) |
+| no `session_id` / `""` / `7` | ask(silent) | ask(silent) |
+| a delegate of S (`agent_id` set) | allow(move) | allow(move) |
+| move `&& ls` / `ls &&` move / move `; ls` | deny(allowlist) | deny |
+| move `\| cat` | deny(allowlist) | ask(silent) |
+| move `&&` move | deny(allowlist) | ask(silent) |
+| move `2>&1` / move `> /dev/null` | allow(move) | allow(move) |
+| move `> out.txt` / move `# c` | deny(allowlist) | deny(allowlist) |
+| quoted operands, `orch""estrations` split quote | allow(move) | allow(move) |
+| backslash, glob `wav?`, brace group `{wave,x}`, `$S`, `$(echo wave)` in an operand | deny(allowlist) | deny(allowlist) |
+| `env` / `command` / `/usr/bin/git` / `GIT_DIR=x` / `git -c core.hooksPath=…` / `git mv -k` / `nohup` / `sudo` / `xargs` / `bash -c` / heredoc into `bash` / a second line | deny(allowlist) | deny(allowlist) |
+| move padded with spaces to 4097 chars (cap is 20000) | allow(move) | allow(move) |
+| move plus 100000 spaces | deny(allowlist) | deny(allowlist) |
+| cwd `consumer/agentTooling`; cwd null | deny(allowlist) | deny(allowlist) |
+| `roots.py` emptied (exit 0), record not stranded | allow(move) | allow(move) |
+| `roots.py` stub `sys.exit(1)`, record stranded | deny(allowlist) | allow(move) |
+| `roots.py` sleeps 30 s (timeout) | deny(allowlist) | allow(move) |
+| `roots.py` a symlink to an exit-0 stub, record not stranded | deny(allowlist) | allow(move) |
+| planted `routing.py` at the consumer root (the classifier's cwd), record not stranded | deny(allowlist) | allow(move) |
+| record README a symlink to S's stranded record outside the folder | deny(allowlist) | deny(allowlist) |
+| ledger-only session moves another session's stranded record (O39) | deny(allowlist) | allow(move) |
+| ledger-only session moves an empty folder (O40) | deny(allowlist) | allow(move) |
+| fixture restored: S's stranded record, move alone | allow(move) | allow(move) |
+| hook-orchestrator-role.sh (head's suite) | all checks passed | FAILED, only on 16 H28 rows (O18 shipped record ALLOW, ambiguous ALLOW, O39/O40 ledger-only ALLOW, move `\| cat` and move `&&` move silent, move `&& ls`/`ls &&` move a deny with another reason), each one where the base is more permissive or the same deny |
+
+### Rules 4–5: `orchestration-start.sh <slug> --coordinator` (`start_attack.sh`)
+
+`refused` = exit 1, nothing written. `went on` = exit 0, record written.
+
+| vendored record / tamper | head | base |
+|---|---|---|
+| stranded (`repo: consumer`) | refused | refused |
+| stranded, repo spelled `CONSUMER` | refused | refused |
+| ambiguous (consumer + agentTooling) | refused | refused |
+| ambiguous, `AGENTTOOLING` upper-case | refused | refused |
+| agentTooling's own | went on | went on |
+| `features: []` | went on | went on |
 | `features` a dict | went on | went on |
-| `[mediaCore, "agentTooling"]` | refused (git mv text) | refused (git mv text) |
-| `[mediaCore, {repo: null}]` | refused (git mv text) | refused (git mv text) |
-| two fences, last own | went on | went on |
-| two fences, last ambiguous | refused (ambiguous text) | refused (git mv text) |
-| README a symlink to a stranded README | refused (git mv text) | refused (git mv text) |
-| folder with no README | went on | went on |
-| README is a directory | went on | went on |
-| `<slug>` is a file, not a folder | went on | went on |
-| folder a symlink to a stranded folder | refused (git mv text) | refused (git mv text) |
-| README undecodable bytes | went on | went on |
-| shipped `tooling-wave-2026-11-17` | went on | went on |
-| shipped `program-ab` | went on | went on |
-| shipped `hook-hardening-wave` | went on | went on |
-| **classifier `roots.py` an empty file — stranded record** | **went on** | refused (git mv text) |
-| **classifier empty — ambiguous record** | **went on** | refused (git mv text) |
-| **classifier empty — own record** | **went on** | refused (git mv text) |
-| **classifier `import sys; sys.exit(0)` — stranded record** | **went on** | refused (git mv text) |
-| **classifier `sys.exit(0)` — ambiguous record** | **went on** | refused (git mv text) |
-| **classifier `sys.exit(0)` — own record** | **went on** | refused (git mv text) |
-| classifier `sys.exit(1)` — stranded / ambiguous / own | refused (classifier failed) ×3 | went on ×3 |
-| classifier a syntax error — stranded / ambiguous / own | refused (classifier failed) ×3 | went on ×3 |
-| classifier missing — stranded / ambiguous / own | refused (classifier failed) ×3 | went on ×3 |
-| classifier a symlink to the real file — stranded / ambiguous / own | refused (git mv) / refused (ambiguous) / went on | refused (git mv) ×2 / went on |
+| a non-string `repo` plus a consumer feature | refused | refused |
+| empty folder | went on | went on |
+| unparseable fence | went on | went on |
+| stranded first fence, ambiguous last fence | refused | refused |
+| README a symlink to a stranded record elsewhere | refused | refused |
+| the slug folder a symlink to a stranded record folder | refused | refused |
+| stranded record, `roots.py` = `raise SystemExit("boom")` | refused | **went on** |
+| stranded record, `roots.py` = `sys.exit(1)` | refused | **went on** |
+| stranded record, `roots.py` emptied (exit 0, prints nothing) | refused | refused |
+| stranded record, `roots.py` = `print("ok")` | **went on** | refused |
+| stranded record, `roots.py` = `print("ok"); sys.exit(1)` | refused | **went on** |
+| stranded record, `roots.py` = `print("ok ")` | refused | refused |
+| stranded record, `roots.py` missing | refused | **went on** |
+| stranded record, `roots.py` a symlink to a `print("ok")` stub | **went on** | refused |
+| stranded record, a `routing.py` planted at the consumer root (run from there) | refused | refused |
+| stranded record, `PYTHONPATH` naming a planted `routing.py` | refused | refused |
 
 ## Findings
 
 | class | input | head result | base result | evidence |
 |---|---|---|---|---|
-| blocking | `orchestration-start.sh zzmine` with a stranded (or ambiguous) vendored record at `agentTooling/self/orchestrations/zzmine/` and `agentTooling/analysis/roots.py` truncated to an empty file | went on: wrote `plans/orchestrations/zzmine/README.md`, rc 0 | refused with the `git mv` text, rc 1 | `attack_start.py`: `./agentTooling/orchestration-start.sh zzmine` from `<scratch>/head` and `<scratch>/base`, `AGENTTOOLING_PROFILE=local`, `CLAUDE_CODE_SESSION_ID`=S, after `open(roots.py,"w").close()` |
-| blocking | the same start with `roots.py` replaced by `import sys; sys.exit(0)` (any classifier that exits 0 without printing) | went on, rc 0 | refused with the `git mv` text, rc 1 | `attack_start.py`, same command on both copies |
-| non-blocking | own-push approval with `HTTPS_PROXY` / `http_proxy` / `ALL_PROXY`, `GIT_SSL_NO_VERIFY`, `GIT_SSL_CAINFO` / `GIT_PROXY_SSL_CAINFO` in the hook's environment (pre-existing silent allow) | `own_push_config_allows` True | True | `attack2.py`: `own_push_config_allows(<copy>)` imported from each tree's hook, with the variable set |
-| non-blocking | record move of a record whose last fence lists `{"repo": "agentTooling "}` (trailing space) or `"agentTooling"` as a bare string beside a consumer feature (pre-existing silent allow) | allow[move] | allow[move] | `attack_move.py`: kinds `space_amb` and `stranded_dict_junk`, plain move from S on both copies |
-| non-blocking | record move with `analysis/roots.py` empty or `sys.exit(0)`, own or ambiguous record (pre-existing silent allow) | allow[move] | allow[move] | `attack_hook_empty.py`: the plain move from S on both copies |
+| blocking | a stranded vendored record, with `agentTooling/analysis/roots.py` replaced by `print("ok")`; then `orchestration-start.sh <slug> --coordinator` | went on (exit 0; record written to `plans/orchestrations/<slug>`) | refused (exit 1; `python3 -B roots.py stranded` exits 0, so the base refuses with LEGACY_RECORD_REFUSAL) | `bash /tmp/plan-capture.rXBQCL/scratch/start_attack.sh`, row `stub:print-ok`. Each copy's own `orchestration-start.sh` and `roots.py` run in `start-work/{head,base}/consumer` |
+| blocking | the same, with `roots.py` a symlink to a `print("ok")` stub outside the tree | went on | refused | `start_attack.sh`, row `stub:symlink-to-stub` (same command on each copy) |
+| non-blocking | own-branch push with `HTTPS_PROXY` set in the hook's environment | allow | allow | `python3 /tmp/plan-capture.rXBQCL/scratch/push_attack.py`, row `env HTTPS_PROXY`, both copies' `own_push_config_allows` |
+| non-blocking | own-branch push with `GIT_SSL_NO_VERIFY=1` set in the hook's environment | allow | allow | `push_attack.py`, row `env GIT_SSL_NO_VERIFY`, both copies |
+| non-blocking | orchestrator move of a record that is not stranded, with `roots.py` emptied (exit 0) | allow(move) | allow(move) | `python3 /tmp/plan-capture.rXBQCL/scratch/move_attack.py`, row `roots.py stub exit 0, record not stranded`, both copies' hooks |
 
 ## Non-blocking findings
 
-1. **Pre-existing silent allow: transport set through the environment rather than through config (R2).**
-   R2 refuses `http.proxy`, `http.sslVerify` and `http.sslCAInfo` set in config. On both head and base,
-   `own_push_config_allows` still returns True when the hook's environment sets
-   `HTTPS_PROXY`/`https_proxy`/`ALL_PROXY` (curl's proxy), `GIT_SSL_NO_VERIFY` or
-   `GIT_SSL_CAINFO`/`GIT_PROXY_SSL_CAINFO`. These have the same effect as the keys R2 refuses.
-   *Instead:* the own-push approval should prompt when any of these is non-empty, as it already
-   does for `GIT_ASKPASS`/`GIT_SSH*`. If the cloud container sets a proxy variable itself, the
-   check should allow only that exact value. File in `plans/BACKLOG.md`.
-2. **Pre-existing silent allow: the claim classifier does not normalise `repo` (R1, R3).**
-   A fence listing `{"repo": "agentTooling "}` (with whitespace) or the bare string `"agentTooling"`
-   beside a consumer feature is classed stranded. The hook then approves the `git mv` of what
-   may be an agentTooling wave, and the start names the `git mv`. Base and head behave the same.
-   *Instead:* `legacy_record_claim` should strip whitespace from `repo`, and should class a
-   record as ambiguous (or refuse it) when a feature entry is not a dict or names an
-   unrecognised repo. File in `plans/BACKLOG.md`.
-3. **Pre-existing silent allow: the hook's classifier call treats a bare exit 0 as "stranded" (R1).**
-   With `analysis/roots.py` empty, or exiting 0 without output, the hook approves the move of
-   S's own or ambiguous record. The base approved those moves with no classifier at all.
-   *Instead:* `roots.py stranded` should print a fixed token on success, and the hook should
-   require that token on stdout as well as exit 0. That way a truncated or stubbed classifier fails
-   closed. File in `plans/BACKLOG.md`. Blocking finding B1 below has the same root cause.
+1. **Pre-existing silent allow: proxy/TLS environment variables.** Input: the cloud
+   own-branch push while the hook's environment sets `HTTPS_PROXY`/`https_proxy`/`ALL_PROXY`,
+   or `GIT_SSL_NO_VERIFY`/`GIT_SSL_CAINFO`/`GIT_SSL_CERT`. Head allows, and the base allows
+   too. Rule 1 now treats `http.proxy` and `http.sslVerify` in config as moving or weakening
+   the transport, but git reads the same settings from these variables, and
+   `OWN_PUSH_HELPER_ENVS` does not list them. What the rule should do instead: prompt when
+   any `GIT_SSL_*` or `GIT_CURL_*` variable is set, and when a proxy variable differs from
+   the container's own (the cloud container sets a proxy legitimately, so a blanket prompt
+   on `HTTPS_PROXY` would prompt on every push). These variables come from the hook's own
+   environment, not from anything the agent writes, so the exposure is low.
+2. **Pre-existing silent allow: the orchestrator move trusts an edited classifier.** Input:
+   `agentTooling/analysis/roots.py` emptied (exits 0), with S's own record not stranded (it
+   lists only an agentTooling feature); then the move alone. Head allows(move), and the base
+   allows(move) too, since it ran no classifier. What the rule should do instead: run the
+   classifier only when `analysis/roots.py`, `analysis/routing.py` and
+   `hooks/shared_rules.py` are unmodified against `HEAD` (`git diff --quiet HEAD -- …`), so a
+   working-tree edit is no approval. Alternatively, read the record's last fence in the hook
+   itself (it already parses fences through `orchestrator_role`) instead of running a
+   repo-resident script. Same root cause as the blocking finding below.
 
 ## Blocking findings
 
-### B1 — `orchestration-start.sh` goes on when the classifier exits 0 without classifying
+### B1: a `roots.py` stub printing `ok` lets the start go on past a stranded record
 
-**Reproduce** (in a consuming-repo copy, local profile, `CLAUDE_CODE_SESSION_ID` set to a valid id):
+**Reproduce.** In a consuming repo with a stranded legacy record at
+`agentTooling/self/orchestrations/<slug>/README.md` (last fence lists a feature whose `repo`
+is the consumer's name), replace `agentTooling/analysis/roots.py` with the single line
+`print("ok")`, or make it a symlink to such a file. Then run
+`./agentTooling/orchestration-start.sh <slug> --coordinator --session <id>`:
 
-1. Create `agentTooling/self/orchestrations/zzmine/README.md` with a fence
-   `{"slug":"zzmine","session":"<id>","features":[{"slug":"f","repo":"mediaCore"}]}`.
-   This is a stranded record, which the start must refuse with the `git mv`.
-2. Truncate `agentTooling/analysis/roots.py` to zero bytes. Replacing it with
-   `import sys; sys.exit(0)` has the same effect.
-3. Run `./agentTooling/orchestration-start.sh zzmine`.
+- **Head:** exits 0 and writes `plans/orchestrations/<slug>/README.md`, so the new record
+  shadows the stranded one, which the refusal exists to prevent.
+- **Base:** refuses with `LEGACY_RECORD_REFUSAL`. Its polarity was "exit 0 from
+  `roots.py stranded` means refuse", so this stub refuses there.
 
-The head writes `plans/orchestrations/zzmine/README.md` and exits 0. The base refuses with the
-`git mv` text, because its test was "`roots.py stranded` exits 0 → refuse". The same is true for
-an ambiguous record and for an own record. The head's fail-closed change covers a non-zero exit, but it
-reads a bare exit 0, with nothing printed, as "may go on". A classifier that is empty, stubbed, or
-lacks the `start-refusal` branch but exits 0 therefore turns the refusal into a go-on. The base
-refused in that case.
+Reproduced by `bash /tmp/plan-capture.rXBQCL/scratch/start_attack.sh` (rows
+`stub:print-ok`, `stub:symlink-to-stub`).
 
-**What the rule should do instead:** go on only on a positive answer the classifier cannot give
-by accident. For example, `roots.py start-refusal <slug>` prints a fixed token such as `ok` on
-stdout when the start may go on, and `orchestration-start.sh` checks
-`start_rc == START_OK_RC && start_refusal == <token>`. Anything else refuses, including exit 0
-with empty output: the refusal text when one was printed, the "could not be classified" text
-otherwise. Add a test row to `self/tests/orchestration-records-in-repo.sh` with an empty and an
-exit-0 `roots.py` in front of a stranded record.
+**Context.** This is a regression only by input-for-input comparison. The opposite stubs
+(`sys.exit(1)`, a crash, a missing `roots.py`, `print("ok"); sys.exit(1)`) went on under the
+base and are refused under the head. Overall tamper resistance improved, but the owner's
+rule counts each input on its own. The head's own docs (`orchestration-start.sh`,
+`roots.py`, `hooks/README.md`) say "an emptied or stubbed roots.py … refuses", which holds
+only for a stub that does not print the token. The same gap applies to the `--self`
+`self-write` go-ahead (stub `print("ok")` writes on both copies, so no regression there).
+
+**What the rule should do instead.** Do not take a go-ahead from a classifier the session
+can change without a commit. Before asking `roots.py start-refusal` (and `self-write`), the
+start should check that the classifier's files are unmodified against `HEAD`:
+`git -C "$REPO_DIR" diff --quiet HEAD -- <vendored analysis/roots.py, analysis/routing.py,
+hooks/shared_rules.py>`, with an untracked or symlinked `roots.py` also refused. It should
+refuse, naming the modified file, when they are not. A commit is a write the human approves
+and an edit is not (`self/features/hook-audit-gaps/NOTES.md` ruling 1). With that check,
+every stub row above refuses on the head, and the base's refusals are kept.

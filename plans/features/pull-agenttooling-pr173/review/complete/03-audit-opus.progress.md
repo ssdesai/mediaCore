@@ -1,0 +1,10 @@
+write: /tmp/plan-capture.rXBQCL/scratch/setup.sh
+write: /tmp/plan-capture.rXBQCL/scratch/push_attack.py
+write: /tmp/plan-capture.rXBQCL/scratch/start_attack.sh
+write: /tmp/plan-capture.rXBQCL/scratch/move_attack.py
+edit: /tmp/plan-capture.rXBQCL/scratch/move_attack.py
+write: /home/user/mediaCore/plans/features/pull-agenttooling-pr173/audit-report.md
+edit: /home/user/mediaCore/plans/features/pull-agenttooling-pr173/audit-report.md
+edit: /home/user/mediaCore/plans/features/pull-agenttooling-pr173/audit-report.md
+edit: /home/user/mediaCore/plans/features/pull-agenttooling-pr173/audit-report.md
+edit: /home/user/mediaCore/plans/features/pull-agenttooling-pr173/audit-report.md
