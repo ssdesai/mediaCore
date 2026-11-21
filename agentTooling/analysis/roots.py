@@ -170,7 +170,7 @@ ORCHESTRATIONS_CONSUMER_PARTS = tuple(shared_rules.ORCHESTRATIONS_CONSUMER_REL.s
 # from the consumer. A record there is moved, never read in place.
 LEGACY_RECORD_MOVE = shared_rules.LEGACY_RECORD_MOVE
 LEGACY_RECORD_REFUSAL = shared_rules.LEGACY_RECORD_REFUSAL
-# A vendored record that is NOT stranded is agentTooling's own, shipped with the subtree
+# A vendored record neither stranded nor ambiguous is agentTooling's own, shipped with the subtree
 # (a consumer's `agentTooling/self/orchestrations/` always holds them): never moved.
 OWN_RECORD_NOTE = (
     "no record at " + shared_rules.ORCHESTRATIONS_CONSUMER_REL + "/{slug}; agentTooling/"
@@ -193,6 +193,24 @@ VENDORED_SELF_WRITE_REFUSAL = (
     + "/{slug}/: run the same command without --self (an agentTooling feature is listed there "
     "with repo=agentTooling)"
 )
+# A vendored record whose last fence cannot say who ran it: it lists a feature of the consuming
+# repo AND one of agentTooling (an agentTooling cross-repo wave, or a consumer-run mixed wave
+# left in the vendored copy, byte for byte the same), or the consuming repo's name is
+# agentTooling's. Neither the `git mv` nor "agentTooling's own" is safe to state, so it names
+# both readings; a start of that slug is refused, as a stranded one is
+# (self/features/pull-round-cleanups/, audit round 1).
+AMBIGUOUS_RECORD_REFUSAL = (
+    "the record `{slug}` at agentTooling/" + shared_rules.ORCHESTRATIONS_SELF_REL + "/{slug} "
+    "lists features of both agentTooling and this repo, so it cannot say which repo ran it. If "
+    "agentTooling ran it (a cross-repo wave), it ships with agentTooling and stays where it is: "
+    "read it with --self from an agentTooling checkout, and start any new orchestration here "
+    "under another slug. If this repo ran it before records moved, move it: "
+    + shared_rules.LEGACY_RECORD_MOVE
+)
+# What legacy_record_claim answers for a vendored record
+CLAIM_STRANDED = "stranded"
+CLAIM_AMBIGUOUS = "ambiguous"
+CLAIM_OWN = "own"
 # The features list a record's last fence carries, and a feature's repo key
 ORCH_FEATURES_KEY = shared_rules.FEATURES_KEY
 ORCH_FEATURE_REPO_KEY = shared_rules.FEATURE_REPO_KEY
@@ -202,9 +220,19 @@ CLI_ARGC = 3
 CLI_STRANDED_RC = 0
 CLI_NOT_STRANDED_RC = 1
 CLI_USAGE_RC = 2
-# ... and into the write guard: `python3 roots.py self-write <slug>` exits 0 when a `--self`
-# record write is allowed here, else prints VENDORED_SELF_WRITE_REFUSAL and exits 1 — so a
-# crash (also 1, printing no text) fails closed in orchestration-start.sh
+# ... and into the start's decision: `python3 roots.py start-refusal <slug>` exits 0, printing
+# CLI_GO_AHEAD, when a no-`--self` start of <slug> may go on past the vendored record; else it
+# prints the refusal and exits 1. orchestration-start.sh refuses on anything but exit 0 with
+# exactly CLI_GO_AHEAD — a crash, or an emptied or stubbed roots.py that exits 0 printing
+# nothing, included (self/features/orchestrator-move-length-cap/).
+CLI_GO_AHEAD = shared_rules.ROOTS_CLI_GO_AHEAD
+CLI_START_REFUSAL = "start-refusal"
+CLI_START_OK_RC = 0
+CLI_START_REFUSED_RC = 1
+# ... and into the write guard: `python3 roots.py self-write <slug>` exits 0 printing
+# CLI_GO_AHEAD when a `--self` record write is allowed here, else prints
+# VENDORED_SELF_WRITE_REFUSAL and exits 1 — so a crash (also 1, printing no text), or an exit 0
+# without the go-ahead, fails closed in orchestration-start.sh
 CLI_SELF_WRITE = "self-write"
 CLI_SELF_WRITE_OK_RC = 0
 CLI_SELF_WRITE_REFUSED_RC = 1
@@ -247,30 +275,66 @@ def orchestration_home_repo(self_mode):
     return repo_display_name(corpus_identity(features_root(self_mode)))
 
 
-def is_stranded_record(slug):
-    """True when the legacy vendored record `slug` is the consuming repo's own: its LAST fence
-    lists a feature whose `repo` equals the consuming repo's name, case-insensitively (the
-    name `orchestration_home_repo(False)` gives). A record with no such feature — agentTooling's
-    shipped ones, a record with no features yet — is not: it carries no claim, so it is left
-    where it is. The one classifier every record tool and orchestration-start.sh uses."""
+def legacy_record_claim(slug):
+    """Whose the legacy vendored record `slug` is, by its LAST fence's `features[].repo`, each
+    compared case-insensitively with the consuming repo's name (`orchestration_home_repo(False)`)
+    and agentTooling's (`orchestration_home_repo(True)`). The ONE classifier: every record tool,
+    `roots.py stranded` and orchestration-start.sh derive from it.
+
+    - `CLAIM_STRANDED`: it lists a consumer feature and no agentTooling one — the consumer's own,
+      moved with the `git mv`.
+    - `CLAIM_AMBIGUOUS`: it lists both (an agentTooling cross-repo wave such as
+      `tooling-wave-2026-11-17` reads exactly like a consumer-run mixed wave), or the consumer's
+      name is agentTooling's and it lists that name. No `git mv` is prescribed — moving an
+      agentTooling wave deletes shipped code from the consumer's `agentTooling/` — but a start of
+      the slug is refused all the same (self/features/pull-round-cleanups/).
+    - `CLAIM_OWN`: anything else — agentTooling's shipped records, a record with no consumer
+      feature, an unreadable fence or a `features` that is no list."""
     from routing import parse_manifest
     try:
         record = parse_manifest(legacy_orchestrations_root() / slug / shared_rules.RECORD_NAME)
     except (OSError, ValueError):
-        return False
+        return CLAIM_OWN
     features = record.get(ORCH_FEATURES_KEY) if isinstance(record, dict) else None
     if not isinstance(features, list):
-        return False
+        return CLAIM_OWN
+    repos = {str(f.get(ORCH_FEATURE_REPO_KEY, "")).lower() for f in features if isinstance(f, dict)}
     home = orchestration_home_repo(False).lower()
-    return any(isinstance(f, dict) and str(f.get(ORCH_FEATURE_REPO_KEY, "")).lower() == home
-               for f in features)
+    tooling = orchestration_home_repo(True).lower()
+    if home not in repos:
+        return CLAIM_OWN
+    if home == tooling or tooling in repos:
+        return CLAIM_AMBIGUOUS
+    return CLAIM_STRANDED
+
+
+def is_stranded_record(slug):
+    """True when `legacy_record_claim(slug)` is `CLAIM_STRANDED`: only then is the `git mv` the
+    remedy. Also `python3 roots.py stranded <slug>`, exit 0 for stranded."""
+    return legacy_record_claim(slug) == CLAIM_STRANDED
+
+
+def legacy_start_refusal(slug):
+    """The refusal for a no-`--self` start of `slug` that has a legacy vendored record, or None:
+    `LEGACY_RECORD_REFUSAL` (the `git mv`) when stranded, `AMBIGUOUS_RECORD_REFUSAL` when
+    ambiguous, None when agentTooling's own (the start goes on and writes the consumer's
+    `plans/orchestrations/<slug>/`) or when there is no such record."""
+    if not (legacy_orchestrations_root() / slug).exists():
+        return None
+    claim = legacy_record_claim(slug)
+    if claim == CLAIM_STRANDED:
+        return LEGACY_RECORD_REFUSAL.format(slug=slug)
+    if claim == CLAIM_AMBIGUOUS:
+        return AMBIGUOUS_RECORD_REFUSAL.format(slug=slug)
+    return None
 
 
 def record_refusal(self_mode, slug):
     """The refusal text for a record tool run without `--self`, or None. In order: agentTooling's
     own checkout (`STANDALONE_REFUSAL`); `slug` with no record in the consuming repo but one at
-    the legacy vendored place — `LEGACY_RECORD_REFUSAL` (the `git mv`) when stranded,
-    `OWN_RECORD_NOTE` when it is agentTooling's own. One message for every tool."""
+    the legacy vendored place — `legacy_start_refusal`'s text (`LEGACY_RECORD_REFUSAL`, the
+    `git mv`, when stranded; `AMBIGUOUS_RECORD_REFUSAL` when ambiguous), else `OWN_RECORD_NOTE`
+    when it is agentTooling's own. One message for every tool."""
     if self_mode:
         return None
     standalone = standalone_refusal(self_mode)
@@ -279,8 +343,7 @@ def record_refusal(self_mode, slug):
     if (orchestrations_root(False) / slug).exists():
         return None
     if (legacy_orchestrations_root() / slug).exists():
-        template = LEGACY_RECORD_REFUSAL if is_stranded_record(slug) else OWN_RECORD_NOTE
-        return template.format(slug=slug)
+        return legacy_start_refusal(slug) or OWN_RECORD_NOTE.format(slug=slug)
     return None
 
 
@@ -400,15 +463,27 @@ def worktree_primary(checkout):
 if __name__ == "__main__":
     import sys
 
-    # `roots.py stranded <slug>`: exit 0 when the legacy vendored record is stranded, and
-    # `roots.py self-write <slug>`: exit 0 when a `--self` record write is allowed here
-    # (orchestration-start.sh asks these instead of re-implementing either decision)
-    if len(sys.argv) != CLI_ARGC or sys.argv[1] not in (CLI_STRANDED, CLI_SELF_WRITE):
+    # `roots.py stranded <slug>`: exit 0 when the legacy vendored record is stranded;
+    # `roots.py start-refusal <slug>`: exit 0 printing CLI_GO_AHEAD when a no-`--self` start
+    # may go on, else the refusal;
+    # `roots.py self-write <slug>`: exit 0 printing CLI_GO_AHEAD when a `--self` record write
+    # is allowed here
+    # (orchestration-start.sh asks these instead of re-implementing any of the decisions)
+    if len(sys.argv) != CLI_ARGC or sys.argv[1] not in (CLI_STRANDED, CLI_START_REFUSAL,
+                                                        CLI_SELF_WRITE):
         sys.exit(CLI_USAGE_RC)
+    if sys.argv[1] == CLI_START_REFUSAL:
+        refusal = legacy_start_refusal(sys.argv[2])
+        if refusal:
+            print(refusal)
+            sys.exit(CLI_START_REFUSED_RC)
+        print(CLI_GO_AHEAD)
+        sys.exit(CLI_START_OK_RC)
     if sys.argv[1] == CLI_SELF_WRITE:
         refusal = record_write_refusal(True, sys.argv[2])
         if refusal:
             print(refusal)
             sys.exit(CLI_SELF_WRITE_REFUSED_RC)
+        print(CLI_GO_AHEAD)
         sys.exit(CLI_SELF_WRITE_OK_RC)
     sys.exit(CLI_STRANDED_RC if is_stranded_record(sys.argv[2]) else CLI_NOT_STRANDED_RC)

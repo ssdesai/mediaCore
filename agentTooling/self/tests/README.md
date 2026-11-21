@@ -1951,7 +1951,14 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   `[branch ""]`), while an empty one, `credential.interactive=false` and
   `credential.<sub>.username` approve; each mutation is undone and no helper runs, and `hook_env` hands the hook no
   inherited `GIT_ASKPASS`/`SSH_ASKPASS` and no system or global git config (a row sets its own), so a developer's
-  own credential helper or IDE askpass does not turn the approve rows red; the T rows hold the same shapes end to end under
+  own credential helper or IDE askpass does not turn the approve rows red; **Q10 is
+  own-push-transport-keys'**: one row per transport key family, mixed case, bare and
+  `http.<url>.` (`http.proxy`, `remote.<any>.proxy`, `sslVerify`, `curloptResolve`,
+  `sslCAInfo`, `sslCAPath`, `sslCert`, `sslKey`, `cookieFile`, `saveCookies`, `proxySSL*`,
+  `sslBackend`, `extraHeader`, `emptyAuth`, `followRedirects`, `pinnedPubkey`, an unknown
+  `http.*` variable, and a url-scoped `sslVerify` in the global config only) is a prompt,
+  while `http.proxyAuthMethod` (the cloud sets it) and the other kept tuning variables
+  approve; the T rows hold the same shapes end to end under
   both profiles, with the cost rows (a comment past an opener read as commands) and the rows that stay prompts
   (the same run-on line outside a substitution, a certain comment); H14 gains E2 and E3 lines;
   **round 3's are H17 and the T table's round-3 block** (`escalations/02-review-opus.md`, `02-audit-opus.md`
@@ -3119,7 +3126,18 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   session; a consumer ledger line names the `plans/orchestrations/` folder of its slug (the
   consumer root when none exists); the real start's ledger line holds the role for a deleted
   uncommitted record; a standalone checkout reads neither its parent's records nor their
-  history. No model, no network.
+  history. R12 (`../features/pull-round-cleanups/`): a legacy record whose last fence lists a
+  consumer feature AND an agentTooling one (any case) is ambiguous — `roots.py stranded` says no,
+  and `report.py`, `manifest.py` and `orchestration-start.sh` all refuse it with
+  `roots.AMBIGUOUS_RECORD_REFUSAL` — while a consumer-only record still draws the `git mv` from
+  the tools and the start; `roots.py start-refusal` exits 0 for an agentTooling-own record and
+  for none, and the start fails closed when `roots.py` cannot run. R13: in a consumer whose name
+  is agentTooling's, a record listing that name is refused at start with the ambiguous text, and
+  one listing only another repo blocks nothing. R14 (`../features/orchestrator-move-length-cap/`):
+  `roots.py start-refusal` goes ahead by exiting 0 printing exactly
+  `shared_rules.ROOTS_CLI_GO_AHEAD`; with `roots.py` emptied, or a stub that exits 0 printing
+  nothing or another line, the start past a vendored record refuses (1) and writes nothing.
+  No model, no network.
 - `consumer-record-guard.sh` — no record tool writes under a vendored copy's own
   `self/orchestrations/`, `--self` included (`../features/consumer-record-guard/`). Two
   throwaway trees with the same copied files as `orchestration-records-in-repo.sh`: a consuming
@@ -3140,7 +3158,11 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   the three manifest writes, `planning.json`, `report.json`/`report.md`). C6: `roots.py
   self-write <slug>`, what the shell start asks, refuses with the text in the vendored copy and
   allows in the standalone one; with `roots.py` moved aside the standalone `--self` start
-  refuses (1) saying it cannot ask, and writes nothing — it fails closed. No model, no network.
+  refuses (1) saying it cannot ask, and writes nothing — it fails closed. C7
+  (`../features/orchestrator-move-length-cap/`): the standalone `self-write` go-ahead is exit 0
+  printing exactly `shared_rules.ROOTS_CLI_GO_AHEAD`; with `roots.py` emptied, or a stub that
+  exits 0 printing nothing or another line, the `--self` start refuses (1) and writes nothing.
+  No model, no network.
 - `security-audit.sh` — the security audit of a hook change (`../features/hook-role-hardening/`,
   item 4; `../../LIFECYCLE.md` → "The security audit"). Throwaway agentTooling checkouts
   with a bare origin (the real runners, `feature-close.sh`, `analysis/`, `hooks/`,
@@ -3210,7 +3232,10 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   origin (the real `feature-start.sh`, `feature-close.sh`, the four runners,
   `plan-runner-{lib,roots}.sh`, `env-profile.sh`, `stamp-timing.sh`,
   `orchestration-{start,capture}.sh`, `hooks/{env_profile,orchestrator_role,shared_rules}.py`,
-  `analysis/*.py`, a stub gate, worktree hook, `claude` and `gh`), profile `cloud`, a
+  `analysis/*.py`, a stub gate, worktree hook, `claude` and `gh`), profile `cloud` (the
+  caller's `AGENTTOOLING_PROFILE` is cleared first, beside `CLAUDE_CODE_REMOTE`: a cloud
+  `feature-start.sh` exports it and runs the gate under it. The test exports `cloud` itself just
+  before the `unset`, so every run holds it to clearing it, `../features/pull-round-cleanups/`), a
   record `self/orchestrations/wave/` written by the real `orchestration-start.sh` for
   session S and committed on `main`, the checkout on `claude/feat-x`. U1/U2: the module's
   CLI and the shell reader (`orchestrator_record_for_session`) print the record for S and
@@ -3256,7 +3281,8 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   equality-of-copies checks the mirrors needed. S1: `hooks/shared_rules.py`'s CLI prints the
   values asked for, one per line, and exits 2 with nothing on stdout for an unknown name or
   none; its values are the ones the rules have always had (record roots, record name, ledger
-  name, fence keys, slug pattern, both refusal texts); it imports only `re` and `sys` and
+  name, fence keys, slug pattern, both refusal texts, `roots.py`'s CLI go-ahead token
+  `ROOTS_CLI_GO_AHEAD`, bound by `roots.CLI_GO_AHEAD`); it imports only `re` and `sys` and
   opens nothing. S2: every name `roots.py`, `orchestrator_role.py`, `manifest.py`,
   `routing.py`, `coordinator_check.py`, `orchestration_capture.py` and the hook bind to a
   shared rule IS the `shared_rules` object (identity, not equality), `roots.py`'s `*_PARTS`
@@ -3337,10 +3363,20 @@ and `propagation-pull.sh` (P5) pin `local`. Every sandbox that copies the hook's
   S in the consumer fixture, `git mv agentTooling/self/orchestrations/wave
   plans/orchestrations/wave` from the repo's root is approved outright under both profiles,
   and another record, destination, file, option, extra word, `-C`, cwd, the standalone
-  fixture, an existing destination and a chained line are not; with no `plans/` the printed
+  fixture, an existing destination and a chained line are not (the move piped into `cat`,
+  doubled with `&&`, or chained with `ls` either side is the allowlist denial, and the move
+  alone still approves: `../features/own-push-transport-keys/`'s orchestrator addendum);
+  with no `plans/` the printed
   remedy `mkdir -p plans/orchestrations && git mv …` is approved and really moves the
   committed record, and every other `mkdir` spelling or join, a symlinked `plans` or
-  `plans/orchestrations` and a record README symlinked into another folder are not; H27 (`../features/python-entry-exact/`): the
+  `plans/orchestrations` and a record README symlinked into another folder are not; with
+  `analysis/` in the fixture's vendored copy (`../features/orchestrator-record-move-guard/`),
+  S's record that is not stranded (O18) or is ambiguous, and, for a session only the ledger
+  names, another session's stranded record (O39) and an empty folder (O40), are the allowlist
+  denial; H29 (`../features/orchestrator-move-length-cap/`): the line cap
+  `ORCHESTRATOR_MAX_LINE_CHARS`, read from the hook module itself, holds for the move — the
+  move and the `mkdir -p` remedy, padded with spaces to exactly the cap, are approved, and one
+  character past it each is the allowlist denial; H27 (`../features/python-entry-exact/`): the
   propagation audit's B1 (`manifest.py --orchestration A --orchestration get
   --orchestration=x set-window-to …`) and B2 (an abbreviated writing flag beside a decoy
   `--since '--list- x'`), with the repeat in each position, `=` forms, every abbreviation of

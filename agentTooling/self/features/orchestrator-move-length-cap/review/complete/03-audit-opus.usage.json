@@ -1,0 +1,78 @@
+{
+  "plan": "03-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "ebf2d02c-1d5f-4f4a-877b-dc7e0b1ade6b",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 5,
+  "duration_ms": 54238,
+  "total_cost_usd": 1.8192686000000005,
+  "usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 14954,
+    "cache_read_input_tokens": 494693,
+    "output_tokens": 6033
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 3942,
+      "outputTokens": 296,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0005422000000000001,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 270,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 68,
+      "outputTokens": 19667,
+      "cacheReadInputTokens": 2906492,
+      "cacheCreationInputTokens": 105477,
+      "webSearchRequests": 0,
+      "costUSD": 1.8187264,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 4785,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 105477,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 22,
+    "Edit": 1,
+    "Read": 7,
+    "Write": 8
+  },
+  "files_edited": [
+    "/tmp/plan-capture.Nim8gW/scratch/build.sh",
+    "/tmp/plan-capture.Nim8gW/scratch/compare.py",
+    "/tmp/plan-capture.Nim8gW/scratch/goahead.sh",
+    "/tmp/plan-capture.Nim8gW/scratch/inject.py",
+    "/tmp/plan-capture.Nim8gW/scratch/inject_stubs.py",
+    "/tmp/plan-capture.Nim8gW/scratch/sr.sh",
+    "self/features/orchestrator-move-length-cap/audit-report.md"
+  ],
+  "edit_count": 9,
+  "attempts": [
+    {
+      "session_id": "ebf2d02c-1d5f-4f4a-877b-dc7e0b1ade6b",
+      "outcome": "complete",
+      "total_cost_usd": 1.8192686000000005,
+      "num_turns": 5,
+      "duration_ms": 54238
+    }
+  ]
+}

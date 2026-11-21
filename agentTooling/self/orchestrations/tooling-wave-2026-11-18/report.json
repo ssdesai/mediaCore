@@ -1,0 +1,178 @@
+{
+  "slug": "tooling-wave-2026-11-18",
+  "kind": "orchestrator",
+  "generated_at": "2026-11-20T17:16:07Z",
+  "session": "3940d533-9377-594b-bdd3-5b3ecc6bef5f",
+  "agent_tooling": "a099d778b3720ef687f06523488d72a1ce520fb5",
+  "agent_tooling_short": "a099d77",
+  "session_window": {
+    "from": "2026-11-18T18:27:39Z",
+    "to": "2026-11-20T17:15:38Z"
+  },
+  "features": [
+    {
+      "repo": "agentTooling",
+      "slug": "hook-silent-allow-sweep",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/168",
+      "total_usd": 29.8392952,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "orchestration-start-branch-v2",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/169",
+      "total_usd": 33.9831992,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "branch-sync-and-fanout-docs",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/166",
+      "total_usd": 4.5708589,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "brief-conformance-checks",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/167",
+      "total_usd": 27.9731125,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-duplicate-subset-drop",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/377",
+      "total_usd": 13.6550441,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-owner-options-restore",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/378",
+      "total_usd": 17.240883200000003,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-verify-parallel",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/379",
+      "total_usd": 13.9252079,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "hook-allowlist-design",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/170",
+      "total_usd": 22.8887806,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-new-entity-once",
+      "pr": null,
+      "total_usd": null,
+      "unpriced_reason": "no report path in the record"
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-review-pair-decision",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/380",
+      "total_usd": 15.9074993,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-topics",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/382",
+      "total_usd": 36.2653989,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "claim-extract-names-only",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/381",
+      "total_usd": 30.3848145,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "humanNetworkMap",
+      "slug": "pull-agenttooling-pr169",
+      "pr": "https://github.com/ssdesai/humanNetworkMap/pull/383",
+      "total_usd": 20.5290758,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "mediaCore",
+      "slug": "pull-agenttooling-pr169",
+      "pr": "https://github.com/ssdesai/mediaCore/pull/42",
+      "total_usd": null,
+      "unpriced_reason": "in mediaCore: pass --checkout mediaCore=<its checkout>"
+    },
+    {
+      "repo": "vinylCatalogue",
+      "slug": "pull-agenttooling-pr169",
+      "pr": "https://github.com/ssdesai/vinylCatalogue/pull/310",
+      "total_usd": null,
+      "unpriced_reason": "in vinylCatalogue: pass --checkout vinylCatalogue=<its checkout>"
+    },
+    {
+      "repo": "musicMap",
+      "slug": "pull-agenttooling-pr169",
+      "pr": "https://github.com/ssdesai/musicMap/pull/76",
+      "total_usd": null,
+      "unpriced_reason": "in musicMap: pass --checkout musicMap=<its checkout>"
+    },
+    {
+      "repo": "musicTools",
+      "slug": "pull-agenttooling-pr169",
+      "pr": null,
+      "total_usd": null,
+      "unpriced_reason": "no report path in the record"
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "orchestrator-record-move-guard",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/172",
+      "total_usd": 9.4369515,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "pull-round-cleanups",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/171",
+      "total_usd": 19.3898823,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "agentTooling",
+      "slug": "own-push-transport-keys",
+      "pr": "https://github.com/ssdesai/agentTooling/pull/173",
+      "total_usd": 6.1092412,
+      "unpriced_reason": null
+    },
+    {
+      "repo": "mediaCore",
+      "slug": "pull-agenttooling-pr173",
+      "pr": null,
+      "total_usd": null,
+      "unpriced_reason": "no report path in the record"
+    },
+    {
+      "repo": "vinylCatalogue",
+      "slug": "pull-agenttooling-pr173",
+      "pr": "https://github.com/ssdesai/vinylCatalogue/pull/311",
+      "total_usd": null,
+      "unpriced_reason": "in vinylCatalogue: pass --checkout vinylCatalogue=<its checkout>"
+    }
+  ],
+  "overhead": {
+    "usd": 46.937517400000004,
+    "unpriced_reason": null,
+    "total_is_partial": false
+  },
+  "features_total_usd": 302.0992451,
+  "priced_count": 15,
+  "unpriced_count": 7,
+  "group_total_usd": 349.0367625,
+  "overhead_pct": 13.447728847759985
+}

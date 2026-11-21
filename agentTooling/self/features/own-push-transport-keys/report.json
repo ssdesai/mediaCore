@@ -1,0 +1,163 @@
+{
+  "slug": "own-push-transport-keys",
+  "generated_at": "2026-11-20T14:54:22.537265+00:00",
+  "cost": {
+    "method": "direct",
+    "planning": 0.0,
+    "implementer": 3.7872426,
+    "build": 3.7872426,
+    "verify": 0.0,
+    "review": 2.3219986,
+    "total": 6.1092412,
+    "planning_pct": 0.0,
+    "build_pct": 61.99202938656278,
+    "verify_pct": 0.0,
+    "review_pct": 38.00797061343724,
+    "cost_per_plan": 2.036413733333333,
+    "cost_per_file": 1.0182068666666666,
+    "total_is_partial": false,
+    "missing_usage_plans": [],
+    "unpriced_plans": [],
+    "multi_sidecar_stems": [],
+    "skipped_plans": [],
+    "orphan_usage_plans": [],
+    "recovered": 0.0,
+    "unrecoverable_attempts": [],
+    "partially_recovered_attempts": [],
+    "shared_sessions": []
+  },
+  "time": {
+    "method": "direct",
+    "planning_sessions_s": 6411,
+    "planning_subagents_s": 0,
+    "planning_s": 0.0,
+    "implementer_s": 6411,
+    "build_s": 6411.0,
+    "verify_s": 0.0,
+    "review_s": 129.794,
+    "executor_s": 6540.794,
+    "total_s": 6540.794,
+    "total_is_partial": false,
+    "missing_duration_plans": [],
+    "recovered_duration_plans": [],
+    "wall_clock": {
+      "first_at": "2026-11-20T14:43:26+00:00",
+      "last_at": "2026-11-20T14:54:21+00:00",
+      "batch_span_s": 655.0,
+      "batch_runs": 0,
+      "batch_runs_s": 0.0,
+      "passes_s": {
+        "review": 637.0
+      },
+      "gates_s": 0.0,
+      "gate_runs": 0,
+      "plans_s": 712.0,
+      "plan_runs": 3,
+      "pr_opened_at": "2026-11-20T14:54:21+00:00",
+      "pr_url": "https://github.com/ssdesai/agentTooling/pull/173"
+    }
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "build_usd": 3.7872426,
+      "build_min": 106.85,
+      "verify_usd": 0.0,
+      "verify_min": 0.0,
+      "review_usd": 2.3219986,
+      "review_min": 2.1632333333333333,
+      "review_plan": "01-review-opus",
+      "verdict": "clean",
+      "escalations_file": null
+    }
+  ],
+  "planning_cost_split": {
+    "subagents": 0.0,
+    "sessions": 3.7872426
+  },
+  "cold_start_tax_tokens": 74146,
+  "model_fit": [
+    {
+      "model": "opus",
+      "plan_count": 3,
+      "total_turns": 17,
+      "total_cost_usd": 2.3219986,
+      "total_duration_s": 129.794,
+      "flags": []
+    }
+  ],
+  "churn": [
+    {
+      "plan": "01-review-opus",
+      "edit_count": 1,
+      "files_edited": 1,
+      "churn_ratio": 1.0
+    },
+    {
+      "plan": "01-audit-opus",
+      "edit_count": 6,
+      "files_edited": 5,
+      "churn_ratio": 1.2
+    }
+  ],
+  "plan_length_vs_loc": [
+    {
+      "plan": "01-review-opus",
+      "plan_md_lines": 59,
+      "loc_changed": 66
+    },
+    {
+      "plan": "01-audit-opus",
+      "plan_md_lines": 79,
+      "loc_changed": 368
+    },
+    {
+      "plan": "01-conformance-opus",
+      "plan_md_lines": 3,
+      "loc_changed": 0
+    }
+  ],
+  "re_hunting": [
+    {
+      "target": "/home/user/agentTooling/hooks/allow-repo-commands.sh",
+      "tool": "Read",
+      "plans": [
+        "01-audit-opus",
+        "01-review-opus"
+      ]
+    }
+  ],
+  "plan_drift": [
+    {
+      "plan": "01-review-opus",
+      "edited_not_listed": [
+        "self/review-report.md"
+      ],
+      "listed_not_edited": []
+    },
+    {
+      "plan": "01-audit-opus",
+      "edited_not_listed": [
+        "/tmp/plan-capture.qif19R/scratch/cfg_attack.py",
+        "/tmp/plan-capture.qif19R/scratch/insert.py",
+        "/tmp/plan-capture.qif19R/scratch/orch_block.txt",
+        "/tmp/plan-capture.qif19R/scratch/setup.sh",
+        "self/features/own-push-transport-keys/audit-report.md"
+      ],
+      "listed_not_edited": []
+    }
+  ],
+  "edit_overlap": [
+    {
+      "file": "self/features/own-push-transport-keys/audit-report.md",
+      "earlier_plan": "01-audit-opus",
+      "later_plan": "01-audit-opus",
+      "overlap_chars": 117
+    }
+  ],
+  "warnings": [
+    "plan 01-conformance-opus has 0 files_edited; excluded from churn ratio"
+  ],
+  "profile": "cloud",
+  "gate": "green"
+}

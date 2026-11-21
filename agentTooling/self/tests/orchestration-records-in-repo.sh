@@ -52,6 +52,19 @@ set -uo pipefail
 #   R10. the classifier is one: `roots.py stranded` answers yes for a stranded record and no for
 #       a shipped one. (That the shell's roots and refusal texts are roots.py's is no longer
 #       asserted by comparing copies: both read hooks/shared_rules.py, held by shared-rules.sh.)
+#   R12. (self/features/pull-round-cleanups/) a legacy record whose last fence lists consumer
+#       features AND an agentTooling one (any case) is AMBIGUOUS — an agentTooling cross-repo
+#       wave reads the same as a consumer-run one: `roots.py stranded` says no, and report.py,
+#       manifest.py and orchestration-start.sh all refuse with roots.py's
+#       AMBIGUOUS_RECORD_REFUSAL (no `git mv` prescribed); a consumer-only record still draws
+#       the `git mv` from the tools and the start; `roots.py start-refusal` exits 0 for an
+#       agentTooling-own record and for none; and the start fails closed when roots.py cannot run;
+#   R13. a consumer whose name is agentTooling's (any case): a record listing that name is
+#       refused at start with the ambiguous text, and one listing only another repo blocks
+#       nothing.
+#   R14. (orchestrator-move-length-cap) `roots.py start-refusal` goes ahead with exit 0 printing
+#       exactly shared_rules.ROOTS_CLI_GO_AHEAD; with roots.py emptied, or a stub that exits 0
+#       printing nothing or another line, a start past a vendored record refuses (1), writing nothing.
 # Round 3 (merged with hook-role-hardening; NOTES.md round-3 rulings):
 #   R11. the role's history and ledger sources span both roots: a COMMITTED plans/orchestrations
 #       record edited to a coordinator or deleted still names its session; a consumer ledger line
@@ -123,6 +136,8 @@ roots_text() {
   python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import roots; print(getattr(roots, sys.argv[2]).format(slug=sys.argv[3]))' \
     "$HERE/analysis" "$1" "${2:-x}"
 }
+# The one line roots.py's start-refusal prints on the go-ahead (a shared rule, read, not restated)
+GO_AHEAD="$(python3 -B "$HERE/hooks/shared_rules.py" ROOTS_CLI_GO_AHEAD)"
 
 # The features the record will price: two reports in the consuming repo, one in agentTooling
 mkdir -p "$CONSUMER/plans/features/feat-x" "$CONSUMER/plans/features/feat-y" "$AT/self/features/feat-s"
@@ -296,6 +311,75 @@ echo "== R10 the stranded-record classifier is one =="
 python3 -B "$AT/analysis/roots.py" stranded fresh-start; s1=$?
 python3 -B "$AT/analysis/roots.py" stranded program-ab; s2=$?
 check "R10 the classifier is one: roots.py stranded says yes (0) for a stranded record, no (1) for a shipped one (got $s1, $s2)" '[[ $s1 -eq 0 && $s2 -eq 1 ]]'
+
+echo "== R12 a mixed wave is ambiguous: never told to git mv, never started over (pull-round-cleanups) =="
+# tooling-wave-2026-11-17's shape: the last fence lists consumer features AND agentTooling ones
+# (the agentTooling repo name in another case here). Its bytes are the same whether agentTooling
+# or the consumer ran it, so no tool prescribes the `git mv` (which would delete an agentTooling
+# wave from the consumer's agentTooling/) and a start of the slug is still refused, as the base
+# refused it. The consumer-only record beside it is stranded, with the `git mv`.
+mkdir -p "$LEGACY/mixed-wave" "$LEGACY/consumer-only"
+printf '# m\n\n```json\n{"slug": "mixed-wave", "session": "%s", "features": [{"repo": "consumer", "slug": "feat-x"}, {"repo": "AGENTTOOLING", "slug": "feat-s"}]}\n```\n' "$L" > "$LEGACY/mixed-wave/README.md"
+printf '# c\n\n```json\n{"slug": "consumer-only", "session": "%s", "features": [{"repo": "consumer", "slug": "feat-x"}, {"repo": "consumer", "slug": "feat-y"}]}\n```\n' "$L" > "$LEGACY/consumer-only/README.md"
+python3 -B "$AT/analysis/roots.py" stranded mixed-wave; s1=$?
+python3 -B "$AT/analysis/roots.py" stranded consumer-only; s2=$?
+check "R12 roots.py stranded: no (1) for the mixed wave, yes (0) for the consumer-only record (got $s1, $s2)" '[[ $s1 -eq 1 && $s2 -eq 0 ]]'
+AMBIGUOUS_TEXT="$(roots_text AMBIGUOUS_RECORD_REFUSAL mixed-wave)"
+before="$(find "$CONSUMER/$PLANS_REL" "$LEGACY" | sort)"
+out="$("${REPORT[@]}" --orchestration mixed-wave 2>&1)"; rc=$?
+check "R12 report.py (mixed-wave): refused (1) with roots.py's ambiguous-record text (got $rc)" '[[ $rc -eq 1 && "$out" == *"$AMBIGUOUS_TEXT"* ]]'
+out="$("${MANIFEST[@]}" --orchestration mixed-wave get session 2>&1)"; rc=$?
+check "R12 manifest.py (mixed-wave): the same (got $rc)" '[[ $rc -eq 1 && "$out" == *"$AMBIGUOUS_TEXT"* ]]'
+out="$("$AT/orchestration-start.sh" mixed-wave --coordinator --session "$O" 2>&1)"; rc=$?
+check "R12 a start named like the mixed wave is refused (1) with the same text (got $rc)" '[[ $rc -eq 1 && "$out" == *"$AMBIGUOUS_TEXT"* ]]'
+out="$("${REPORT[@]}" --orchestration consumer-only 2>&1)"; rc=$?
+check "R12 report.py (consumer-only): still refused with the git mv (got $rc)" '[[ $rc -eq 1 && "$out" == *"$(roots_text LEGACY_RECORD_REFUSAL consumer-only)"* ]]'
+out="$("$AT/orchestration-start.sh" consumer-only --coordinator --session "$O" 2>&1)"; rc=$?
+check "R12 a start of the consumer-only slug: refused with the git mv (got $rc)" '[[ $rc -eq 1 && "$out" == *"$(roots_text LEGACY_RECORD_REFUSAL consumer-only)"* ]]'
+check "R12 the refusals wrote nothing" '[[ "$(find "$CONSUMER/$PLANS_REL" "$LEGACY" | sort)" == "$before" ]]'
+python3 -B "$AT/analysis/roots.py" start-refusal program-ab >/dev/null; s1=$?
+python3 -B "$AT/analysis/roots.py" start-refusal no-such-record >/dev/null; s2=$?
+check "R12 roots.py start-refusal: 0 for agentTooling's own record and for no record (got $s1, $s2)" '[[ $s1 -eq 0 && $s2 -eq 0 ]]'
+# The start fails closed: a classifier that cannot run refuses the start, writing nothing
+mv "$AT/analysis/roots.py" "$AT/analysis/roots.py.away"
+before="$(find "$CONSUMER/$PLANS_REL" "$LEGACY" | sort)"
+out="$("$AT/orchestration-start.sh" idle-one --coordinator --session "$O" 2>&1)"; rc=$?
+mv "$AT/analysis/roots.py.away" "$AT/analysis/roots.py"
+check "R12 with roots.py unreadable, a start of a slug with a vendored record is refused (1), writing nothing (got $rc)" '[[ $rc -eq 1 && "$out" == *"could not be classified"* && "$(find "$CONSUMER/$PLANS_REL" "$LEGACY" | sort)" == "$before" ]]'
+# R14 (self/features/orchestrator-move-length-cap/): the go-ahead is exit 0 WITH roots.py's
+# fixed token, so an emptied roots.py, or a stub that exits 0 printing nothing or anything else,
+# refuses the start of idle-one (agentTooling's own record, which the real classifier lets go on)
+out="$(python3 -B "$AT/analysis/roots.py" start-refusal idle-one)"; rc=$?
+check "R14 roots.py start-refusal (idle-one): exit 0 printing exactly the go-ahead '$GO_AHEAD' (got $rc, '$out')" '[[ $rc -eq 0 && "$out" == "$GO_AHEAD" ]]'
+mv "$AT/analysis/roots.py" "$AT/analysis/roots.py.away"
+for stub in empty exit0 other; do
+  case "$stub" in
+    empty) : > "$AT/analysis/roots.py" ;;
+    exit0) printf 'import sys\nsys.exit(0)\n' > "$AT/analysis/roots.py" ;;
+    other) printf 'print("go")\n' > "$AT/analysis/roots.py" ;;
+  esac
+  out="$("$AT/orchestration-start.sh" idle-one --coordinator --session "$O" 2>&1)"; rc=$?
+  check "R14 with a $stub stub roots.py (exit 0, no go-ahead), the start of idle-one is refused (1), writing nothing (got $rc)" '[[ $rc -eq 1 && "$out" == *"without its go-ahead"* && "$(find "$CONSUMER/$PLANS_REL" "$LEGACY" | sort)" == "$before" ]]'
+done
+mv "$AT/analysis/roots.py.away" "$AT/analysis/roots.py"
+
+echo "== R13 a consumer whose name is agentTooling's cannot tell its records apart (pull-round-cleanups) =="
+# The consuming repo's name equals agentTooling's, ignoring case (no origin: the name is the
+# directory's). A record listing that name is ambiguous — refused with the ambiguous text, no
+# `git mv`, as the base refused it with one; a record listing only another repo is not stranded.
+SAME="$TMP/AgentTooling"
+vendor_tooling "$SAME/agentTooling"
+git -C "$SAME" init -q -b main
+git -C "$SAME" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init
+mkdir -p "$SAME/$LEGACY_REL/same-name" "$SAME/$LEGACY_REL/other-repo"
+printf '# s\n\n```json\n{"slug": "same-name", "session": "%s", "features": [{"repo": "AgentTooling", "slug": "feat-x"}]}\n```\n' "$L" > "$SAME/$LEGACY_REL/same-name/README.md"
+printf '# o\n\n```json\n{"slug": "other-repo", "session": "%s", "features": [{"repo": "vinylCatalogue", "slug": "feat-x"}]}\n```\n' "$L" > "$SAME/$LEGACY_REL/other-repo/README.md"
+python3 -B "$SAME/agentTooling/analysis/roots.py" stranded same-name; s1=$?
+check "R13 roots.py stranded: no (1) for the same-name record (got $s1)" '[[ $s1 -eq 1 ]]'
+out="$("$SAME/agentTooling/orchestration-start.sh" same-name --coordinator --session "$O" 2>&1)"; rc=$?
+check "R13 a start of the same-name slug is refused (1) with the ambiguous text, writing nothing (got $rc)" '[[ $rc -eq 1 && "$out" == *"$(roots_text AMBIGUOUS_RECORD_REFUSAL same-name)"* && ! -e "$SAME/$PLANS_REL/same-name" ]]'
+out="$("$SAME/agentTooling/orchestration-start.sh" other-repo --coordinator --session "$O" 2>&1)"; rc=$?
+check "R13 a record listing only another repo blocks nothing (0; got $rc)" '[[ $rc -eq 0 && -f "$SAME/$PLANS_REL/other-repo/README.md" ]]'
 
 echo "== R11 the role's history and ledger sources span both roots (round 3, merged with hook-role-hardening) =="
 GIT_ID=(-c user.name=t -c user.email=t@example.com)

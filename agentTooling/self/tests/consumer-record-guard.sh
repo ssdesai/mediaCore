@@ -32,6 +32,9 @@ set -uo pipefail
 #       exits 1 printing the refusal in the vendored copy and 0 in the standalone checkout;
 #       with roots.py missing, the standalone `--self` start refuses (1) — it fails closed —
 #       and writes nothing.
+#   C7. (orchestrator-move-length-cap) the standalone `roots.py self-write` go-ahead is exit 0
+#       printing exactly shared_rules.ROOTS_CLI_GO_AHEAD; with roots.py emptied, or a stub that
+#       exits 0 printing nothing or another line, the `--self` start refuses (1) and writes nothing.
 # No model, no network.
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -93,6 +96,8 @@ refusal_text() {
   python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import roots; print(roots.VENDORED_SELF_WRITE_REFUSAL.format(slug=sys.argv[2]))' \
     "$HERE/analysis" "$1"
 }
+# The one line roots.py's self-write prints on the go-ahead (a shared rule, read, not restated)
+GO_AHEAD="$(python3 -B "$HERE/hooks/shared_rules.py" ROOTS_CLI_GO_AHEAD)"
 # snap: every path and its content hash under both record roots and the ledger
 snap() {
   find "$CONSUMER/plans" "$AT/self" "$CONSUMER/$LEDGER_REL" -type f -exec cksum {} + 2>/dev/null | sort
@@ -179,6 +184,23 @@ out="$("$SA/orchestration-start.sh" --self closed --session "$L" 2>&1)"; rc=$?
 mv "$SA/analysis/roots.py.off" "$SA/analysis/roots.py"
 sa_after="$(find "$SA/self" "$SA_LEDGER" -type f -exec cksum {} + 2>/dev/null | sort)"
 check "C6 with roots.py missing a --self start refuses (1), saying it cannot ask, and writes nothing (got $rc)" '[[ $rc -eq 1 && "$out" == *"cannot ask"* && ! -e "$S/closed" && "$sa_after" == "$sa_before" ]]'
+# C7 (self/features/orchestrator-move-length-cap/): the go-ahead is exit 0 WITH roots.py's fixed
+# token, so an emptied roots.py, or a stub that exits 0 printing nothing or anything else,
+# refuses the standalone --self start the real classifier allows
+out="$(python3 -B "$SA/analysis/roots.py" self-write x)"; rc=$?
+check "C7 roots.py self-write (standalone): exit 0 printing exactly the go-ahead '$GO_AHEAD' (got $rc, '$out')" '[[ $rc -eq 0 && "$out" == "$GO_AHEAD" ]]'
+mv "$SA/analysis/roots.py" "$SA/analysis/roots.py.off"
+for stub in empty exit0 other; do
+  case "$stub" in
+    empty) : > "$SA/analysis/roots.py" ;;
+    exit0) printf 'import sys\nsys.exit(0)\n' > "$SA/analysis/roots.py" ;;
+    other) printf 'print("go")\n' > "$SA/analysis/roots.py" ;;
+  esac
+  out="$("$SA/orchestration-start.sh" --self closed --session "$L" 2>&1)"; rc=$?
+  sa_after="$(find "$SA/self" "$SA_LEDGER" -type f -exec cksum {} + 2>/dev/null | sort)"
+  check "C7 with a $stub stub roots.py (exit 0, no go-ahead), a --self start refuses (1) and writes nothing (got $rc)" '[[ $rc -eq 1 && "$out" == *"without its go-ahead"* && ! -e "$S/closed" && "$sa_after" == "$sa_before" ]]'
+done
+mv "$SA/analysis/roots.py.off" "$SA/analysis/roots.py"
 
 echo ""
 if (( fails )); then

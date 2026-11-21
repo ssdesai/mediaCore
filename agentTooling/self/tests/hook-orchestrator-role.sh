@@ -123,6 +123,17 @@ set -uo pipefail
 #       approved and, the record committed, really moves it, while every other `mkdir` spelling
 #       or join is not approved; a symlinked `plans` or `plans/orchestrations`, and a record
 #       README that is a symlink into another folder, are never approved;
+#       (self/features/orchestrator-record-move-guard/) the move needs the folder's README to
+#       name S and the record to be stranded (roots.legacy_record_claim, asked through
+#       `roots.py stranded`), so the fixture's vendored copy carries analysis/: S's own record
+#       with no consumer feature (O18, agentTooling's shipped shape) and one listing an
+#       agentTooling feature too (ambiguous) are the allowlist denial, as are, for a session the
+#       ledger alone names, the move of a stranded record naming another session (O39) and of an
+#       empty folder (O40); S's own stranded record is approved and really moved;
+#   H29. (self/features/orchestrator-move-length-cap/) the line cap (R1,
+#       ORCHESTRATOR_MAX_LINE_CHARS) holds for the move too: the move, and the `mkdir -p` lead
+#       form, padded with whitespace to exactly the cap are approved; one character past it,
+#       the allowlist denial;
 #   H16. (F8a) from S, pytest, `python3 -m pytest`, `npm run test`, `npm test`,
 #       `./self/gate.sh` and `./check-plans.sh` are never `allow`; from another session they
 #       are never the role denial.
@@ -135,7 +146,7 @@ TMP="$(cd "$TMP" && pwd -P)"
 
 echo "hook-orchestrator-role"
 python3 - "$AT" "$TMP" <<'PY'
-import json, os, shutil, subprocess, sys
+import importlib.machinery, importlib.util, json, os, shutil, subprocess, sys
 
 AT, TMP = sys.argv[1], sys.argv[2]
 HOOK_FILES = ("allow-repo-commands.sh", "policy.py", "env_profile.py", "orchestrator_role.py",
@@ -188,6 +199,10 @@ CONSUMER = os.path.join(TMP, "consumer")
 SELF = os.path.join(TMP, "self-shape")
 HOOK_C, RECORD_C = new_fixture(CONSUMER, os.path.join("agentTooling", "hooks"), "agentTooling")
 HOOK_S, RECORD_S = new_fixture(SELF, "hooks", ".")
+# H28's move asks analysis/roots.py whether a vendored record is stranded, so the consumer's
+# vendored copy carries analysis/ too
+shutil.copytree(os.path.join(AT, "analysis"), os.path.join(CONSUMER, "agentTooling", "analysis"),
+                ignore=shutil.ignore_patterns("__pycache__"))
 FIXTURES = {"consumer": (CONSUMER, HOOK_C, RECORD_C, "./agentTooling/", "agentTooling/"),
             "self": (SELF, HOOK_S, RECORD_S, "./", "")}
 
@@ -2087,6 +2102,37 @@ OTHER_MOVES = [
     "git mv agentTooling/self/orchestrations/%s" % RECORD_SLUG,
     "git -C . mv agentTooling/self/orchestrations/%s plans/orchestrations/%s" % (RECORD_SLUG, RECORD_SLUG),
 ]
+# O18 (self/features/orchestrator-record-move-guard/): the fixture's record names S but lists
+# no feature of the consuming repo — agentTooling's shipped shape, not stranded — so its move
+# is the allowlist denial, as on the base before #169
+for profile in PROFILES:
+    decision, reason = bash("consumer", profile, OWN_MOVE, SESSION_S)
+    check("H28 O18 [consumer/%s] the move of a record that is not stranded (agentTooling's own) is "
+          "the allowlist denial" % profile,
+          decision == DENY and ALLOWLIST_MARK in reason, "%s: %s" % (decision, reason))
+# ... and from here on the record is the consuming repo's stranded one: its last fence lists a
+# feature whose repo is the consumer's name (no origin, so its directory's name)
+STRANDED_FEATURES = [{"repo": os.path.basename(CONSUMER), "slug": "feat-x"}]
+
+
+def stranded_record(slug, session):
+    return "# Orchestration: %s\n\n```json\n%s\n```\n" % (slug, json.dumps(
+        {"slug": slug, "session": session, "features": STRANDED_FEATURES}))
+
+
+# ... while one that also lists an agentTooling feature is ambiguous (roots.legacy_record_claim,
+# self/features/pull-round-cleanups/): moving it could take shipped code out of agentTooling/
+with open(RECORD_C, "w") as f:
+    f.write("# Orchestration: %s\n\n```json\n%s\n```\n" % (RECORD_SLUG, json.dumps(
+        {"slug": RECORD_SLUG, "session": SESSION_S,
+         "features": STRANDED_FEATURES + [{"repo": "agentTooling", "slug": "feat-y"}]})))
+for profile in PROFILES:
+    decision, reason = bash("consumer", profile, OWN_MOVE, SESSION_S)
+    check("H28 [consumer/%s] the move of an ambiguous record (a consumer and an agentTooling "
+          "feature) is the allowlist denial" % profile,
+          decision == DENY and ALLOWLIST_MARK in reason, "%s: %s" % (decision, reason))
+with open(RECORD_C, "w") as f:
+    f.write(stranded_record(RECORD_SLUG, SESSION_S))
 for profile in PROFILES:
     decision, reason = bash("consumer", profile, OWN_MOVE, SESSION_S)
     check("H28 [consumer/%s] the orchestrator's move of its own record is approved" % profile,
@@ -2108,6 +2154,60 @@ for profile in PROFILES:
     decision, reason = bash("consumer", profile, OWN_MOVE, SESSION_T)
     check("H28 [consumer/%s] another session's same move is not approved outright" % profile,
           decision != ALLOW, "%s: %s" % (decision, reason))
+    # Orchestrator addendum (own-push-transport-keys): a `git mv` on any line that is not the
+    # approved move alone is the allowlist denial, never a prompt (the base denied it)
+    for command in (OWN_MOVE + " | cat", OWN_MOVE + " && " + OWN_MOVE, OWN_MOVE + " && ls",
+                    "ls && " + OWN_MOVE):
+        decision, reason = bash("consumer", profile, command, SESSION_S)
+        check("H28 [consumer/%s] %r is the allowlist denial" % (profile, command),
+              decision == DENY and ALLOWLIST_MARK in reason, "%s: %s" % (decision, reason))
+    decision, reason = bash("consumer", profile, OWN_MOVE, SESSION_S)
+    check("H28 [consumer/%s] ... and the move alone is still approved" % profile,
+          decision == ALLOW, "%s: %s" % (decision, reason))
+# H29 (self/features/orchestrator-move-length-cap/): the line cap (R1) comes before the move is
+# judged — main() asks orchestrator_moves_own_record first, so the cap is checked there too.
+# Padded with whitespace to exactly the cap the move is still approved; one character past it,
+# refused unread with the allowlist denial.
+_hook_loader = importlib.machinery.SourceFileLoader(
+    "allow_repo_commands_cap", os.path.join(AT, "hooks", HOOK_NAME))
+_hook_spec = importlib.util.spec_from_loader(_hook_loader.name, _hook_loader)
+HOOK_MODULE = importlib.util.module_from_spec(_hook_spec)
+_hook_loader.exec_module(HOOK_MODULE)
+LINE_CAP = HOOK_MODULE.ORCHESTRATOR_MAX_LINE_CHARS
+for profile in PROFILES:
+    for padded, verdict in ((OWN_MOVE.ljust(LINE_CAP), "at"), (OWN_MOVE.ljust(LINE_CAP + 1), "past")):
+        decision, reason = bash("consumer", profile, padded, SESSION_S)
+        if verdict == "at":
+            check("H29 [consumer/%s] the move padded to exactly %d characters is approved" % (profile, LINE_CAP),
+                  len(padded) == LINE_CAP and decision == ALLOW, "%s: %s" % (decision, reason))
+        else:
+            check("H29 [consumer/%s] the move padded to %d characters is the allowlist denial" % (profile, LINE_CAP + 1),
+                  len(padded) == LINE_CAP + 1 and decision == DENY and ALLOWLIST_MARK in reason,
+                  "%s: %s" % (decision, reason))
+# O39 / O40 (self/features/orchestrator-record-move-guard/): a session only the ledger names
+# gets its slug from the ledger, which reads no record. Its move of a stranded record that
+# names ANOTHER session (O39), or of an empty folder (O40), is the allowlist denial.
+RECORDS_C = os.path.dirname(os.path.dirname(RECORD_C))
+LEDGER_C = os.path.join(CONSUMER, ".git", "agenttooling-orchestrators")
+SESSION_O39 = "0390b390-0000-0000-0000-000000000039"
+SESSION_O40 = "0400b400-0000-0000-0000-000000000040"
+O39_SLUG, O40_SLUG = "others", "empty"
+os.makedirs(os.path.join(RECORDS_C, O39_SLUG))
+with open(os.path.join(RECORDS_C, O39_SLUG, "README.md"), "w") as f:
+    f.write(stranded_record(O39_SLUG, SESSION_T))
+os.makedirs(os.path.join(RECORDS_C, O40_SLUG))
+with open(LEDGER_C, "a") as f:
+    f.write("%s %s\n%s %s\n" % (SESSION_O39, O39_SLUG, SESSION_O40, O40_SLUG))
+for profile in PROFILES:
+    for session, slug, case in ((SESSION_O39, O39_SLUG, "O39 another session's stranded record"),
+                                (SESSION_O40, O40_SLUG, "O40 an empty folder")):
+        command = "git mv agentTooling/self/orchestrations/%s plans/orchestrations/%s" % (slug, slug)
+        decision, reason = bash("consumer", profile, command, session)
+        check("H28 %s [consumer/%s], named by the ledger alone, is the allowlist denial" % (case, profile),
+              decision == DENY and ALLOWLIST_MARK in reason, "%s: %s" % (decision, reason))
+os.remove(LEDGER_C)
+shutil.rmtree(os.path.join(RECORDS_C, O39_SLUG))
+os.rmdir(os.path.join(RECORDS_C, O40_SLUG))
 os.makedirs(os.path.join(CONSUMER, "plans", "orchestrations", RECORD_SLUG), exist_ok=True)
 decision, reason = bash("consumer", "cloud", OWN_MOVE, SESSION_S)
 check("H28 [consumer/cloud] a destination already there is the allowlist denial",
@@ -2137,6 +2237,13 @@ for profile in PROFILES:
         decision, reason = bash("consumer", profile, command, SESSION_S)
         check("H28 [consumer/%s] %r is not approved outright" % (profile, command),
               decision != ALLOW, "%s: %s" % (decision, reason))
+    # H29: the same cap for the `mkdir -p` lead form
+    decision, reason = bash("consumer", profile, REMEDY.ljust(LINE_CAP), SESSION_S)
+    check("H29 [consumer/%s] the remedy padded to exactly %d characters is approved" % (profile, LINE_CAP),
+          decision == ALLOW, "%s: %s" % (decision, reason))
+    decision, reason = bash("consumer", profile, REMEDY.ljust(LINE_CAP + 1), SESSION_S)
+    check("H29 [consumer/%s] the remedy padded to %d characters is the allowlist denial" % (profile, LINE_CAP + 1),
+          decision == DENY and ALLOWLIST_MARK in reason, "%s: %s" % (decision, reason))
 # ... and it really moves the record once committed (git mv takes tracked files only)
 GIT_ID = ["-c", "user.name=t", "-c", "user.email=t@example.com"]
 subprocess.run(["git", "-C", CONSUMER, "add", "--", os.path.relpath(RECORD_C, CONSUMER)], check=True)

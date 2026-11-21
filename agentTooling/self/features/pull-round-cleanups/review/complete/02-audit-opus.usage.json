@@ -1,0 +1,71 @@
+{
+  "plan": "02-audit-opus",
+  "model": "opus",
+  "outcome": "complete",
+  "session_id": "dba4b797-4627-4c8a-9770-462fe6cce495",
+  "result_event": "seen",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 13,
+  "duration_ms": 146435,
+  "total_cost_usd": 0.8330001,
+  "usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 56328,
+    "cache_read_input_tokens": 593382,
+    "output_tokens": 13161
+  },
+  "model_usage": {
+    "claude-haiku-5-5": {
+      "inputTokens": 3882,
+      "outputTokens": 23,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+      "webSearchRequests": 0,
+      "costUSD": 0.0003997,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 0,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 0,
+      "canonicalModel": "claude-haiku-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    },
+    "claude-opus-5-5": {
+      "inputTokens": 20,
+      "outputTokens": 13161,
+      "cacheReadInputTokens": 593382,
+      "cacheCreationInputTokens": 56328,
+      "webSearchRequests": 0,
+      "costUSD": 0.8326004,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 128000,
+      "thinkingTokens": 3466,
+      "cacheCreationEphemeral5mInputTokens": 0,
+      "cacheCreationEphemeral1hInputTokens": 56328,
+      "canonicalModel": "claude-opus-5-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "permission_denials": 0,
+  "tool_counts": {
+    "Bash": 10,
+    "Write": 2
+  },
+  "files_edited": [
+    "/tmp/plan-capture.EydcRy/scratch/attack.sh",
+    "self/features/pull-round-cleanups/audit-report.md"
+  ],
+  "edit_count": 2,
+  "attempts": [
+    {
+      "session_id": "dba4b797-4627-4c8a-9770-462fe6cce495",
+      "outcome": "complete",
+      "total_cost_usd": 0.8330001,
+      "num_turns": 13,
+      "duration_ms": 146435
+    }
+  ]
+}

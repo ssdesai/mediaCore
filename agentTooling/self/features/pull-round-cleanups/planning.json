@@ -1,0 +1,75 @@
+{
+  "slug": "pull-round-cleanups",
+  "captured_at": "2026-11-20T04:00:25.956835+00:00",
+  "manifest_branches": [
+    "claude/pull-round-cleanups"
+  ],
+  "manifest_subagents": [],
+  "sessions": [
+    {
+      "session_id": "f207bc70-0e43-5143-8f5b-68d4f599e989",
+      "git_branch": "claude/pull-round-cleanups",
+      "selected_by": "branch",
+      "cwd": "/home/user/agentTooling",
+      "date": "2026-11-19",
+      "started_at": "2026-11-19T20:33:53.709000+00:00",
+      "ended_at": "2026-11-20T04:00:25.281000+00:00",
+      "duration_s": 26791
+    }
+  ],
+  "subagents": [],
+  "open_claimants": [],
+  "excluded_session_ids": [
+    "3414470b-b1b0-4f74-ae30-48c6c8275519",
+    "37cfd59c-8d56-43d2-aef6-2df42003abc4",
+    "3c6953d1-9f25-4f0e-888d-9b4f09600f72",
+    "3e8e0cf3-4b03-4290-a16c-0e292c69df11",
+    "66ffea5c-79a6-4fa4-8e88-699e555e0ff1",
+    "dba4b797-4627-4c8a-9770-462fe6cce495"
+  ],
+  "excluded_agent_ids": [],
+  "yielded_agent_ids": [],
+  "priced": [
+    {
+      "session_id": "f207bc70-0e43-5143-8f5b-68d4f599e989",
+      "agent_id": null,
+      "model": "claude-opus-5-5",
+      "is_sidechain": false,
+      "date": "2026-11-19",
+      "duration_s": 26791,
+      "tokens": {
+        "input": 432,
+        "output": 96322,
+        "cache_read": 43812815,
+        "cache_creation_5m": 0,
+        "cache_creation_1h": 515568
+      },
+      "cost_usd": 14.815275,
+      "rates_applied": {
+        "model": "claude-opus-5-5",
+        "input": 4,
+        "output": 20,
+        "cache_read": 0.2,
+        "cache_creation_5m": 5,
+        "cache_creation_1h": 8,
+        "tier": "standard",
+        "from": "0000-01-01",
+        "source": "manual"
+      }
+    }
+  ],
+  "cost_usd": {
+    "main": 14.815275,
+    "sidechain": 0.0,
+    "subagents": 0.0,
+    "total": 14.815275,
+    "total_is_partial": false
+  },
+  "duration_s": {
+    "sessions": 26791,
+    "subagents": 0,
+    "entries_without_duration": []
+  },
+  "rates_source": "agentTooling/analysis/rates_history.json checked=2026-11-18",
+  "warnings": []
+}

@@ -245,7 +245,15 @@ second feature in this one, needs a container of its own.
   under the same hook as any session, so a command it asks about (a lifecycle write such
   as `feature-start.sh` or `feature-sync.sh`, an unlisted program) waits for a human in
   THAT session; the parent cannot answer it, and a child stopped on one reads as idle in
-  `get_session`. The human approves it in the child's own session in the Claude app.
+  `get_session`. The human approves it in the child's own session in the Claude app. The
+  same holds for a pull child's `add_repo` of `ssdesai/agentTooling`: the session's auto-mode
+  permission check refuses it even with the owner's OK relayed by the parent in a message,
+  and it goes through only when the owner types the OK in the child's own session or has a
+  permission rule for `mcp__claude-code-remote__add_repo`. A parent creating pull children
+  tells the owner that before the round (`LIFECYCLE.md` → "Propagate", step 2).
+- **The parent merges only in its own GitHub scope.** It can merge a consumer's propagation
+  PR only if that repo is in its session's scope; otherwise it hands the merge to the owner
+  or to a session that holds the repo.
 - **Overlapping features merge in PR order, and the later one does the merge.** When two
   children touch the same files, the first PR lands as it is. The second child then runs
   `feature-sync.sh [--self] <slug>` to merge the new `origin/main` into its branch with an

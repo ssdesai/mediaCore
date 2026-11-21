@@ -694,7 +694,19 @@ OWN_PUSH_PRESENT_KEYS = frozenset([
 OWN_PUSH_PRESENT_KEY_RES = (re.compile(r"^branch\..*\.pushremote$"),
                             re.compile(r"^includeif\..*\.path$"),
                             re.compile(r"^hook\..*\.(event|command)$"),
-                            re.compile(r"^credential\..*\.helper$"))
+                            re.compile(r"^credential\..*\.helper$"),
+                            re.compile(r"^remote\..*\.proxy$"))
+# The transport (own-push-transport-keys): `http.*` is deny-by-default. Any `http.<var>` or
+# `http.<url>.<var>` whose variable is not in this short set prompts, so a proxy, a TLS
+# setting (`sslverify`, `sslcainfo`, `sslcert`, `sslkey`, `sslbackend`, `proxyssl*`), a
+# `curloptresolve`, a cookie file, an `extraheader`, `emptyauth`, `followredirects` and any
+# variable a newer git adds all prompt. Each kept variable tunes the transfer and neither
+# redirects it, weakens TLS nor names a file; the cloud's ~/.gitconfig sets `proxyauthmethod`.
+OWN_PUSH_HTTP_SECTION = "http"
+OWN_PUSH_HTTP_SAFE_VARS = frozenset([
+    "proxyauthmethod", "postbuffer", "lowspeedlimit", "lowspeedtime",
+    "maxrequests", "minsessions", "version",
+])
 # The askpass programs git runs from the environment: a NON-EMPTY value prompts. An empty one
 # runs nothing (git's `askpass && *askpass`), and the cloud container sets GIT_ASKPASS empty.
 OWN_PUSH_ASKPASS_ENVS = ("GIT_ASKPASS", "SSH_ASKPASS")
@@ -4681,7 +4693,8 @@ def read_uses_own_gitdir(args, cwd, root):
 def own_push_config_allows(root):
     """True when the effective config in `root` (`git config --list -z`: system, global, the
     repo's own, `config.worktree`, includes and the environment's command-line scope) holds
-    no key of OWN_PUSH_PRESENT_KEYS, a `push.default` that is absent, `simple` or `current`,
+    no key of OWN_PUSH_PRESENT_KEYS, no `http.*` variable outside OWN_PUSH_HTTP_SAFE_VARS (in
+    any `http.<url>.` form too), a `push.default` that is absent, `simple` or `current`,
     and exactly one `remote.origin.url`, http(s), that `remote get-url --push --all` prints
     unchanged — so a `url.*.insteadOf` or `pushInsteadOf` that applies to it is no approval
     and one that does not apply (the cloud injects two) is. Any read that fails, or a
@@ -4706,6 +4719,10 @@ def own_push_config_allows(root):
         if not key:
             return False
         if key in OWN_PUSH_PRESENT_KEYS or any(r.match(key) for r in OWN_PUSH_PRESENT_KEY_RES):
+            return False
+        section, _, variable = key.partition(".")
+        if section == OWN_PUSH_HTTP_SECTION and \
+                variable.rpartition(".")[2] not in OWN_PUSH_HTTP_SAFE_VARS:
             return False
         if key == OWN_PUSH_DEFAULT_KEY and (not separator
                                             or value not in OWN_PUSH_DEFAULT_VALUES):
@@ -5333,6 +5350,21 @@ ORCHESTRATOR_MOVE_MKDIR_LEAD = (shared_rules.LEGACY_RECORD_MKDIR + " && "
 ORCHESTRATOR_MOVE_REASON = (
     "allow-repo-commands: the orchestrator's move of its own record from the old vendored "
     "place to the consuming repo's records folder")
+# ... and the source must BE that record, read at judgment time (a consuming repo's
+# propagation audit of #169, B1; self/features/orchestrator-record-move-guard/): the role
+# lookup's slug can come from the ledger alone, which reads no record. So the folder's
+# README must be a regular file, no symlink, naming THIS session as an orchestrator
+# (orchestrator_role.names_role), and the record must be the consuming repo's stranded one,
+# not agentTooling's shipped one — analysis/roots.py's is_stranded_record, asked through
+# the CLI orchestration-start.sh asks (`roots.py stranded <slug>`, exit 0 for stranded),
+# because the hook imports nothing from analysis/. `-E -s` keeps PYTHON* variables and the
+# user site out of it, and `-B` writes no bytecode. A missing or symlinked classifier, a
+# non-zero exit, a timeout or any failure means no approval.
+ORCHESTRATOR_MOVE_CLASSIFIER = ("analysis", "roots.py")
+ORCHESTRATOR_MOVE_CLASSIFIER_ARGV = "stranded"
+ORCHESTRATOR_MOVE_PYTHON_FLAGS = ("-B", "-E", "-s")
+ORCHESTRATOR_MOVE_STRANDED_RC = 0
+ORCHESTRATOR_MOVE_CLASSIFIER_TIMEOUT_SECONDS = 15
 # gh
 ORCHESTRATOR_GH_PR_READ = frozenset(["view", "list", "checks"])
 ORCHESTRATOR_GH_FORBIDDEN_LONG = ("--web", "--watch", "--repo")
@@ -5577,7 +5609,32 @@ def orchestrator_branch_word(word, branch):
                               and ORCHESTRATOR_BRANCH_FORBIDDEN not in word)
 
 
-def orchestrator_record_move(args, cwd, record):
+def orchestrator_stranded_own_record(legacy, slug, session, tooling, consumer):
+    """True when the vendored record folder `legacy` (`<tooling>/self/orchestrations/<slug>`,
+    already checked to be a real directory) holds a README that is a regular file, no symlink,
+    naming `session` as an orchestrator, and the consuming repo's stranded record by
+    analysis/roots.py's classifier (ORCHESTRATOR_MOVE_CLASSIFIER). Anything else, a failure
+    included, is False."""
+    if not isinstance(session, str) or not session:
+        return False
+    readme = os.path.join(legacy, orchestrator_role.RECORD_NAME)
+    if os.path.islink(readme) or not os.path.isfile(readme) or \
+            not orchestrator_role.names_role(readme, session):
+        return False
+    classifier = os.path.join(tooling, *ORCHESTRATOR_MOVE_CLASSIFIER)
+    if os.path.islink(classifier) or not os.path.isfile(classifier) or not sys.executable:
+        return False
+    try:
+        done = subprocess.run((sys.executable,) + ORCHESTRATOR_MOVE_PYTHON_FLAGS +
+                              (classifier, ORCHESTRATOR_MOVE_CLASSIFIER_ARGV, slug),
+                              stdin=subprocess.DEVNULL, capture_output=True, cwd=consumer,
+                              timeout=ORCHESTRATOR_MOVE_CLASSIFIER_TIMEOUT_SECONDS)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
+    return done.returncode == ORCHESTRATOR_MOVE_STRANDED_RC
+
+
+def orchestrator_record_move(args, cwd, record, session=None):
     """True when `args` — the words after `git mv` — are exactly the move of `record`, this
     session's own record, out of a vendored copy's `self/orchestrations/<slug>` into the
     consuming repo's `plans/orchestrations/<slug>`, from that repo's root
@@ -5586,7 +5643,10 @@ def orchestrator_record_move(args, cwd, record):
     is a symlink or no directory, and a destination already there. The record's path is taken
     as the role lookup returned it, never resolved: it and every directory above it must be no
     symlink (round 1's audit, M71), and the destination's parents must resolve to themselves —
-    no symlinked `plans` or `plans/orchestrations` (M65, M66, M72)."""
+    no symlinked `plans` or `plans/orchestrations` (M65, M66, M72). Last, the folder must
+    really hold `session`'s stranded record (orchestrator_stranded_own_record): the role
+    lookup may name the slug from the ledger alone, which reads no record (B1: another
+    session's record, agentTooling's shipped one, an empty folder)."""
     if len(args) != ORCHESTRATOR_MOVE_OPERANDS or not cwd or not isinstance(record, str) \
             or orchestrator_role is None or record == orchestrator_role.LEDGER_UNREADABLE:
         return False
@@ -5612,14 +5672,19 @@ def orchestrator_record_move(args, cwd, record):
     return (os.path.isdir(legacy)
             and os.path.realpath(legacy) == legacy
             and os.path.realpath(records_root) == records_root
-            and not os.path.lexists(os.path.join(records_root, slug)))
+            and not os.path.lexists(os.path.join(records_root, slug))
+            and orchestrator_stranded_own_record(legacy, slug, session, tooling, consumer))
 
 
-def orchestrator_moves_own_record(command, cwd, record):
+def orchestrator_moves_own_record(command, cwd, record, session=None):
     """True when the whole line is `git mv` with exactly the operands orchestrator_record_move
     admits, alone or after exactly ORCHESTRATOR_MOVE_MKDIR_LEAD (the remedy
     shared_rules.LEGACY_RECORD_MOVE prints) — the one orchestrator write the hook approves
-    outright."""
+    outright. A line past ORCHESTRATOR_MAX_LINE_CHARS is refused unread here too (R1), before
+    any judgment, so no caller can reach the move ahead of the cap (mediaCore's pull audit:
+    main() asks this before orchestrator_command_allowed, whose own check came too late)."""
+    if len(command) > ORCHESTRATOR_MAX_LINE_CHARS:
+        return False
     line = ORCHESTRATOR_HARMLESS_REDIRECT_RE.sub(" ", command).strip()
     if ORCHESTRATOR_MOVE_MKDIR_LEAD and line.startswith(ORCHESTRATOR_MOVE_MKDIR_LEAD):
         line = line[len(ORCHESTRATOR_MOVE_MKDIR_LEAD):]
@@ -5628,10 +5693,10 @@ def orchestrator_moves_own_record(command, cwd, record):
         return False
     words = read[0][0]
     return words[:2] == ["git", ORCHESTRATOR_MOVE_SUB] and \
-        orchestrator_record_move(words[2:], cwd, record)
+        orchestrator_record_move(words[2:], cwd, record, session)
 
 
-def orchestrator_git_allowed(words, heredocs, branch, cwd, record=None):
+def orchestrator_git_allowed(words, heredocs, branch, cwd, record=None, session=None):
     rest = words[1:]
     if not rest:
         return False
@@ -5661,7 +5726,10 @@ def orchestrator_git_allowed(words, heredocs, branch, cwd, record=None):
                    and not os.path.islink(os.path.join(cwd, w))
                    and os.path.isfile(os.path.join(cwd, w)) for w in args)
     if sub == ORCHESTRATOR_MOVE_SUB:
-        return orchestrator_record_move(args, cwd, record)
+        # The record move is approved only as the whole line (orchestrator_moves_own_record,
+        # checked before this loop); a `git mv` read here is on a line that is not that, so it
+        # is the allowlist denial, as on the base (own-push-transport-keys, orchestrator addendum)
+        return False
     if sub == "commit":
         return len(args) == 2 and args[0] == "-m" and args[1] != branch
     if sub == "push":
@@ -5733,15 +5801,15 @@ def orchestrator_tool_allowed(words, cwd):
     return False
 
 
-def orchestrator_command_allowed(command, cwd=None, record=None):
+def orchestrator_command_allowed(command, cwd=None, record=None, session=None):
     """True when every command on the line is one of the orchestrator's shapes (the table
     above), read by orchestrator_words with a per-call random token for its placeholders.
-    `record` is the session's own record, the one path a `git mv` may name; the move's line
-    (orchestrator_moves_own_record) is admitted whole, its `mkdir -p` lead included — no other
-    `mkdir` is on the list."""
+    `record` is the session's own record, the one path a `git mv` may name, and `session` the
+    id that record must name; the move's line (orchestrator_moves_own_record) is admitted
+    whole, its `mkdir -p` lead included — no other `mkdir` is on the list."""
     if len(command) > ORCHESTRATOR_MAX_LINE_CHARS:
         return False
-    if orchestrator_moves_own_record(command, cwd, record):
+    if orchestrator_moves_own_record(command, cwd, record, session):
         return True
     line = ORCHESTRATOR_HARMLESS_REDIRECT_RE.sub(" ", command)
     read = orchestrator_words(line, secrets.token_hex(ORCHESTRATOR_TOKEN_BYTES))
@@ -5757,7 +5825,7 @@ def orchestrator_command_allowed(command, cwd=None, record=None):
                     not orchestrator_reader_allowed(words):
                 return False
         elif program == "git":
-            if not orchestrator_git_allowed(words, heredocs, branch, cwd, record):
+            if not orchestrator_git_allowed(words, heredocs, branch, cwd, record, session):
                 return False
         elif program == "gh":
             if not orchestrator_gh_allowed(words, heredocs, branch):
@@ -5887,11 +5955,13 @@ def main():
     # so a broken `.git` refuses building, never every command.
     record = orchestrator_record(payload)
     if record and orchestrator_role is not None and record != orchestrator_role.LEDGER_UNREADABLE:
+        session = payload.get(SESSION_FIELD)
         try:
-            allowed = orchestrator_command_allowed(command, cwd if isinstance(cwd, str) else None,
-                                                   record)
-            # The one write approved outright: the move of its own stranded record
-            moves = allowed and orchestrator_moves_own_record(command, cwd, record)
+            cwd_text = cwd if isinstance(cwd, str) else None
+            # The one write approved outright: the move of its own stranded record, judged
+            # once here (its classifier is a subprocess); any other line goes to the allowlist
+            moves = orchestrator_moves_own_record(command, cwd_text, record, session)
+            allowed = moves or orchestrator_command_allowed(command, cwd_text, record, session)
         except Exception:  # a line the allowlist cannot read is not on it
             allowed = moves = False
         if not allowed:
