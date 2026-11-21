@@ -16,3 +16,6 @@
 {"at":"2026-11-21T02:25:59Z","event":"plan_start","plan":"03-audit-opus","queue":"review","round":"3"}
 {"at":"2026-11-21T02:32:49Z","event":"plan_start","plan":"03-review-opus","queue":"review","round":"3"}
 {"at":"2026-11-21T02:33:54Z","event":"plan_end","plan":"03-audit-opus","queue":"review","rc":"0","round":"3"}
+{"at":"2026-11-21T02:33:54Z","event":"plan_end","plan":"03-review-opus","queue":"review","rc":"0","verdict":"clean","head":"a0973013eb99f5e0d708a492dd9569b9a42474c9","round":"3"}
+{"at":"2026-11-21T02:33:55Z","event":"audit_end","plan":"03-audit-opus","verdict":"escalated","head":"a0973013eb99f5e0d708a492dd9569b9a42474c9","round":"3"}
+{"at":"2026-11-21T02:33:55Z","event":"pass_end","queue":"review","reason":"all review plans complete","round":"3"}
